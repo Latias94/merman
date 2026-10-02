@@ -4,7 +4,17 @@ use std::fs;
 use std::path::Path;
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    encode_lower_hex(&Sha256::digest(bytes))
+}
+
+pub(crate) fn encode_lower_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 pub(crate) fn is_canonical_sha256(value: &str) -> bool {
@@ -151,7 +161,28 @@ fn parse_literal_string_array(
 mod tests {
     use super::{
         extract_add_to_set_string_array, extract_frozen_string_array, extract_string_array_at,
+        sha256_hex,
     };
+
+    #[test]
+    fn sha256_hex_preserves_canonical_bytes_and_leading_zeroes() {
+        for (input, expected) in [
+            (
+                b"".as_slice(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                b"286".as_slice(),
+                "00328ce57bbc14b33bd6695bc8eb32cdf2fb5f3a7d89ec14a42825e15d39df60",
+            ),
+            (
+                b"\0\xff\x80\0".as_slice(),
+                "f11b18659845b5c27e6040a28586bbe79db7c24d4eda7930381151bd4602490d",
+            ),
+        ] {
+            assert_eq!(sha256_hex(input), expected);
+        }
+    }
 
     #[test]
     fn dompurify_literal_arrays_accept_old_and_rolldown_formats() {

@@ -162,7 +162,7 @@ fn capture_snapshots(query: &Query, tree: &Tree, source: &str) -> Vec<CaptureSna
     let mut captures = cursor.captures(query, tree.root_node(), source.as_bytes());
     let mut snapshots = Vec::new();
     while let Some((query_match, capture_index)) = captures.next() {
-        let capture = query_match.captures[*capture_index];
+        let capture = query_match.captures()[*capture_index];
         let capture_index = usize::try_from(capture.index).expect("capture index fits usize");
         let range = capture.node.byte_range();
         let text = source.get(range.clone()).unwrap_or_else(|| {

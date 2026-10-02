@@ -61,8 +61,7 @@ pub(crate) fn wrap_sequence_label_like_mermaid_lines(
 pub(crate) fn sequence_inline_font_family(style: &TextStyle) -> Option<String> {
     use cssparser::ToCss;
     let family = style.font_family.as_deref()?;
-    let mut input = cssparser::ParserInput::new(family);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(family);
     let mut has_name = false;
     let mut quoted = false;
     let mut css = String::new();

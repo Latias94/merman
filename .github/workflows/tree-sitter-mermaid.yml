@@ -103,7 +103,31 @@ jobs:
           npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
           npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
 
+      - name: Read pinned WASI SDK version
+        id: wasi-version
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          provenance = json.loads(
+              Path("distribution/tree-sitter-mermaid/metadata/provenance.json").read_text()
+          )
+          version = provenance["toolchain"]["wasiSdk"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\n")
+
+      - name: Install pinned WASI SDK
+        id: wasi-sdk
+        uses: bytecodealliance/setup-wasi-sdk-action@77d09f3df1e8da344d8403cf8631af8977938b4c # v1.0.0
+        with:
+          version: ${{ steps.wasi-version.outputs.version }}
+          add-to-path: false
+
       - name: Verify language WASM
+        env:
+          TREE_SITTER_WASI_SDK_PATH: ${{ steps.wasi-sdk.outputs.wasi-sdk-path }}
         run: |
           npm run check:wasm --prefix distribution/tree-sitter-mermaid
           npm run test:wasm --prefix distribution/tree-sitter-mermaid

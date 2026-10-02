@@ -57,13 +57,13 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
 The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.
 
-Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
+Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`.
 
 ### `typst-publish`
 
@@ -540,14 +540,14 @@ The language package retains this implementation as an additional behavior refer
 
 ### Tree-sitter (`tree-sitter-generator`)
 
-The language package uses the pinned generator, copies its generated support headers, and modifies its C, Rust, and Node binding templates.
+The language package uses the pinned generator and copies its generated support headers.
 
-- Version: `0.26.12`
+- Version: `0.27.0`
 - Source: <https://github.com/tree-sitter/tree-sitter.git>
-- Source ref: `v0.26.12`
-- Source commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
+- Source ref: `v0.27.0`
+- Source commit: `6070dbfefd326bd735e5683eb128cc1b57dad0c0`
 - Source path: `.`
-- Relationship: `copied`, `generated`, `modified`
+- Relationship: `copied`, `generated`
 - License expression: `MIT`
 - Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
 - Local evidence: `distribution/tree-sitter-mermaid`
@@ -602,6 +602,22 @@ The language package follows the exact ZenUML Core 3.50.1 companion baseline and
 - Legal files:
   - [`THIRD_PARTY_LICENSES/zenuml-core/LICENSE`](THIRD_PARTY_LICENSES/zenuml-core/LICENSE) (license, SHA-256 `d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978`)
 
+### Tree-sitter binding templates (`tree-sitter-templates`)
+
+The language package retains modified C, Rust, and Node binding templates and the WASM build helper from Tree-sitter 0.26.12.
+
+- Version: `0.26.12`
+- Source: <https://github.com/tree-sitter/tree-sitter.git>
+- Source ref: `v0.26.12`
+- Source commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
+- Source path: `.`
+- Relationship: `copied`, `modified`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/tree-sitter/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter/LICENSE) (license, SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78`)
+
 ### @upsetjs/venn.js (`venn-js`)
 
 The Venn family uses a modified Rust translation of the venn.js geometry and layout kernel.
@@ -622,10 +638,10 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 
 The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text.
 
-- Version: `0.2.0`
+- Version: `0.2.1`
 - Source: <https://github.com/typst-community/wasm-minimal-protocol.git>
-- Source ref: `wasm-minimal-protocol-0.2.0`
-- Source commit: `cc08c96b8e7683188eb16ad315a9689b89290f85`
+- Source ref: `wasm-minimal-protocol-0.2.1`
+- Source commit: `b595eb790d9926dd91afc37d98c2e1fd3102cb2a`
 - Source path: `crates/macro`
 - Relationship: `linked`
 - License expression: `Unlicense`

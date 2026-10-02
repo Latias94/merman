@@ -13,7 +13,8 @@ publication without the protected release environment and maintainer credentials
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
 - Language ABI: 15
-- Tree-sitter CLI/Rust runtime: 0.26.12
+- Tree-sitter CLI: 0.27.0
+- Verified Rust runtime: 0.27.0
 - Verified Web runtime: 0.27.0
 - Native Node runtime contract: 0.25.x
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0

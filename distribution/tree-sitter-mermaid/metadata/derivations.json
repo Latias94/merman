@@ -513,12 +513,12 @@
       ],
       "sources": [
         {
-          "sourceId": "tree-sitter",
+          "sourceId": "tree-sitter-templates",
           "relationship": "modified",
           "sourcePaths": [
             "crates/cli/src/templates/binding.gyp",
-            "crates/cli/src/templates/CMakeLists.txt",
-            "crates/cli/src/templates/Makefile",
+            "crates/cli/src/templates/cmakelists.cmake",
+            "crates/cli/src/templates/makefile",
             "crates/cli/src/templates/PARSER_NAME.pc.in",
             "crates/cli/src/templates/PARSER_NAME.h",
             "crates/cli/src/templates/js-binding.cc",
@@ -564,7 +564,7 @@
       ],
       "sources": [
         {
-          "sourceId": "tree-sitter",
+          "sourceId": "tree-sitter-templates",
           "relationship": "modified",
           "sourcePaths": [
             "crates/loader/src/loader.rs:1290-1467"

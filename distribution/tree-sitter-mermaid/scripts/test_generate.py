@@ -47,8 +47,9 @@ class GenerationTests(unittest.TestCase):
                 )
 
     def test_cli_version_is_exact(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "expected tree-sitter 0.26.12"):
-            validate_cli_version("tree-sitter 0.26.11")
+        validate_cli_version("tree-sitter 0.27.0")
+        with self.assertRaisesRegex(SystemExit, "expected tree-sitter 0.27.0"):
+            validate_cli_version("tree-sitter 0.26.12")
 
     def test_generated_source_set_rejects_stale_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

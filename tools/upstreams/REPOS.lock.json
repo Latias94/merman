@@ -28,6 +28,12 @@
     "tree-sitter": {
       "path": "repo-ref/tree-sitter",
       "url": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.27.0",
+      "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0"
+    },
+    "tree-sitter-templates": {
+      "path": "repo-ref/tree-sitter-templates",
+      "url": "https://github.com/tree-sitter/tree-sitter.git",
       "ref": "v0.26.12",
       "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00"
     },

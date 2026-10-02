@@ -174,6 +174,7 @@
         "pappasam-tree-sitter-mermaid",
         "singularity-tree-sitter-mermaid",
         "tree-sitter-generator",
+        "tree-sitter-templates",
         "tree-sitter-mermaid-mermaid-12-new-families",
         "tree-sitter-mermaid-mermaid-baseline",
         "tree-sitter-mermaid-zenuml-baseline"
@@ -892,21 +893,26 @@
     {
       "id": "wasm-minimal-protocol",
       "name": "wasm-minimal-protocol",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": {
         "repository": "https://github.com/typst-community/wasm-minimal-protocol.git",
-        "ref": "wasm-minimal-protocol-0.2.0",
-        "commit": "cc08c96b8e7683188eb16ad315a9689b89290f85",
+        "ref": "wasm-minimal-protocol-0.2.1",
+        "commit": "b595eb790d9926dd91afc37d98c2e1fd3102cb2a",
         "path": "crates/macro"
       },
-      "relationships": ["linked"],
-      "local_paths": ["Cargo.lock", "crates/merman-typst-plugin"],
+      "relationships": [
+        "linked"
+      ],
+      "local_paths": [
+        "Cargo.lock",
+        "crates/merman-typst-plugin"
+      ],
       "license_expression": "Unlicense",
       "license_files": [
         {
           "path": "THIRD_PARTY_LICENSES/wasm-minimal-protocol/LICENSE",
           "sha256": "6b0382b16279f26ff69014300541967a356a666eb0b91b422f6862f6b7dad17e",
-          "source_url": "https://raw.githubusercontent.com/typst-community/wasm-minimal-protocol/cc08c96b8e7683188eb16ad315a9689b89290f85/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/typst-community/wasm-minimal-protocol/b595eb790d9926dd91afc37d98c2e1fd3102cb2a/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -916,8 +922,8 @@
           "type": "cargo",
           "path": "Cargo.lock",
           "package": "wasm-minimal-protocol",
-          "version": "0.2.0",
-          "checksum": "ae17f1dd65ee737caf73ea45f517c09578ab60970c28e5e96b7900fe2e245633"
+          "version": "0.2.1",
+          "checksum": "3a68dc57cf1a4c4e99a8dbe5a7d76f37bfd7db89860b6797c027027acf6da50a"
         }
       ],
       "notice": "The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text."
@@ -925,6 +931,41 @@
     {
       "id": "tree-sitter-generator",
       "name": "Tree-sitter",
+      "version": "0.27.0",
+      "source": {
+        "repository": "https://github.com/tree-sitter/tree-sitter.git",
+        "ref": "v0.27.0",
+        "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0",
+        "path": "."
+      },
+      "relationships": [
+        "copied",
+        "generated"
+      ],
+      "local_paths": [
+        "distribution/tree-sitter-mermaid"
+      ],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
+          "sha256": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78",
+          "source_url": "https://raw.githubusercontent.com/tree-sitter/tree-sitter/6070dbfefd326bd735e5683eb128cc1b57dad0c0/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "repository",
+          "repository_id": "tree-sitter"
+        }
+      ],
+      "notice": "The language package uses the pinned generator and copies its generated support headers."
+    },
+    {
+      "id": "tree-sitter-templates",
+      "name": "Tree-sitter binding templates",
       "version": "0.26.12",
       "source": {
         "repository": "https://github.com/tree-sitter/tree-sitter.git",
@@ -932,8 +973,13 @@
         "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
         "path": "."
       },
-      "relationships": ["copied", "generated", "modified"],
-      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "relationships": [
+        "copied",
+        "modified"
+      ],
+      "local_paths": [
+        "distribution/tree-sitter-mermaid"
+      ],
       "license_expression": "MIT",
       "license_files": [
         {
@@ -945,9 +991,12 @@
         }
       ],
       "locks": [
-        {"type": "repository", "repository_id": "tree-sitter"}
+        {
+          "type": "repository",
+          "repository_id": "tree-sitter-templates"
+        }
       ],
-      "notice": "The language package uses the pinned generator, copies its generated support headers, and modifies its C, Rust, and Node binding templates."
+      "notice": "The language package retains modified C, Rust, and Node binding templates and the WASM build helper from Tree-sitter 0.26.12."
     },
     {
       "id": "tree-sitter-mermaid-mermaid-baseline",
@@ -975,12 +1024,12 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "a0ec3d9465a030aa8029329f3bd52de18b592449798a1abab06ea16ea9080a13"
+          "sha256": "5720661852a2ef090407c73df5578beaddb4f69f35b44d609afc12d7bcee65e0"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
+          "sha256": "74616dcc3240d8b36b37bbfbf32047a49c6c80bfd7920241348aa6ab3681fab0"
         },
         {
           "type": "pinned-file",
@@ -1026,12 +1075,12 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "a0ec3d9465a030aa8029329f3bd52de18b592449798a1abab06ea16ea9080a13"
+          "sha256": "5720661852a2ef090407c73df5578beaddb4f69f35b44d609afc12d7bcee65e0"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
+          "sha256": "74616dcc3240d8b36b37bbfbf32047a49c6c80bfd7920241348aa6ab3681fab0"
         },
         {
           "type": "pinned-file",
@@ -1067,12 +1116,12 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "a0ec3d9465a030aa8029329f3bd52de18b592449798a1abab06ea16ea9080a13"
+          "sha256": "5720661852a2ef090407c73df5578beaddb4f69f35b44d609afc12d7bcee65e0"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
+          "sha256": "74616dcc3240d8b36b37bbfbf32047a49c6c80bfd7920241348aa6ab3681fab0"
         },
         {
           "type": "pinned-file",
@@ -1136,7 +1185,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
+          "sha256": "74616dcc3240d8b36b37bbfbf32047a49c6c80bfd7920241348aa6ab3681fab0"
         }
       ],
       "notice": "The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range."

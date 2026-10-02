@@ -503,7 +503,7 @@ pub(crate) fn upstream_svg_package_tree_sha256(root: &Path) -> Result<String, Xt
         hash.update([0]);
     }
     let digest = hash.finalize();
-    Ok(format!("{digest:x}"))
+    Ok(crate::util::encode_lower_hex(&digest))
 }
 
 pub(crate) fn spawn_timeout_managed_child(command: &mut Command) -> std::io::Result<Child> {
@@ -759,8 +759,8 @@ pub(crate) fn ensure_content_addressed_file(
         path: dir.display().to_string(),
         source,
     })?;
-    let digest = Sha256::digest(contents.as_bytes());
-    let file_path = dir.join(format!("{stem}-{digest:x}.{extension}"));
+    let digest = crate::util::sha256_hex(contents.as_bytes());
+    let file_path = dir.join(format!("{stem}-{digest}.{extension}"));
     match fs::read(&file_path) {
         Ok(existing) if existing == contents.as_bytes() => return Ok(file_path),
         Ok(_) => {
