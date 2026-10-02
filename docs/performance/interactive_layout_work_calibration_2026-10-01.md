@@ -29,11 +29,12 @@ headroom = 1,340,266 units = 10.503871% of W
 Each theme had five byte-identical full reports plus 7 isolated probes, all within the 300-second
 outer timeout. At the exact `W` limit the maximum fixture succeeds with the same SVG; at `W - 1`
 it returns the typed `layout_model` ceiling with `actual=12,759,734`. The full accepted linear
-Flowchart prefix reaches 908 nodes; 909 rejects at the exact profile boundary. The Architecture
-configuration control accepts 55,500 iterations and rejects at 55,501; these boundaries are
+Flowchart prefix reaches 938 nodes; 939 rejects at the exact profile boundary. The Architecture
+configuration control accepts 55,502 iterations and rejects at 55,503; these boundaries are
 specific to the registered topologies and do not define a general node or iteration limit.
 
-The two themes have the same work maximum and output identity. Observed full process times and
+The two themes have the same work maximum. Within each theme, bounded SVG output matches its
+unbounded control. Observed full process times and
 Windows target peak working sets are supporting observations only; they are not latency or memory
 SLOs and exclude other host processes.
 
