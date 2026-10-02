@@ -104,8 +104,9 @@ transport-wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
 merman-bindings-core = { path = "../merman-bindings-core", default-features = false }
-napi = { version = "=3.11.0", default-features = false, features = ["napi8", "dyn-symbols"], optional = true }
-napi-derive = { version = "=3.6.0", optional = true }
+# Update the N-API runtime, derive, and build pins together for the generated runtime APIs.
+napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"], optional = true }
+napi-derive = { version = "=3.6.10", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 wasm-bindgen = { version = "0.2.129", optional = true }
@@ -116,7 +117,7 @@ wasm-bindgen = { version = "0.2.129", optional = true }
 merman-core = { path = "../merman-core", default-features = false, features = ["operation-deadlines"] }
 
 [build-dependencies]
-napi-build = { version = "=2.3.2", optional = true }
+napi-build = { version = "=2.6.0", optional = true }
 
 # Keep the candidate outside the root workspace until U14 has comparative evidence.
 [workspace]
