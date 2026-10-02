@@ -6,8 +6,10 @@ use super::{
     DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDefinitionCompileError,
 };
 
+mod brutalist;
 mod catalog;
 mod cyberpunk;
+mod spotless;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -554,6 +556,64 @@ mod tests {
     }
 
     #[test]
+    fn brutalist_and_spotless_materialize_distinct_visual_mechanisms() {
+        use merman_theme_contract::{ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1};
+
+        let compiler = DiagramThemeCompiler::new();
+        for (preset, expected_grid_layers) in
+            [(ThemePreset::Brutalist, 0), (ThemePreset::Spotless, 2)]
+        {
+            let theme = compiler.compile_preset(preset).unwrap();
+            assert_eq!(theme.spec().canvas().layers().len(), expected_grid_layers);
+            let recipe =
+                catalog::materialize_spec_wire(preset, &ThemeResourcePolicy::interactive())
+                    .unwrap();
+            if preset == ThemePreset::Brutalist {
+                let effects = recipe.effects.as_ref().unwrap();
+                assert!(
+                    matches!(effects.as_slice(), [ThemeEffectEntryWireV1::Graph {
+                        primitives, ..
+                    }] if matches!(primitives.as_slice(), [ThemeEffectPrimitiveWireV1::DropShadow {
+                        offset_x: 6.0, offset_y: 6.0, blur_radius: 0.0, ..
+                    }]))
+                );
+            } else {
+                assert!(recipe.effects.as_ref().is_none_or(Vec::is_empty));
+            }
+            for rule in recipe.styles.as_ref().unwrap() {
+                if let merman_theme_contract::ThemeRuleSetWireV1::Rule { target, style, .. } = rule
+                {
+                    if target.ends_with("label") || target == "title" {
+                        assert!(matches!(
+                            style.effect,
+                            merman_theme_contract::SpecifiedWireV1::Unspecified
+                        ));
+                    }
+                }
+            }
+
+            let designs = theme_preset_descriptors()
+                .iter()
+                .find(|descriptor| descriptor.preset() == preset)
+                .unwrap()
+                .describe(&compiler)
+                .family_designs
+                .into_iter()
+                .map(|design| (design.family_id, design.treatment))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                designs,
+                [
+                    ("class".to_owned(), "base_only".to_owned()),
+                    ("flowchart".to_owned(), "dedicated".to_owned()),
+                    ("sequence".to_owned(), "dedicated".to_owned()),
+                    ("xychart".to_owned(), "dedicated".to_owned()),
+                ]
+            );
+        }
+    }
+
+    #[test]
     fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
         for descriptor in theme_preset_descriptors() {
             let compiler = DiagramThemeCompiler::new();
@@ -965,8 +1025,8 @@ mod tests {
             (ThemePreset::GruvboxDark, "#282828", "#d5c4a1", "#83a598"),
             (ThemePreset::AyuLight, "#fcfcfc", "#5c6166", "#55b4d4"),
             (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
-            (ThemePreset::Brutalist, "#f4f0e6", "#111111", "#ff4f00"),
-            (ThemePreset::Spotless, "#f7f5ef", "#2c2416", "#8b5e34"),
+            (ThemePreset::Brutalist, "#f6f3e9", "#000000", "#FF6B35"),
+            (ThemePreset::Spotless, "#EDE8DC", "#2c2416", "#8b5e34"),
             (ThemePreset::Cyberpunk, "#051423", "#00f2ff", "#22d3ee"),
         ];
 

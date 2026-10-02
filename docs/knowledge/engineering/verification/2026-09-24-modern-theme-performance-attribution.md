@@ -9,6 +9,9 @@ comparison_revision: v0.8.0-alpha.6
 
 # Decision
 
+Update: the later [Brutalist and Spotless recipe expansion](2026-09-29-modern-theme-preset-expansion.md)
+adds dedicated recipes. The findings and measurements below describe the original audit revision.
+
 The current product can produce a complete Cyberpunk scene with visible glow in SVG, PNG and PDF
 within bounded workloads. Larger scenes can exceed native export limits and must fail explicitly.
 Keep that boundary; do not raise limits or silently remove effects to make demonstrations pass.

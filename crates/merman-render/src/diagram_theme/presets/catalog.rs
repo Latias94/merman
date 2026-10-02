@@ -22,14 +22,19 @@ const SPEC_SCHEMA_VERSION: u32 = 1;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
-// These audited families currently use the shared palette recipe. Family-specific color fixes
-// do not amount to the complete dedicated visual designs of the Modern Mermaid references.
-// Keep unreviewed families absent instead of deriving aesthetic scope from renderer support.
+// Families without a dedicated recipe use the shared palette recipe. Keep unreviewed families
+// absent instead of deriving aesthetic scope from renderer support.
 const SHARED_PALETTE_DESIGNS: &[(&str, &str)] = &[
     ("class", "base_only"),
     ("flowchart", "base_only"),
     ("sequence", "base_only"),
     ("xychart", "base_only"),
+];
+const README_STYLE_DESIGNS: &[(&str, &str)] = &[
+    ("class", "base_only"),
+    ("flowchart", "dedicated"),
+    ("sequence", "dedicated"),
+    ("xychart", "dedicated"),
 ];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
@@ -49,9 +54,9 @@ const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
     "9e171a98b8632d6652d6ba7f04fb38f213f05dfa775fe3dfdf134a33673628b2";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "f398e947ed9f8bfebbf14690bb4e185e8ff6a7f71083de5032f68bd802e819b1";
+    "6faa2180687da0186bbf2991af85949374a661a18b470b2d90b61efaa862236e";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "7e4aa5aa8d8014000c0ed5c5a416757ed273477d2c7d560adb1f11d5fb534163";
+    "802ffd1073f140609f5e0281328b11c4851a02a167a7d136e738dcb25877ccee";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
     "af00e9dd770d06f8aaea3c85332f184800a2e5a9623d6de0607205a0812fb6f6";
 type PresetRecipeBuilder = fn(
@@ -252,11 +257,16 @@ const fn entry(
         recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: match preset {
+            ThemePreset::Brutalist => super::brutalist::build_recipe,
+            ThemePreset::Spotless => super::spotless::build_recipe,
             ThemePreset::Cyberpunk => super::cyberpunk::build_recipe,
             _ => build_cross_family_recipe,
         },
         palette,
-        family_designs: SHARED_PALETTE_DESIGNS,
+        family_designs: match preset {
+            ThemePreset::Brutalist | ThemePreset::Spotless => README_STYLE_DESIGNS,
+            _ => SHARED_PALETTE_DESIGNS,
+        },
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "complete_spec",
         qualification_invalidation: ThemePresetQualificationInvalidation::current(),
@@ -543,30 +553,30 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         PresetRecipeProfile::Native,
         BRUTALIST_RECIPE_FINGERPRINT,
         PresetPalette {
-            canvas: "#f4f0e6",
-            surface: "#fffdf5",
-            surface_alt: "#ffd84d",
+            canvas: "#f6f3e9",
+            surface: "#ffffff",
+            surface_alt: "#FFE66D",
             surface_muted: "#d9d2c3",
-            text: "#111111",
+            text: "#000000",
             subtle_text: "#3d3d3d",
-            border: "#111111",
-            line: "#111111",
-            accent: "#ff4f00",
-            edge_label_background: "#fffdf5",
+            border: "#000000",
+            line: "#000000",
+            accent: "#FF6B35",
+            edge_label_background: "#ffffff",
             cluster_background: "#ffe88a",
-            cluster_border: "#111111",
-            note_background: "#ffd84d",
-            note_border: "#111111",
-            note_text: "#111111",
-            actor_background: "#fffdf5",
-            actor_border: "#111111",
-            actor_text: "#111111",
+            cluster_border: "#000000",
+            note_background: "#FFE66D",
+            note_border: "#000000",
+            note_text: "#000000",
+            actor_background: "#ffffff",
+            actor_border: "#000000",
+            actor_text: "#000000",
             activation_background: "#ff6b35",
-            activation_border: "#111111",
+            activation_border: "#000000",
             sequence_number_text: "#ffffff",
-            packet_field_label_text: "#111111",
+            packet_field_label_text: "#000000",
             series: &[
-                "#ff4f00", "#006d77", "#ffba08", "#8338ec", "#3a86ff", "#d00000", "#2a9d8f",
+                "#FF6B35", "#4ECDC4", "#FFE66D", "#8338ec", "#3a86ff", "#d00000", "#2a9d8f",
                 "#6a4c93",
             ],
             kanban_task_labels: &[
@@ -583,28 +593,28 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         PresetRecipeProfile::Native,
         SPOTLESS_RECIPE_FINGERPRINT,
         PresetPalette {
-            canvas: "#f7f5ef",
-            surface: "#ffffff",
+            canvas: "#EDE8DC",
+            surface: "#F5F1E8",
             surface_alt: "#eeeae0",
             surface_muted: "#e2ded2",
-            text: "#1b1b1b",
+            text: "#1a1a1a",
             subtle_text: "#57534e",
-            border: "#b8b2a7",
+            border: "#2C2416",
             line: "#2c2416",
             accent: "#8b5e34",
-            edge_label_background: "#f7f5ef",
+            edge_label_background: "#EDE8DC",
             cluster_background: "#f0ece2",
-            cluster_border: "#8c867b",
+            cluster_border: "#2C2416",
             note_background: "#fff8e7",
             note_border: "#b89245",
             note_text: "#4a3712",
-            actor_background: "#ffffff",
-            actor_border: "#8c867b",
-            actor_text: "#1b1b1b",
+            actor_background: "#F5F1E8",
+            actor_border: "#2C2416",
+            actor_text: "#1a1a1a",
             activation_background: "#eeeae0",
-            activation_border: "#8c867b",
-            sequence_number_text: "#ffffff",
-            packet_field_label_text: "#1b1b1b",
+            activation_border: "#2C2416",
+            sequence_number_text: "#F5F1E8",
+            packet_field_label_text: "#1a1a1a",
             series: &[
                 "#8b5e34", "#557a46", "#9a6aa8", "#b2604b", "#4f748d", "#987b2f", "#6f6a91",
                 "#5c7c76",

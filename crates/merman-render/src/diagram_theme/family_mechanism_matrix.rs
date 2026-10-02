@@ -2912,6 +2912,27 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    // Node paint is resolved per emitted occurrence, including ordinal fill winners.
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -4008,6 +4029,61 @@ mod tests {
                 }
             ) && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_ordinal_node_fills_keep_their_paint_boundary() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for ordinal in [
+                OrdinalSelector::Exact(2),
+                OrdinalSelector::Cycle {
+                    period: 2,
+                    offset: 1,
+                },
+            ] {
+                for variant in [
+                    None,
+                    Some(ThemeVariant::Default),
+                    Some(ThemeVariant::Active),
+                ] {
+                    for paint in FamilyThemePaintKind::ALL {
+                        let selector = FamilyThemeSelectorShape::Ordinal {
+                            variant,
+                            selector: ordinal,
+                        };
+                        let expected = if variant != Some(ThemeVariant::Active)
+                            && matches!(
+                                paint,
+                                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+                            ) {
+                            FamilyThemeDisposition::TypedAdapter
+                        } else {
+                            FamilyThemeDisposition::Unsupported
+                        };
+                        assert_eq!(
+                            classify_rule_facet(
+                                family,
+                                ThemeTarget::Node,
+                                selector,
+                                FamilyThemeRuleFacet::Fill(paint)
+                            ),
+                            expected,
+                            "{family} {selector:?} {paint:?}"
+                        );
+                        assert_eq!(
+                            classify_rule_facet(
+                                family,
+                                ThemeTarget::Node,
+                                selector,
+                                FamilyThemeRuleFacet::Stroke(paint)
+                            ),
+                            FamilyThemeDisposition::Unsupported,
+                            "ordinal stroke admission must remain unchanged"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -6852,3 +6852,118 @@ fn flowchart_background_overwritten_ordinal_is_not_applicable() {
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
+
+#[test]
+fn brutalist_preset_emits_ordinal_accents_and_preserves_source_fill() {
+    use merman_render::diagram_theme::ThemePreset;
+
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Brutalist)
+        .expect("compile Brutalist preset");
+    for source_override in [false, true] {
+        let mut source = String::from("flowchart LR\n");
+        for ordinal in 1..=30 {
+            source.push_str(&format!("N{ordinal}[Node {ordinal}]\n"));
+        }
+        if source_override {
+            source.push_str("style N2 fill:#123456\n");
+        }
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Brutalist ordinal node fills must be portable");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for ordinal in 1..=30 {
+            let id = format!("N{ordinal}");
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some(id.as_str()))
+                .expect("emitted semantic node");
+            let shape = node
+                .descendants()
+                .find(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "label-container")
+                    })
+                })
+                .expect("node shape");
+            let expected = if source_override && ordinal == 2 {
+                "#123456"
+            } else if ordinal % 5 == 0 {
+                "#FF6B35"
+            } else if ordinal % 3 == 0 {
+                "#4ECDC4"
+            } else if ordinal % 2 == 0 {
+                "#FFE66D"
+            } else {
+                "#ffffff"
+            };
+            assert!(
+                shape
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains(&format!("fill:{expected}")),
+                "{id} must emit {expected}; source_override={source_override}: {:?}",
+                shape.attribute("style")
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_family_ordinal_transparent_fill_preserves_other_node_fills() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for family in ["flowchart", "swimlane-beta"] {
+        for ordinal in [
+            OrdinalSelector::Exact(2),
+            OrdinalSelector::Cycle {
+                period: 2,
+                offset: 1,
+            },
+        ] {
+            let theme = flowchart_title_theme([
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                )
+                .with_variant(ThemeVariant::Default)
+                .with_ordinal(ordinal),
+            ]);
+            let source = format!("{family} LR\nA[Alpha] --> B[Beta] --> C[Gamma]\n");
+            let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("ordinal transparent node fills must be portable");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for (id, expected) in [("A", "#123456"), ("B", "none"), ("C", "#123456")] {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("data-id") == Some(id))
+                    .unwrap();
+                let shape = node
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "label-container")
+                        })
+                    })
+                    .unwrap();
+                assert!(
+                    shape
+                        .attribute("style")
+                        .unwrap_or_default()
+                        .contains(&format!("fill:{expected}")),
+                    "{family} {ordinal:?} {id}: {:?}",
+                    shape.attribute("style")
+                );
+            }
+        }
+    }
+}

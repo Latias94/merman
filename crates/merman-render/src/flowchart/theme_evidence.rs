@@ -5512,8 +5512,9 @@ mod tests {
         assert!(second.matched_rules.contains(&0));
         assert!(matches!(
             second.fill,
-            Some(FlowchartPaintOutcome::Residual { rule_index: 0, .. })
+            Some(FlowchartPaintOutcome::Candidate { rule_index: 0, .. })
         ));
+        assert_eq!(second.fill_value(no_override(), true), Some("#ef4444"));
     }
 
     #[test]
