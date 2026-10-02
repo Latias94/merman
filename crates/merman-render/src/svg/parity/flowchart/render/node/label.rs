@@ -6,7 +6,7 @@ use crate::svg::parity::flowchart::label::{flowchart_label_html, flowchart_label
 use crate::svg::parity::flowchart::style::FlowchartCompiledStyles;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr,
 };
 use crate::svg::parity::flowchart::{
     write_flowchart_svg_source_word_lines, write_flowchart_svg_text_markdown_wrapped,
@@ -144,41 +144,14 @@ fn render_flowchart_node_label_with_wrapper(
             .measurer
             .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style);
     }
-    let mut metrics = if let (Some(w), Some(h)) = (
-        common.layout_node.label_width,
-        common.layout_node.label_height,
-    ) {
-        // Layout already had to measure labels to compute node sizes. Carry those metrics forward so
-        // render does not repeat expensive HTML/markdown measurement work.
-        crate::text::TextMetrics {
-            width: w,
-            height: h,
-            line_count: 0,
-        }
-    } else {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label.text,
-                label_type: label.label_type,
-                style: &node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        )
-    };
-    let label_has_visual_content = flowchart_html_contains_img_tag(label.text)
-        || (label.label_type == "markdown" && label.text.contains("!["));
-    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    ) && !label_has_visual_content
-    {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
+    let metrics = super::helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
     // Only authored FlowDB nodes carry minWidth; subgraph titles retain their own sizing.
     let min_width = ctx
         .nodes_by_id
@@ -191,7 +164,6 @@ fn render_flowchart_node_label_with_wrapper(
                 ctx.config,
             )
         });
-    metrics = metrics.with_label_min_width(label.text, min_width, None);
     let label_group_class = if common.shape == "note" {
         "label noteLabel"
     } else {
