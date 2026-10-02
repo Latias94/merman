@@ -268,8 +268,8 @@ Mermaid's ELK adapter behavior is compared against this JavaScript distribution,
 
 The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text.
 
-- Version: `0.2.0`
-- Source: https://github.com/typst-community/wasm-minimal-protocol.git @ `cc08c96b8e7683188eb16ad315a9689b89290f85`
+- Version: `0.2.1`
+- Source: https://github.com/typst-community/wasm-minimal-protocol.git @ `b595eb790d9926dd91afc37d98c2e1fd3102cb2a`
 - Source path: `crates/macro`
 - Relationship: `linked`
 - License: `Unlicense`
