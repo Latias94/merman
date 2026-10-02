@@ -1,22 +1,22 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "source": {
     "mermaid_version": "12.0.0",
     "mermaid_cli_version": "11.17.0",
     "mermaid_source_tag": "mermaid@12.0.0",
     "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
-    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
+    "package_json_sha256": "3e6c0c720692dd522200fc1f5c6715609dfbf5edd54b0d8e10f18bdfd3489289",
+    "package_lock_sha256": "7b8087b87d3ca0c09b21a67b6394c000f9cd47ba3e35f2dbb9ca081d1eebb3aa",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v4"
+    "renderer_revision": "xtask-upstream-svg-v5"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "Edg",
-        "version": "153.0.4234.48",
-        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "version": "154.0.4258.48",
+        "revision": "@80bb122d4912059dc0cf309273bbe3191ae80a62",
         "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
@@ -29,8 +29,12 @@
         "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "12.0.0",
-        "iife_version": "12.0.0",
+        "mermaid_version": "12.0.0",
+        "dompurify_version": "3.4.16",
+        "compiler_version": "0.28.1",
+        "artifact_sha256": "0c543708ce014d939a407037565804e40cb47d82c640e9cc9b80f655b7efed4c",
+        "dompurify_package_sha256": "8e62ee67206b530948d8db894569ddee4e258b9e7785dd7b796fae7136be65eb",
+        "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
         "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
         "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
@@ -45,167 +49,167 @@
     "stress_sankey_batch1_csv_empty_lines_and_spaces_006": {
       "input_sha256": "c3e6aed72082dfb20882168395b47ef1ac343dd52fc962ba420616de4a097c6d",
       "svg_sha256": "3ed80393d0babaf316010f7331fb01581dd623783515ffaa94ddc729028437bb",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_csv_quoted_commas_quotes_unicode_005": {
       "input_sha256": "d4539523edf0fa5f40715dfaaedae080583fcef5043e00518883936937abd03d",
       "svg_sha256": "a6b81b686c20023c5231950aa74aaa9b41bf089b6d2838dcf645872a5aba1a8a",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_dense_shared_nodes_007": {
       "input_sha256": "89746b5ae5558bf7f2c7a37b036ce6d1a7290e4df32212277a73a3a1139e6d0d",
       "svg_sha256": "776f8012f9fbad3d4b3d2f3e63d9a7b045c862eb0cd224d11fa7d9e60fab359a",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_duplicate_links_accumulation_010": {
       "input_sha256": "050159bbf1d321aabb4f831711bfab7efce5f4ea4268d997a85376cd2fa16413",
       "svg_sha256": "2b16e8855d1ad9688b82e1c819bd0f6d2f2b68c2398fb79308f9ab0c8973b49e",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_linkcolor_gradient_values_prefix_suffix_001": {
       "input_sha256": "f911f669d94a0c8cc7d46ce803a04d0867e2b67983ddf6a57cf9ef4de9b3b0f2",
       "svg_sha256": "867d8a0e6cb1df3adcc0422edaaa811d1b95272fdee50e940f76587917feaae0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_linkcolor_hex_center_align_003": {
       "input_sha256": "8278d4501d6b8dd7e9d829a4b154ce61649e1d4be55f846984542adad0d72464",
       "svg_sha256": "f8338d4f3a59c0c76bf3d8e99b4526f0ae21fe36160a193d60a5b9e0216165fb",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_linkcolor_target_values_false_right_align_002": {
       "input_sha256": "640b8e3eb095c1f4d220b407b865313e0ac2b596ba7ec95d6d76a2cc58bd922f",
       "svg_sha256": "49bd97f62e193221198f4252b210a13d76888417b56abf037fba04aaf5ec270a",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_long_labels_measurement_008": {
       "input_sha256": "990c5d0de6d1a8d30926f7ffae2c0847d8da52b401d73ebc4a9725c444dcd884",
       "svg_sha256": "0d4cb7177c81a923944cfb641083ce46f815d71473f61c8ba081c6b202af54a8",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_node_alignment_matrix_012": {
       "input_sha256": "3a241c08ee9d476e6bcfed6068427545f71b2fb2899121e145956f4d3478b771",
       "svg_sha256": "9484c7608194396bc4214c75d3636054bbb0506420820a52b4c6ca0a71fa4387",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_small_values_and_precision_009": {
       "input_sha256": "875a209a88ab0816bfdb5e87feb764e10036c4bb8847ff62cda4e7d83e7eefb6",
       "svg_sha256": "64976742c6611f163a4adeb67486d2f1b3731c616de80b607fc95e7649621e9d",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_usemaxwidth_false_fixed_size_004": {
       "input_sha256": "19be7ea43d152f4fc65ab81b1acff2761672da24a662593203547f89fd25bc18",
       "svg_sha256": "5c341e4761847ec318f6389fd033a1e9ce5c2192560851c6689cd05160043912",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_sankey_batch1_values_hidden_and_custom_suffix_011": {
       "input_sha256": "1b3f0a653975b5d371d4bd42e97e6e08ae25dce09928969b86956a30a9478b27",
       "svg_sha256": "dd1f2c553e66c441e69aad74ba67de5be0a20fdfc15801f8fd13c6764d360099",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_example_001": {
       "input_sha256": "8f91743da69d73531d406148ab82504ae64694c0a62d1218c790ebf088693af6",
       "svg_sha256": "c45d5d4f2bd0550a509db33110707702eb06b08e87cab504fa398cc982b02af0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_links_must_be_gradient_005": {
       "input_sha256": "eb8404e67097cfb426a915000b54d54b38e7d23d3393eb410492ee9f56840315",
       "svg_sha256": "9f5efb8aafa423a30227a5643d4df33e0151658f2ef6b0e0851662fb081c5ae7",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_links_should_be_the_same_color_as_source_node_003": {
       "input_sha256": "17d94c245787670bc622f6c62fa7f1eade36dc327a75650e0b0629ad2cd775c3",
       "svg_sha256": "5f77c2c26a92eedbf5a40515a1316709f79a5961df2052f1c36988d95029ae4d",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_links_should_be_the_same_color_as_target_node_004": {
       "input_sha256": "bd3ce397a8497d158f50ae5e77aed7a6d8308173524249a8832e2bd250803e7e",
       "svg_sha256": "321e838fce190e36be2cb9b52fa743ed918700552bc10c085065efa0258fbe02",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_links_should_use_hex_color_002": {
       "input_sha256": "32d5cfad7efd88ae683040981d55aa0bc2d048f777276e6aad28f7b34b26cd1f",
       "svg_sha256": "a8221b653b121424441b2845163bef5f81ce810d0a255fcc17acb3201e4b67a0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_should_align_nodes_left_007": {
       "input_sha256": "06f061875ce8b1c86a0fedd14708deef1187956433a1bddeaa6647ca4cde552a",
       "svg_sha256": "0a95da19be13c6913687b9d8811e45a9f8d964fcf7d1a9f7dea32979ef023cd8",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_should_align_nodes_right_008": {
       "input_sha256": "f82710bed4b86c7f4e293a4addcdfd6e8953ca24ef4b7162601e2d1c0970e128",
       "svg_sha256": "bfc969beea9a2342bd33ba06fbae0925021de97c00d78827f039d382c1f03155",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_should_center_nodes_009": {
       "input_sha256": "e1d8f82baf647d69aabda28b07633f8cca7a8c1096a98f3b12daaa357aa0767b",
       "svg_sha256": "68b0213319dcfeaafdc15336ad09ea8ae2d2e0dad523ab933f6945b53ea43941",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_sankey_spec_should_justify_nodes_006": {
       "input_sha256": "1930df0978d9b2bc4ebef9ca6348409d19cf95f4d36c3aca7d64876d45caf396",
       "svg_sha256": "b881a8c0b665245326d9667033b1b284d2ee77b173c5f50930d13bd197962796",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_sankey_basic_004": {
       "input_sha256": "9c049429c8fe41b167a6425ed901596cede800f4a46a3f9eb53b0bdd3373265a",
       "svg_sha256": "807a554b3580d63f4ac111ce7d7468f07c6ace7efa0f54dd13b41407405719cc",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_sankey_example_002": {
       "input_sha256": "c6739c6a83029fbe481d653c74d1e302c8226bc89edcbebec88062125baa78d3",
       "svg_sha256": "76951b942f15411ae44bb1a12400aaa3eecb518b63bf7334c0b9b03020d10cda",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_examples_sankey_energy_flow_001": {
       "input_sha256": "cf7b4020847c79750bd2f9d8cb9630f5c7f605fd207366c93d389f70701eeb4f",
       "svg_sha256": "1db31c9ddf81ecbafd2a669dab4f05fed775aaa25bcd18edb248c6adda6a622b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_sankey_energy_flow_002": {
       "input_sha256": "1d2f06058df8a6eeceed1b1500f30d25b6d9afee8808830e3882364af1b963c8",
       "svg_sha256": "23a6cb839dec4786f7a8be061ffb4f884c9ddb5f65795aa2d6244ae04cb2d022",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_sankey_fy20_21_performance_001": {
       "input_sha256": "657961d6f93fc17cb7f3fc5b766d50e6a60adf5809a9776cc8e30814a333b750",
       "svg_sha256": "bc6baeb6fea08f2277d5f6f43a58ce7131a76f834f70cf154914bc639f8597b4",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_beta_docs_commas_spec": {
       "input_sha256": "126cfbfd7b2b29fa79177e89995527e5871c6194c7254f4ea4b75e7c1951b582",
       "svg_sha256": "42625e28a54842b9f7baa17d75ac6f505f02105f57626bc6bdfdc61d2a4d2b39",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_beta_energy_csv_spec": {
       "input_sha256": "148e9b32c8ec591eec1f0e00a9d2d4ad926a8a9920c40cf233e56dec6fedcede",
       "svg_sha256": "d165f3e4235a032695fc3ea041681962cbeac415f60caecaf1c6fab9cead3471",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_docs_commas_spec": {
       "input_sha256": "3973ed40c63348a839b000e5d1b3f0c7bd525326c5a58aab07820a232cdb4ab6",
       "svg_sha256": "740658019d37d513c90ba0ec108cb22d5f7e62bd9aaf38cbff598b68b1b04bf8",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec": {
       "input_sha256": "6f3e4e24afbbbc7b17ae4bd12c2871a59571e6c36e6efecdc42ec050d3ee2d21",
       "svg_sha256": "cb70294bf307ebab06e994e2937a6bf81789adacdbe080e5d8995a4e318b6945",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_docs_double_quotes_spec": {
       "input_sha256": "faf4da43a8fd6e155699f4a358146caab78240d9a53738a385f30e3bb1a24851",
       "svg_sha256": "d3accfa2a8b5ab03732e11a5bf043d234162faa07d9899ab395c1188e00b34f2",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_docs_empty_lines_spec": {
       "input_sha256": "b515f37ac5673272fbbfd7dc4df799c288375569e759da88ab7fa52c98861d4c",
       "svg_sha256": "689691d85c8be6f8ed4194148d879a5527c128c40de7758064af252fc6778216",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_sankey_header_energy_csv_spec": {
       "input_sha256": "599aca2d96a40f7612c10b3a87a065922584ea11fa03715ce3c2880a9ba35b95",
       "svg_sha256": "f72baa3e38abef9409c916e5a0c3f7e7f0f9f3923861426672f15eca1f915646",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },
   "excluded": {

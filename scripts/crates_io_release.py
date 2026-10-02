@@ -31,6 +31,8 @@ from tools.publish import (
 
 
 CRATES_IO_API = "https://crates.io/api/v1"
+CRATES_IO_INDEX = "https://index.crates.io"
+REGISTRY_OBSERVATION_SECONDS = 300.0
 RECEIPT_SCHEMA = Path("distribution/crates-io/receipt-schema-v1.json")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 GIT_OBJECT = re.compile(r"[0-9a-f]{40}\Z")
@@ -45,6 +47,10 @@ RECEIPT_STATES = {
 
 class CratesIoPublishError(RuntimeError):
     """The receipt-bound crates.io publication cannot safely continue."""
+
+
+class RegistryConflictError(CratesIoPublishError):
+    """Registry evidence permanently conflicts with the immutable candidate."""
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,7 @@ class RegistryBarrier:
     checksums: dict[str, str | None]
     errors: dict[str, str]
     mismatches: dict[str, str]
+    index_checksums: dict[str, str | None]
 
 
 def sha256_file(path: Path) -> str:
@@ -153,6 +160,10 @@ def _package_receipt_entry(
             "observed_checksum": observed.get("checksum"),
             "publish_returncode": observed.get("returncode"),
             **({"error": observed["error"]} if observed.get("error") else {}),
+            **(
+                {"observed_index_checksum": observed["index_checksum"]}
+                if "index_checksum" in observed else {}
+            ),
         },
     }
 
@@ -169,10 +180,14 @@ def _batch_receipt(
     plan_sha256: str,
     batch_index: int,
     registry: dict[str, dict] | None = None,
+    publication: dict | None = None,
+    observe_only: bool = False,
 ) -> dict:
     registry = registry or {}
     return {
         "schema_version": 1,
+        "observe_only": observe_only,
+        **({"publication": publication} if publication is not None else {}),
         "schema": RECEIPT_SCHEMA.as_posix(),
         "channel": "crates.io",
         "kind": "topological-batch",
@@ -204,6 +219,17 @@ def validate_crates_io_receipt(receipt: dict) -> None:
         or receipt["batch_index"] < 0
     ):
         raise CratesIoPublishError("invalid crates.io receipt envelope")
+    if "observe_only" in receipt and type(receipt["observe_only"]) is not bool:
+        raise CratesIoPublishError("crates.io receipt observe_only must be a boolean")
+    publication = receipt.get("publication")
+    if publication is not None and (
+        not isinstance(publication, dict)
+        or not isinstance(publication.get("run_id"), str)
+        or not publication["run_id"].isdigit()
+        or type(publication.get("attempt")) is not int
+        or publication["attempt"] < 1
+    ):
+        raise CratesIoPublishError("invalid crates.io receipt publication attempt")
     source = receipt.get("source")
     if not isinstance(source, dict) or any(
         GIT_OBJECT.fullmatch(str(source.get(key, ""))) is None
@@ -233,6 +259,22 @@ def validate_crates_io_receipt(receipt: dict) -> None:
             or artifact["size"] <= 0
         ):
             raise CratesIoPublishError("invalid crates.io receipt package identity")
+        observed = package.get("registry")
+        if (
+            not isinstance(observed, dict)
+            or not isinstance(observed.get("status"), str)
+            or not observed["status"]
+            or any(
+                observed.get(key) is not None
+                and SHA256.fullmatch(str(observed[key])) is None
+                for key in ("observed_checksum", "observed_index_checksum")
+            )
+            or (
+                observed.get("publish_returncode") is not None
+                and type(observed["publish_returncode"]) is not int
+            )
+        ):
+            raise CratesIoPublishError("invalid crates.io receipt registry observation")
         names.add(name)
 
 
@@ -376,11 +418,64 @@ def fetch_crates_io_checksum(
         raise CratesIoPublishError(
             f"cannot observe crates.io checksum for {crate_name} {version}: {error}"
         ) from error
-    checksum = payload.get("version", {}).get("checksum")
+    version_record = payload.get("version") if isinstance(payload, dict) else None
+    checksum = version_record.get("checksum") if isinstance(version_record, dict) else None
     if not isinstance(checksum, str) or SHA256.fullmatch(checksum) is None:
         raise CratesIoPublishError(
             f"crates.io returned an invalid checksum for {crate_name} {version}"
         )
+    return checksum
+
+
+def fetch_crates_io_index_checksum(
+    crate_name: str,
+    version: str,
+    *,
+    index_url: str = CRATES_IO_INDEX,
+    timeout: int = 30,
+) -> str | None:
+    """Read the exact version from Cargo's sparse index, independently of the API."""
+
+    name = crate_name.lower()
+    if not re.fullmatch(r"[a-z0-9_-]+", name):
+        raise CratesIoPublishError(f"invalid crate name: {crate_name!r}")
+    if len(name) < 3:
+        prefix = str(len(name))
+    elif len(name) == 3:
+        prefix = f"3/{name[0]}"
+    else:
+        prefix = f"{name[:2]}/{name[2:4]}"
+    request = urllib.request.Request(
+        f"{index_url.rstrip('/')}/{prefix}/{name}",
+        headers={"User-Agent": "merman-release-operator/1", "Cache-Control": "no-cache"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            entries = [json.loads(line) for line in response if line.strip()]
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise CratesIoPublishError(
+            f"Cargo sparse index returned HTTP {error.code} for {crate_name} {version}"
+        ) from error
+    except (OSError, ValueError) as error:
+        raise CratesIoPublishError(
+            f"cannot observe Cargo sparse index for {crate_name} {version}: {error}"
+        ) from error
+    matches = [
+        entry for entry in entries
+        if isinstance(entry, dict) and entry.get("vers") == version
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1 or matches[0].get("name") != crate_name:
+        raise CratesIoPublishError(f"invalid Cargo sparse index entry for {crate_name} {version}")
+    entry = matches[0]
+    checksum = entry.get("cksum")
+    if not isinstance(checksum, str) or SHA256.fullmatch(checksum) is None:
+        raise CratesIoPublishError(f"invalid Cargo sparse index checksum for {crate_name} {version}")
+    if entry.get("yanked") is not False:
+        raise RegistryConflictError(f"Cargo sparse index version is yanked or invalid: {crate_name} {version}")
     return checksum
 
 
@@ -390,38 +485,66 @@ def reconcile_registry_barrier(
     registry_api: str,
     attempts: int,
     delay_seconds: int,
+    registry_index: str = CRATES_IO_INDEX,
 ) -> RegistryBarrier:
     if attempts <= 0 or delay_seconds < 0:
         raise ValueError("registry reconciliation bounds must be non-negative")
     pending = {item.package.name: item for item in prepared}
     checksums: dict[str, str | None] = {name: None for name in pending}
+    index_checksums: dict[str, str | None] = {name: None for name in pending}
     errors: dict[str, str] = {}
     mismatches: dict[str, str] = {}
+    deadline = time.monotonic() + REGISTRY_OBSERVATION_SECONDS
     for attempt in range(attempts):
         for name, item in list(pending.items()):
+            if time.monotonic() >= deadline:
+                break
             try:
                 checksum = fetch_crates_io_checksum(
-                    name,
-                    item.package.version,
-                    api_url=registry_api,
+                    name, item.package.version, api_url=registry_api,
+                    timeout=max(1, min(30, deadline - time.monotonic())),
                 )
+                checksums[name] = checksum
+                if checksum is not None and checksum != item.artifact_sha256:
+                    mismatches[name] = checksum
+                    continue
+                if time.monotonic() >= deadline:
+                    break
+                index_checksum = fetch_crates_io_index_checksum(
+                    name, item.package.version, index_url=registry_index,
+                    timeout=max(1, min(30, deadline - time.monotonic())),
+                )
+                index_checksums[name] = index_checksum
+                if index_checksum is not None and index_checksum != item.artifact_sha256:
+                    mismatches[name] = index_checksum
+                    continue
+                errors.pop(name, None)
+                if checksum is not None and index_checksum is not None:
+                    pending.pop(name)
+                elif checksum is not None:
+                    errors[name] = "exact archive accepted; waiting for Cargo sparse index propagation"
+                elif index_checksum is not None:
+                    errors[name] = "exact Cargo sparse index entry visible; waiting for crates.io API propagation"
+                else:
+                    errors[name] = "version not yet visible through the crates.io API or Cargo sparse index"
+            except RegistryConflictError as error:
+                mismatches[name] = str(error)
+                errors[name] = str(error)
             except CratesIoPublishError as error:
                 errors[name] = str(error)
-                continue
-            checksums[name] = checksum
-            errors.pop(name, None)
-            if checksum is None:
-                continue
-            pending.pop(name)
-            if checksum != item.artifact_sha256:
-                mismatches[name] = checksum
         if mismatches:
-            return RegistryBarrier("mismatch", checksums, errors, mismatches)
+            return RegistryBarrier("mismatch", checksums, errors, mismatches, index_checksums)
         if not pending:
-            return RegistryBarrier("complete", checksums, errors, mismatches)
+            return RegistryBarrier("complete", checksums, errors, mismatches, index_checksums)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         if attempt + 1 < attempts and delay_seconds:
-            time.sleep(delay_seconds)
-    return RegistryBarrier("pending_recovery", checksums, errors, mismatches)
+            delay = min(delay_seconds * (2 ** attempt), 30, remaining)
+            print(f"Registry observation {attempt + 1}/{attempts}: "
+                  f"{errors}; retrying in {delay:g}s", flush=True)
+            time.sleep(delay)
+    return RegistryBarrier("pending_recovery", checksums, errors, mismatches, index_checksums)
 
 
 def _update_registry_from_barrier(
@@ -434,16 +557,28 @@ def _update_registry_from_barrier(
         checksum = barrier.checksums[name]
         entry = registry.setdefault(name, {})
         entry["checksum"] = checksum
-        if checksum == item.artifact_sha256:
+        entry["index_checksum"] = barrier.index_checksums[name]
+        if name in barrier.mismatches:
+            entry["status"] = "checksum_mismatch"
+            entry["error"] = barrier.errors.get(
+                name, "crates.io API or Cargo sparse index checksum differs from the prepared artifact"
+            )
+        elif checksum == item.artifact_sha256 and barrier.index_checksums[name] == item.artifact_sha256:
+            entry.pop("error", None)
             if entry.get("status") not in {
                 "already_published",
                 "published_after_response_loss",
             }:
                 entry["status"] = "published"
-        elif name in barrier.mismatches:
-            entry["status"] = "checksum_mismatch"
         else:
-            entry["status"] = "pending_recovery"
+            entry["status"] = (
+                "accepted_pending_index" if checksum == item.artifact_sha256
+                else "publish_response_lost" if entry.get("status") in {
+                    "publish_started", "publish_returned", "publish_response_lost",
+                    "already_published", "published", "published_after_response_loss",
+                    "accepted_pending_index",
+                } else "pending_recovery"
+            )
             if error := barrier.errors.get(name):
                 entry["error"] = error
 
@@ -458,10 +593,18 @@ def publish_receipted_release(
     registry_token: str,
     recovery_receipts_dir: Path | None = None,
     registry_api: str = CRATES_IO_API,
+    registry_index: str = CRATES_IO_INDEX,
     visibility_attempts: int = 12,
     visibility_delay: int = 15,
+    observe_only: bool = False,
+    publication_run_id: str | None = None,
+    publication_attempt: int | None = None,
+    recovery_run_id: str | None = None,
+    recovery_attempt: int | None = None,
 ) -> None:
     repo_root = repo_root.resolve()
+    if visibility_attempts < 1 or visibility_delay < 0:
+        raise CratesIoPublishError("registry observation requires positive attempts and a non-negative delay")
     if not registry_token:
         raise CratesIoPublishError("crates.io publication requires a registry token")
     credential_keys = {
@@ -479,6 +622,30 @@ def publish_receipted_release(
     receipts_dir = receipts_dir.resolve()
     plan = crates_io_publish_plan(metadata)
     recovery = _load_recovery_receipts(recovery_receipts_dir)
+    if (publication_run_id is None) != (publication_attempt is None):
+        raise CratesIoPublishError("publication run and attempt must be supplied together")
+    if (recovery_run_id is None) != (recovery_attempt is None):
+        raise CratesIoPublishError("recovery run and attempt must be supplied together")
+    publication = (
+        {"run_id": publication_run_id, "attempt": publication_attempt}
+        if publication_run_id is not None else None
+    )
+    if recovery and recovery_run_id is None:
+        observe_only = True
+    if recovery_run_id is not None:
+        expected = {"run_id": recovery_run_id, "attempt": recovery_attempt}
+        if not recovery or any(
+            prior_receipt.get("publication") != expected
+            for receipts in recovery.values() for _path, prior_receipt in receipts
+        ):
+            observe_only = True
+    # Every batch carries the run-wide uncertainty, including prepared-only receipts.
+    # A completed prefix cannot prove that an absent later batch was never uploaded.
+    if any(
+        prior_receipt.get("observe_only", True)
+        for receipts in recovery.values() for _path, prior_receipt in receipts
+    ):
+        observe_only = True
     unknown_batches = sorted(set(recovery) - set(range(len(plan.batches))))
     if unknown_batches:
         raise CratesIoPublishError(
@@ -515,6 +682,8 @@ def publish_receipted_release(
                 plan_sha256=plan_sha256,
                 batch_index=batch_index,
                 registry=registry,
+                publication=publication,
+                observe_only=observe_only,
             )
 
         def record(state: str, suffix: str = "result") -> None:
@@ -531,6 +700,24 @@ def publish_receipted_release(
             prepared_receipt,
         )
 
+        # Any prior attempted upload is observation-only, even if a replica returns 404.
+        attempted = {
+            package["name"]
+            for _path, prior_receipt in recovery.get(batch_index, [])
+            for package in prior_receipt["packages"]
+            if (
+                package["registry"].get("publish_returncode") is not None
+                and package["registry"]["status"] != "dry_run_failed"
+            )
+            or package["registry"]["status"] in {
+                "publish_started", "publish_returned", "publish_response_lost",
+                "published", "published_after_response_loss", "already_published",
+                "accepted_pending_index",
+            }
+        }
+        if observe_only:
+            attempted.update(item.package.name for item in prepared)
+        registry.update({name: {"status": "publish_started"} for name in attempted})
         missing: list[PreparedCrate] = []
         for item in prepared:
             name = item.package.name
@@ -541,12 +728,13 @@ def publish_receipted_release(
                     api_url=registry_api,
                 )
             except CratesIoPublishError as error:
-                registry[name] = {"status": "observation_failed", "error": str(error)}
+                registry.setdefault(name, {"status": "observation_failed"})["error"] = str(error)
                 record("pending_recovery")
                 raise
             if checksum is None:
-                registry[name] = {"status": "missing"}
-                missing.append(item)
+                registry[name] = {"status": "publish_started" if name in attempted else "missing"}
+                if name not in attempted:
+                    missing.append(item)
             elif checksum == item.artifact_sha256:
                 registry[name] = {
                     "status": "already_published",
@@ -561,6 +749,20 @@ def publish_receipted_release(
                 raise CratesIoPublishError(
                     f"registry checksum mismatch for {name} {item.package.version}: "
                     f"local {item.artifact_sha256}, registry {checksum}"
+                )
+
+        recovering = [item for item in prepared if item.package.name in attempted]
+        if recovering:
+            barrier = reconcile_registry_barrier(
+                recovering, registry_api=registry_api, registry_index=registry_index,
+                attempts=visibility_attempts, delay_seconds=visibility_delay,
+            )
+            _update_registry_from_barrier(registry, recovering, barrier)
+            record(barrier.state if barrier.state != "complete" else "pending_recovery")
+            if barrier.state != "complete":
+                raise CratesIoPublishError(
+                    f"previously attempted uploads remain {barrier.state}; do not republish; "
+                    "resume with these receipts after registry propagation"
                 )
 
         dry_run_environment = dict(os.environ)
@@ -599,6 +801,8 @@ def publish_receipted_release(
         for item in missing:
             name = item.package.name
             print(f"Publishing {name} {item.package.version}")
+            registry[name] = {"status": "publish_started"}
+            record("pending_recovery")
             completed = run_command(
                 [
                     "cargo",
@@ -621,11 +825,13 @@ def publish_receipted_release(
                 else "publish_response_lost",
                 "returncode": completed.returncode,
             }
+            record("pending_recovery")
             if completed.returncode == 0:
                 continue
             response_loss = reconcile_registry_barrier(
                 [item],
                 registry_api=registry_api,
+                registry_index=registry_index,
                 attempts=visibility_attempts,
                 delay_seconds=visibility_delay,
             )
@@ -642,6 +848,7 @@ def publish_receipted_release(
         barrier = reconcile_registry_barrier(
             prepared,
             registry_api=registry_api,
+            registry_index=registry_index,
             attempts=visibility_attempts,
             delay_seconds=visibility_delay,
         )
@@ -649,9 +856,11 @@ def publish_receipted_release(
         record(barrier.state)
         if barrier.state != "complete":
             raise CratesIoPublishError(
-                f"crates.io batch {batch_index + 1} checksum barrier ended in {barrier.state}"
+                f"crates.io batch {batch_index + 1} API/index barrier ended in {barrier.state}: "
+                f"{barrier.errors or barrier.mismatches}; preserve receipts and resume after propagation; "
+                "do not republish an attempted version"
             )
-        print(f"crates.io batch {batch_index + 1} checksum barrier complete")
+        print(f"crates.io batch {batch_index + 1} API/index checksum barrier complete")
 
 
 def preflight_initial_batch(
@@ -807,12 +1016,18 @@ def main() -> int:
     parser.add_argument("--source-tree")
     parser.add_argument("--receipts-dir", type=Path)
     parser.add_argument("--recovery-receipts-dir", type=Path)
+    parser.add_argument("--observe-only", action="store_true")
+    parser.add_argument("--publication-run-id")
+    parser.add_argument("--publication-attempt", type=int)
+    parser.add_argument("--recovery-run-id")
+    parser.add_argument("--recovery-attempt", type=int)
     parser.add_argument(
         "--repo-root",
         type=Path,
         default=Path(__file__).resolve().parents[1],
     )
     parser.add_argument("--registry-api", default=CRATES_IO_API)
+    parser.add_argument("--registry-index", default=CRATES_IO_INDEX)
     parser.add_argument("--visibility-attempts", type=int, default=12)
     parser.add_argument("--visibility-delay", type=int, default=15)
     args = parser.parse_args()
@@ -874,8 +1089,12 @@ def main() -> int:
             registry_token=registry_token,
             recovery_receipts_dir=args.recovery_receipts_dir,
             registry_api=args.registry_api,
+            registry_index=args.registry_index,
             visibility_attempts=args.visibility_attempts,
             visibility_delay=args.visibility_delay,
+            observe_only=args.observe_only,
+            publication_run_id=args.publication_run_id, publication_attempt=args.publication_attempt,
+            recovery_run_id=args.recovery_run_id, recovery_attempt=args.recovery_attempt,
         )
     except (CratesIoPublishError, OSError, ValueError) as error:
         print_error(str(error))

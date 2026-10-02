@@ -112,8 +112,8 @@
     "dompurify": {
       "path": "repo-ref/dompurify",
       "url": "https://github.com/cure53/DOMPurify.git",
-      "ref": "3.4.15",
-      "commit": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5"
+      "ref": "3.4.16",
+      "commit": "b9b9d80f7e401771c2ccaef5f45def7eec8f27d7"
     },
     "sanitize-url": {
       "path": "repo-ref/sanitize-url",

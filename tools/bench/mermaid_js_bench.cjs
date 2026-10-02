@@ -2,13 +2,15 @@
 
 // Bench upstream Mermaid JS rendering via the same pinned toolchain used for parity SVG baselines:
 // - Launch a single headless Chromium instance (puppeteer)
-// - Load mermaid-cli's dist HTML + Mermaid IIFE bundle
+// - Load mermaid-cli's dist HTML + the owned reference runtime artifact
 // - Measure repeated `mermaid.render(...)` calls in-page (warm + measure loops)
 //
 // This intentionally does NOT include browser startup time in per-iteration timings.
 
 const fs = require("fs");
 const path = require("path");
+const { createHash } = require("node:crypto");
+const { pathToFileURL } = require("node:url");
 const puppeteer = require(require.resolve("puppeteer", { paths: [process.cwd()] }));
 
 const OUTPUT_SCHEMA_VERSION = 3;
@@ -76,7 +78,8 @@ function validateInput(value) {
   if (!isObject(value)) {
     throw new TypeError("input must be an object");
   }
-  requireExactKeys(value, INPUT_KEYS, "input");
+  const { referenceRuntime, ...requiredInput } = value;
+  requireExactKeys(requiredInput, INPUT_KEYS, "input");
 
   if (!isObject(value.fixtures)) {
     throw new TypeError("input.fixtures must be an object");
@@ -132,6 +135,7 @@ function validateInput(value) {
       MAX_TIMER_MS
     ),
     fixtureTimeoutMs,
+    referenceRuntime,
   };
 }
 
@@ -337,21 +341,32 @@ async function main() {
     "dist",
     "index.html"
   );
-  const mermaidIifePath = path.join(
-    cliRoot,
-    "node_modules",
-    "mermaid",
-    "dist",
-    "mermaid.js"
+  const referenceRuntime = input.referenceRuntime ?? await (
+    await import(pathToFileURL(path.resolve(__dirname, "../mermaid-cli/reference-runtime.mjs")).href)
+  ).prepareReferenceRuntime(cliRoot);
+  if (!isObject(referenceRuntime)) {
+    throw new TypeError("Reference runtime receipt must be an object");
+  }
+  requireExactKeys(
+    referenceRuntime,
+    new Set(["artifact_path", "artifact_sha256", "compiler_version"]),
+    "referenceRuntime"
   );
-  const zenumlIifePath = path.join(
-    cliRoot,
-    "node_modules",
-    "@mermaid-js",
-    "mermaid-zenuml",
-    "dist",
-    "mermaid-zenuml.js"
-  );
+  if (
+    typeof referenceRuntime.artifact_path !== "string" ||
+    !path.isAbsolute(referenceRuntime.artifact_path) ||
+    typeof referenceRuntime.artifact_sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(referenceRuntime.artifact_sha256)
+  ) {
+    throw new TypeError("Reference runtime receipt has an invalid artifact path or SHA-256");
+  }
+  requireNonEmptyString(referenceRuntime.compiler_version, "referenceRuntime.compiler_version");
+  const runtimeBytes = fs.readFileSync(referenceRuntime.artifact_path);
+  if (createHash("sha256").update(runtimeBytes).digest("hex") !== referenceRuntime.artifact_sha256) {
+    throw new Error("Reference runtime artifact SHA-256 changed before browser loading");
+  }
+  const runtimeSource = runtimeBytes.toString("utf8");
+  meta.reference_runtime = referenceRuntime;
 
   try {
     meta.mermaid = require(path.join(cliRoot, "node_modules", "mermaid", "package.json")).version;
@@ -516,30 +531,27 @@ async function main() {
       "navigation"
     );
     await withWatchdog(
-      () => page.addScriptTag({ path: mermaidIifePath }),
+      () => page.addScriptTag({ content: runtimeSource }),
       navigationTimeoutMs,
-      "Mermaid script loading"
+      "Reference runtime script loading"
     );
-    if (Object.values(fixtures).some((code) => /^\s*zenuml\b/.test(code))) {
-      await withWatchdog(
-        () => page.addScriptTag({ path: zenumlIifePath }),
-        navigationTimeoutMs,
-        "ZenUML script loading"
-      );
-      await withWatchdog(
-        () =>
-          page.evaluate(async () => {
-            const mermaid = globalThis.mermaid;
-            const zenuml = globalThis["mermaid-zenuml"];
-            if (!mermaid || !zenuml) {
-              throw new Error("Mermaid ZenUML plugin failed to load");
-            }
-            await mermaid.registerExternalDiagrams([zenuml], { lazyLoad: false });
-          }),
-        navigationTimeoutMs,
-        "ZenUML registration"
-      );
-    }
+    await withWatchdog(
+      () => page.evaluate(async (needsZenUml) => {
+        const runtime = globalThis.mermanReferenceRuntime;
+        if (!runtime?.mermaid || !runtime.sanitizer) {
+          throw new Error("Reference runtime failed to load");
+        }
+        runtime.mermaid.registerLayoutLoaders(runtime.externalLayouts);
+        if (needsZenUml) {
+          if (runtime.externalDiagrams.length === 0) {
+            throw new Error("Reference runtime has no selected ZenUML companion");
+          }
+          await runtime.mermaid.registerExternalDiagrams(runtime.externalDiagrams, { lazyLoad: false });
+        }
+      }, Object.values(fixtures).some((code) => /^\s*zenuml\b/.test(code))),
+      navigationTimeoutMs,
+      "Reference runtime companion registration"
+    );
 
     const results = Object.create(null);
     for (const [name, code] of Object.entries(fixtures)) {
@@ -558,7 +570,7 @@ async function main() {
                 maxSamples2,
                 name2,
               }) => {
-                const mermaid = globalThis.mermaid;
+                const mermaid = globalThis.mermanReferenceRuntime?.mermaid;
                 if (!mermaid) throw new Error("mermaid global not found");
 
                 // Initialize once per fixture.

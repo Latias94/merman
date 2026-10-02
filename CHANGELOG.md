@@ -14,6 +14,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Rust graphical requests now inherit source/model limits from their SVG environment when neither the request nor renderer explicitly sets an input policy. Existing explicit input overrides retain precedence, allowing one complete policy to configure a normal operation without duplicating it across two builders.
 - Added rustdoc `resource_profile` and positive `max_layout_work_units` options, with per-diagram/per-theme budgets, inheritance, and actionable limit errors. PNG/JPEG/PDF scheduling reserves the larger layout or encoding phase instead of adding non-overlapping workspaces. See the [host integration guide](docs/integration/RESOURCE_POLICY.md) for editor, document, and constrained-service recipes. #158
+- Updated the Playground and reference renderer to DOMPurify 3.4.16 for GHSA-p98j-92pf-mc4p. Reference tools now build and verify the selected dependency graph instead of executing older dependencies embedded in Mermaid's published bundle; sanitizer-default generation rejects unsupported input instead of silently producing empty allowlists.
+- Corrected C4 relationship endpoints for people, components, databases, queues, and nested boundaries, including self-relations and near-overlapping centers.
+- Kept Class relationships and arrowheads visible above ELK namespace backgrounds, and aligned relationship marker strokes with Mermaid 12.
+- Restored Usecase Neo shadows, note borders, and gradient resources, and preserved explicit ER table styling across Redux themes.
+- Kept RoughJS shape geometry independent of CSS color spelling and prevented malformed Unicode color values from causing a panic.
+- Made the Playground editor follow panel resizing and preserved Example Gallery filters, active-category visibility, and reading position when reopening or changing viewport width.
+- Respected reduced-motion preferences in Playground dialogs, menus, and tooltips, and restored the shared tooltip delay.
+- Removed the extra editing delay for Playground refreshes and preview-mode changes queued behind an active Compare render, while preserving typing debounce.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 

@@ -80,8 +80,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
         match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_circle(
                 diameter,
-                common.fill_color,
-                common.fill_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.look_is_hand_drawn(),

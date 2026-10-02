@@ -117,12 +117,12 @@
           "to": "b",
           "rel_type": "rel",
           "start_point": {
-            "x": 302.22,
-            "y": 237.935
+            "x": 301.995,
+            "y": 237.965
           },
           "end_point": {
-            "x": 480.671,
-            "y": 235.95
+            "x": 466.0,
+            "y": 215.662
           },
           "offset_x": null,
           "offset_y": null,
@@ -141,12 +141,12 @@
           "to": "a",
           "rel_type": "birel",
           "start_point": {
-            "x": 480.671,
-            "y": 235.95
+            "x": 466.0,
+            "y": 215.662
           },
           "end_point": {
-            "x": 302.22,
-            "y": 237.935
+            "x": 301.995,
+            "y": 237.965
           },
           "offset_x": null,
           "offset_y": null,

@@ -12,6 +12,8 @@
 const fs = require("fs");
 const path = require("path");
 const { createRequire } = require("module");
+const { createHash } = require("node:crypto");
+const { pathToFileURL } = require("node:url");
 
 const workspaceRoot = path.resolve(__dirname, "..", "..");
 const toolsRoot = path.join(workspaceRoot, "tools", "mermaid-cli");
@@ -109,7 +111,15 @@ async function main() {
   const upstreamSvgText = fs.readFileSync(upstreamSvg, "utf8");
   const upstreamTx = parseUpstreamServiceTransforms(upstreamSvgText);
 
-  const mermaidIifePath = path.join(toolsRoot, "node_modules", "mermaid", "dist", "mermaid.js");
+  const { prepareReferenceRuntime } = await import(
+    pathToFileURL(path.join(toolsRoot, "reference-runtime.mjs")).href
+  );
+  const referenceRuntime = await prepareReferenceRuntime(toolsRoot);
+  const runtimeBytes = fs.readFileSync(referenceRuntime.artifact_path);
+  if (createHash("sha256").update(runtimeBytes).digest("hex") !== referenceRuntime.artifact_sha256) {
+    throw new Error("Reference runtime artifact SHA-256 changed before browser loading");
+  }
+  const runtimeSource = runtimeBytes.toString("utf8");
 
   // Match Mermaid dependency versions used for baselines:
   const cytoscapeUmd = path.join(toolsRoot, "node_modules", "cytoscape", "dist", "cytoscape.min.js");
@@ -142,15 +152,17 @@ async function main() {
   // Use a clean page to avoid any preloaded bundles affecting UMD global detection or prototypes.
   await page.goto("about:blank");
   // Load scripts in dependency order (UMD globals).
-  await page.addScriptTag({ path: mermaidIifePath });
+  await page.addScriptTag({ content: runtimeSource });
   await page.addScriptTag({ path: cytoscapeUmd });
   await page.addScriptTag({ path: layoutBaseUmd });
   await page.addScriptTag({ path: coseBaseUmd });
   await page.addScriptTag({ path: fcoseUmd });
 
   const probe = await page.evaluate(async (code) => {
-    const mermaid = globalThis.mermaid;
-    if (!mermaid) throw new Error("missing global mermaid");
+    const runtime = globalThis.mermanReferenceRuntime;
+    if (!runtime?.mermaid || !runtime.sanitizer) throw new Error("missing reference runtime");
+    const mermaid = runtime.mermaid;
+    mermaid.registerLayoutLoaders(runtime.externalLayouts);
 
     const cytoscape = globalThis.cytoscape;
     const cytoscapeFcose = globalThis.cytoscapeFcose;

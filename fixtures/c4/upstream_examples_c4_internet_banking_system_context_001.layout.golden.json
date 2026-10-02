@@ -610,10 +610,10 @@
           "rel_type": "birel",
           "start_point": {
             "x": 308.0,
-            "y": 406.152
+            "y": 405.885
           },
           "end_point": {
-            "x": 320.568,
+            "x": 308.0,
             "y": 790.305
           },
           "offset_x": null,
@@ -633,12 +633,12 @@
           "to": "SystemE",
           "rel_type": "birel",
           "start_point": {
-            "x": 330.24,
+            "x": 316.191,
             "y": 901.139
           },
           "end_point": {
-            "x": 375.055,
-            "y": 1107.338
+            "x": 346.638,
+            "y": 1107.227
           },
           "offset_x": null,
           "offset_y": null,
@@ -657,11 +657,11 @@
           "to": "SystemC",
           "rel_type": "rel",
           "start_point": {
-            "x": 379.782,
+            "x": 373.318,
             "y": 901.139
           },
           "end_point": {
-            "x": 625.539,
+            "x": 616.124,
             "y": 1107.139
           },
           "offset_x": null,
@@ -687,12 +687,12 @@
           "to": "customerA",
           "rel_type": "rel",
           "start_point": {
-            "x": 658.026,
+            "x": 652.66,
             "y": 1107.139
           },
           "end_point": {
-            "x": 348.016,
-            "y": 406.152
+            "x": 347.899,
+            "y": 405.885
           },
           "offset_x": null,
           "offset_y": null,

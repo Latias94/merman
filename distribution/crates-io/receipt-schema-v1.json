@@ -18,6 +18,16 @@
   ],
   "properties": {
     "schema_version": { "const": 1 },
+    "observe_only": { "type": "boolean" },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "attempt"],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "attempt": { "type": "integer", "minimum": 1 }
+      }
+    },
     "schema": { "const": "distribution/crates-io/receipt-schema-v1.json" },
     "channel": { "const": "crates.io" },
     "kind": { "const": "topological-batch" },
@@ -103,6 +113,12 @@
           "properties": {
             "status": { "type": "string", "minLength": 1 },
             "observed_checksum": {
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
+            },
+            "observed_index_checksum": {
               "anyOf": [
                 { "$ref": "#/$defs/sha256" },
                 { "type": "null" }

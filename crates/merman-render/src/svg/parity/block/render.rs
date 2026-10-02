@@ -3,9 +3,7 @@ use crate::block::{
     BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, block_label_is_effectively_empty,
 };
 use crate::model::LayoutPoint;
-use crate::svg::parity::roughjs_common::{
-    closed_path_d_from_points, ops_to_svg_path_d, parse_hex_color_to_srgba,
-};
+use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_path_d};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -23,20 +21,14 @@ pub(crate) fn render_block_diagram_svg_model(
 
     fn roughjs_block_paths(
         path_data: &str,
-        fill: &str,
-        stroke: &str,
         stroke_width: f32,
         randomness: &roughr::core::RoughRandomness,
     ) -> Option<(String, String)> {
-        let fill = parse_hex_color_to_srgba(fill)?;
-        let stroke = parse_hex_color_to_srgba(stroke)?;
         let mut stroke_options = roughr::core::OptionsBuilder::default()
             .randomness(randomness.clone())
             .roughness(0.0)
             .bowing(1.0)
-            .fill(fill)
             .fill_style(roughr::core::FillStyle::Solid)
-            .stroke(stroke)
             .stroke_width(stroke_width)
             .stroke_line_dash(vec![0.0, 0.0])
             .stroke_line_dash_offset(0.0)
@@ -159,13 +151,9 @@ pub(crate) fn render_block_diagram_svg_model(
         path_data: &str,
         options: RoughPathRenderOptions<'_>,
     ) -> bool {
-        if let Some((fill_d, stroke_d)) = roughjs_block_paths(
-            path_data,
-            options.fill,
-            options.stroke,
-            options.stroke_width,
-            options.randomness,
-        ) {
+        if let Some((fill_d, stroke_d)) =
+            roughjs_block_paths(path_data, options.stroke_width, options.randomness)
+        {
             if let Some((tx, ty)) = options.transform {
                 let _ = write!(
                     out,

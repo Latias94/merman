@@ -32,11 +32,7 @@ pub(crate) fn extract_add_to_set_string_array(
     ident: &str,
 ) -> Result<Vec<String>, XtaskError> {
     let needle = format!("const {ident} = addToSet({{}}, [");
-    let start = src
-        .find(&needle)
-        .ok_or_else(|| XtaskError::ParseDompurify(format!("missing {ident} definition")))?;
-    let bracket_start = start + needle.len() - 1; // points at '['
-    extract_string_array_at(src, bracket_start)
+    extract_dompurify_array_definition(src, ident, &needle)
 }
 
 pub(crate) fn extract_frozen_string_array(
@@ -44,67 +40,221 @@ pub(crate) fn extract_frozen_string_array(
     ident: &str,
 ) -> Result<Vec<String>, XtaskError> {
     let needle = format!("const {ident} = freeze([");
-    let start = src
-        .find(&needle)
+    extract_dompurify_array_definition(src, ident, &needle)
+}
+
+fn extract_dompurify_array_definition(
+    src: &str,
+    ident: &str,
+    needle: &str,
+) -> Result<Vec<String>, XtaskError> {
+    let mut definitions = src.match_indices(needle);
+    let (start, _) = definitions
+        .next()
         .ok_or_else(|| XtaskError::ParseDompurify(format!("missing {ident} definition")))?;
-    let bracket_start = start + needle.len() - 1; // points at '['
-    extract_string_array_at(src, bracket_start)
+    if definitions.next().is_some() {
+        return Err(XtaskError::ParseDompurify(format!(
+            "duplicate {ident} definition"
+        )));
+    }
+    let (values, remaining) = parse_literal_string_array(src, start + needle.len() - 1)?;
+    if !remaining.trim_start().starts_with(");") {
+        return Err(XtaskError::ParseDompurify(format!(
+            "unsupported {ident} initializer after its literal array"
+        )));
+    }
+    Ok(values)
 }
 
 pub(crate) fn extract_string_array_at(
     src: &str,
     bracket_start: usize,
 ) -> Result<Vec<String>, XtaskError> {
-    let bytes = src.as_bytes();
-    if *bytes.get(bracket_start).unwrap_or(&0) != b'[' {
-        return Err(XtaskError::ParseDompurify("expected array '['".to_string()));
-    }
+    parse_literal_string_array(src, bracket_start).map(|(values, _)| values)
+}
 
-    let mut out: Vec<String> = Vec::new();
-    let mut i = bracket_start + 1;
-    let mut in_string = false;
-    let mut cur = String::new();
-
-    while i < bytes.len() {
-        let b = bytes[i];
-        if in_string {
-            match b {
-                b'\\' => {
-                    // Minimal escape handling: keep the escaped character verbatim.
-                    if i + 1 >= bytes.len() {
+// Read the nonempty literal lists used by DOMPurify and Mermaid's ELK registry.
+// Deliberately reject other JavaScript syntax instead of evaluating or skipping it.
+fn parse_literal_string_array(
+    src: &str,
+    bracket_start: usize,
+) -> Result<(Vec<String>, &str), XtaskError> {
+    let mut remaining = src
+        .get(bracket_start..)
+        .and_then(|suffix| suffix.strip_prefix('['))
+        .ok_or_else(|| XtaskError::ParseDompurify("expected array '['".to_string()))?;
+    let mut values = Vec::new();
+    loop {
+        remaining = remaining.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if let Some(suffix) = remaining.strip_prefix(']') {
+            if values.is_empty() {
+                return Err(XtaskError::ParseDompurify(
+                    "expected a nonempty literal string array".to_string(),
+                ));
+            }
+            return Ok((values, suffix));
+        }
+        let mut chars = remaining.chars();
+        let quote = match chars.next() {
+            Some(quote @ ('\'' | '"')) => quote,
+            None => return Err(XtaskError::ParseDompurify("unterminated array".to_string())),
+            _ => {
+                return Err(XtaskError::ParseDompurify(
+                    "expected a quoted string literal in array".to_string(),
+                ));
+            }
+        };
+        let mut value = String::new();
+        loop {
+            match chars.next() {
+                Some(c) if c == quote => break,
+                Some('\\') => match chars.next() {
+                    Some(escaped @ ('\'' | '"' | '\\')) => value.push(escaped),
+                    _ => {
                         return Err(XtaskError::ParseDompurify(
-                            "unterminated escape".to_string(),
+                            "unsupported or unterminated string escape".to_string(),
                         ));
                     }
-                    let next = bytes[i + 1] as char;
-                    cur.push(next);
-                    i += 2;
-                    continue;
+                },
+                Some('\n' | '\r' | '\u{2028}' | '\u{2029}') => {
+                    return Err(XtaskError::ParseDompurify(
+                        "unescaped line break in string literal".to_string(),
+                    ));
                 }
-                b'\'' => {
-                    out.push(cur.clone());
-                    cur.clear();
-                    in_string = false;
-                    i += 1;
-                    continue;
-                }
-                _ => {
-                    cur.push(b as char);
-                    i += 1;
-                    continue;
+                Some(c) => value.push(c),
+                None => {
+                    return Err(XtaskError::ParseDompurify(
+                        "unterminated string literal".to_string(),
+                    ));
                 }
             }
         }
+        if value.is_empty() {
+            return Err(XtaskError::ParseDompurify(
+                "expected a nonempty string literal".to_string(),
+            ));
+        }
+        values.push(value);
+        remaining = chars
+            .as_str()
+            .trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if let Some(suffix) = remaining.strip_prefix(']') {
+            return Ok((values, suffix));
+        }
+        remaining = remaining.strip_prefix(',').ok_or_else(|| {
+            XtaskError::ParseDompurify("expected ',' or ']' after string literal".to_string())
+        })?;
+    }
+}
 
-        match b {
-            b'\'' => {
-                in_string = true;
-                i += 1;
-            }
-            b']' => return Ok(out),
-            _ => i += 1,
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_add_to_set_string_array, extract_frozen_string_array, extract_string_array_at,
+    };
+
+    #[test]
+    fn dompurify_literal_arrays_accept_old_and_rolldown_formats() {
+        for array in [
+            "['a', 'svg', 'feBlend']",
+            "[\n\t\"a\",\n\t\"svg\",\n\t\"feBlend\",\n]",
+        ] {
+            assert_eq!(
+                extract_frozen_string_array(&format!("const html$1 = freeze({array});"), "html$1")
+                    .expect("frozen literal list"),
+                ["a", "svg", "feBlend"],
+            );
+            assert_eq!(
+                extract_add_to_set_string_array(
+                    &format!("const DEFAULT_DATA_URI_TAGS = addToSet({{}}, {array});"),
+                    "DEFAULT_DATA_URI_TAGS",
+                )
+                .expect("addToSet literal list"),
+                ["a", "svg", "feBlend"],
+            );
         }
     }
 
-    Err(XtaskError::ParseDompurify("unterminated array".to_string()))
+    #[test]
+    fn literal_arrays_preserve_unicode_quotes_escapes_and_string_delimiters() {
+        assert_eq!(
+            extract_string_array_at(r#"['café😀', "a'b", 'a"b', '\\', '\'', "\"", '],)']"#, 0)
+                .expect("supported literal strings"),
+            ["café😀", "a'b", "a\"b", "\\", "'", "\"", "],)"],
+        );
+    }
+
+    #[test]
+    fn literal_arrays_reject_partial_or_unsupported_inputs() {
+        for source in [
+            "[]",
+            "[ \n ]",
+            "['']",
+            "[\"\"]",
+            "[value]",
+            "['a', value]",
+            "[value, 'a']",
+            "['a' 'b']",
+            "['a',, 'b']",
+            "['a' + 'b']",
+            "[['a']]",
+            "[...['a']]",
+            "[`a`]",
+            "['a', /* later */ 'b']",
+            "['a",
+            "[\"a'",
+            "['a'",
+            "['a',",
+            "['a\\",
+            "['a\nb']",
+            "['a\rb']",
+            "['a\u{2028}b']",
+            "['a\u{2029}b']",
+            r"['\n']",
+            r"['\x61']",
+            r"['\u0061']",
+            r"['\q']",
+        ] {
+            assert!(
+                extract_string_array_at(source, 0).is_err(),
+                "accepted {source:?}"
+            );
+        }
+        assert!(extract_string_array_at("é['a']", 1).is_err());
+        assert!(extract_string_array_at("['a']", usize::MAX).is_err());
+    }
+
+    #[test]
+    fn dompurify_literal_arrays_require_one_complete_initializer() {
+        for source in [
+            "const other = freeze(['a']);",
+            "const html = freeze(['a']); const html = freeze(['b']);",
+            "const html = freeze(['a'].concat(['b']));",
+            "const html = freeze(['a'], extra);",
+            "const html = freeze(['a']",
+        ] {
+            assert!(
+                extract_frozen_string_array(source, "html").is_err(),
+                "accepted {source:?}"
+            );
+        }
+        assert!(
+            extract_add_to_set_string_array(
+                "const SAFE = addToSet({}, ['a'].concat(['b']));",
+                "SAFE",
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn literal_arrays_preserve_mermaid_elk_algorithm_format() {
+        let source =
+            "export const ELK_ALGORITHMS = [\n  'elk.stress',\n  'elk.force',\n] as const;";
+        assert_eq!(
+            extract_string_array_at(source, source.find('[').expect("array start"))
+                .expect("ELK algorithm list"),
+            ["elk.stress", "elk.force"],
+        );
+    }
 }

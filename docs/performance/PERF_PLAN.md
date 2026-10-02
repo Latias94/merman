@@ -7,8 +7,8 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
-The release-range baseline and latest committed checkpoints were measured on 2026-07-27 and
-2026-07-28:
+The release-range baseline dates to 2026-07-27 and 2026-07-28. Later checkpoints below record
+their own revisions, dates, and admission decisions:
 
 - [Alpha.3 to Alpha.5 Refactoring Report](../release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md)
   compares `v0.8.0-alpha.3` with `d2698d0a3`.
@@ -41,6 +41,9 @@ The release-range baseline and latest committed checkpoints were measured on 202
 - [Final four-lane attribution](headless_performance_final_attribution_2026-08-08.md) closes U13
   with one late accepted structural candidate, records the representative interaction guard,
   preserves the fail-closed alpha.3 coverage boundary, and reconciles the public break inventory.
+- [Playground startup investigation](playground_startup_2026-10-01.md) leaves initial-render
+  scheduling unchanged after two unstable A/A calibrations. Profiled Monaco and first-SVG main
+  thread costs remain attribution evidence; no cold-start speedup is admitted.
 
 - [Native layout-work policy calibration](native_layout_work_calibration_2026-10-01.md) accepts
   the 15,000,000-unit offline default for CLI and rustdoc across 73 fixtures and both themes.

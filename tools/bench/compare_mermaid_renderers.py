@@ -123,6 +123,7 @@ def run(
     *,
     env: dict[str, str] | None = None,
     timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    merge_stderr: bool = True,
 ) -> str:
     proc_env = os.environ.copy()
     if env:
@@ -133,7 +134,7 @@ def run(
             cwd=str(cwd),
             env=proc_env,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -149,7 +150,7 @@ def run(
     if proc.returncode != 0:
         raise RuntimeError(
             f"command failed (exit {proc.returncode}) in {cwd}\n"
-            f"$ {' '.join(cmd)}\n\n{proc.stdout}"
+            f"$ {' '.join(cmd)}\n\n{proc.stdout}{proc.stderr or ''}"
         )
     return proc.stdout
 
@@ -908,6 +909,8 @@ def parse_mermaid_js_output(data: object) -> dict[str, Any]:
         parsed["meta"] = {
             str(key): str(value) for key, value in data["meta"].items()
         }
+        if isinstance(data["meta"].get("reference_runtime"), dict):
+            parsed["meta"]["reference_runtime"] = dict(data["meta"]["reference_runtime"])
     mermaid_version = parsed["meta"].get("mermaid")
     if mermaid_version:
         parsed["revision"] = "mermaid@" + mermaid_version
@@ -988,6 +991,44 @@ def _empty_mermaid_js_runner(
     return runner
 
 
+def prepare_mermaid_js_reference(
+    *,
+    repo_root: Path,
+    mermaid_cli_dir: Path,
+    exact_benches: list[str],
+    fixtures_by_name: dict[str, CorpusFixture],
+    skip: bool,
+) -> dict[str, str] | None:
+    if not requires_mermaid_js(exact_benches, skip=skip) or not mermaid_cli_dir.exists():
+        return None
+    if not any(
+        read_fixture_source(repo_root, name, fixtures_by_name.get(name)) is not None
+        for group, name in (split_exact_bench(bench) for bench in exact_benches)
+        if group == "end_to_end"
+    ):
+        return None
+
+    builder = repo_root / "tools" / "mermaid-cli" / "reference-runtime.mjs"
+    receipt = json.loads(run(
+        ["node", str(builder), "--workspace", str(mermaid_cli_dir)],
+        cwd=mermaid_cli_dir,
+        merge_stderr=False,
+    ))
+    if not isinstance(receipt, dict) or set(receipt) != {
+        "artifact_path", "artifact_sha256", "compiler_version"
+    }:
+        raise ValueError("Reference runtime builder returned an invalid receipt.")
+    if (
+        not all(isinstance(value, str) and value for value in receipt.values())
+        or not Path(receipt["artifact_path"]).is_absolute()
+        or re.fullmatch(r"[0-9a-f]{64}", receipt["artifact_sha256"]) is None
+    ):
+        raise ValueError("Reference runtime receipt has an invalid path, SHA-256, or compiler version.")
+    if _sha256_file(Path(receipt["artifact_path"])) != receipt["artifact_sha256"]:
+        raise ValueError("Reference runtime artifact SHA-256 changed after preparation.")
+    return receipt
+
+
 def run_mermaid_js(
     *,
     repo_root: Path,
@@ -997,6 +1038,7 @@ def run_mermaid_js(
     sample_warm_up: int,
     sample_measurement: int,
     skip: bool,
+    reference_runtime: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     end_to_end_names = [
         name for group, name in (split_exact_bench(b) for b in exact_benches) if group == "end_to_end"
@@ -1057,6 +1099,7 @@ def run_mermaid_js(
                     "maxSamples": MERMAID_JS_MAX_SAMPLES,
                     "navigationTimeoutMs": MERMAID_JS_NAVIGATION_TIMEOUT_MS,
                     "fixtureTimeoutMs": fixture_timeout_ms,
+                    **({"referenceRuntime": reference_runtime} if reference_runtime is not None else {}),
                 },
                 indent=2,
             ),
@@ -1072,6 +1115,10 @@ def run_mermaid_js(
             parsed = parse_mermaid_js_output(
                 json.loads(bench_out.read_text(encoding="utf-8", errors="replace"))
             )
+            if reference_runtime is not None and parsed["meta"].get("reference_runtime") != reference_runtime:
+                raise ValueError(
+                    "Mermaid JS runtime receipt differs from the prepared artifact."
+                )
         except Exception as error:
             parsed = _empty_mermaid_js_result()
             parsed["errors"]["__runner__"] = short_error(error)
@@ -1807,19 +1854,13 @@ def main(argv: list[str]) -> int:
         "mermaid_js_runner": repo_root / "tools" / "bench" / "mermaid_js_bench.cjs",
         "mermaid_cli_lockfile": mermaid_cli_dir / "package-lock.json",
         "mermaid_config": mermaid_cli_dir / "mermaid-config.json",
-        "mermaid_bundle": mermaid_cli_dir / "node_modules" / "mermaid" / "dist" / "mermaid.js",
+        "mermaid_reference_builder": repo_root / "tools" / "mermaid-cli" / "reference-runtime.mjs",
         "mermaid_cli_html": mermaid_cli_dir
         / "node_modules"
         / "@mermaid-js"
         / "mermaid-cli"
         / "dist"
         / "index.html",
-        "mermaid_zenuml_bundle": mermaid_cli_dir
-        / "node_modules"
-        / "@mermaid-js"
-        / "mermaid-zenuml"
-        / "dist"
-        / "mermaid-zenuml.js",
     }
     for output_label, output_path in (("--out", out_path), ("--json-out", json_out_path)):
         for input_label, input_path in provenance_files.items():
@@ -1845,11 +1886,31 @@ def main(argv: list[str]) -> int:
     except ValueError as error:
         print(f"[bench][contract] {error}", file=sys.stderr)
         return 2
+    try:
+        reference_runtime = prepare_mermaid_js_reference(
+            repo_root=repo_root,
+            mermaid_cli_dir=mermaid_cli_dir,
+            exact_benches=exact_benches,
+            fixtures_by_name=fixtures_by_name,
+            skip=args.skip_mermaid_js,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"[bench][contract] reference runtime preparation failed: {error}", file=sys.stderr)
+        return 2
+    if reference_runtime is not None:
+        artifact_path = Path(reference_runtime["artifact_path"]).resolve()
+        if artifact_path in (out_path, json_out_path):
+            print("[bench][contract] report output would overwrite the reference runtime artifact", file=sys.stderr)
+            return 2
+        provenance_files["mermaid_reference_artifact"] = artifact_path
     before = ComparisonSnapshot(
         repositories=repositories_before,
         files=snapshot_files(provenance_files),
         fixture_inputs=fixture_inputs,
     )
+    if reference_runtime is not None and before.files["mermaid_reference_artifact"].get("sha256") != reference_runtime["artifact_sha256"]:
+        print("[bench][contract] reference runtime changed before provenance capture", file=sys.stderr)
+        return 2
 
     merman_prepared = prepare_criterion_runner(
         label="merman",
@@ -1908,6 +1969,7 @@ def main(argv: list[str]) -> int:
         sample_warm_up=args.warm_up,
         sample_measurement=args.measurement,
         skip=args.skip_mermaid_js,
+        reference_runtime=reference_runtime,
     )
 
     merman["revision"] = before.repositories["merman"]["revision"]

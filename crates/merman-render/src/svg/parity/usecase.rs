@@ -742,6 +742,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
     }
     out.push_str("</g></g></g>");
     super::look_defs::push_look_shadow_defs(&mut out, diagram_id, cfg);
+    super::look_defs::push_look_gradient(&mut out, diagram_id, cfg);
     if let Some(title) = title {
         let _ = write!(
             out,

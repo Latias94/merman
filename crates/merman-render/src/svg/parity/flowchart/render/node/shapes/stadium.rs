@@ -18,44 +18,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Port of Mermaid `@11.12.2` `stadium.ts` points + `createPathFromPoints`.
-    // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.    // Use one source geometry for layout, paint, and intersection. The sampled arc list is
+    // Port of Mermaid `stadium.ts` points + `createPathFromPoints`.
+    // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.
+    // Use one source geometry for layout, paint, and intersection. The sampled arc list is
     // retained for the path, while the source theoretical width remains the node dimension;
     // re-sampling it during layout would shrink the same stadium twice.
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
-        common.node_classes,
-        &[],
-    );
-    let metrics = super::super::helpers::prepared_node_label_metrics(
+    //
+    // Mermaid sizes the path from the `labelHelper(...)` bbox, so HTML labels are measured with
+    // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
+    let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
-        common.node_id,
+        Some(common.layout_node),
         label.text,
-        &node_text_style,
-    )
-    .unwrap_or_else(|| {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label.text,
-                label_type: label.label_type,
-                style: &node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        )
-    })
-    .with_label_min_width(
-        label.text,
-        crate::flowchart::flowchart_node_label_min_width(
-            label.text,
-            Some(common.shape),
-            ctx.config,
-        ),
-        None,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
     );
     let geometry = crate::flowchart::StadiumGeometry::from_label(
         metrics.width,
@@ -73,8 +50,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_hachure_paths_for_svg_path(
                     &path_data,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
@@ -107,8 +82,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

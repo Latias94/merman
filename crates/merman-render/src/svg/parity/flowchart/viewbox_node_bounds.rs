@@ -29,7 +29,7 @@ fn rough_svg_path_bounds(
 ) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
     let (fill_d, stroke_d) =
         crate::svg::parity::flowchart::render::node::roughjs::roughjs_paths_for_svg_path(
-            path_data, "#000", "#000", 1.3, "0 0", randomness,
+            path_data, 1.3, "0 0", randomness,
         )?;
     union_svg_path_bounds(&[fill_d.as_str(), stroke_d.as_str()])
 }
@@ -40,7 +40,7 @@ fn rough_stroke_svg_path_bounds(
 ) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
     let stroke_d =
         crate::svg::parity::flowchart::render::node::roughjs::roughjs_stroke_path_for_svg_path(
-            path_data, "#000", 1.3, "0 0", randomness,
+            path_data, 1.3, "0 0", randomness,
         )?;
     crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
 }

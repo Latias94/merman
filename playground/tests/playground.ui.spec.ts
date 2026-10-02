@@ -94,7 +94,7 @@ test("optional workbenches request code only after user activation", async ({
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Examples", exact: true }).click();
   await expect(exampleDialog).toBeVisible();
-  await expect(exampleSearch).toHaveValue("");
+  await expect(exampleSearch).toHaveValue("flow");
   expect(requestCount(requests, featureOutputs.examples)).toBe(1);
   await page.keyboard.press("Escape");
 

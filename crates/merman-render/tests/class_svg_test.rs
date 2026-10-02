@@ -856,7 +856,7 @@ Animal <|-- Duck
         .find(r#"<g class="nodes""#)
         .expect("Class ELK nodes group");
     let edges = svg
-        .find(r#"<g class="edgePaths edges""#)
+        .find(r#"<g class="edges edgePaths""#)
         .expect("Class ELK edge paths group");
     let labels = svg
         .find(r#"<g class="edgeLabels""#)
@@ -864,7 +864,7 @@ Animal <|-- Duck
     let clusters = svg
         .find(r#"<g class="clusters""#)
         .expect("Class ELK clusters group");
-    assert!(root < edges && edges < clusters && clusters < labels && labels < nodes);
+    assert!(root < clusters && clusters < edges && edges < labels && labels < nodes);
 }
 
 #[cfg(feature = "layout-elk")]

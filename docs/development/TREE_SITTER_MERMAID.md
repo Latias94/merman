@@ -63,7 +63,10 @@ global Tree-sitter installation.
 
 For a Mermaid syntax change:
 
-1. identify the exact rule in the pinned Mermaid 11.16.1 or ZenUML Core 3.50.1 source;
+1. identify the family's exact syntax authority in
+   `distribution/tree-sitter-mermaid/metadata/provenance.json`: the original 35 families retain
+   Mermaid 11.16.1 / ZenUML Core 3.50.1, while Agentflow and Usecase use the separately pinned
+   Mermaid 12.0.0 source;
 2. change the smallest family-local grammar rule and add or update a standard Tree-sitter corpus
    case;
 3. regenerate the ABI-15 native parser;
@@ -110,7 +113,7 @@ The maintained test layers are intentionally small:
   cancellation/reuse, and invalid UTF-8 stability;
 - `tests/scanner_protocol.rs`: scanner serialization, restart, maximum depth/indentation, overflow,
   corruption reset, and representative family switching;
-- `tests/queries.rs`: compile every shipped query, execute canonical highlights for the 35 small
+- `tests/queries.rs`: compile every shipped query, execute canonical highlights for the 37 small
   family sources with compact expected body capture classes, cover a small exact-span set, and run
   a few applicable injection/locals/tags examples;
 - one representative load/parse smoke for Rust, Node, C, and language WASM.

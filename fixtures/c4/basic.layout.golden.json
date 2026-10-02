@@ -129,12 +129,12 @@
           "to": "sys",
           "rel_type": "rel",
           "start_point": {
-            "x": 296.722,
-            "y": 246.496
+            "x": 296.412,
+            "y": 246.539
           },
           "end_point": {
-            "x": 470.223,
-            "y": 251.578
+            "x": 466.0,
+            "y": 223.476
           },
           "offset_x": null,
           "offset_y": null,

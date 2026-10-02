@@ -527,6 +527,58 @@ jobs:
         self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
         self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
 
+    def test_npm_recovery_restores_attempt_report_and_preserves_input_artifacts(self) -> None:
+        for surface in ("web", "node"):
+            with self.subTest(surface=surface):
+                publish = workflow_job(read(WORKFLOW_ROOT / f"release-{surface}.yml"), "publish")
+                self.assertIn("Restore prior npm reconciliation report", publish)
+                self.assertIn("github.run_attempt > 1", publish)
+                self.assertIn("github.run_attempt > 1 && github.run_id || needs.validate-inputs.outputs.recovery_run_id", publish)
+                self.assertIn("--paginate --slurp", publish)
+                self.assertIn("prior_attempt=$((RUN_ATTEMPT - 1))", publish)
+                self.assertIn("--publication-run-id", publish)
+                self.assertIn("--recovery-run-id", publish)
+                self.assertIn('RECOVERY_RUN_ID="$ANCESTOR_RUN_ID"', publish)
+                self.assertNotIn("sort_by(.id) | last", publish)
+                self.assertIn("--recovery-report target/npm-recovery/reconciliation-report.json", publish)
+                self.assertIn("recovery_args+=(--observe-only)", publish)
+                self.assertIn("scripts/release_attempt_history.py", publish)
+                self.assertIn('if [ "$history" != "never-attempted" ]; then', publish)
+                self.assertIn("Retain the exact recovery package group", publish)
+                self.assertIn("github.run_attempt == 1", publish)
+                self.assertIn(f"merman-{surface}-npm-reconciliation-report-attempt-", publish)
+                self.assertLess(publish.index("Verify downloaded"), publish.index("Retain the exact"))
+                self.assertLess(publish.index("Restore prior"), publish.index("Publish npm package group"))
+
+    def test_grammar_retry_only_observes_the_original_candidate(self) -> None:
+        publish = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-npm")
+        self.assertIn("ref: ${{ github.workflow_sha }}", publish)
+        self.assertIn('if [ "$history" = "never-attempted" ]; then', publish)
+        self.assertIn("--owner grammar-npm", publish)
+        self.assertIn("npm_package_group.py inspect", publish)
+        self.assertIn("python3 trusted/scripts/npm_package_group.py observe", publish)
+        self.assertIn('cmp "$candidate" "$registry_copy"', publish)
+        self.assertNotIn("for _ in {1..6}", publish)
+        self.assertLess(publish.index("npm publish"), publish.rindex("npm_package_group.py observe"))
+        crates = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-crates")
+        self.assertIn("--owner grammar-crates", crates)
+        self.assertIn('if [ "$history" = "never-attempted" ]; then', crates)
+        self.assertIn("deadline=$((SECONDS + 300))", crates)
+        self.assertIn('--max-time "$timeout"', crates)
+        self.assertIn('elif [[ "$registry_status" != "404" ]]; then', crates)
+        self.assertNotIn("for _ in {1..6}", crates)
+        for job, surface, actual in ((publish, "npm", "Publish npm package"), (crates, "crate", "Publish crate")):
+            with self.subTest(surface=surface):
+                inspect = job.index(f"- name: Inspect {surface} publication state")
+                verify = job.index(f"- name: Verify {surface} release tag before upload")
+                send = job.index(f"- name: {actual}\n")
+                observe = job.index("- name: Observe the original", send)
+                self.assertLess(inspect, verify)
+                self.assertLess(verify, send)
+                self.assertLess(send, observe)
+                self.assertNotIn("gh api", job[send:observe])
+                self.assertNotIn("registry_state", job[send:observe])
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)

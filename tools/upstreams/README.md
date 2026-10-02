@@ -25,16 +25,25 @@ admission, the behavior outcome, and the admission output digest. The one bootst
 its digest as a historical aggregate because the original npm stdout was not archived; it does not
 pretend that aggregate is official-tool output.
 
-Packages loaded by reference execution, including the Puppeteer browser-driver closure, are
-selected packages rather than ambient tooling. They carry registry integrity, source identity,
-installed-content digests, lock verification, and selection-receipt coverage alongside Mermaid and
-its runtime companions.
+Packages loaded by reference execution, including the Puppeteer browser-driver closure and the
+esbuild compiler, are selected packages rather than ambient tooling. They carry registry integrity,
+source identity, installed-content digests, lock verification, and selection-receipt coverage
+alongside Mermaid and its runtime companions.
 
-The executable behavior oracle is the selected npm graph, not an assumption that every companion
-was rebuilt from the Mermaid host tag. Mermaid 12.0.0 owns ELK in its standard runtime. Do not
-register the legacy ELK adapter that the reference CLI still carries transitively: it replaces
-core layout/shape registrations and can break Agentflow and Usecase. Both baseline generation
-and upstream renderability audits use the standard runtime through the shared seeded renderer.
+The executable behavior oracle is the selected npm graph. `tools/mermaid-cli/reference-runtime.mjs`
+builds a self-contained browser artifact from Mermaid's module entry point using the selected
+esbuild compiler and the reference CLI's installed packages. Baseline generation, renderability
+audits, and benchmark/debug consumers share this builder. Published `mermaid.js` and
+`mermaid.esm.mjs` bundles embed their own dependency copies, so changing an npm override alone
+does not update those bundles.
+
+The renderer probes the built artifact's Mermaid version and verifies that a strict HTML-label
+render calls its selected DOMPurify instance. It records the artifact SHA-256 and compiler identity,
+then executes the verified bytes. Package and artifact drift block baseline promotion.
+
+Mermaid 12.0.0 owns ELK in its standard runtime. Do not register the legacy ELK adapter that the
+reference CLI still carries transitively: it replaces core layout/shape registrations and can
+break Agentflow and Usecase.
 
 Tidy Tree 1.0.1 and ZenUML 1.0.1 remain external companions. Their published package tags resolve
 to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.0.0's
@@ -137,7 +146,7 @@ cargo run -p xtask -- gen-theme-snapshot --reference-bundle target/upgrade/bundl
 
 Without `--reference-bundle`, generators continue to enforce the selected workspace pins.
 Keep staged output outside accepted baseline directories until the implementation is ready.
-SVG generation uses the standard Mermaid bundle through the existing Puppeteer renderer and
-registers only the external layout plugins explicitly selected in the reference workspace.
+SVG generation uses the owned reference artifact through the shared Puppeteer renderer and
+registers only the external diagram and layout plugins explicitly selected in the reference workspace.
 An absent theme remains absent; the runner no longer supplies the CLI's explicit `default`
 theme or registers its transitive ELK plugin over Mermaid's built-in implementation.

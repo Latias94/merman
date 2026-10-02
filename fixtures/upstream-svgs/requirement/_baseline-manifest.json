@@ -1,22 +1,22 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "source": {
     "mermaid_version": "12.0.0",
     "mermaid_cli_version": "11.17.0",
     "mermaid_source_tag": "mermaid@12.0.0",
     "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
-    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
+    "package_json_sha256": "3e6c0c720692dd522200fc1f5c6715609dfbf5edd54b0d8e10f18bdfd3489289",
+    "package_lock_sha256": "7b8087b87d3ca0c09b21a67b6394c000f9cd47ba3e35f2dbb9ca081d1eebb3aa",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v4"
+    "renderer_revision": "xtask-upstream-svg-v5"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "Edg",
-        "version": "153.0.4234.48",
-        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "version": "154.0.4258.48",
+        "revision": "@80bb122d4912059dc0cf309273bbe3191ae80a62",
         "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
@@ -29,8 +29,12 @@
         "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "12.0.0",
-        "iife_version": "12.0.0",
+        "mermaid_version": "12.0.0",
+        "dompurify_version": "3.4.16",
+        "compiler_version": "0.28.1",
+        "artifact_sha256": "0c543708ce014d939a407037565804e40cb47d82c640e9cc9b80f655b7efed4c",
+        "dompurify_package_sha256": "8e62ee67206b530948d8db894569ddee4e258b9e7785dd7b796fae7136be65eb",
+        "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
         "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
         "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
@@ -45,237 +49,237 @@
     "basic": {
       "input_sha256": "28b89c28aa22468f02731f646272f04419eb7aa3b7ad0d18a802265a33f90949",
       "svg_sha256": "7ea038364c398cb493fa2a35cd31bcfd029039806d56475c4765ffd5051e9e61",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "relations": {
       "input_sha256": "a556b5b44785b0d2012083884b4aec3739d72d6152a1d6195a1ca5744aedacbe",
       "svg_sha256": "d2679b80c5129e2bc0bb1c6fd5aec5a51b56e253c6d06dafd8522df1ac224e00",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_requirement_font_size_precedence_001": {
       "input_sha256": "64f3fee6f9fa426be139f7c6e642c2719cc5fc7e054aec430ecff5b836011db5",
       "svg_sha256": "73510f6ac2b36bb5cc0f48b9ee7f381cb444292ba4067a3436bc08b48b6f2fef",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_requirement_markdown_br_listish_150": {
       "input_sha256": "2dc828e8798309ba60a9f4236135f8d8525f4a51b1f9953e7065ad531f06b00d",
       "svg_sha256": "5c7a2d425638024f77fb700eaf3802ef8b6ae7fce96ad75af1ab3ac6ecd0043a",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirement_spec_example_001": {
       "input_sha256": "651f848a61200a6f0dafc6ba36e4f1b970354fdf711b2ea145547c5b8b2a8e20",
       "svg_sha256": "d62085585586cfcab7444cab73773f0fae33d6df47e6fc2e38d8fa7ab6ce5c4e",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_001": {
       "input_sha256": "220e5f397c4583855680a6b519b9846ccaac386152d88d7cb8116b27175ce3ad",
       "svg_sha256": "a1ebe4c20216c3aec9e18fc56ce6a71bf887018de968ea7c61ffeadf32f000d8",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_003": {
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
       "svg_sha256": "fbc5b71dd689ffc43b4f51889ac0ae44e0007a5e01d1d622fe68cfc771b809dd",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_005": {
       "input_sha256": "f6569107b713a96be8fe44153f3f9c62d715704284273335974df4373b9aaf88",
       "svg_sha256": "fbdeaac17b08729dea7dfe5b14e49857aa1480320b0e5b4b4ca210f11db4b7e0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_006": {
       "input_sha256": "b2736f3e40cf32497c5ed1eb06263efde26f7f7b06bbc06a807d3c4a9b520917",
       "svg_sha256": "2a2c1a2c2a7798b7bedf85ff526f2e082d9c836caabb1756a0c31533ac6eacfd",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_007": {
       "input_sha256": "8cbf689964cb81ce65e3d7e0d2a2f817bdf091365224e6c1a19f910bac6f477b",
       "svg_sha256": "88d255d378d4b808ef26f8f29eb19236143aa314063986243bb282fa052346aa",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_008": {
       "input_sha256": "f3ab1c6ed2d8135396f605a201c25d476ee7a47cd60b8a86e6e0979acd7c7a07",
       "svg_sha256": "19dd1a5185e4074d46e824a7737ad4725e0a91a8e1b1fc41399ceee3a8db4878",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_009": {
       "input_sha256": "c9f76201fea226792ae9ab2c16a3ee614efbcb61f0d689a5c8bf9dd85098be12",
       "svg_sha256": "4c9fbf39cf252d19dc5dbc77192a6b83f8128631f4bfdde5be077ba1344bc01b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_010": {
       "input_sha256": "e11b957d7428189dd701dc1365880595df113ce734d035c73ca31b32f804bb96",
       "svg_sha256": "4f0fbc72f52ac325324c0f63ae3c60902f608dc277e8da7f5d5df39d282e4aa8",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_011": {
       "input_sha256": "86506fd84e87a1b25938fa7739abbaa7cfd0df01a1e0cecf261e1dccade2b814",
       "svg_sha256": "8aef952c73fa9580fb877fa06acb2ca3664bf3b71c4a4ac96aa841fd47e6ed51",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_012": {
       "input_sha256": "160e87cdbcfe8a460fe7532641ea129a0a438bb3b5f7847a2d426bca7e2631cb",
       "svg_sha256": "ecb96c5a790fe5fb22ec146e69435294248befdc51b1dad6d6ca495b59dec88f",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_013": {
       "input_sha256": "749de32b21b82172114ba0bc00aae33c00f9cb78a795a178b05df85b5c8b4a90",
       "svg_sha256": "a6fbe1ef561baff6abe7da9109d1765b8bb4ae71700c08659c731c013f37b61f",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_014": {
       "input_sha256": "2135c3e62b378cc71e1518b81a97ddad9b4708e7dca80163c5b96755338ed731",
       "svg_sha256": "c540b77a46a0b26ee1ba902134a0199eda58b90ced8efad8412d040d0fd78994",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_016": {
       "input_sha256": "d2ddfd09967553e8682d8f1355a71fea221f6d02b84b891fae2bb082467b1f45",
       "svg_sha256": "fb65d66eb9982d8498aa2c3be720aecdcdfc421a1e246baaeac9c03b119718e3",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_018": {
       "input_sha256": "c456efb8ef2f441721c1b01927a5e57b5c916b5e194f3d0a157ce118abaf4a2f",
       "svg_sha256": "4ee451fdda02db566f9746869bd9da60a13d08217d3ab8f937fae7a2b2c665c9",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_020": {
       "input_sha256": "cc67280491800700806ff89713aaafd3136972c15bf24a343b9f1c0046977bfd",
       "svg_sha256": "96f283ad03a56009968120669c3b114c2e644cbe67b29763679d4e5c80c3d17b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_021": {
       "input_sha256": "cc06d65217171c1318bf61023a83ad88c4991707d0c6eb9fef5652b36e8943bd",
       "svg_sha256": "2ec33a6e17e5e28587eee5838d05b5f9ff7bceb7db05ed433d44257c6d989516",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_022": {
       "input_sha256": "a65f1d27017f4cf5612b994f79b5b74dec06adf3817659acf8a4961c524f8ec0",
       "svg_sha256": "18f2dbffdf2370a249546796c1a4b85299f82a2f9e5cd023e4770536560eb813",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_023": {
       "input_sha256": "3143a66c805e0f54ccecc7f031ff2e68913239c0b7b67caac8381f9ed0378a23",
       "svg_sha256": "9e7de6b23591c8b56914b9494b5abe00c6ba6c90d674dd860d7ad86b416866b0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_025": {
       "input_sha256": "116069cd6053671af03c9eec5bb4d34a48579c81c2414bd9e6d63cda396f4956",
       "svg_sha256": "06b02490ff355f6d34b2a9e0ad12afd3505f16940494146f5e05cc1cc21392e2",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_026": {
       "input_sha256": "a947600f14b525ec007cbc5d8cee5006f9e35d590053a281f7bd95b8e755c2c4",
       "svg_sha256": "ad63220118dd922c8519a4371488104c6655bc43e4288fa4fe98b1a5d4b7841e",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_accessibility_requirement_diagram_013": {
       "input_sha256": "9604a525b776647ea82c0ebbfdc40721cd2c15d5cc12a78b3a1e7b8cc2bd07b7",
       "svg_sha256": "1c885ac120940d0aa8a5456fad8c4de9079508e31d916fa5efba593ea6763752",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_class_definitions_016": {
       "input_sha256": "fe43760d819f1555725c96b6876fdb729ea81cd07f1d753fb4073dbad52b873b",
       "svg_sha256": "ad337ee0d7fda7226f78d4861a8de4a0ffe66b657093e656a5024ef562bf4b85",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_combined_example_022": {
       "input_sha256": "20800df0cf5254ab5c8f84b468897461c3e90048a70a1a55614726d362489bb3",
       "svg_sha256": "aa3e1e677e9ee05b5e043475237a4a29e3c758cfda6609f4b115e3fbcfaeb10b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_direct_styling_013": {
       "input_sha256": "eead694e962481bfc0dd649985ea9fd27dd372de97efcb9cb5df5821408c782e",
       "svg_sha256": "5a2d45b5d37643993787aebae08f17e38f1cd01c1b96579fc209f2160adb14bc",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_direction_012": {
       "input_sha256": "4bff091ab718b957ce1a1c2960676f6feed8121dd48e1b550466524b7407eee0",
       "svg_sha256": "be1cd40bf0b643fe2d1e21b7da0404ce8156335535930b2e5358f066fc73101b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_larger_example_010": {
       "input_sha256": "b9d0e63b6c8ae8164ff63beb6ec2a7a9f66c677f6131d88562b5dcc7db5e8880",
       "svg_sha256": "7c253d3f27d89f447d5e570ee72cc0e5158b562b269ecd9b3ffe67140125040b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_markdown_formatting_005": {
       "input_sha256": "6aee0ba9c47a09ff640c89824038ce73be3c7db8e10aab8ce0b0a02f36866a80",
       "svg_sha256": "a60a890778aa4e8aadb91b3b59110b6947cc65cfdc109b1837303416b89b67c3",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_requirementdiagram_requirement_diagram_001": {
       "input_sha256": "7919bd6c635cc68d8a8b86f72a64f21a6096c8f567708424a49b7ccccd96eb83",
       "svg_sha256": "591b82d5b12c1a6edf0aca467642a942decfc511d297d3555b077320917df2a7",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_requirements_requirement_diagram_demos_001": {
       "input_sha256": "033b5dae9685c30f2ea24f44374c8ac8262a263d8fda2dfefbc2431320cf5daf",
       "svg_sha256": "dd46c90f2d8d808b6bb25aa72829553efdd849303b9ba6c21aacab19dd6d6e15",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_requirements_requirement_diagram_demos_002": {
       "input_sha256": "156702fd76e1df8ccec28ebaac3dca0e86da0e9f29468d2ba8c9a2b54759c4a2",
       "svg_sha256": "beb320f3953f0a73b5ce86486e50d676262b6346355ab4a7fe601949126c57a9",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_diagram_orchestration_spec_038": {
       "input_sha256": "4b268ccca77e8a833a285f77a23940357f4b84b5a5f7e526b4c1373528129a6a",
       "svg_sha256": "a327b607d2f4a5c53c8af833b8880357cf652302785f43d33425e01301e8cdba",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_requirementdiagram_spec_015": {
       "input_sha256": "b9dccf0e234a6440f1e0eef3f30532fcf49a5cace22a623b2eeccd5e61682a5a",
       "svg_sha256": "0a8b6ca6c945b416b34fe102f26e852480871dfd464054ae351b7d04cf412829",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_requirementdiagram_spec_017": {
       "input_sha256": "fa818d6eba5d05163478c6670c53ab81e6f1de8a37b0ae12f81ba0c2e4341a5d",
       "svg_sha256": "d911de3870784348ed962eccd66a3fffcf178a99a951223f7ab60d26427d86e0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_requirementdiagram_spec_147": {
       "input_sha256": "52cb7ae487c1856a2ac4431acab86a6562fcf5cc3352391129e54be9b764e2de",
       "svg_sha256": "b6bba8498287e4355f0683b4df500e6a7602a98aeb88f4069e2f5e300916d8cf",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_pkgtests_requirementdiagram_spec_149": {
       "input_sha256": "f60ad60219df7f180dab10023d5d21edd706a2dea2ba5fcdf2984c7de7da22cf",
       "svg_sha256": "4a4b3c87c40ec4748bfdf482c9e81da5b14ae93caec3ef7a8a39787d40c30ce0",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_accessibility_spec": {
       "input_sha256": "2955b31b02a4102a79f2207db25dca71dcd2d0adce7f47130074844b0042d383",
       "svg_sha256": "d3e4080cdcd1d0322de67be451e967e59c1c4b9774e47eba55bf0df105bf7350",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_classes_and_inheritance_spec": {
       "input_sha256": "a869719e4e1d92f51046d29cb5f9217fd7c4a4efc64d094b5c2d3e5c9b71e116",
       "svg_sha256": "482eab9e1872b5c2e11182c28e09fe9b494011cb86af7fdc3777e7b65c43290b",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_direction_and_proto_ids_spec": {
       "input_sha256": "21590714947ba5042b4b1284f49d17ad9ef6f239f217148f01ec4fecde9cfbee",
       "svg_sha256": "ca7e9e84e11aee52695abd2df4db479742b896dac8a29722c33030a738e4f599",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_full_element_and_relationships_spec": {
       "input_sha256": "f03bbcf95060e7ac2a7f563c9c879758a681302e0ddd4b58c2e88cee6c216c65",
       "svg_sha256": "b242afec81933eff4468fba8fe7e4c2fd7e405a33e91435ce9b1a68274ff48aa",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_full_requirement_spec": {
       "input_sha256": "a517cf4435d1622a7103b943734ac873432ff5354d208e1e413ee49a2ebebf6f",
       "svg_sha256": "7c95712e5f900c009e12078daf021f9ccf45c6c8e96a3cd39eef2ad53922fa7c",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_requirement_types_spec": {
       "input_sha256": "f72eff58cca8cd42d0fe917288d714ae560281a9c4fd7018275cca8b00d0437d",
       "svg_sha256": "fc654158a5997d1180a493aa540b08362bddaa6ec1eca946c70a0c5c0eccb937",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_requirement_styles_spec": {
       "input_sha256": "ae525108738feeda9f6c3e5796e063dbb1f12557121d3a5c0e01ff00446c0630",
       "svg_sha256": "113f41844dca8da0b82b6ae528b4dd38bfde9f28e5579a22728cac48c1856696",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },
   "excluded": {}

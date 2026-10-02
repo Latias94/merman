@@ -235,10 +235,10 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.15`
+- Version: `3.4.16`
 - Source: <https://github.com/cure53/DOMPurify.git>
-- Source ref: `3.4.15`
-- Source commit: `1d7460c4f8a27be825c11b1c9d346d79db32c1e5`
+- Source ref: `3.4.16`
+- Source commit: `b9b9d80f7e401771c2ccaef5f45def7eec8f27d7`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License expression: `(Apache-2.0 OR MPL-2.0)`

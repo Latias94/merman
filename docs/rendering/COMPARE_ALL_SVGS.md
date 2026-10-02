@@ -65,6 +65,19 @@ remain blocking. A changed node, class, id, text, stylesheet, namespace, element
 or path coordinate at three-decimal precision therefore cannot reuse an old receipt. Omitting the
 flag restores blocking upstream DOM comparison for parity work.
 
+### Refreshing baseline bindings
+
+Regenerating upstream SVGs does not approve new residuals. Review changed artifacts before
+rebinding the upstream digests in the browser-text and label-geometry catalogs, and update
+any corresponding `SEMANTIC_LABEL_FIXTURE_CONTRACTS` digest in `compare/labels.rs`. Keep local
+signatures and geometry records unchanged when the reviewed local behavior has not changed;
+new behavior needs separate source-backed evidence. For a suspected browser measurement
+change, replay the old and selected runtimes in the same browser to isolate the cause.
+
+Run the affected catalog and semantic-label tests and focused fixture comparisons after the
+refresh. The Linux CI owner performs the complete DOM, semantic-label, and root-paint gates.
+Do not batch-replace hashes merely to bypass stale-receipt failures.
+
 ## Root reports
 
 `compare-all-svgs` forwards `--report-root` to diagram families that support the root-delta report.

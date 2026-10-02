@@ -1,10 +1,35 @@
 # CLI and LSP Target Admission
 
-This record governs precompiled `merman-cli` and `merman-lsp` release targets. A successful
-cross-build is not sufficient: a target is public only after the final archives execute on that
-target and the platform resource contract is proven.
+This record governs evidence required to admit precompiled `merman-cli` and `merman-lsp` targets. Admission requires both native execution of the final archives and proof of the platform resource contract. A successful cross-build or a completed publication does not replace those checks. Dated records distinguish shipped artifacts from any admission evidence still outstanding.
+
+## 2026-09-30: Linux ARM64 archives verified and published
+
+**Admission status:** native archive execution verified; platform-resource admission remains pending. The published alpha.7 archives establish availability and the execution results below. Publication does not satisfy or waive the outstanding HTTPS/system-certificate and system-font discovery gates. Before the next release for this target, complete those checks and record the run, source identity, and supported platform scope.
+
+`0.8.0-alpha.7` ships `aarch64-unknown-linux-gnu` CLI and LSP archives from immutable commit `580e39b69cc1b0ca35c4f8272683e622b2e9b8db`. Both the [native ARM64 preflight job](https://github.com/Latias94/merman/actions/runs/36719056708/job/109899341069) and the complete [CLI/LSP release run](https://github.com/Latias94/merman/actions/runs/36727907026) succeeded on that source. This closes the archive-execution gap recorded in September; the independently untested resource paths below remain unverified.
+
+| Evidence | Result and scope |
+| --- | --- |
+| Matching native preflight | Passed on `ubuntu-24.04-arm`; the job builds and executes the final archives and uploads `preflight-cli-lsp-aarch64-unknown-linux-gnu`. |
+| Final CLI archive | [Native release verification passed](https://github.com/Latias94/merman/actions/runs/36727907026/job/109952119504), including version, capabilities, completion, SVG, PNG, JPEG, PDF, and rustdoc smokes. |
+| Final LSP archive | [Native release verification passed](https://github.com/Latias94/merman/actions/runs/36727907026/job/109952119433), including stdio initialize, shutdown, and exit. |
+| Build and execution environment | Native Ubuntu 24.04 ARM64. These results do not establish compatibility with an older distribution or glibc floor. |
+| Release closure | The five-target matrix, archive/checksum checks, immutable bundle, release verification gate, installers, and asset attestation completed in the same release run. |
+| TLS and system certificates | No dedicated `network-icons` HTTPS request with `--allow-network` through the platform trust store was verified by these archive smokes. |
+| System font discovery | No dedicated host-system font discovery assertion for native PNG/JPEG/PDF output was verified by these archive smokes. |
+
+The release's `release-verification.json` binds the archive inventory to the source and version. Its ARM64 archive identities are:
+
+| Archive | SHA-256 |
+| --- | --- |
+| `merman-cli-aarch64-unknown-linux-gnu.tar.xz` | `3564efe953133521a9cb5bf1000bc100ac52eef5383a4f693802cecc22798b73` |
+| `merman-lsp-aarch64-unknown-linux-gnu.tar.xz` | `e57898202879a4cb9cf25ac6055eede7ed211e4d51d021fe6e1eba15bbae2b80` |
+
+See the [publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot) for the full alpha.7 channel record. Windows ARM64 remains unadmitted; the Linux ARM64 release is not evidence for that target.
 
 ## 2026-09-08: Linux ARM64 admission pending native preflight
+
+**Historical configuration-stage decision.** The pending results below describe the state recorded on 2026-09-08; the 2026-09-30 record above supplies the later archive evidence without rewriting this earlier checkpoint.
 
 **Candidate:** `aarch64-unknown-linux-gnu`
 
@@ -79,8 +104,7 @@ the CLI advertises a target that the LSP, installers, or final native gate canno
 
 ## Configured release target set
 
-The configuration below includes the pending Linux ARM64 candidate. It is not a claim that an
-existing release contains that archive or that the candidate's admission evidence is complete.
+The following five targets have matching CLI and LSP archives in `0.8.0-alpha.7`. Availability is established by the dated release record, not merely by configuration. Platform-resource claims remain bounded by the evidence above.
 
 ```text
 aarch64-apple-darwin
@@ -103,8 +127,10 @@ following on one source commit, before merging that change:
 
 1. CLI and LSP builds for the candidate target triple from a controlled platform and ABI baseline.
 2. Execution of both final cargo-dist archives on the candidate's oldest supported native environment.
-3. The complete CLI runtime contract, including deterministic HTTPS/system-certificate and
-   system-font resource smokes.
+3. The complete CLI runtime contract, including deterministic `network-icons` HTTPS checks with
+   `--allow-network` through the platform trust store and host-system font discovery for native
+   PNG/JPEG/PDF output. These checks do not require identical installed fonts or pixel output
+   across platforms, and do not extend those resource claims to SVG, ASCII, or LSP.
 4. The complete LSP stdio lifecycle and clean termination check.
 5. The exact cargo-dist plan, candidate runner/host routing, archive inventory, and adjacent checksums.
 
