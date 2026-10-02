@@ -13,7 +13,7 @@ merman = { path = "../crates/merman", default-features = false, features = ["all
 merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["all-diagrams", "analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
 merman-render = { path = "../crates/merman-render", default-features = false, features = ["all-diagrams"] }
 roxmltree = "0.21.1"
-tree-sitter = "=0.26.12"
+tree-sitter = "=0.27.0"
 tree-sitter-mermaid = { path = "../distribution/tree-sitter-mermaid" }
 
 # Use independent workspace for fuzzers.

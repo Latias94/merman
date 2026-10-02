@@ -144,7 +144,7 @@ pub(crate) fn validate_well_formed_svg_with_controls(
             }
             Event::Text(text) => {
                 document_started = true;
-                let contains_cdata_close = text.windows(3).any(|window| window == b"]]>");
+                let contains_cdata_close = text.contains("]]>");
                 checkpoint()?;
                 if contains_cdata_close {
                     return Err(xml_validation_error(
@@ -153,8 +153,6 @@ pub(crate) fn validate_well_formed_svg_with_controls(
                 }
                 let text = text.xml10_content();
                 checkpoint()?;
-                let text = text
-                    .map_err(|error| xml_validation_error(format!("invalid XML text: {error}")))?;
                 let text_outside_root = depth == 0 && !text.trim().is_empty();
                 checkpoint()?;
                 if text_outside_root {
@@ -163,11 +161,9 @@ pub(crate) fn validate_well_formed_svg_with_controls(
                     ));
                 }
             }
-            Event::CData(text) => {
+            Event::CData(_) => {
                 document_started = true;
-                let text = text.xml10_content();
                 checkpoint()?;
-                text.map_err(|error| xml_validation_error(format!("invalid CDATA: {error}")))?;
                 if depth == 0 {
                     return Err(xml_validation_error(
                         "CDATA is not allowed outside the SVG root",
@@ -205,12 +201,8 @@ pub(crate) fn validate_well_formed_svg_with_controls(
                 validate_xml_declaration(&declaration)?;
                 document_started = true;
             }
-            Event::Comment(comment) => {
-                let comment = comment.xml10_content();
+            Event::Comment(_) => {
                 checkpoint()?;
-                comment.map_err(|error| {
-                    xml_validation_error(format!("invalid XML comment: {error}"))
-                })?;
                 document_started = true;
             }
             Event::Eof => break,
@@ -243,13 +235,10 @@ fn validate_well_formed_element(
     match namespace {
         ResolveResult::Unknown(prefix) => {
             return Err(xml_validation_error(format!(
-                "element uses an unknown namespace prefix {:?}",
-                String::from_utf8_lossy(&prefix)
+                "element uses an unknown namespace prefix {prefix:?}"
             )));
         }
-        ResolveResult::Bound(namespace)
-            if is_root && namespace.as_ref() != SVG_NAMESPACE.as_bytes() =>
-        {
+        ResolveResult::Bound(namespace) if is_root && namespace.as_ref() != SVG_NAMESPACE => {
             return Err(xml_validation_error(
                 "the root element uses a non-SVG namespace",
             ));
@@ -259,8 +248,7 @@ fn validate_well_formed_element(
 
     validate_xml_qname(element.name().as_ref())?;
     let local_name = element.local_name();
-    let element_name = std::str::from_utf8(local_name.as_ref())
-        .map_err(|error| xml_validation_error(format!("invalid UTF-8 XML name: {error}")))?;
+    let element_name = local_name.as_ref();
     if is_root && element_name != "svg" {
         return Err(xml_validation_error(
             "the document root is not an SVG element",
@@ -275,7 +263,7 @@ fn validate_well_formed_element(
         let qualified_name = validate_xml_qname(attribute.key.as_ref());
         checkpoint()?;
         qualified_name?;
-        let contains_open_angle = attribute.value.as_ref().contains(&b'<');
+        let contains_open_angle = attribute.value.contains('<');
         checkpoint()?;
         if contains_open_angle {
             return Err(xml_validation_error(
@@ -296,8 +284,7 @@ fn validate_well_formed_element(
             ResolveResult::Unknown(prefix) => {
                 checkpoint()?;
                 return Err(xml_validation_error(format!(
-                    "attribute uses an unknown namespace prefix {:?}",
-                    String::from_utf8_lossy(&prefix)
+                    "attribute uses an unknown namespace prefix {prefix:?}"
                 )));
             }
             ResolveResult::Bound(namespace) => Some(namespace.into_inner()),
@@ -321,9 +308,7 @@ fn validate_well_formed_element(
 }
 
 fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
-    let declaration = std::str::from_utf8(declaration.as_ref())
-        .map_err(|error| xml_validation_error(format!("invalid UTF-8 XML declaration: {error}")))?;
-    let declaration = BytesStart::from_content(declaration, 3);
+    let declaration = BytesStart::from_content(declaration.as_ref(), 3);
     let mut attributes = declaration.attributes();
 
     let version = attributes
@@ -331,7 +316,7 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
         .transpose()
         .map_err(|error| xml_validation_error(format!("invalid XML declaration: {error}")))?
         .ok_or_else(|| xml_validation_error("the XML declaration is missing version"))?;
-    if version.key.as_ref() != b"version" || version.value.as_ref() != b"1.0" {
+    if version.key.as_ref() != "version" || version.value.as_ref() != "1.0" {
         return Err(xml_validation_error(
             "the XML declaration must begin with version=\"1.0\"",
         ));
@@ -346,10 +331,10 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
             attribute.key.as_ref(),
             attribute.value.as_ref(),
         ) {
-            (1, b"encoding", value) if value.eq_ignore_ascii_case(b"utf-8") => {
+            (1, "encoding", value) if value.eq_ignore_ascii_case("utf-8") => {
                 expected_attribute = 2;
             }
-            (1 | 2, b"standalone", b"yes" | b"no") => {
+            (1 | 2, "standalone", "yes" | "no") => {
                 expected_attribute = 3;
             }
             _ => {
@@ -362,9 +347,7 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
     Ok(())
 }
 
-fn validate_xml_qname(name: &[u8]) -> Result<()> {
-    let name = std::str::from_utf8(name)
-        .map_err(|error| xml_validation_error(format!("invalid UTF-8 XML name: {error}")))?;
+fn validate_xml_qname(name: &str) -> Result<()> {
     let mut components = name.split(':');
     let first = components.next().unwrap_or_default();
     let second = components.next();
@@ -538,7 +521,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 let (namespace, _) = reader.resolver().resolve_element(element.name());
                 reject_unknown_namespace(namespace)?;
                 let local_name = element.local_name();
-                let element_name = xml_name(local_name.as_ref())?;
+                let element_name = local_name.as_ref();
                 if let Some(css) = style_text.take() {
                     if !element_name.eq_ignore_ascii_case("style") {
                         return Err(validation_error(
@@ -560,8 +543,6 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
             Event::Text(text) => {
                 let text = text.xml10_content();
                 checkpoint()?;
-                let text =
-                    text.map_err(|error| validation_error(format!("invalid XML text: {error}")))?;
                 if let Some(css) = style_text.as_mut() {
                     css.push_str(&text);
                 } else {
@@ -575,8 +556,6 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
             Event::CData(text) => {
                 let text = text.xml10_content();
                 checkpoint()?;
-                let text =
-                    text.map_err(|error| validation_error(format!("invalid CDATA: {error}")))?;
                 if let Some(css) = style_text.as_mut() {
                     css.push_str(&text);
                 } else {
@@ -734,7 +713,7 @@ fn validate_element(
     let (namespace, local_name) = resolver.resolve_element(element.name());
     let is_svg_element = is_svg_element_namespace(&namespace);
     validate_namespace(namespace, is_root)?;
-    let element_name = xml_name(local_name.as_ref())?;
+    let element_name = local_name.as_ref();
     if is_root && element_name != "svg" {
         return Err(validation_error("the document root is not an SVG element"));
     }
@@ -768,9 +747,8 @@ fn validate_element(
         checkpoint()?;
         let attribute = attribute
             .map_err(|error| validation_error(format!("invalid XML attribute: {error}")))?;
-        let qualified_name = xml_name(attribute.key.as_ref());
+        let qualified_name = attribute.key.as_ref();
         checkpoint()?;
-        let qualified_name = qualified_name?;
         let value = attribute.normalized_value(XmlVersion::Implicit1_0);
         checkpoint()?;
         let value = value
@@ -783,16 +761,15 @@ fn validate_element(
         let is_unbound_attribute = matches!(&attribute_namespace, ResolveResult::Unbound);
         let is_xlink_attribute = matches!(
             &attribute_namespace,
-            ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE.as_bytes()
+            ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
         );
         let consumes_namespace = usvg_consumes_attribute_namespace(attribute_namespace);
         checkpoint()?;
         if !consumes_namespace? {
             continue;
         }
-        let semantic_name = xml_name(local_name.as_ref());
+        let semantic_name = local_name.as_ref();
         checkpoint()?;
-        let semantic_name = semantic_name?;
         let violates_contract =
             parsed_attribute_violates_resvg_contract(element_name, qualified_name, &value);
         checkpoint()?;
@@ -944,7 +921,7 @@ fn is_svg_element_namespace(namespace: &ResolveResult<'_>) -> bool {
     matches!(namespace, ResolveResult::Unbound)
         || matches!(
             namespace,
-            ResolveResult::Bound(namespace) if namespace.as_ref() == SVG_NAMESPACE.as_bytes()
+            ResolveResult::Bound(namespace) if namespace.as_ref() == SVG_NAMESPACE
         )
 }
 
@@ -1288,15 +1265,14 @@ fn capped_svg_reference_mul(value: usize, multiplier: usize, cap: usize) -> usiz
 fn usvg_consumes_attribute_namespace(namespace: ResolveResult<'_>) -> Result<bool> {
     match namespace {
         ResolveResult::Unknown(prefix) => Err(validation_error(format!(
-            "attribute uses an unknown namespace prefix {:?}",
-            String::from_utf8_lossy(&prefix)
+            "attribute uses an unknown namespace prefix {prefix:?}"
         ))),
         ResolveResult::Unbound => Ok(true),
         ResolveResult::Bound(namespace) => {
             let namespace = namespace.as_ref();
-            Ok(namespace == SVG_NAMESPACE.as_bytes()
-                || namespace == XLINK_NAMESPACE.as_bytes()
-                || namespace == XML_NAMESPACE.as_bytes())
+            Ok(namespace == SVG_NAMESPACE
+                || namespace == XLINK_NAMESPACE
+                || namespace == XML_NAMESPACE)
         }
     }
 }
@@ -1304,16 +1280,11 @@ fn usvg_consumes_attribute_namespace(namespace: ResolveResult<'_>) -> Result<boo
 fn validate_namespace(namespace: ResolveResult<'_>, is_root: bool) -> Result<()> {
     match namespace {
         ResolveResult::Unknown(prefix) => Err(validation_error(format!(
-            "element uses an unknown namespace prefix {:?}",
-            String::from_utf8_lossy(&prefix)
+            "element uses an unknown namespace prefix {prefix:?}"
         ))),
-        ResolveResult::Bound(namespace)
-            if is_root && namespace.as_ref() != SVG_NAMESPACE.as_bytes() =>
-        {
-            Err(validation_error(
-                "the root element uses a non-SVG namespace",
-            ))
-        }
+        ResolveResult::Bound(namespace) if is_root && namespace.as_ref() != SVG_NAMESPACE => Err(
+            validation_error("the root element uses a non-SVG namespace"),
+        ),
         ResolveResult::Unbound | ResolveResult::Bound(_) => Ok(()),
     }
 }
@@ -1321,8 +1292,7 @@ fn validate_namespace(namespace: ResolveResult<'_>, is_root: bool) -> Result<()>
 fn reject_unknown_namespace(namespace: ResolveResult<'_>) -> Result<()> {
     match namespace {
         ResolveResult::Unknown(prefix) => Err(validation_error(format!(
-            "element uses an unknown namespace prefix {:?}",
-            String::from_utf8_lossy(&prefix)
+            "element uses an unknown namespace prefix {prefix:?}"
         ))),
         ResolveResult::Unbound | ResolveResult::Bound(_) => Ok(()),
     }
@@ -1352,10 +1322,8 @@ fn resolve_xml_reference_value(reference: &BytesRef<'_>) -> std::result::Result<
         return Err("invalid XML character reference: the scalar is forbidden in XML 1.0".into());
     }
 
-    let name = reference
-        .decode()
-        .map_err(|error| format!("invalid XML entity reference: {error}"))?;
-    match name.as_ref() {
+    let name = reference.as_ref();
+    match name {
         "amp" => Ok('&'),
         "apos" => Ok('\''),
         "gt" => Ok('>'),
@@ -1365,11 +1333,6 @@ fn resolve_xml_reference_value(reference: &BytesRef<'_>) -> std::result::Result<
             "invalid XML entity reference: unknown entity &{name};"
         )),
     }
-}
-
-fn xml_name(bytes: &[u8]) -> Result<&str> {
-    std::str::from_utf8(bytes)
-        .map_err(|error| validation_error(format!("invalid UTF-8 XML name: {error}")))
 }
 
 fn validation_error(message: impl Into<String>) -> Error {

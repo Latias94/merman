@@ -344,7 +344,14 @@ fn unavailable_uri_digest(uri: &Uri) -> String {
     let mut hasher = Sha256::new();
     hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
     hasher.update(uri.as_str().as_bytes());
-    format!("{:x}", hasher.finalize())
+    use std::fmt::Write as _;
+
+    let digest = hasher.finalize();
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 impl UnavailableDiagnosticSource {
@@ -431,6 +438,15 @@ mod tests {
     };
 
     const DOCUMENT_VERSION: i32 = 7;
+
+    #[test]
+    fn unavailable_uri_digest_preserves_domain_and_leading_zeroes() {
+        let uri = Uri::from_str("file:///digest-contract-819.mmd").unwrap();
+        assert_eq!(
+            super::unavailable_uri_digest(&uri),
+            "00cf8cfa9e7f3b1ee86020f7fe38f827e55eca2c255758b2e461fbc063d5eb8e",
+        );
+    }
 
     #[test]
     fn round_trip_accepts_only_the_exact_returned_diagnostic() {

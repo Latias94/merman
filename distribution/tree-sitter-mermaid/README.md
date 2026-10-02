@@ -101,7 +101,7 @@ diagnostics, completion, navigation, and rename.
 ## Rust
 
 ```console
-cargo add tree-sitter@=0.26.12 tree-sitter-mermaid@=0.2.0
+cargo add tree-sitter@=0.27.0 tree-sitter-mermaid@=0.2.0
 ```
 
 ```rust
@@ -151,7 +151,7 @@ int main(void) {
 | Agentflow and Usecase syntax | 12.0.0 |
 | ZenUML Core syntax baseline | 3.50.1 |
 | Tree-sitter language ABI | 15 |
-| Tested Rust runtime | 0.26.12 |
+| Tested Rust runtime | 0.27.0 |
 | Tested Web runtime | 0.27.0 |
 | Native Node runtime contract | 0.25.x |
 

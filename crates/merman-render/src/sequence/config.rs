@@ -50,8 +50,7 @@ impl<'a> SequenceConfigView<'a> {
             Value::Number(value) => value.to_string(),
             _ => return None,
         };
-        let mut input = cssparser::ParserInput::new(&raw);
-        let mut parser = cssparser::Parser::new(&mut input);
+        let mut parser = cssparser::Parser::new(&raw);
         let token = parser.next().ok()?;
         let css = match token {
             cssparser::Token::Number { value, .. } if (1.0..=1000.0).contains(value) => {

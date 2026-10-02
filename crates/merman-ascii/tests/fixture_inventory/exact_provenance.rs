@@ -202,7 +202,7 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
         aggregate.update(&bytes);
 
         if let Some((expected_sha256, _)) = transforms.get(relative.as_str()) {
-            let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
+            let actual_sha256 = encode_lower_hex(&Sha256::digest(&bytes));
             assert_eq!(
                 &actual_sha256, expected_sha256,
                 "historically transformed fixture drifted: {relative}"
@@ -217,7 +217,7 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
         "every historical transform must name one tracked fixture"
     );
     assert_eq!(
-        format!("{:x}", aggregate.finalize()),
+        encode_lower_hex(&aggregate.finalize()),
         *metadata
             .get("tracked_aggregate_sha256")
             .expect("tracked aggregate digest must be recorded"),
@@ -242,6 +242,16 @@ fn parse_metadata_usize(metadata: &BTreeMap<&str, &str>, key: &str) -> usize {
         .unwrap_or_else(|| panic!("missing fixture provenance metadata `{key}`"))
         .parse()
         .unwrap_or_else(|error| panic!("invalid fixture provenance metadata `{key}`: {error}"))
+}
+
+fn encode_lower_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn is_lower_hex(value: &str, length: usize) -> bool {

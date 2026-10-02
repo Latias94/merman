@@ -2625,8 +2625,7 @@ fn parse_inline_style_declarations(
         )]);
     }
 
-    let mut input = cssparser::ParserInput::new(style);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(style);
     let mut declarations = Vec::new();
 
     loop {
@@ -2646,9 +2645,9 @@ fn parse_inline_style_declarations(
             while declaration.next_including_whitespace_and_comments().is_ok() {}
             let value = declaration.slice_from(value_start).trim().to_string();
             if value.is_empty() {
-                return Err(declaration.new_custom_error(()));
+                return Err(cssparser::ParseError::custom(()));
             }
-            Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
+            Ok::<_, cssparser::ParseError<()>>((property, value))
         });
         match parsed {
             Ok(declaration) => declarations.push(declaration),
@@ -2686,28 +2685,28 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for SemanticStylesheetParser {
     type QualifiedRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
         let selector = input.slice_from(start).trim().to_string();
         if selector.is_empty() {
-            Err(input.new_custom_error(()))
+            Err(cssparser::ParseError::custom(()))
         } else {
             Ok(selector)
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::QualifiedRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2725,11 +2724,11 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
     type AtRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: cssparser::CowRcStr<'i>,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2754,12 +2753,12 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
         }))
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::AtRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::AtRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2817,13 +2816,17 @@ fn extract_stylesheet_signature(
         .trim();
     let mut signature = Vec::new();
     for stylesheet in stylesheets {
-        let mut input = cssparser::ParserInput::new(&stylesheet);
-        let mut input = cssparser::Parser::new(&mut input);
+        let mut input = cssparser::Parser::new(&stylesheet);
         let mut rule_parser = SemanticStylesheetParser;
         for parsed in cssparser::StyleSheetParser::new(&mut input, &mut rule_parser) {
-            let rule = parsed.map_err(|(error, rule)| SemanticLabelError::InvalidStylesheet {
-                rule: rule.trim().to_string(),
-                message: format!("{error:?}"),
+            let rule = parsed.map_err(|(error, rule, location)| {
+                SemanticLabelError::InvalidStylesheet {
+                    rule: rule.trim().to_string(),
+                    message: format!(
+                        "{error:?} at rule line {}, column {}",
+                        location.line, location.column
+                    ),
+                }
             })?;
             let Some(rule) = rule else {
                 continue;

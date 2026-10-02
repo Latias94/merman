@@ -102,21 +102,14 @@ fn write_svg(output: &mut impl fmt::Write, svg: &str) -> fmt::Result {
         match event {
             Event::Start(element) | Event::Empty(element) => {
                 output.write_char('<')?;
-                output.write_str(
-                    std::str::from_utf8(element.name().as_ref()).map_err(|_| fmt::Error)?,
-                )?;
+                output.write_str(element.name().as_ref())?;
                 for attribute in element.attributes() {
                     let attribute = attribute.map_err(|_| fmt::Error)?;
                     output.write_char(' ')?;
-                    output.write_str(
-                        std::str::from_utf8(attribute.key.as_ref()).map_err(|_| fmt::Error)?,
-                    )?;
+                    output.write_str(attribute.key.as_ref())?;
                     output.write_str("=\"")?;
                     let value = attribute
-                        .decoded_and_normalized_value(
-                            quick_xml::XmlVersion::Implicit1_0,
-                            reader.decoder(),
-                        )
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         .map_err(|_| fmt::Error)?;
                     write_escaped_html(output, &value)?;
                     output.write_char('"')?;
@@ -125,22 +118,20 @@ fn write_svg(output: &mut impl fmt::Write, svg: &str) -> fmt::Result {
             }
             Event::End(element) => {
                 output.write_str("</")?;
-                output.write_str(
-                    std::str::from_utf8(element.name().as_ref()).map_err(|_| fmt::Error)?,
-                )?;
+                output.write_str(element.name().as_ref())?;
                 output.write_char('>')?;
             }
             Event::Text(text) => {
-                let text = text.xml10_content().map_err(|_| fmt::Error)?;
+                let text = text.xml10_content();
                 // Entity references arrive as separate GeneralRef events.
                 write_escaped_html(output, &text)?;
             }
             Event::CData(text) => {
-                write_escaped_html(output, &text.xml10_content().map_err(|_| fmt::Error)?)?;
+                write_escaped_html(output, &text.xml10_content())?;
             }
             Event::GeneralRef(reference) => {
                 output.write_char('&')?;
-                output.write_str(&reference.decode().map_err(|_| fmt::Error)?)?;
+                output.write_str(reference.as_ref())?;
                 output.write_char(';')?;
             }
             Event::Comment(_) => {}

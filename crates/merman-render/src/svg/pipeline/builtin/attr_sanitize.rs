@@ -1,5 +1,5 @@
 use crate::Result;
-use cssparser::{Delimiter, Parser, ParserInput};
+use cssparser::{Delimiter, Parser};
 use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
 use std::convert::Infallible;
@@ -634,8 +634,7 @@ fn parse_css_declarations<E>(
     checkpoint()?;
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
     checkpoint()?;
-    let mut input = ParserInput::new(&decoded);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(&decoded);
     let mut declarations = Vec::new();
 
     while !parser.is_exhausted() {
@@ -648,7 +647,7 @@ fn parse_css_declarations<E>(
             // sanitizer below validates the raw value after this iterative boundary scan.
             while declaration.next_including_whitespace().is_ok() {}
             let value = declaration.slice_from(value_start).trim().to_string();
-            Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
+            Ok::<_, cssparser::ParseError<()>>((property, value))
         });
         checkpoint()?;
         if let Ok(declaration) = declaration {

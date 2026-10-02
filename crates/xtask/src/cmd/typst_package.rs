@@ -280,7 +280,7 @@ fn source_snapshot_digest(files: &[SnapshotFile]) -> Result<String, XtaskError> 
         )?;
         hash_package_frame(&mut hasher, file.sha256.as_bytes())?;
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::util::encode_lower_hex(&hasher.finalize()))
 }
 
 fn hash_package_frame(hasher: &mut Sha256, bytes: &[u8]) -> Result<(), XtaskError> {

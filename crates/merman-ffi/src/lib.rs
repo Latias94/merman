@@ -495,9 +495,14 @@ fn runtime_catalog_digest_bytes() -> Result<&'static [u8], NativeFailure> {
     }
 
     let catalog = runtime_catalog_bytes()?;
-    let digest = format!("sha256:{:x}", Sha256::digest(catalog))
-        .into_bytes()
-        .into_boxed_slice();
+    use std::fmt::Write as _;
+
+    let mut digest = String::with_capacity("sha256:".len() + 64);
+    digest.push_str("sha256:");
+    for byte in Sha256::digest(catalog) {
+        write!(&mut digest, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    let digest = digest.into_bytes().into_boxed_slice();
     let _ = RUNTIME_CATALOG_DIGEST.set(digest);
     Ok(RUNTIME_CATALOG_DIGEST
         .get()
@@ -4698,17 +4703,20 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             catalog["capabilities"]["operation_ids"]
         );
 
-        let expected_digest = format!(
-            "sha256:{:x}",
-            Sha256::digest(serde_json::to_vec(&catalog).unwrap())
-        );
+        let expected_digest = Sha256::digest(serde_json::to_vec(&catalog).unwrap())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         let reported_digest = unsafe {
             std::slice::from_raw_parts(
                 api.capability_catalog_digest.data,
                 api.capability_catalog_digest.len,
             )
         };
-        assert_eq!(reported_digest, expected_digest.as_bytes());
+        assert_eq!(
+            reported_digest,
+            format!("sha256:{expected_digest}").as_bytes()
+        );
         unsafe { api.result_free.unwrap()(&mut result) };
     }
 
