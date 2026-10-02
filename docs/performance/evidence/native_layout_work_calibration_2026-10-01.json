@@ -1,0 +1,888 @@
+{
+  "schema_version": 1,
+  "evidence_class": "resource-policy-calibration",
+  "claim_scope": "trusted-native-layout-work-ceiling-15000000",
+  "decision": "accepted-structural",
+  "authoritative_date": "2026-10-01",
+  "host": {
+    "logical_processors": 32,
+    "memory_bytes": 68400455680,
+    "cpu": "Intel Core i9-13900KF",
+    "physical_cores": 24,
+    "os": "Microsoft Windows NT 10.0.26200.0"
+  },
+  "scope_note": "Finite native work admission only; not a speedup, portable time or memory bound. Windows observations are target-process peak working sets, excluding descendants and the launcher.",
+  "themes": {
+    "default": {
+      "raw_summary": {
+        "path": "target/bench/experiments/issue158-native-default/default/run-summary.json",
+        "bytes": 20218,
+        "sha256": "bc6399bc9b13cf46841eea39f9a909a57d5c6b39f1c5bc423274778d54301962"
+      },
+      "full_report": {
+        "path": "target/bench/experiments/issue158-native-default/default/full-1.json",
+        "bytes": 41135,
+        "sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598"
+      },
+      "full_repeats": 5,
+      "full_reports_byte_identical": true,
+      "process_count": 12,
+      "timeout_seconds": 300,
+      "stderr_index_sha256": "a954cbbd88b0948e1aa19d14bd134a282daec7c534a82313e3d51e02ed7456cc",
+      "policy": {
+        "profile": "trusted-native",
+        "explicit_overrides": [],
+        "max_layout_work_units": 15000000
+      },
+      "fixture_count": 73,
+      "fixture_members_sha256": "ea4f44cddda7f366f68bbe7698b6265c555ce5307f1e16fe4c15d6c6ccc411a3",
+      "maximum_fixture": {
+        "name": "class_nested_namespaces_large",
+        "source_path": "crates/merman/benches/fixtures/class_nested_namespaces_large.mmd",
+        "source_sha256": "939c11d90fa3e26ea6ded86b10af2c4d9253da483b8be42d991b0051dc8d0b1e",
+        "source_bytes": 4268,
+        "layout_work_units": 12759734,
+        "svg_sha256": "32930ccee420a0726acbbc9dd4a4b37a4d356a109a19b4de7a9459d188e9a567",
+        "svg_bytes": 501974,
+        "svg_elements": 3009,
+        "profile_accepted": true
+      },
+      "headroom_policy": {
+        "minimum_headroom_units": 100000,
+        "minimum_headroom_percent": 10.0,
+        "ceiling_rounding_quantum": 1000000,
+        "calculated_minimum_ceiling": 15000000
+      },
+      "headroom_units": 2240266,
+      "headroom_percent": 17.557309580278083,
+      "exact_limit_check": {
+        "fixture": "class_nested_namespaces_large",
+        "observed_layout_work_units": 12759734,
+        "accepted_limit": 12759734,
+        "accepted_explicit_overrides": [
+          {
+            "id": "max_layout_work_units",
+            "value": 12759734
+          }
+        ],
+        "accepted_svg_sha256": "32930ccee420a0726acbbc9dd4a4b37a4d356a109a19b4de7a9459d188e9a567",
+        "rejected_limit": 12759733,
+        "rejection": {
+          "cause": "ceiling",
+          "phase": "layout_model",
+          "limit": "max_layout_work_units",
+          "actual": 12759734,
+          "max": 12759733,
+          "profile": "trusted-native",
+          "explicit_overrides": [
+            {
+              "id": "max_layout_work_units",
+              "value": 12759733
+            }
+          ]
+        }
+      },
+      "cardinality_boundary": {
+        "curve": "flowchart-linear-chain-v1",
+        "search_contract": "A deterministic N-node/N-1-edge linear Flowchart chain is rendered sequentially for every N starting at one. The first structured layout-work rejection defines the boundary without assuming monotonicity; N+1 is rerun only as a local consecutive-rejection check. The receipt claims only this registered curve and does not generalize the result to every Flowchart topology.",
+        "scan_start_nodes": 1,
+        "scanned_through_nodes": 969,
+        "accepted_prefix_count": 968,
+        "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+        "accepted_prefix_observations_sha256": "f85fc5c2957fe9d12e60284077cd972791e2255c698e2886034e63386507fd20",
+        "accepted_prefix_work_units_non_decreasing": true,
+        "first_rejected_nodes": 969,
+        "accepted": {
+          "nodes": 968,
+          "edges": 967,
+          "source_sha256": "c4bbc1ee1f5c7c1634d722807d517d3891875deb23e32a978020087fc2022cc5",
+          "source_bytes": 33439,
+          "layout_work_units": 14991502,
+          "svg_sha256": "71326bfd5b9abe88560d1876113d156b58d2cad822592e753f45ace790209f07",
+          "svg_bytes": 947823,
+          "svg_elements": 8749
+        },
+        "rejected": {
+          "nodes": 969,
+          "edges": 968,
+          "source_sha256": "8c1693824c1b072be141bf9a2267ee10ad7b5f329360ee95fe4ad4638874da2d",
+          "source_bytes": 33474,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000002,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "nodes": 970,
+          "edges": 969,
+          "source_sha256": "02c837a7b45576df5b8be55261b03f7ed18e3843976ec7772621974623c8c4d2",
+          "source_bytes": 33509,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000212,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "configuration_boundary": {
+        "curve": "architecture-num-iter-v1",
+        "search_contract": "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
+        "fixed_nodes": 32,
+        "fixed_edges": 31,
+        "minimum_effective_iterations": 160,
+        "first_rejected_iterations": 59046,
+        "accepted": {
+          "configured_iterations": 59045,
+          "source_sha256": "f246d5846d09454c5310d591477031768514ce73976d1d675c4af62f4496accd",
+          "source_bytes": 1578,
+          "layout_work_units": 48589,
+          "svg_sha256": "6ff10fb77ea4ce65cc4233cbd21f8492cbbcab7620132579c04b113fcee8a327",
+          "svg_bytes": 98846,
+          "svg_elements": 1252
+        },
+        "rejected": {
+          "configured_iterations": 59046,
+          "source_sha256": "5e3096f06561b6810b341dfd1b2ef00646f2023633064731a61bc25eeda1427b",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000001,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "configured_iterations": 59047,
+          "source_sha256": "d02a0b2417c4151794fff7b9a9600861bb5327d802d4208a91a25c3f9c590e71",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000255,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "processes": [
+        {
+          "name": "full-1",
+          "elapsed_seconds": 34.65152880000096,
+          "peak_working_set_bytes": 56258560,
+          "report_sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598",
+          "report_bytes": 41135,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-2",
+          "elapsed_seconds": 27.9362172000001,
+          "peak_working_set_bytes": 56483840,
+          "report_sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598",
+          "report_bytes": 41135,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-3",
+          "elapsed_seconds": 28.260496099999727,
+          "peak_working_set_bytes": 55406592,
+          "report_sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598",
+          "report_bytes": 41135,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-4",
+          "elapsed_seconds": 28.222686799999792,
+          "peak_working_set_bytes": 55525376,
+          "report_sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598",
+          "report_bytes": 41135,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-5",
+          "elapsed_seconds": 28.740180699998746,
+          "peak_working_set_bytes": 55824384,
+          "report_sha256": "a9e027efed44f3bb010d6807d2f769da083f3f23a25e874e40f59c42176da598",
+          "report_bytes": 41135,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-semantic",
+          "elapsed_seconds": 12.445702899996832,
+          "peak_working_set_bytes": 39514112,
+          "report_sha256": "88d71151bd4ac581758fc06f147b3f7973a1a9fd6167e2b1c33ec67344933920",
+          "report_bytes": 1829,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-layout",
+          "elapsed_seconds": 12.426778699998977,
+          "peak_working_set_bytes": 42889216,
+          "report_sha256": "d0ae3a668af7487f304aac1317b46aaff122e5fa8407c6ee16ae5bfd728b955f",
+          "report_bytes": 1887,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-svg",
+          "elapsed_seconds": 12.498896799999784,
+          "peak_working_set_bytes": 43200512,
+          "report_sha256": "3f4d9bdbade2c325b7801f894d78fa308d979b3a245ef0696f65534d32191396",
+          "report_bytes": 1926,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-end-to-end",
+          "elapsed_seconds": 12.60211949999939,
+          "peak_working_set_bytes": 43098112,
+          "report_sha256": "3d004c4e5e120cbcb6bb8881b1be6f8fa0f9623c98e9b80d2f816250ee7bfbb4",
+          "report_bytes": 1933,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "cardinality-968",
+          "elapsed_seconds": 12.597955400000501,
+          "peak_working_set_bytes": 43122688,
+          "report_sha256": "8fa55c91b6b98c4258b39c75eb7740eac83e42b9ce06b2554c1ac50c0422314f",
+          "report_bytes": 1871,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "cardinality-969",
+          "elapsed_seconds": 11.344912900000054,
+          "peak_working_set_bytes": 42319872,
+          "report_sha256": "ef77780042c8d85b5c5a4db7d5c98b601d9772fedefb66d94c926ca2e8bce0cd",
+          "report_bytes": 1932,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-w-minus-one",
+          "elapsed_seconds": 11.247415699999692,
+          "peak_working_set_bytes": 42807296,
+          "report_sha256": "10d1c08d8ebedc93509fbf84950466a9d439ee3b89971d8bc0f852668feb7f1a",
+          "report_bytes": 2177,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ]
+    },
+    "dark": {
+      "raw_summary": {
+        "path": "target/bench/experiments/issue158-native-default/dark/run-summary.json",
+        "bytes": 20031,
+        "sha256": "54921595eb2f7e4f813cb2602b3823f2af79d2a55b5861725423f49d008e8ca1"
+      },
+      "full_report": {
+        "path": "target/bench/experiments/issue158-native-default/dark/full-1.json",
+        "bytes": 41134,
+        "sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8"
+      },
+      "full_repeats": 5,
+      "full_reports_byte_identical": true,
+      "process_count": 12,
+      "timeout_seconds": 300,
+      "stderr_index_sha256": "a954cbbd88b0948e1aa19d14bd134a282daec7c534a82313e3d51e02ed7456cc",
+      "policy": {
+        "profile": "trusted-native",
+        "explicit_overrides": [],
+        "max_layout_work_units": 15000000
+      },
+      "fixture_count": 73,
+      "fixture_members_sha256": "ea4f44cddda7f366f68bbe7698b6265c555ce5307f1e16fe4c15d6c6ccc411a3",
+      "maximum_fixture": {
+        "name": "class_nested_namespaces_large",
+        "source_path": "crates/merman/benches/fixtures/class_nested_namespaces_large.mmd",
+        "source_sha256": "939c11d90fa3e26ea6ded86b10af2c4d9253da483b8be42d991b0051dc8d0b1e",
+        "source_bytes": 4268,
+        "layout_work_units": 12759734,
+        "svg_sha256": "e9b93ac5747439d9584bbf4ce6887953e6b3c2e4981d99da925e666a53723660",
+        "svg_bytes": 498103,
+        "svg_elements": 3012,
+        "profile_accepted": true
+      },
+      "headroom_policy": {
+        "minimum_headroom_units": 100000,
+        "minimum_headroom_percent": 10.0,
+        "ceiling_rounding_quantum": 1000000,
+        "calculated_minimum_ceiling": 15000000
+      },
+      "headroom_units": 2240266,
+      "headroom_percent": 17.557309580278083,
+      "exact_limit_check": {
+        "fixture": "class_nested_namespaces_large",
+        "observed_layout_work_units": 12759734,
+        "accepted_limit": 12759734,
+        "accepted_explicit_overrides": [
+          {
+            "id": "max_layout_work_units",
+            "value": 12759734
+          }
+        ],
+        "accepted_svg_sha256": "e9b93ac5747439d9584bbf4ce6887953e6b3c2e4981d99da925e666a53723660",
+        "rejected_limit": 12759733,
+        "rejection": {
+          "cause": "ceiling",
+          "phase": "layout_model",
+          "limit": "max_layout_work_units",
+          "actual": 12759734,
+          "max": 12759733,
+          "profile": "trusted-native",
+          "explicit_overrides": [
+            {
+              "id": "max_layout_work_units",
+              "value": 12759733
+            }
+          ]
+        }
+      },
+      "cardinality_boundary": {
+        "curve": "flowchart-linear-chain-v1",
+        "search_contract": "A deterministic N-node/N-1-edge linear Flowchart chain is rendered sequentially for every N starting at one. The first structured layout-work rejection defines the boundary without assuming monotonicity; N+1 is rerun only as a local consecutive-rejection check. The receipt claims only this registered curve and does not generalize the result to every Flowchart topology.",
+        "scan_start_nodes": 1,
+        "scanned_through_nodes": 969,
+        "accepted_prefix_count": 968,
+        "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+        "accepted_prefix_observations_sha256": "f85fc5c2957fe9d12e60284077cd972791e2255c698e2886034e63386507fd20",
+        "accepted_prefix_work_units_non_decreasing": true,
+        "first_rejected_nodes": 969,
+        "accepted": {
+          "nodes": 968,
+          "edges": 967,
+          "source_sha256": "c4bbc1ee1f5c7c1634d722807d517d3891875deb23e32a978020087fc2022cc5",
+          "source_bytes": 33439,
+          "layout_work_units": 14991502,
+          "svg_sha256": "1f679849714c45d97759527b6648bf6516fb8706ba9238aa23d38e9e3bae3d27",
+          "svg_bytes": 948306,
+          "svg_elements": 8752
+        },
+        "rejected": {
+          "nodes": 969,
+          "edges": 968,
+          "source_sha256": "8c1693824c1b072be141bf9a2267ee10ad7b5f329360ee95fe4ad4638874da2d",
+          "source_bytes": 33474,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000002,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "nodes": 970,
+          "edges": 969,
+          "source_sha256": "02c837a7b45576df5b8be55261b03f7ed18e3843976ec7772621974623c8c4d2",
+          "source_bytes": 33509,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000212,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "configuration_boundary": {
+        "curve": "architecture-num-iter-v1",
+        "search_contract": "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
+        "fixed_nodes": 32,
+        "fixed_edges": 31,
+        "minimum_effective_iterations": 160,
+        "first_rejected_iterations": 59046,
+        "accepted": {
+          "configured_iterations": 59045,
+          "source_sha256": "f246d5846d09454c5310d591477031768514ce73976d1d675c4af62f4496accd",
+          "source_bytes": 1578,
+          "layout_work_units": 48589,
+          "svg_sha256": "77e2ccf018f7591fd326a68a9dd84cab4310f6c0be67f5854ec2e3770f876bb5",
+          "svg_bytes": 98912,
+          "svg_elements": 1252
+        },
+        "rejected": {
+          "configured_iterations": 59046,
+          "source_sha256": "5e3096f06561b6810b341dfd1b2ef00646f2023633064731a61bc25eeda1427b",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000001,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "configured_iterations": 59047,
+          "source_sha256": "d02a0b2417c4151794fff7b9a9600861bb5327d802d4208a91a25c3f9c590e71",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 15000255,
+            "max": 15000000,
+            "profile": "trusted-native",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "processes": [
+        {
+          "name": "full-1",
+          "elapsed_seconds": 42.62902230000327,
+          "peak_working_set_bytes": 55713792,
+          "report_sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8",
+          "report_bytes": 41134,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-2",
+          "elapsed_seconds": 41.934899799998675,
+          "peak_working_set_bytes": 55640064,
+          "report_sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8",
+          "report_bytes": 41134,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-3",
+          "elapsed_seconds": 42.289123099999415,
+          "peak_working_set_bytes": 55341056,
+          "report_sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8",
+          "report_bytes": 41134,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-4",
+          "elapsed_seconds": 42.637717699999484,
+          "peak_working_set_bytes": 55689216,
+          "report_sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8",
+          "report_bytes": 41134,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "full-5",
+          "elapsed_seconds": 25.52375319999919,
+          "peak_working_set_bytes": 55554048,
+          "report_sha256": "3c213d31a257d9a8f176a0398d3cee9d6581510aed09ca0859b23e4f574fa3e8",
+          "report_bytes": 41134,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-semantic",
+          "elapsed_seconds": 10.858012300002883,
+          "peak_working_set_bytes": 39464960,
+          "report_sha256": "dd28f89db48898cc6e0c467d1dbd145b070424277b7de54615cab9f0413858bc",
+          "report_bytes": 1826,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-layout",
+          "elapsed_seconds": 11.396603900000628,
+          "peak_working_set_bytes": 43376640,
+          "report_sha256": "8e87a459588db13734dc66119f78cd697f6cccafc3b6733a30019b430e6d5528",
+          "report_bytes": 1884,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-svg",
+          "elapsed_seconds": 11.583146999997552,
+          "peak_working_set_bytes": 43233280,
+          "report_sha256": "b43efd0d1af2dc7ded2db6d85bac30435c1ef1c49b10d101683021042e53d904",
+          "report_bytes": 1923,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-end-to-end",
+          "elapsed_seconds": 11.548184999999648,
+          "peak_working_set_bytes": 43065344,
+          "report_sha256": "edd9718b036df305540baad2e8a1559dc0da758c3053ef278e6ef15cb8d4fe45",
+          "report_bytes": 1930,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "cardinality-968",
+          "elapsed_seconds": 11.957937099999981,
+          "peak_working_set_bytes": 42901504,
+          "report_sha256": "adfe15e3b2e6b52e4ecaeb48c93c6b7493abd57752be5535a444b92cf79c0a96",
+          "report_bytes": 1868,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "cardinality-969",
+          "elapsed_seconds": 11.854099300002417,
+          "peak_working_set_bytes": 42487808,
+          "report_sha256": "c0064b011eaa62da9f008a448bf2bdfdba6fdda79841c46fb1172d0cd5b75f94",
+          "report_bytes": 1930,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "name": "max-w-minus-one",
+          "elapsed_seconds": 11.778546400000778,
+          "peak_working_set_bytes": 42786816,
+          "report_sha256": "8721415f8c057759eb24cbfca14ca7fa1116d3c07854dfe4da4edcdbafac26ee",
+          "report_bytes": 2174,
+          "timing_format": "windows-peak-working-set",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ]
+    }
+  },
+  "source_revision": {
+    "git_revision": "b22bc723a10373356f5b1051057cc9ce98388778",
+    "git_tree": "646bf2a9f4a2530bf7138e617f0b8e505705a215",
+    "tracked_worktree_clean": true
+  },
+  "inputs": {
+    "git_revision": "b22bc723a10373356f5b1051057cc9ce98388778",
+    "tracked_worktree_clean": true,
+    "owned_inputs_tracked": true,
+    "postflight_identical": true,
+    "cargo_lock_sha256": "d6f4a4d87ddb5edbf4599ba1ffe0ba3f1bade3edd5a32103bb4f93a1a7957198",
+    "cargo_manifest_sha256": "1057ea88f903ed7884a368a2976cefac7b3a7c70ead382298fb0d038ae0900b3",
+    "corpus_manifest_sha256": "a0a806027f65d9702f52bdffb61ae4aba6fd83ad79f1b8dfb92b8e05dd20fdff",
+    "calibration_source_sha256": "077f41611c92e203922632ca62250a372a94b9e90d47b0e97d9016482b491bf3",
+    "executable_path": "target/release/examples/layout_work_calibration.exe",
+    "executable_sha256": "02cfcea0cb1b186d4af617c21ee5a4b15d5f4f756bc57ab9a7b00f82cf7597cd",
+    "build_profile": "release",
+    "target_os": "windows",
+    "target_arch": "x86_64",
+    "enabled_features": [
+      "svg",
+      "layout-cytoscape",
+      "layout-elk",
+      "math",
+      "complete-svg",
+      "complete-svg-elk"
+    ],
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "runner": {
+    "path": "tools/bench/run_layout_work_calibration.py",
+    "sha256": "2ef7cace99ad6905b44b713b4f556157729ef951f658125a5ad4415b1d67c709",
+    "python": "3.13.11 (tags/v3.13.11:6278944, Dec  5 2025, 16:26:58) [MSC v.1944 64 bit (AMD64)]",
+    "test_source": {
+      "path": "tools/bench/test_layout_work_calibration.py",
+      "bytes": 14121,
+      "sha256": "a0c836938122d75f657f4a8dcc47e4636ea88fca18809c16193f1d70e1347271"
+    },
+    "test_command": "python -m unittest tools.bench.test_layout_work_calibration",
+    "test_count": 14,
+    "test_exit_code": 0
+  },
+  "verification": {
+    "rustdoc_class_flowchart_elk": 41,
+    "rustdoc_svg_only": 22,
+    "doctests_each_closure": 8,
+    "cli_related": 300,
+    "new_cli_native_smoke": 2,
+    "renderer_resource_contracts": 22,
+    "binding_resource_catalog": 1,
+    "rust_calibration_contracts": 10,
+    "python_calibration_contracts": 14,
+    "python_corpus_contracts": 10,
+    "python_recipe_contracts": 22,
+    "clippy": "all affected targets with merman-render/all-diagrams; -D warnings passed",
+    "generated_resource_contract": "generated and verified",
+    "format": "cargo fmt --all -- --check passed",
+    "svg_structure_gate": {
+      "command": "cargo run --locked --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --diagnostic-browser-text-layout",
+      "exit_code": 0,
+      "finished_at": "2026-10-01T21:44:24.0747550+08:00",
+      "prerequisite": "npm ci --no-audit --no-fund; PUPPETEER_SKIP_DOWNLOAD=true",
+      "log": {
+        "path": "target/bench/experiments/issue158-native-default/svg-structure-gate-v2.log",
+        "bytes": 2351,
+        "sha256": "6da8c7f3692a96ccc6e6af8238429c1b1c63f58c445a65e832b9650bd6ccaf5d"
+      },
+      "initial_attempt": {
+        "result": {
+          "path": "target/bench/experiments/issue158-native-default/svg-structure-gate-result.json",
+          "bytes": 182,
+          "sha256": "9671b383733a413752c9c1b2cb62ec5e37672f86c2e2cdbdd2fb19d714f0db5c"
+        },
+        "reason": "Six math fixtures lacked the optional Node KaTeX provider because tools/mermaid-cli/node_modules was absent. Installing pinned npm dependencies resolved the prerequisite; no baseline or comparator changes."
+      }
+    },
+    "native_benchmark_smokes": {
+      "build_and_first_run": {
+        "command": "cargo bench --locked -p merman --features complete-svg-elk --bench pipeline -- --exact end_to_end/class_nested_namespaces_large --test",
+        "exit_code": 0,
+        "finished_at": "2026-10-01T21:44:55.9002923+08:00"
+      },
+      "executable": {
+        "path": "target/release/deps/pipeline-2afd13f0c2edaedf.exe",
+        "bytes": 31997440,
+        "sha256": "876fe5e52693598ea84071ccf114b64a1a0b92ea9b9b9a5327fd101a1c38c92c"
+      },
+      "summary": {
+        "path": "target/bench/experiments/issue158-native-default/benchmark-smokes.json",
+        "bytes": 2255,
+        "sha256": "fe27948081183c600c9dfda333212fbdc445a59292cf31ef76c50830570883dc"
+      },
+      "runs": [
+        {
+          "benchmark": "layout/class_nested_namespaces",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "layout/class_nested_namespaces",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-layout-class_nested_namespaces.log",
+            "bytes": 388,
+            "sha256": "21732768569ba9167eab5c57b38ed6fd7f0f27e213b71b9826557349095b1be3"
+          }
+        },
+        {
+          "benchmark": "layout/class_nested_namespaces_large",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "layout/class_nested_namespaces_large",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-layout-class_nested_namespaces_large.log",
+            "bytes": 407,
+            "sha256": "bf4c87d7421f155aadbb056d0bb683c6855195631eb0d30767d3e5c45c386623"
+          }
+        },
+        {
+          "benchmark": "render/class_nested_namespaces",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "render/class_nested_namespaces",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-render-class_nested_namespaces.log",
+            "bytes": 375,
+            "sha256": "5ad82fb5b3bfdb3bfda5fb83da33222625cd8567dea5169492318a4b796215ea"
+          }
+        },
+        {
+          "benchmark": "render/class_nested_namespaces_large",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "render/class_nested_namespaces_large",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-render-class_nested_namespaces_large.log",
+            "bytes": 395,
+            "sha256": "a7ee0422c1f6f083bf22e5c9ce32fab06ed9e382540c8cbc5ca030a7e546419d"
+          }
+        },
+        {
+          "benchmark": "end_to_end/class_nested_namespaces",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "end_to_end/class_nested_namespaces",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-end_to_end-class_nested_namespaces.log",
+            "bytes": 387,
+            "sha256": "779bd637d266e9acb361271ea918083b98cc04baf585b5440fb41c84b561e298"
+          }
+        },
+        {
+          "benchmark": "end_to_end/class_nested_namespaces_large",
+          "command": [
+            "target\\release\\deps\\pipeline-2afd13f0c2edaedf.exe",
+            "--exact",
+            "end_to_end/class_nested_namespaces_large",
+            "--test"
+          ],
+          "exit_code": 0,
+          "log": {
+            "path": "target/bench/experiments/issue158-native-default/benchmark-smoke-end_to_end-class_nested_namespaces_large.log",
+            "bytes": 407,
+            "sha256": "d75650ff3606abde38c1750ad1895b70089acef49578955672704ee57575080f"
+          }
+        }
+      ],
+      "claim": "Smoke and preflight/postflight identity only; not timed Criterion samples."
+    },
+    "deferred": {
+      "owner": "repository CI",
+      "scope": "Other operating systems and full feature/platform matrices; the local changed-surface checks ran on Windows."
+    }
+  },
+  "batch_controls": {
+    "sample_count": 34,
+    "a_a_pairs": 8,
+    "a_b_pairs": 8,
+    "warmups": 2,
+    "all_successful": true,
+    "svg_count_each": 69,
+    "output_set_count": 1,
+    "output_set_sha256": "886230796d52da36bc0ea63f6db17f4792dc867cf489fe8d66d0d94295c38f95",
+    "old_limit_median_seconds": 20.6388605000011,
+    "new_limit_median_seconds": 19.162561400000413,
+    "paired_ratios": [
+      0.9597285433940221,
+      1.0275882217993821,
+      0.6197857109473779,
+      0.9272285418014864,
+      0.9025924688407583,
+      0.9816734577080674,
+      0.9763672034393094,
+      1.0633374329277472
+    ],
+    "paired_ratio_median": 0.9680478734166658,
+    "old_limit_peak_working_set_bytes": 30679040,
+    "new_limit_peak_working_set_bytes": 28770304,
+    "claim": "completion and identical output established; clocks descriptive only, no renderer-throughput or speedup claim",
+    "timing_limitations": [
+      "end-to-end transaction publication and gated Python launcher included",
+      "host/I-O timing shifted between control and comparison phases",
+      "no formal timing admission or power calculation used for this resource-policy decision"
+    ],
+    "command_pattern": "merman-cli batch batch-controls.md --output-dir <fresh-directory> --jobs 8 --format svg --theme default --resource-profile trusted-native --resource-limit max_layout_work_units=<1000000|15000000> --operation-timeout-ms 30000 --quiet",
+    "outer_timeout_seconds": 60,
+    "artifacts": [
+      {
+        "path": "target/bench/experiments/issue158-native-default/batch_controls.py",
+        "bytes": 2848,
+        "sha256": "41fa883ef620cbef3718c04675de0884eeb6a356d35cf7725138e3a759089ef9"
+      },
+      {
+        "path": "target/bench/experiments/issue158-native-default/batch-controls.md",
+        "bytes": 36952,
+        "sha256": "097bf58c548b165e6a20625f3a1f10869322ae04cc7a989cfae74d12eea81204"
+      },
+      {
+        "path": "target/bench/experiments/issue158-native-default/batch-observations.json",
+        "bytes": 14063,
+        "sha256": "73258b96aaf467fada3d1254d82d6c32ecad114e47da214d4cf63fbc1f35b4e6"
+      },
+      {
+        "path": "target/bench/experiments/issue158-native-default/batch-summary.json",
+        "bytes": 1414,
+        "sha256": "2a91a22257840cc61aac9af1846a5e15069ad8fa6d36bad71bc3cc6118633ae0"
+      }
+    ]
+  },
+  "current_source_cli_formats": {
+    "build_command": "cargo build --locked --release -p merman-cli -p xtask --bins --jobs 2",
+    "binary_sha256": "aef10a46fbc75b4b18a5a5f81cffd49c73aaef35b8f80e97fe1ce5026e7a8f7b",
+    "source_sha256": "5087c67ad68a522a7eee78109b201dbfa8c09ed1959acf148aa26cb8820dd0c5",
+    "resource_policy": "Default trusted-native for SVG/PNG/JPEG/PDF; the additional PDF run has an explicit max_layout_work_units=20000000 override.",
+    "raw": {
+      "path": "target/bench/experiments/issue158-native-default/current-cli-formats.json",
+      "bytes": 4307,
+      "sha256": "c8cae6711d7cad865bbbd6a73519e3729906678074f025f52f12d7901122e6d2"
+    },
+    "runs": [
+      {
+        "name": "svg",
+        "returncode": 0,
+        "timed_out": false,
+        "output_bytes": 85764,
+        "output_sha256": "ed3ae7cf979d5d637b8a46c2cb39103ba725fd1f72fb3ab8cddba27267ad1a40"
+      },
+      {
+        "name": "png",
+        "returncode": 0,
+        "timed_out": false,
+        "output_bytes": 30659,
+        "output_sha256": "0a1b033d9b1a541e66117abbe1883e395646c4a30629aafcf1db2f8bd26319ed"
+      },
+      {
+        "name": "jpg",
+        "returncode": 0,
+        "timed_out": false,
+        "output_bytes": 213011,
+        "output_sha256": "83bdde216eccea9fa2f327f46b016a700881a1f65af198a55a8407ffa95f4753"
+      },
+      {
+        "name": "pdf",
+        "returncode": 0,
+        "timed_out": false,
+        "output_bytes": 332269,
+        "output_sha256": "907a4dba39648199bc3a295a0aa4fdbdb39c2cca1ce7e972a520699a0bf664c9"
+      },
+      {
+        "name": "pdf-20m",
+        "returncode": 0,
+        "timed_out": false,
+        "output_bytes": 332269,
+        "output_sha256": "907a4dba39648199bc3a295a0aa4fdbdb39c2cca1ce7e972a520699a0bf664c9"
+      }
+    ]
+  }
+}

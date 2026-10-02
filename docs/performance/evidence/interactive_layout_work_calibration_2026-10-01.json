@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "evidence_class": "resource-policy-calibration",
+  "decision": "accepted-structural",
+  "authoritative_date": "2026-10-01",
+  "source_revision": "740755137eff8c7db54550151663072bed7a0ffa",
+  "policy": {
+    "profile": "interactive",
+    "max_layout_work_units": 14100000,
+    "other_profile_values_unchanged": true
+  },
+  "corpus": {
+    "path": "tools/bench/corpus.json",
+    "fixture_count": 73,
+    "fixture_members_sha256": "ea4f44cddda7f366f68bbe7698b6265c555ce5307f1e16fe4c15d6c6ccc411a3"
+  },
+  "themes": [
+    {
+      "theme": "default",
+      "raw_summary": {
+        "path": "target/bench/experiments/integration-resource-policy/interactive-default/run-summary.json",
+        "bytes": 20963,
+        "sha256": "99cff9f40d6e6adccc2a0e1527398d86b486a5a5052083e18b2b73e4729767a0"
+      },
+      "full_report": {
+        "path": "target/bench/experiments/integration-resource-policy/interactive-default/full-1.json",
+        "bytes": 41116,
+        "sha256": "d1ce0157fd1824bd22ff89ea4fb5862dc5a012394f01ab65feead2504e79e4c5"
+      },
+      "full_reports_byte_identical": true,
+      "full_repeats": 5,
+      "processes": 12,
+      "maximum_work": 12759734,
+      "maximum_fixture": "class_nested_namespaces_large",
+      "headroom_units": 1340266,
+      "headroom_percent": 10.503871005461399,
+      "headroom_policy": {
+        "minimum_headroom_units": 100000,
+        "minimum_headroom_percent": 10.0,
+        "ceiling_rounding_quantum": 100000,
+        "calculated_minimum_ceiling": 14100000
+      },
+      "exact_limit_check": {
+        "fixture": "class_nested_namespaces_large",
+        "observed_layout_work_units": 12759734,
+        "accepted_limit": 12759734,
+        "accepted_explicit_overrides": [
+          {
+            "id": "max_layout_work_units",
+            "value": 12759734
+          }
+        ],
+        "accepted_svg_sha256": "32930ccee420a0726acbbc9dd4a4b37a4d356a109a19b4de7a9459d188e9a567",
+        "rejected_limit": 12759733,
+        "rejection": {
+          "cause": "ceiling",
+          "phase": "layout_model",
+          "limit": "max_layout_work_units",
+          "actual": 12759734,
+          "max": 12759733,
+          "profile": "interactive",
+          "explicit_overrides": [
+            {
+              "id": "max_layout_work_units",
+              "value": 12759733
+            }
+          ]
+        }
+      },
+      "cardinality_boundary": {
+        "curve": "flowchart-linear-chain-v1",
+        "search_contract": "A deterministic N-node/N-1-edge linear Flowchart chain is rendered sequentially for every N starting at one. The first structured layout-work rejection defines the boundary without assuming monotonicity; N+1 is rerun only as a local consecutive-rejection check. The receipt claims only this registered curve and does not generalize the result to every Flowchart topology.",
+        "scan_start_nodes": 1,
+        "scanned_through_nodes": 939,
+        "accepted_prefix_count": 938,
+        "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+        "accepted_prefix_observations_sha256": "01059b0edc56f8c98651bf929417ffcd7b13dad03f26993f9ebdb0f0871e91de",
+        "accepted_prefix_work_units_non_decreasing": true,
+        "first_rejected_nodes": 939,
+        "accepted": {
+          "nodes": 938,
+          "edges": 937,
+          "source_sha256": "57f17e2712c16584500c833c621aa7f5e8b150c13e31d3d025e01acebb1ef6af",
+          "source_bytes": 32389,
+          "layout_work_units": 14084120,
+          "svg_sha256": "8cb4912bdcdc9833cfb8dc1b960f5bf369cf7d02b01573dab137794590ad234e",
+          "svg_bytes": 918573,
+          "svg_elements": 8479
+        },
+        "rejected": {
+          "nodes": 939,
+          "edges": 938,
+          "source_sha256": "d8b017dd6cc6d40c8f782d3a170f6bbeaae869644a5b301ac5485421dd550fc3",
+          "source_bytes": 32424,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100089,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "nodes": 940,
+          "edges": 939,
+          "source_sha256": "4b6a35f660b1d19eeaa08d660a4d80f942f46f425c6a779d1afb0c8d56243abf",
+          "source_bytes": 32459,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14103846,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "configuration_boundary": {
+        "curve": "architecture-num-iter-v1",
+        "search_contract": "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
+        "fixed_nodes": 32,
+        "fixed_edges": 31,
+        "minimum_effective_iterations": 160,
+        "first_rejected_iterations": 55503,
+        "accepted": {
+          "configured_iterations": 55502,
+          "source_sha256": "9c922cd9bb2110917f4ebca0b241a543568cd18ce1ec61dbe3bc0d54fa2e2387",
+          "source_bytes": 1578,
+          "layout_work_units": 48589,
+          "svg_sha256": "6ff10fb77ea4ce65cc4233cbd21f8492cbbcab7620132579c04b113fcee8a327",
+          "svg_bytes": 98846,
+          "svg_elements": 1252
+        },
+        "rejected": {
+          "configured_iterations": 55503,
+          "source_sha256": "75487aa378437115d6530fb191f8c38a5fbb4a63425d4b7475eae11bfe7028f3",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100079,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "configured_iterations": 55504,
+          "source_sha256": "676e01fcbbd6b70d9bbc163a367e712cf5d326783110561c485e0e3a478d3ccc",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100333,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "full_elapsed_seconds": [
+        24.529841000003216,
+        24.54776230000425,
+        24.393979400003445,
+        24.534817500003555,
+        24.396128299995326
+      ],
+      "full_peak_working_set_bytes": [
+        55549952,
+        56004608,
+        56328192,
+        55836672,
+        55656448
+      ]
+    },
+    {
+      "theme": "dark",
+      "raw_summary": {
+        "path": "target/bench/experiments/integration-resource-policy/interactive-dark/run-summary.json",
+        "bytes": 20770,
+        "sha256": "15f59317535dec1bb9fdd7a122e9cab5f3511d5d8ece18099d1d547f6353fa8c"
+      },
+      "full_report": {
+        "path": "target/bench/experiments/integration-resource-policy/interactive-dark/full-1.json",
+        "bytes": 41115,
+        "sha256": "a6a45f250c2fe1d0acd56c1836bd1f462f2a526fdb6fbeb7be760c1bc4b9840a"
+      },
+      "full_reports_byte_identical": true,
+      "full_repeats": 5,
+      "processes": 12,
+      "maximum_work": 12759734,
+      "maximum_fixture": "class_nested_namespaces_large",
+      "headroom_units": 1340266,
+      "headroom_percent": 10.503871005461399,
+      "headroom_policy": {
+        "minimum_headroom_units": 100000,
+        "minimum_headroom_percent": 10.0,
+        "ceiling_rounding_quantum": 100000,
+        "calculated_minimum_ceiling": 14100000
+      },
+      "exact_limit_check": {
+        "fixture": "class_nested_namespaces_large",
+        "observed_layout_work_units": 12759734,
+        "accepted_limit": 12759734,
+        "accepted_explicit_overrides": [
+          {
+            "id": "max_layout_work_units",
+            "value": 12759734
+          }
+        ],
+        "accepted_svg_sha256": "e9b93ac5747439d9584bbf4ce6887953e6b3c2e4981d99da925e666a53723660",
+        "rejected_limit": 12759733,
+        "rejection": {
+          "cause": "ceiling",
+          "phase": "layout_model",
+          "limit": "max_layout_work_units",
+          "actual": 12759734,
+          "max": 12759733,
+          "profile": "interactive",
+          "explicit_overrides": [
+            {
+              "id": "max_layout_work_units",
+              "value": 12759733
+            }
+          ]
+        }
+      },
+      "cardinality_boundary": {
+        "curve": "flowchart-linear-chain-v1",
+        "search_contract": "A deterministic N-node/N-1-edge linear Flowchart chain is rendered sequentially for every N starting at one. The first structured layout-work rejection defines the boundary without assuming monotonicity; N+1 is rerun only as a local consecutive-rejection check. The receipt claims only this registered curve and does not generalize the result to every Flowchart topology.",
+        "scan_start_nodes": 1,
+        "scanned_through_nodes": 939,
+        "accepted_prefix_count": 938,
+        "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+        "accepted_prefix_observations_sha256": "01059b0edc56f8c98651bf929417ffcd7b13dad03f26993f9ebdb0f0871e91de",
+        "accepted_prefix_work_units_non_decreasing": true,
+        "first_rejected_nodes": 939,
+        "accepted": {
+          "nodes": 938,
+          "edges": 937,
+          "source_sha256": "57f17e2712c16584500c833c621aa7f5e8b150c13e31d3d025e01acebb1ef6af",
+          "source_bytes": 32389,
+          "layout_work_units": 14084120,
+          "svg_sha256": "4e21d6be41aea86e39eb70fad3dc54260aff1fdb82fa64d9c81e8955703ae185",
+          "svg_bytes": 919056,
+          "svg_elements": 8482
+        },
+        "rejected": {
+          "nodes": 939,
+          "edges": 938,
+          "source_sha256": "d8b017dd6cc6d40c8f782d3a170f6bbeaae869644a5b301ac5485421dd550fc3",
+          "source_bytes": 32424,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100089,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "nodes": 940,
+          "edges": 939,
+          "source_sha256": "4b6a35f660b1d19eeaa08d660a4d80f942f46f425c6a779d1afb0c8d56243abf",
+          "source_bytes": 32459,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14103846,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "configuration_boundary": {
+        "curve": "architecture-num-iter-v1",
+        "search_contract": "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
+        "fixed_nodes": 32,
+        "fixed_edges": 31,
+        "minimum_effective_iterations": 160,
+        "first_rejected_iterations": 55503,
+        "accepted": {
+          "configured_iterations": 55502,
+          "source_sha256": "9c922cd9bb2110917f4ebca0b241a543568cd18ce1ec61dbe3bc0d54fa2e2387",
+          "source_bytes": 1578,
+          "layout_work_units": 48589,
+          "svg_sha256": "77e2ccf018f7591fd326a68a9dd84cab4310f6c0be67f5854ec2e3770f876bb5",
+          "svg_bytes": 98912,
+          "svg_elements": 1252
+        },
+        "rejected": {
+          "configured_iterations": 55503,
+          "source_sha256": "75487aa378437115d6530fb191f8c38a5fbb4a63425d4b7475eae11bfe7028f3",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100079,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        },
+        "next_rejected": {
+          "configured_iterations": 55504,
+          "source_sha256": "676e01fcbbd6b70d9bbc163a367e712cf5d326783110561c485e0e3a478d3ccc",
+          "source_bytes": 1578,
+          "rejection": {
+            "cause": "ceiling",
+            "phase": "layout_model",
+            "limit": "max_layout_work_units",
+            "actual": 14100333,
+            "max": 14100000,
+            "profile": "interactive",
+            "explicit_overrides": []
+          }
+        }
+      },
+      "full_elapsed_seconds": [
+        24.490932699998666,
+        24.348971400002483,
+        24.534624100000656,
+        24.343134100003226,
+        24.223983800002316
+      ],
+      "full_peak_working_set_bytes": [
+        56094720,
+        55980032,
+        54689792,
+        55951360,
+        55074816
+      ]
+    }
+  ],
+  "exploratory_layout_memory": {
+    "manifest": {
+      "path": "target/bench/experiments/integration-resource-policy/layout-memory-observations.json",
+      "bytes": 197718,
+      "sha256": "8ee97dd3006987ecde039941331212b46458825e69cc44e87e7f30fd42ec632b"
+    },
+    "long_rank": {
+      "path": "target/bench/experiments/integration-resource-policy/layout-memory-long-ranks.json",
+      "bytes": 5208,
+      "sha256": "43aed0b74e1acbb6c14054467577963ff738ae0865953c388bb95e60021c75c8"
+    },
+    "probe_identity": {
+      "path": "target/bench/experiments/integration-resource-policy/layout-probe-identity.json",
+      "bytes": 600,
+      "sha256": "3e14ff37a0e1648b42abf2f9adb98e58489fb96261fd425592512e978d0b9ec3"
+    },
+    "process_count": 112,
+    "accepted_layouts": 100,
+    "typed_work_rejections": 12,
+    "maximum_peak_growth_bytes": 898171041,
+    "maximum_case": "dagre-long-ranks-n1024",
+    "measurement": "allocator-requested live bytes, not RSS; includes rejected operations; no memory-bound claim",
+    "linear_model_status": "rejected"
+  },
+  "cli_scheduling": {
+    "interactive_pool_bytes": 1073741824,
+    "interactive_default_graphical_weight_bytes": 970360832,
+    "trusted_native_pool_bytes": 2147483648,
+    "trusted_native_default_graphical_weight_bytes": 1347792896,
+    "constrained_pool_bytes": 603979776,
+    "coefficient_bytes_per_work_unit": 64,
+    "claim": "conservative admission weight, not measured RSS; one default backend fits each finite profile pool"
+  },
+  "verification": {
+    "render_operation_tests": 26,
+    "zed_and_theme_tests": 24,
+    "cli_related_tests": 302,
+    "resource_rustdoc_target_tests": 54,
+    "catalog_rustdoc_integration_tests": 2,
+    "svg_structure_gate": "passed",
+    "clippy": "passed affected targets with warnings denied",
+    "format": "passed",
+    "preview_example": "normal and explicit cancellation passed",
+    "strict_verify": "not claimed; broad unrelated workspace/release/browser gates remain CI-owned"
+  }
+}

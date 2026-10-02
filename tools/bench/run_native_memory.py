@@ -660,9 +660,9 @@ def run_probe(
     try:
         result = subprocess.run(
             [str(executable)],
-            input=request_line,
+            # Binary pipes preserve the protocol's UTF-8 and LF framing on Windows.
+            input=request_line.encode("utf-8"),
             capture_output=True,
-            text=True,
             timeout=timeout_seconds,
             check=False,
         )
@@ -670,10 +670,15 @@ def run_probe(
         raise DriverContractError(
             f"native-memory subprocess timed out for {request['invocation_id']}"
         ) from error
+    try:
+        stdout = result.stdout.decode("utf-8")
+        stderr = result.stderr.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise DriverContractError("native-memory subprocess output is not UTF-8") from error
     if result.returncode != 0:
         raise DriverContractError(
             f"native-memory subprocess exited {result.returncode} for "
-            f"{request['invocation_id']}: {result.stdout[-1_000:]}"
+            f"{request['invocation_id']}: {stdout[-1_000:]}"
         )
     semantic_contract: Mapping[str, object] | None = None
     workload_units_per_scale: int | None = None
@@ -692,8 +697,8 @@ def run_probe(
 
     try:
         response = validate_response(
-            result.stdout,
-            result.stderr,
+            stdout,
+            stderr,
             expected=_expected_echo(
                 request,
                 executable_sha256=executable_sha256,

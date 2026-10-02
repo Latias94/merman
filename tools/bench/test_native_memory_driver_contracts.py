@@ -680,8 +680,8 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         valid = elk_hierarchy_response_for(request)
         completed = SimpleNamespace(
             returncode=0,
-            stdout=json.dumps(valid) + "\n",
-            stderr="",
+            stdout=(json.dumps(valid) + "\n").encode("utf-8"),
+            stderr=b"",
         )
         with mock.patch.object(subprocess, "run", return_value=completed):
             response = run_native_memory.run_probe(
@@ -721,7 +721,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         for mutate, message in mutations:
             payload = elk_hierarchy_response_for(request)
             mutate(payload)
-            completed.stdout = json.dumps(payload) + "\n"
+            completed.stdout = (json.dumps(payload) + "\n").encode("utf-8")
             with self.subTest(message=message), mock.patch.object(
                 subprocess, "run", return_value=completed
             ), self.assertRaisesRegex(run_native_memory.DriverContractError, message):
@@ -751,8 +751,8 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         payload = binding_response_for(request)
         completed = SimpleNamespace(
             returncode=0,
-            stdout=json.dumps(payload) + "\n",
-            stderr="",
+            stdout=(json.dumps(payload) + "\n").encode("utf-8"),
+            stderr=b"",
         )
 
         with mock.patch.object(subprocess, "run", return_value=completed):
@@ -767,7 +767,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(response["workload_units"], request["scale"])
 
         payload["semantic_output"]["result_data_bytes"] = True
-        completed.stdout = json.dumps(payload) + "\n"
+        completed.stdout = (json.dumps(payload) + "\n").encode("utf-8")
         with mock.patch.object(subprocess, "run", return_value=completed), self.assertRaisesRegex(
             run_native_memory.DriverContractError,
             "semantic output",
@@ -854,11 +854,11 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         payload = response_for(request)
         completed = SimpleNamespace(
             returncode=0,
-            stdout=json.dumps(payload) + "\n",
-            stderr="",
+            stdout=(json.dumps(payload) + "\n").encode("utf-8"),
+            stderr=b"",
         )
 
-        with mock.patch.object(subprocess, "run", return_value=completed):
+        with mock.patch.object(subprocess, "run", return_value=completed) as run:
             response = run_native_memory.run_probe(
                 Path("/tmp/native-memory"),
                 request,
@@ -868,9 +868,15 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
                 timeout_seconds=30,
             )
         self.assertEqual(response["input_nodes"], 3)
+        transmitted = run.call_args.kwargs["input"]
+        self.assertIsInstance(transmitted, bytes)
+        self.assertTrue(transmitted.endswith(b"\n"))
+        self.assertNotIn(b"\r", transmitted)
+        self.assertEqual(json.loads(transmitted), request)
+        self.assertFalse(run.call_args.kwargs.get("text", False))
 
         payload["input_nodes"] = 4
-        completed.stdout = json.dumps(payload) + "\n"
+        completed.stdout = (json.dumps(payload) + "\n").encode("utf-8")
         with mock.patch.object(subprocess, "run", return_value=completed), self.assertRaisesRegex(
             run_native_memory.DriverContractError, "dimensions"
         ):
@@ -885,7 +891,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
 
         payload = response_for(request)
         payload["engine_lifecycle"] = "cold-engine"
-        completed.stdout = json.dumps(payload) + "\n"
+        completed.stdout = (json.dumps(payload) + "\n").encode("utf-8")
         with mock.patch.object(subprocess, "run", return_value=completed), self.assertRaisesRegex(
             run_native_memory.DriverContractError, "echo drift"
         ):
@@ -908,16 +914,22 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )[0]["request"]
         payload = response_for(request)
         cases = (
-            SimpleNamespace(returncode=137, stdout="", stderr=""),
+            SimpleNamespace(returncode=137, stdout=b"", stderr=b""),
+            SimpleNamespace(returncode=0, stdout=b"\xff\n", stderr=b""),
             SimpleNamespace(
                 returncode=0,
-                stdout=json.dumps(payload) + "\n",
-                stderr="warning\n",
+                stdout=(json.dumps(payload) + "\r\n").encode("utf-8"),
+                stderr=b"",
             ),
             SimpleNamespace(
                 returncode=0,
-                stdout=json.dumps(payload) + "\n{}\n",
-                stderr="",
+                stdout=(json.dumps(payload) + "\n").encode("utf-8"),
+                stderr=b"warning\n",
+            ),
+            SimpleNamespace(
+                returncode=0,
+                stdout=(json.dumps(payload) + "\n{}\n").encode("utf-8"),
+                stderr=b"",
             ),
         )
         for completed in cases:

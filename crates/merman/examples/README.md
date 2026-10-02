@@ -13,6 +13,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Your task | Start with | Why |
 | --- | --- | --- |
 | Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses `Renderer` with a typed `SvgRequest` and keeps the operation boundary explicit. |
+| Run a cancellable background preview | [`render_cancellable.rs`](render_cancellable.rs) | Keeps a host control handle and starts the deadline when the worker executes. |
 | Measure with an installed monospace font | [`render_svg_monospace.rs`](render_svg_monospace.rs) | Selects a system monospace face and shapes complete wrapping candidates with Rustybuzz. |
 | Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses typed SVG requests with caller-owned IDs that remain unique after normalization. |
 | Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `Renderer` across operations. |

@@ -8,6 +8,8 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 > This guide and its dependency examples target `0.8.0-alpha.7`. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6; use its tagged documentation when maintaining an older dependency.
 
+> The offline resource defaults and resource-budget options documented below require this source checkout or a later release. Published `0.8.0-alpha.7` uses the interactive 800,000-unit budget and does not expose these options.
+
 ## Quick Start
 
 Keep the renderer out of ordinary builds by making it an optional documentation dependency:
@@ -240,6 +242,8 @@ pub fn configured() {}
 | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 | `background` | A CSS background color | `transparent` | Set the root SVG background independently of Mermaid theme configuration. |
 | `id_prefix` | A nonempty string of ASCII letters, digits, `-`, or `_` | Automatic namespace | Add an explicit namespace for generated documentation with overlapping source locations. |
+| `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `trusted-native` | Select the input, model, layout, and SVG resource policy. |
+| `max_layout_work_units` | Positive integer literal | Selected profile's limit | Override only the layout work budget for each diagram and theme variant. |
 
 `theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
 
@@ -331,6 +335,45 @@ supply distinct `id_prefix` values in the generated branches. The same explicit 
 applies to identical generated methods whose outer calls have the same line and column in
 different files. Stable procedural macros do not expose every outer expansion context; no
 process-global counter is used to disguise this boundary.
+
+## Resource Budgets
+
+Rustdoc uses the `trusted-native` profile for offline documentation builds, matching the CLI's
+local-file workflow. It allows 15,000,000 layout work units per diagram and theme variant while
+retaining finite source, model, nesting, and SVG limits. Ordinary documentation needs no budget
+configuration. The general library and Web defaults remain `interactive` (14,100,000 units).
+
+Work units measure deterministic admission work, not milliseconds, bytes, or a Mermaid syntax
+limit. Alpha.7 selects ELK for Class and other supported families when compiled in; nested
+namespaces can require more work than the former Dagre default. The native budget is calibrated
+against the registered corpus and nested-Class controls, rather than source lines or node count.
+
+For an exceptional trusted diagram, increase only the budget named by the diagnostic:
+
+```rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(max_layout_work_units = 20_000_000)
+)]
+/// include_mmd!("docs/diagrams/architecture.mmd")
+pub fn architecture() {}
+```
+
+The integer must be positive and fit the build host's `usize`; quoted numbers, expressions,
+and zero are rejected. The example value is not a guarantee for every diagram. A resource
+error's `actual` value identifies the charge that was rejected, not the total budget a successful
+render would need. Each diagram and each light/dark variant receives its own budget.
+
+Use `resource_profile = "interactive"` or `"constrained"` when intentionally tightening the broader
+input/model/output policy for a restricted build environment. `unbounded-for-trusted-input`
+explicitly removes policy ceilings for trusted documentation; hard implementation guards remain.
+An explicit `max_layout_work_units` applies after the selected profile, including the unbounded
+profile. Choose a finite override when only one budget needs to change.
+
+Both options follow `scope = "tree"` inheritance. A child overrides only the fields it supplies;
+changing its profile preserves an inherited explicit layout limit. `inherit = "off"` resets both
+to defaults before applying local options. Mermaid frontmatter and init directives cannot override
+these host limits, and the attribute macro does not read `merman-rustdoc.toml`.
 
 ## Supported Inputs
 

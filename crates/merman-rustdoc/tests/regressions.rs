@@ -271,6 +271,95 @@ pub mod inherited {
     }
 }
 
+#[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
+#[test]
+fn rustdoc_layout_budgets_are_configurable_inherited_and_per_diagram() {
+    let temp = TempDir::new();
+    let diagram = include_str!("fixtures/class_nested_namespaces.mmd");
+    let documentation = format!("```mermaid\n{diagram}\n```");
+    let default_output = rustdoc(
+        &temp.0,
+        &format!(
+            "#[merman_rustdoc::merman]\n#[doc = {documentation:?}]\npub fn default_budget() {{}}"
+        ),
+    );
+    assert_success(&default_output);
+    let default_html = read_page(&temp.0, "fn.default_budget.html");
+    assert_eq!(diagram_svgs(&default_html).len(), 2);
+
+    let strict_output = rustdoc(
+        &temp.0,
+        &format!(
+            "#[merman_rustdoc::merman(resource_profile = \"interactive\", max_layout_work_units = 800_000)]\n#[doc = {documentation:?}]\npub fn strict_budget() {{}}"
+        ),
+    );
+    assert!(!strict_output.status.success());
+    let stderr = String::from_utf8_lossy(&strict_output.stderr);
+    assert!(stderr.contains("max_layout_work_units"), "{stderr}");
+
+    let repeated_documentation = format!("{documentation}\n\n{documentation}");
+    let output = rustdoc(
+        &temp.0,
+        &format!(
+            r#"
+#[merman_rustdoc::merman(scope = "tree", resource_profile = "interactive", max_layout_work_units = 2_000_000)]
+pub mod resource_options {{
+    pub mod nested {{
+        #[doc = {repeated_documentation:?}]
+        pub fn inherited_budget() {{}}
+    }}
+
+    #[merman_rustdoc::merman(resource_profile = "constrained")]
+    #[doc = {documentation:?}]
+    pub fn inherited_limit_with_local_profile() {{}}
+
+    #[merman_rustdoc::merman(max_layout_work_units = 1, fail = "keep-source")]
+    #[doc = {documentation:?}]
+    pub fn local_limit() {{}}
+
+    #[merman_rustdoc::merman(inherit = "off", fail = "keep-source")]
+    #[doc = {documentation:?}]
+    pub fn reset_budget() {{}}
+}}
+"#,
+        ),
+    );
+    assert_success(&output);
+    let repeated = read_page(&temp.0, "resource_options/nested/fn.inherited_budget.html");
+    let svgs = diagram_svgs(&repeated);
+    assert_eq!(
+        svgs.len(),
+        4,
+        "each diagram and theme must receive its own inherited budget"
+    );
+    assert_unique_svg_ids(&svgs);
+    let local_profile = read_page(
+        &temp.0,
+        "resource_options/fn.inherited_limit_with_local_profile.html",
+    );
+    assert_eq!(
+        diagram_svgs(&local_profile).len(),
+        2,
+        "changing the resource profile must preserve the inherited explicit limit"
+    );
+    let reset = read_page(&temp.0, "resource_options/fn.reset_budget.html");
+    assert_eq!(
+        diagram_svgs(&reset).len(),
+        2,
+        "inherit=off restores offline defaults"
+    );
+    let rejected = read_page(&temp.0, "resource_options/fn.local_limit.html");
+    assert!(diagram_svgs(&rejected).is_empty());
+    assert_eq!(
+        preformatted_text(&rejected, "classDiagram")
+            .trim()
+            .lines()
+            .collect::<Vec<_>>(),
+        diagram.trim().lines().collect::<Vec<_>>(),
+        "keep-source must retain the complete rejected diagram"
+    );
+}
+
 #[test]
 fn renamed_dependency_supports_macro_generated_items_with_distinct_ids() {
     let temp = TempDir::new();
