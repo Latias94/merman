@@ -67,8 +67,8 @@ fn flowchart_duplicate_subgraph_vertex_css_updates_the_canonical_group() {
     )
     .expect("duplicate subgraph declarations should render");
 
-    assert!(rendered.contains("#010203"), "{rendered}");
-    assert!(rendered.contains("#123456"), "{rendered}");
+    assert!(rendered.contains("background-color:#010203"), "{rendered}");
+    assert!(rendered.contains("color:#123456"), "{rendered}");
 }
 
 #[test]
