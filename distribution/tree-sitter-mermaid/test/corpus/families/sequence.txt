@@ -437,3 +437,49 @@ Alice->Bob: Hello Bob
         (sequence_endpoint
           (sequence_actor_reference))
         (sequence_message_text)))))
+
+==================
+actor menu keywords as message endpoints
+==================
+
+sequenceDiagram
+Link->>Properties: message
+Details -->>Links : reply
+link Link: Help @ https://example.com
+links Links: {"Repo":"https://example.com"}
+properties Properties: {"color":"red"}
+details Details: details-1
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_message_statement
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_message_statement
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_actor_metadata_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_line_text))
+      (sequence_actor_metadata_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_line_text))
+      (sequence_actor_metadata_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_line_text))
+      (sequence_actor_metadata_statement
+        (sequence_statement_keyword)
+        (sequence_endpoint (sequence_actor_reference))
+        (sequence_line_text)))))
