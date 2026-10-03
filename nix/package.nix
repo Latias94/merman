@@ -8,7 +8,7 @@ let
   repositoryRoot = ../.;
   workspace = lib.importTOML (repositoryRoot + "/Cargo.toml");
   descriptor = builtins.fromJSON (
-    builtins.readFile (repositoryRoot + "/capabilities/artifact-profiles-v1.json")
+    builtins.readFile (repositoryRoot + "/capabilities/artifact-profiles-v2.json")
   );
   matchingProfiles = builtins.filter (candidate: candidate.id == "cli-release") descriptor.profiles;
   profile =
@@ -53,6 +53,7 @@ let
     filter = sourceFilter;
   };
 in
+assert descriptor.schema_version == 2;
 assert profile.cargo.package == "merman-cli";
 assert profile.cargo.manifest == "crates/merman-cli/Cargo.toml";
 assert profile.cargo.profile == "dist";

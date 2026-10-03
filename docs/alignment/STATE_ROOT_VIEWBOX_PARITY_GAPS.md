@@ -1,8 +1,7 @@
 # State Root ViewBox Parity Gaps
 
-This document tracks known causes and debugging workflows for `stateDiagram-v2` root viewport
-(`viewBox` + `style="max-width: ...px"`) mismatches against the upstream Mermaid `@11.16.1` SVG
-baselines.
+The historical sections below describe Mermaid 11.16.1 Dagre/root-viewport debugging.
+The current Mermaid 12 ELK measurement admission is recorded in the final section.
 
 In Mermaid `@11.16.1`, the final root viewport is derived from DOM `svg.getBBox()` plus a fixed
 padding (typically `8px`). Any geometry that survives into the final SVG tree can affect the root
@@ -131,12 +130,46 @@ Historical same-input comparison against pinned `dagre-d3-es` established that m
 cluster geometry points to **input graph construction** (node/edge sizes, label measurement, and
 insertion order), rather than the layout solver, as the likely source of root viewport drift.
 
-## Current failing fixtures (parity-root)
+## Mermaid 12 ELK measurement residuals (2026-09-26)
 
-As of 2026-02-06, the command below reports **0 mismatches** for the current state fixture set:
+The selected source is Mermaid 12.0.0 at
+`98a0945418c76238f15df2afaddbba4272656c3b`. Eleven State fixtures had path-command
+mismatches in `parity` and `parity-root`; their `structure` comparisons already passed.
+The failures represent six distinct input bodies (ignoring the header alias, comments,
+and blank lines):
 
-```sh
-cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+| Input group | Exact fixture names | Attribution evidence |
+| --- | --- | --- |
+| Parallel reverse transitions | `upstream_pkgtests_statediagram_spec_015`, `upstream_pkgtests_statediagram_v2_spec_015`, `upstream_stateDiagram_state_statements_spec` | `state_elk_subpixel_label_width_changes_route_topology`: changing the measured node label width from 120 to 120.375 restores the upstream 0.046875px port offset and its two extra bends. |
+| Quoted multiline description | `upstream_pkgtests_statediagram_spec_020`, `upstream_pkgtests_statediagram_v2_spec_020`, `upstream_stateDiagram_state_definition_with_quotes_spec`, `upstream_stateDiagram_v2_state_definition_with_quotes_spec` | `state_elk_remaining_routes_with_controlled_browser_measurements`: upstream label bounds restore every edge's command sequence and control-point count. |
+| Compound edge labels | `upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040` | `state_elk_compound_routes_with_controlled_browser_measurements`: upstream label bounds restore the three previously mismatched routes. |
+| Cross-composite transitions | `stress_state_cross_composite_transitions_007` | The remaining-routes test restores every edge's command sequence and control-point count. |
+| Long quoted multiline name | `stress_state_quoted_multiline_names_015` | The remaining-routes test restores every edge's command sequence and control-point count. |
+| Three concurrent regions | `stress_state_three_way_concurrency_013` | The remaining-routes test restores every edge's command sequence and control-point count. |
+
+All tests live in `crates/merman-render/tests/state_elk_layout_test.rs` and run the
+production family preparation, Rust ELK, and SVG emission paths. The new four-case test
+also checks its supplied measurements against the pinned SVG's `foreignObject` widths
+and heights. It does not add a fixture-aware production measurement provider.
+
+This proves the cause of the reported route-topology failures, not pixel identity.
+For example, the quoted-description graph still has a terminal port coordinate difference
+of about 0.004px with controlled text bounds. Its cause is not established by this
+experiment; the test makes no claim about exact browser
+shape bounds or coordinates. Deterministic text measurement remains the production default.
+
+The verification-only catalog `fixtures/_verification/browser-text-layout-residuals.json`
+now binds these eleven fixtures to their exact input bytes, pinned upstream SVG bytes,
+three-decimal complete local SVG signature, and only the two failing modes. `structure`
+and `strict` are not admitted. No DOM normalization, renderer, layout algorithm, or upstream
+baseline changed. New, changed, stale, or mode-mismatched residuals remain blocking.
+
+Validation: all nine State ELK integration tests pass. The command below renders 285 of
+286 selected fixtures and checks 855 DOM comparisons; 22 exact residual comparisons are
+reported diagnostically, with no remaining blockers. The existing parser-only
+`upstream_state_parser_spec` skip remains and is not evidence of render parity.
+
+```text
+cargo nextest run -p merman-render --all-features --test state_elk_layout_test --test-threads 1
+cargo run -p xtask -- compare-all-svgs --diagram state --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
 ```
-
-The previous table is intentionally removed because those gaps have been closed.

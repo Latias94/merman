@@ -13,8 +13,9 @@ Mermaid renders SVG using a browser DOM and then derives the final SVG viewport 
 - `svgElem.attr('viewBox', ...)` based on that bounding box
 - `configureSvgSize(...)` which sets `width="100%"` and `style="max-width: ...px;"` when `useMaxWidth=true`
 
-In `merman`, we aim for source-backed parity with Mermaid `@11.17.2` while staying headless (no
-browser DOM).
+In `merman`, we aim for source-backed parity with the admitted Mermaid `@12.0.0` baseline
+(recorded in ADR-0090) while the unreleased 12.1 transition is evaluated under ADR-0092. The
+implementation remains headless (no browser DOM).
 
 Historically, our DOM parity tooling (`xtask` SVG DOM signatures) ignored the root `<svg>` `viewBox`
 and `style` attributes in parity modes to reduce noise while iterating on layout and shape output.
@@ -72,7 +73,7 @@ without being noticed if they are always excluded from parity checks.
   production overrides. Exact browser movement is attributable through a schedule/release report,
   while cropping remains independently blocking.
 
-For Mermaid `@11.17.2`, Flowchart root SVG viewport calculation follows the same source-backed
+For the active Mermaid 12 baseline, Flowchart root SVG viewport calculation follows the same source-backed
 approach by including the diagram title in the headless bounding box before emitting the root
 `viewBox`. Browser measurement differences remain an artifact contract rather than a reason to
 weaken the shared comparator.

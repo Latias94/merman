@@ -753,6 +753,7 @@ mod tests {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         });
 
         let mut bottom_right = LNode::new("bottom-right", 20.0, 10.0, None);
@@ -770,6 +771,7 @@ mod tests {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         });
 
         graph.add_node_for_test(top_left);
@@ -1164,6 +1166,7 @@ mod tests {
                 label_side: None,
                 end_label_edge: None,
                 original_label_edge: None,
+                source_index: None,
             }],
             minlen: 1,
             reversed: false,

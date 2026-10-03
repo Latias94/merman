@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "State1",
-          "x": 158.0,
-          "y": 242.0,
-          "width": 216.0,
-          "height": 64.0,
+          "x": 123.23,
+          "y": 339.96,
+          "width": 136.0,
+          "height": 79.0,
           "is_cluster": false
         },
         {
           "id": "State1----note-0",
-          "x": 158.0,
-          "y": 84.0,
-          "width": 230.0,
-          "height": 102.0,
+          "x": 123.23,
+          "y": 148.5,
+          "width": 150.0,
+          "height": 135.0,
           "is_cluster": false
         },
         {
           "id": "State1----parent",
-          "x": 158.0,
-          "y": 84.0,
-          "width": 300.0,
-          "height": 152.0,
+          "x": 123.23,
+          "y": 126.0,
+          "width": 198.0,
+          "height": 228.0,
           "is_cluster": true
         }
       ],
@@ -37,20 +37,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 158.0,
-              "y": 84.0
+              "x": 123.23,
+              "y": 216.0
             },
             {
-              "x": 158.0,
-              "y": 160.0
+              "x": 123.23,
+              "y": 260.46
             },
             {
-              "x": 158.0,
-              "y": 185.0
-            },
-            {
-              "x": 158.5,
-              "y": 210.5
+              "x": 123.23,
+              "y": 300.46
             }
           ],
           "label": null,
@@ -66,18 +62,18 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 158.0,
-          "y": 84.0,
-          "width": 300.0,
-          "height": 152.0,
+          "x": 123.23,
+          "y": 126.0,
+          "width": 198.0,
+          "height": 228.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write\nnotes with . and  in them.",
           "title_label": {
-            "x": 158.0,
-            "y": 45.0,
-            "width": 200.0,
-            "height": 72.0
+            "x": 123.23,
+            "y": 33.0,
+            "width": 222.46,
+            "height": 42.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -87,10 +83,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 308.0,
-        "max_y": 274.0
+        "min_x": 24.23,
+        "min_y": 12.0,
+        "max_x": 222.23,
+        "max_y": 379.46
       }
     }
   }

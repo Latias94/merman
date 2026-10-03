@@ -186,9 +186,9 @@ Report:
 - host scope, residual risk, and remaining optimization frontier.
 
 Update `docs/performance/PERF_PLAN.md` only for durable priorities or unresolved regressions.
-Update `docs/performance/RUNBOOK.md` only when the executable workflow changes. For a release-facing
-comparison, pass the machine-readable evidence to `$writing-great-skills`; do not turn a single
-optimization run into a release claim.
+Update `docs/performance/RUNBOOK.md` only when the executable workflow changes. For a requested release-facing
+comparison, use [Release Reports](../../../docs/release/RELEASE_REPORTS.md) to present the
+machine-readable evidence with its revision and capability boundaries.
 
 ## Failure Rules
 

@@ -42,9 +42,11 @@
                 "widthInColumns": 1
               }
             ],
+            "colorIndex": 1,
             "columns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       },
       {
         "id": "id4",
@@ -100,9 +102,11 @@
                     "widthInColumns": 1
                   }
                 ],
+                "colorIndex": 1,
                 "columns": 1
               }
-            ]
+            ],
+            "colorIndex": 0
           },
           {
             "id": "id4",
@@ -153,9 +157,11 @@
                 "widthInColumns": 1
               }
             ],
+            "colorIndex": 1,
             "columns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       },
       {
         "id": "id1",
@@ -191,6 +197,7 @@
             "widthInColumns": 1
           }
         ],
+        "colorIndex": 1,
         "columns": 1
       },
       {

@@ -111,7 +111,7 @@ def _describe_file(path: Path, *, root: Path) -> dict[str, object]:
     try:
         display_path = path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
-        display_path = str(path.resolve())
+        display_path = path.resolve().as_posix()
     return {
         "path": display_path,
         "bytes": path.stat().st_size,
@@ -436,7 +436,11 @@ def memory_recipe(
     else:
         package = "merman"
         bench = "native_memory"
-        features = ("svg",)
+        # Resolve the legacy probe recipe from its checkout's corpus so historical
+        # revisions retain their original features when compared with new builds.
+        corpus_path = corpus if corpus.is_absolute() else root / corpus
+        lane = resolve_lane_selector(load_corpus(corpus_path), DEFAULT_LANE)
+        features = lane.required_features
         default_features = False
     return RunnerRecipe(
         label="native-memory",
@@ -656,9 +660,9 @@ def run_probe(
     try:
         result = subprocess.run(
             [str(executable)],
-            input=request_line,
+            # Binary pipes preserve the protocol's UTF-8 and LF framing on Windows.
+            input=request_line.encode("utf-8"),
             capture_output=True,
-            text=True,
             timeout=timeout_seconds,
             check=False,
         )
@@ -666,10 +670,15 @@ def run_probe(
         raise DriverContractError(
             f"native-memory subprocess timed out for {request['invocation_id']}"
         ) from error
+    try:
+        stdout = result.stdout.decode("utf-8")
+        stderr = result.stderr.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise DriverContractError("native-memory subprocess output is not UTF-8") from error
     if result.returncode != 0:
         raise DriverContractError(
             f"native-memory subprocess exited {result.returncode} for "
-            f"{request['invocation_id']}: {result.stdout[-1_000:]}"
+            f"{request['invocation_id']}: {stdout[-1_000:]}"
         )
     semantic_contract: Mapping[str, object] | None = None
     workload_units_per_scale: int | None = None
@@ -688,8 +697,8 @@ def run_probe(
 
     try:
         response = validate_response(
-            result.stdout,
-            result.stderr,
+            stdout,
+            stderr,
             expected=_expected_echo(
                 request,
                 executable_sha256=executable_sha256,
@@ -796,7 +805,7 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
         "generated_at": dt.datetime.now(dt.timezone.utc).astimezone().isoformat(),
         "outcome": "contract_failure",
         "exit_code": 2,
-        "output": str(output),
+        "output": output.as_posix(),
         "method": {
             "scales": list(MEMORY_SCALES),
             "repeats": args.repeats,
@@ -938,12 +947,12 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             "package_manifest": _describe_file(package_manifest_path, root=root),
             "cargo_lock": _describe_file(root / "Cargo.lock", root=root),
             "corpus": {
-                "path": str(corpus_path),
+                "path": corpus_path.as_posix(),
                 "bytes": corpus_path.stat().st_size,
                 "sha256": _sha256_path(corpus_path),
             },
             "owner_contract": {
-                "path": str(contract_path),
+                "path": contract_path.as_posix(),
                 "bytes": contract_path.stat().st_size,
                 "sha256": _sha256_path(contract_path),
                 "value": contract,
@@ -960,7 +969,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             "features": list(recipe.features),
             "default_features": recipe.default_features,
             "locked": recipe.locked,
-            "target_dir": str(recipe.target_dir),
+            "target_dir": recipe.target_dir.as_posix(),
             "profile_reset_command": profile_reset_command,
             "build_command": build_command,
             "build_environment": _build_environment(),
@@ -982,7 +991,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             raise DriverContractError(f"native-memory executable is unusable: {executable}")
         executable_digest = _sha256_path(executable)
         report["executable"] = {
-            "path": str(executable),
+            "path": executable.as_posix(),
             "bytes": executable.stat().st_size,
             "sha256": executable_digest,
             "build": build_provenance,

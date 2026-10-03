@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "X",
-          "x": 54.297,
-          "y": 77.0,
-          "width": 108.594,
-          "height": 154.0,
+          "x": 52.203,
+          "y": 89.5,
+          "width": 80.406,
+          "height": 155.0,
           "is_cluster": true
         },
         {
           "id": "A",
-          "x": 54.297,
-          "y": 77.0,
-          "width": 33.594,
-          "height": 84.0,
+          "x": 52.203,
+          "y": 102.5,
+          "width": 32.406,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -24,31 +24,31 @@
       "clusters": [
         {
           "id": "X",
-          "x": 54.297,
-          "y": 77.0,
-          "width": 108.594,
-          "height": 154.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 52.203,
+          "y": 89.5,
+          "width": 80.406,
+          "height": 155.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "X",
           "title_label": {
-            "x": 54.297,
-            "y": 12.0,
-            "width": 9.6,
-            "height": 24.0
+            "x": 52.203,
+            "y": 22.5,
+            "width": 8.4,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 108.594,
-        "max_y": 154.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 92.406,
+        "max_y": 167.0
       }
     }
   }

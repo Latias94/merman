@@ -236,6 +236,9 @@
                 "merman.block.width_exceeds_columns",
                 "merman.authoring.flowchart.explicit_direction",
                 "merman.semantic.flowchart.unknown_style_target",
+                "merman.semantic.agentflow.shape_removed",
+                "merman.semantic.agentflow.shape_unsupported",
+                "merman.semantic.agentflow.containment_violation",
                 "merman.git_graph.duplicate_commit_id"
               ]
             },
@@ -263,6 +266,9 @@
                 "merman.block.width_exceeds_columns",
                 "merman.authoring.flowchart.explicit_direction",
                 "merman.semantic.flowchart.unknown_style_target",
+                "merman.semantic.agentflow.shape_removed",
+                "merman.semantic.agentflow.shape_unsupported",
+                "merman.semantic.agentflow.containment_violation",
                 "merman.git_graph.duplicate_commit_id"
               ]
             },
@@ -293,6 +299,9 @@
                     "merman.block.width_exceeds_columns",
                     "merman.authoring.flowchart.explicit_direction",
                     "merman.semantic.flowchart.unknown_style_target",
+                    "merman.semantic.agentflow.shape_removed",
+                    "merman.semantic.agentflow.shape_unsupported",
+                    "merman.semantic.agentflow.containment_violation",
                     "merman.git_graph.duplicate_commit_id"
                   ]
                 },
@@ -618,7 +627,7 @@
     "package": "npm run build && node scripts/package-vsix.mjs",
     "verify:vsix": "node scripts/verify-vsix.mjs",
     "smoke:vsix": "node scripts/smoke-vsix.mjs",
-    "licenses:check": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
+    "licenses:check": "node --test ../../scripts/npm-license-report.test.mjs && node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
     "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
   },
   "dependencies": {
@@ -628,14 +637,12 @@
     "@types/node": "26.0.1",
     "@types/vscode": "1.120.0",
     "@vscode/test-electron": "3.1.0",
-    "@vscode/vsce": "3.9.2",
+    "@vscode/vsce": "4.0.0",
     "esbuild": "0.28.1",
-    "generate-license-file": "4.2.1",
     "typescript": "6.0.3"
   },
   "allowScripts": {
-    "@vscode/vsce-sign@2.0.9": true,
-    "esbuild@0.28.1": true,
-    "keytar@7.9.0": true
+    "@vscode/vsce-sign@2.1.0": true,
+    "esbuild@0.28.1": true
   }
 }

@@ -37,4 +37,6 @@ export const SUPPORTED_DIAGRAMS = [
   "wardley",
   "xychart",
   "zenuml",
+  "agentflow",
+  "usecase",
 ] as const;

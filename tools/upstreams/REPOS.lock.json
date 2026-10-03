@@ -4,8 +4,8 @@
     "mermaid": {
       "path": "repo-ref/mermaid",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@11.17.2",
-      "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3"
+      "ref": "mermaid@12.1.0",
+      "commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb"
     },
     "monaqa-tree-sitter-mermaid": {
       "path": "repo-ref/tree-sitter-mermaid-monaqa",
@@ -27,6 +27,12 @@
     },
     "tree-sitter": {
       "path": "repo-ref/tree-sitter",
+      "url": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.27.0",
+      "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0"
+    },
+    "tree-sitter-templates": {
+      "path": "repo-ref/tree-sitter-templates",
       "url": "https://github.com/tree-sitter/tree-sitter.git",
       "ref": "v0.26.12",
       "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00"
@@ -112,8 +118,8 @@
     "dompurify": {
       "path": "repo-ref/dompurify",
       "url": "https://github.com/cure53/DOMPurify.git",
-      "ref": "3.4.13",
-      "commit": "3067f774676975de12306effd6db6ad7a9a8c17f"
+      "ref": "3.4.16",
+      "commit": "b9b9d80f7e401771c2ccaef5f45def7eec8f27d7"
     },
     "sanitize-url": {
       "path": "repo-ref/sanitize-url",
@@ -124,8 +130,8 @@
     "mermaid-cli": {
       "path": "repo-ref/mermaid-cli",
       "url": "https://github.com/mermaid-js/mermaid-cli",
-      "ref": "master",
-      "commit": "f87dcd0c9049a58ba75eda6d6dc890e2285be850"
+      "ref": "12.0.0",
+      "commit": "db1ceebbe529d7975474eb0d0e9c23e9dc57cd37"
     },
     "zenuml-core": {
       "path": "repo-ref/zenuml-core",

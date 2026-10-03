@@ -4,36 +4,36 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "t",
-          "x": 76.44,
-          "y": 171.5,
-          "width": 66.88,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "Tiny",
+          "x": 112.0,
+          "y": 165.5,
+          "width": 200.0,
+          "height": 117.0,
+          "is_cluster": true
         },
         {
           "id": "left",
-          "x": 76.44,
-          "y": 42.5,
-          "width": 85.12,
-          "height": 54.0,
+          "x": 112.0,
+          "y": 34.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "right",
-          "x": 76.44,
-          "y": 300.5,
-          "width": 92.0,
-          "height": 54.0,
+          "x": 112.0,
+          "y": 296.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "Tiny",
-          "x": 76.44,
-          "y": 164.0,
-          "width": 136.88,
-          "height": 119.0,
-          "is_cluster": true
+          "id": "t",
+          "x": 112.0,
+          "y": 177.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
@@ -45,20 +45,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.44,
-              "y": 69.5
+              "x": 112.0,
+              "y": 57.0
             },
             {
-              "x": 76.44,
-              "y": 94.5
+              "x": 112.0,
+              "y": 97.0
             },
             {
-              "x": 76.44,
-              "y": 119.5
-            },
-            {
-              "x": 76.44,
-              "y": 144.5
+              "x": 112.0,
+              "y": 155.0
             }
           ],
           "label": null,
@@ -78,20 +74,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.44,
-              "y": 198.5
+              "x": 112.0,
+              "y": 200.0
             },
             {
-              "x": 76.44,
-              "y": 223.5
+              "x": 112.0,
+              "y": 234.0
             },
             {
-              "x": 76.44,
-              "y": 248.5
-            },
-            {
-              "x": 76.44,
-              "y": 273.5
+              "x": 112.0,
+              "y": 274.0
             }
           ],
           "label": null,
@@ -107,31 +99,31 @@
       "clusters": [
         {
           "id": "Tiny",
-          "x": 76.44,
-          "y": 164.0,
-          "width": 136.88,
-          "height": 119.0,
+          "x": 112.0,
+          "y": 165.5,
+          "width": 200.0,
+          "height": 117.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "Tiny",
           "title_label": {
-            "x": 76.44,
+            "x": 112.0,
             "y": 126.5,
-            "width": 29.76,
-            "height": 24.0
+            "width": 26.04,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "LR",
+          "effective_dir": "TB",
           "padding": 8.0,
           "title_margin_top": 10.0,
           "title_margin_bottom": 5.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 15.5,
-        "max_x": 144.88,
-        "max_y": 327.5
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 212.0,
+        "max_y": 319.0
       }
     }
   }

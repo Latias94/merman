@@ -36,7 +36,6 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const { t } = useTranslation();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const layoutBindingRef = useRef<IDisposable | null>(null);
   const modelBindingRef = useRef<IDisposable | null>(null);
   const registrationRef = useRef<MermaidLanguageRegistration | null>(null);
   const languageGenerationRef = useRef(0);
@@ -172,8 +171,6 @@ export function CodeEditor({
 
   useEffect(
     () => () => {
-      layoutBindingRef.current?.dispose();
-      layoutBindingRef.current = null;
       editorRef.current = null;
     },
     [],
@@ -189,8 +186,6 @@ export function CodeEditor({
   const handleEditorDidMount = useCallback(
     (instance: editor.IStandaloneCodeEditor) => {
       editorRef.current = instance;
-      layoutBindingRef.current?.dispose();
-      layoutBindingRef.current = observeEditorLayout(instance);
       instance.updateOptions({
         ariaLabel: t("editor.ariaLabel"),
         minimap: { enabled: false },
@@ -213,8 +208,6 @@ export function CodeEditor({
         const failure = new Error(
           "Mermaid editor did not create its managed document model.",
         );
-        layoutBindingRef.current?.dispose();
-        layoutBindingRef.current = null;
         editorRef.current = null;
         console.error(failure);
         markLanguageUnavailable(failure, languageGenerationRef.current);
@@ -270,7 +263,7 @@ export function CodeEditor({
         }
         options={{
           ariaLabel: t("editor.ariaLabel"),
-          automaticLayout: false,
+          automaticLayout: true,
           "semanticHighlighting.enabled": true,
         }}
       />
@@ -342,29 +335,4 @@ export function CodeEditor({
       )}
     </div>
   );
-}
-
-function observeEditorLayout(
-  instance: editor.IStandaloneCodeEditor,
-): IDisposable {
-  let frame = 0;
-  const layout = () => {
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => instance.layout());
-  };
-  const node = instance.getDomNode();
-  const observer = node ? new ResizeObserver(layout) : null;
-  if (node) observer?.observe(node);
-  window.addEventListener("resize", layout);
-  window.visualViewport?.addEventListener("resize", layout);
-  layout();
-
-  return {
-    dispose() {
-      cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener("resize", layout);
-      window.visualViewport?.removeEventListener("resize", layout);
-    },
-  };
 }

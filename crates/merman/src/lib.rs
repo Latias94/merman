@@ -15,7 +15,7 @@
 //!
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
-//! | Parse Mermaid or produce semantic JSON | no facade default features | [`Engine`] and [`ParseOptions`] |
+//! | Parse Mermaid or produce semantic JSON | `diagram-*` selectors, without defaults | [`Engine`] and [`ParseOptions`] |
 //! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
 //! | Build parser-backed editor snapshots | `editor` | [`editor::analyze_document_snapshot_with_shared_text`] |
 //! | Render Mermaid-like SVG | `svg` | [`Renderer`] and [`RenderRequest::svg`] |
@@ -31,6 +31,9 @@
 //!
 //! # Features
 //!
+//! - `diagram-*`: compile the selected logical families and their typed models.
+//!   `all-diagrams` selects every built-in family; these selectors do not enable outputs or engines.
+//!
 //! - `analysis`: render-free diagnostics, source mapping, and Markdown analysis through
 //!   `merman::analysis`.
 //! - `editor`: parser-backed editor snapshots and queries through `merman::editor`; this implies
@@ -42,14 +45,16 @@
 //! - `math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `svg`.
 //!
-//! The default feature set is [`complete-svg`](#features): it supports deterministic SVG
-//! rendering, the Cytoscape layout engine, and math labels without compiling the optional ELK
-//! implementation or ambient system adapters. Add `complete-svg-elk` when the artifact is
-//! intentionally allowed to include the EPL-2.0 ELK closure. Use `default-features = false` with
-//! the direct capability leaves when you need a measured artifact closure.
+//! The default feature set combines `all-diagrams` with [`complete-svg-elk`](#features): it supports
+//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, the Cytoscape
+//! layout engine, and math labels without ambient system adapters. Distributed artifacts must
+//! retain the ELK implementation's EPL-2.0 notices and source provenance. Use `default-features = false`
+//! with explicit family selectors and [`complete-svg`](#features) to omit ELK, or choose individual
+//! capability leaves when you need a measured artifact closure. Neither SVG aggregate selects families.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's
-//! re-exports instead, they must set `default-features = false`; an ordinary `merman` dependency
+//! re-exports instead, set `default-features = false` and select the required `diagram-*` features
+//! (or `all-diagrams` to retain the previous parser surface). An ordinary `merman` dependency
 //! intentionally compiles the complete SVG workflow.
 //!
 //! # Quick start

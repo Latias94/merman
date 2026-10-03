@@ -5,50 +5,50 @@
       "nodes": [
         {
           "id": "bigState1",
-          "x": 127.0,
-          "y": 203.5,
-          "width": 238.0,
-          "height": 115.0,
+          "x": 112.0,
+          "y": 225.5,
+          "width": 197.0,
+          "height": 109.0,
           "is_cluster": true
         },
         {
           "id": "bigState1InternalState",
-          "x": 127.0,
-          "y": 203.5,
-          "width": 168.0,
-          "height": 40.0,
+          "x": 112.0,
+          "y": 237.5,
+          "width": 149.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "bigState2",
-          "x": 415.0,
-          "y": 203.5,
-          "width": 238.0,
-          "height": 115.0,
+          "x": 349.0,
+          "y": 225.5,
+          "width": 197.0,
+          "height": 109.0,
           "is_cluster": true
         },
         {
           "id": "bigState2InternalState",
-          "x": 415.0,
-          "y": 203.5,
-          "width": 168.0,
-          "height": 40.0,
+          "x": 349.0,
+          "y": 237.5,
+          "width": 149.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "namedState1",
-          "x": 127.0,
-          "y": 28.0,
-          "width": 110.56,
-          "height": 40.0,
+          "x": 112.0,
+          "y": 30.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "namedState2",
-          "x": 415.0,
-          "y": 28.0,
-          "width": 110.56,
-          "height": 40.0,
+          "x": 349.0,
+          "y": 30.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
@@ -58,26 +58,22 @@
           "from": "namedState1",
           "to": "bigState1",
           "from_cluster": null,
-          "to_cluster": null,
+          "to_cluster": "bigState1",
           "points": [
             {
-              "x": 127.5,
-              "y": 48.5
+              "x": 112.0,
+              "y": 49.0
             },
             {
-              "x": 127.0,
-              "y": 97.0
-            },
-            {
-              "x": 127.0,
-              "y": 203.5
+              "x": 112.0,
+              "y": 171.0
             }
           ],
           "label": {
-            "x": 127.0,
-            "y": 97.0,
+            "x": 112.0,
+            "y": 110.0,
             "width": 200.0,
-            "height": 48.0
+            "height": 42.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -92,26 +88,22 @@
           "from": "namedState2",
           "to": "bigState2",
           "from_cluster": null,
-          "to_cluster": null,
+          "to_cluster": "bigState2",
           "points": [
             {
-              "x": 415.5,
-              "y": 48.5
+              "x": 349.0,
+              "y": 49.0
             },
             {
-              "x": 415.0,
-              "y": 97.0
-            },
-            {
-              "x": 415.0,
-              "y": 203.5
+              "x": 349.0,
+              "y": 171.0
             }
           ],
           "label": {
-            "x": 415.0,
-            "y": 97.0,
+            "x": 349.0,
+            "y": 110.0,
             "width": 200.0,
-            "height": 48.0
+            "height": 42.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -125,18 +117,18 @@
       "clusters": [
         {
           "id": "bigState1",
-          "x": 127.0,
-          "y": 203.5,
-          "width": 238.0,
-          "height": 115.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 112.0,
+          "y": 225.5,
+          "width": 197.0,
+          "height": 109.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "Big State 1",
           "title_label": {
-            "x": 127.0,
-            "y": 159.0,
-            "width": 77.6,
-            "height": 24.0
+            "x": 112.0,
+            "y": 181.5,
+            "width": 67.9,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -146,18 +138,18 @@
         },
         {
           "id": "bigState2",
-          "x": 415.0,
-          "y": 203.5,
-          "width": 238.0,
-          "height": 115.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 349.0,
+          "y": 225.5,
+          "width": 197.0,
+          "height": 109.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "bigState2",
           "title_label": {
-            "x": 415.0,
-            "y": 159.0,
-            "width": 64.32,
-            "height": 24.0
+            "x": 349.0,
+            "y": 181.5,
+            "width": 56.28,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -167,10 +159,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 534.0,
-        "max_y": 261.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 449.0,
+        "max_y": 280.0
       }
     }
   }

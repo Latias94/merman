@@ -5,19 +5,19 @@
       "nodes": [
         {
           "id": "entity-p-0",
-          "x": 110.52,
-          "y": 72.125,
-          "width": 205.04,
-          "height": 128.25,
+          "x": 104.83,
+          "y": 71.625,
+          "width": 185.66,
+          "height": 119.25,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 213.04,
-        "max_y": 136.25
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 197.66,
+        "max_y": 131.25
       }
     }
   }

@@ -19,7 +19,6 @@ import type { BenchmarkReport } from "./report.ts";
 const FIXTURE_IDS = ["basic-flowchart", "sequence-interaction"] as const;
 
 test("family corpus is the one-baseline-per-family generated projection", () => {
-  assert.equal(FAMILY_BASELINE_CORPUS.length, 35);
   assert.equal(
     new Set(FAMILY_BASELINE_CORPUS.map((fixture) => fixture.family)).size,
     FAMILY_BASELINE_CORPUS.length

@@ -102,7 +102,7 @@ test("snapshots and freezes a queued render input before the realm can observe i
     diagramFont: "arial" as const,
     externalRequirements: {
       externalDiagrams: ["zenuml"],
-      layoutModules: ["elk"],
+      layoutModules: ["tidy-tree"],
     },
     screenAvailableWidth: 1512,
     viewport: { width: 640, height: 480 },
@@ -127,7 +127,7 @@ test("snapshots and freezes a queued render input before the realm can observe i
   assert.equal(snapshot.source, "flowchart TD\nA-->B");
   assert.equal(snapshot.configJson, "{}");
   assert.deepEqual(snapshot.externalRequirements.externalDiagrams, ["zenuml"]);
-  assert.deepEqual(snapshot.externalRequirements.layoutModules, ["elk"]);
+  assert.deepEqual(snapshot.externalRequirements.layoutModules, ["tidy-tree"]);
   assert.equal(snapshot.screenAvailableWidth, 1512);
   assert.deepEqual(snapshot.viewport, { width: 640, height: 480 });
   assert.equal(Object.isFrozen(snapshot), true);

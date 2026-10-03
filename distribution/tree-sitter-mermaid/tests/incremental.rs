@@ -177,3 +177,63 @@ fn invalid_utf8_is_bounded_and_repeatable() {
     );
     assert!(first.root_node().end_byte() <= source.len());
 }
+
+#[test]
+fn new_family_container_metadata_and_relation_edits_match_fresh_parses() {
+    for (source, old, replacement) in [
+        (
+            "agentflow-beta\nflow Team\nA@{shape: task}-->B\nend\n",
+            "task",
+            "input",
+        ),
+        ("agentflow-beta\nflow Team\nA-->B\nend\n", "end", ""),
+        (
+            "usecase-beta\nLogin ..> : include Verify\n",
+            "include",
+            "extend",
+        ),
+        (
+            "usecase-beta\njson Data@{\"a\":{\"b\":1}}\n",
+            "1",
+            "[true, 2]",
+        ),
+    ] {
+        let start = source.find(old).expect("edited token");
+        replace_and_compare(
+            source.as_bytes(),
+            start,
+            start + old.len(),
+            replacement.as_bytes(),
+        );
+    }
+}
+
+#[test]
+fn sequence_menu_keyword_endpoint_edits_match_fresh_parses() {
+    for (source, old, replacement) in [
+        ("sequenceDiagram\nLink->>A: message\n", "Link", "Properties"),
+        (
+            "sequenceDiagram\nlink Link: Help\n",
+            "link Link:",
+            "Link->>A:",
+        ),
+        (
+            "sequenceDiagram\nLink->>A: message\n",
+            "Link->>A:",
+            "links A:",
+        ),
+        (
+            "sequenceDiagram\nLinks->>A: message\n",
+            "Links",
+            "LinkService",
+        ),
+    ] {
+        let start = source.find(old).unwrap();
+        replace_and_compare(
+            source.as_bytes(),
+            start,
+            start + old.len(),
+            replacement.as_bytes(),
+        );
+    }
+}

@@ -415,6 +415,85 @@ int merman_c_consumer_smoke(
         request.source = borrowed_slice(source, sizeof(source) - 1);
         request.options_json = borrowed_slice(NULL, 0);
 
+        {
+            static const struct {
+                const char *source;
+                const char *family_marker;
+                const char *node_label;
+                const char *invalid_source;
+            } family_cases[] = {
+                {
+                    "agentflow-beta\nflow Team\nTask[Worker] --> Done[Result]\nend\n",
+                    "aria-roledescription=\"agentflow\"",
+                    "Worker",
+                    "agentflow-beta\nend\n"
+                },
+                {
+                    "usecase-beta\nactor User(\"Customer\")\nTask(\"Checkout\")\nUser --> Task\n",
+                    "data-usecase-id=\"Task\"",
+                    "Checkout",
+                    "usecase-beta\nTask(\"unterminated)\n"
+                }
+            };
+            size_t family_index;
+            for (family_index = 0; family_index < 2; family_index += 1) {
+                request.operation = MERMAN_NATIVE_OPERATION_SVG;
+                request.source = borrowed_slice(
+                    (const uint8_t *)family_cases[family_index].source,
+                    strlen(family_cases[family_index].source)
+                );
+                result = empty_result();
+                status = api.execute_collect(engine, &request, &result);
+                if (
+                    status != MERMAN_NATIVE_STATUS_OK ||
+                    result.status != MERMAN_NATIVE_STATUS_OK ||
+                    result.operation != MERMAN_NATIVE_OPERATION_SVG ||
+                    result.allocation_token == 0 ||
+                    !bytes_contain(result.data.data, result.data.len, "<svg") ||
+                    !bytes_contain(result.data.data, result.data.len, family_cases[family_index].family_marker) ||
+                    !bytes_contain(result.data.data, result.data.len, family_cases[family_index].node_label)
+                ) {
+                    api.result_free(&result);
+                    api.engine_try_close(engine);
+                    return 52;
+                }
+                api.result_free(&result);
+                if (result.allocation_token != 0) {
+                    api.engine_try_close(engine);
+                    return 53;
+                }
+
+                request.source = borrowed_slice(
+                    (const uint8_t *)family_cases[family_index].invalid_source,
+                    strlen(family_cases[family_index].invalid_source)
+                );
+                result = empty_result();
+                status = api.execute_collect(engine, &request, &result);
+                if (
+                    status != MERMAN_NATIVE_STATUS_PARSE_ERROR ||
+                    result.status != MERMAN_NATIVE_STATUS_PARSE_ERROR ||
+                    result.operation != MERMAN_NATIVE_OPERATION_SVG ||
+                    result.data.len != 0 ||
+                    result.allocation_token == 0 ||
+                    !bytes_contain(
+                        result.metadata_or_error_json.data,
+                        result.metadata_or_error_json.len,
+                        "\"status_name\":\"parse-error\""
+                    )
+                ) {
+                    api.result_free(&result);
+                    api.engine_try_close(engine);
+                    return 54;
+                }
+                api.result_free(&result);
+                if (result.allocation_token != 0) {
+                    api.engine_try_close(engine);
+                    return 55;
+                }
+            }
+        }
+        /* The same engine must remain usable after either family's parse failure. */
+        request.source = borrowed_slice(source, sizeof(source) - 1);
         request.operation = MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON;
         result = empty_result();
         status = api.execute_collect(engine, &request, &result);

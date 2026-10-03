@@ -77,7 +77,7 @@ const EXTERNAL_MERMAID_SCENARIOS = [
     id: "elk-merge-edges",
     externalRequirements: {
       externalDiagrams: [],
-      layoutModules: ["elk"],
+      layoutModules: [],
     },
     source: `---
 config:

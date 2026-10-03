@@ -4,28 +4,28 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "wrap",
+          "x": 198.06,
+          "y": 96.6,
+          "width": 200.0,
+          "height": 169.2,
+          "is_cluster": true
+        },
+        {
           "id": "A",
-          "x": 138.58,
-          "y": 66.8,
-          "width": 97.12,
-          "height": 47.6,
+          "x": 198.06,
+          "y": 74.1,
+          "width": 152.0,
+          "height": 39.4,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 310.7,
-          "y": 66.8,
-          "width": 97.12,
-          "height": 47.6,
+          "x": 198.06,
+          "y": 137.5,
+          "width": 152.0,
+          "height": 39.4,
           "is_cluster": false
-        },
-        {
-          "id": "wrap",
-          "x": 224.64,
-          "y": 66.8,
-          "width": 433.28,
-          "height": 117.6,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -37,16 +37,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 187.14,
-              "y": 66.8
+              "x": 198.06,
+              "y": 93.8
             },
             {
-              "x": 224.64,
-              "y": 66.8
-            },
-            {
-              "x": 262.14,
-              "y": 66.8
+              "x": 198.06,
+              "y": 117.8
             }
           ],
           "label": null,
@@ -62,31 +58,31 @@
       "clusters": [
         {
           "id": "wrap",
-          "x": 224.64,
-          "y": 66.8,
-          "width": 433.28,
-          "height": 117.6,
-          "diff": 36.52,
-          "offset_y": 13.6,
+          "x": 198.06,
+          "y": 96.6,
+          "width": 200.0,
+          "height": 169.2,
+          "diff": 82.06,
+          "offset_y": 9.4,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
-            "x": 224.64,
-            "y": 16.8,
-            "width": 425.28,
-            "height": 17.6
+            "x": 198.06,
+            "y": 18.7,
+            "width": 372.12,
+            "height": 13.4
           },
           "requested_dir": null,
-          "effective_dir": "LR",
+          "effective_dir": "TB",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 441.28,
-        "max_y": 125.6
+        "min_x": 98.06,
+        "min_y": 12.0,
+        "max_x": 298.06,
+        "max_y": 181.2
       }
     }
   }

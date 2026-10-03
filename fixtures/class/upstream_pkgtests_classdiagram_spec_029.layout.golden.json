@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "Namespace1",
-          "x": 97.702,
-          "y": 198.0,
-          "width": 195.404,
-          "height": 396.0,
+          "x": 146.284,
+          "y": 137.5,
+          "width": 268.568,
+          "height": 251.0,
           "is_cluster": true
         },
         {
           "id": "Class1",
-          "x": 97.702,
-          "y": 131.0,
-          "width": 120.404,
-          "height": 192.0,
+          "x": 90.175,
+          "y": 150.5,
+          "width": 108.349,
+          "height": 177.0,
           "is_cluster": false
         },
         {
           "id": "Class2",
-          "x": 97.702,
-          "y": 319.0,
-          "width": 67.688,
-          "height": 84.0,
+          "x": 225.459,
+          "y": 150.5,
+          "width": 62.219,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -32,31 +32,31 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 97.702,
-          "y": 198.0,
-          "width": 195.404,
-          "height": 396.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 146.284,
+          "y": 137.5,
+          "width": 268.568,
+          "height": 251.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Namespace1",
           "title_label": {
-            "x": 97.702,
-            "y": 12.0,
-            "width": 79.2,
-            "height": 24.0
+            "x": 146.284,
+            "y": 22.5,
+            "width": 69.3,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 195.404,
-        "max_y": 396.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 280.568,
+        "max_y": 263.0
       }
     }
   }

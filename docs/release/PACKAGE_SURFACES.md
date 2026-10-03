@@ -4,6 +4,16 @@ This guide describes the supported package and artifact choices. It is not a liv
 database; verify a specific version at its owning registry or GitHub Release before recommending an
 installation command.
 
+## Current Development Target
+
+The development branch targets unreleased `0.8.0` with Mermaid `12.1.0`, parser `2.0.1`, and
+reference CLI `12.0.0`. This selection introduces no new diagram family, Cargo feature, FFI
+version, or editor-facts schema version. Direct consumers of the low-level ELK Rust crates must
+update edge and label struct initializers; see the
+[alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md). Validation and package publication
+are separate gates and remain in progress. The independently versioned Tree-sitter package keeps
+its own selected baseline.
+
 ## Choose A Surface
 
 | Need | Entry point | Delivery |
@@ -50,12 +60,16 @@ library for Markdown recognition and HTML embedding, and the renderer owns SVG s
 isolation. The shared library does not depend on either product or select rendering features; it
 is published in the workspace dependency order before both consumers.
 
-In the current source and the next release after `0.8.0-alpha.6`, the macro defaults to `svg` and
-`layout-cytoscape`; mathematical labels require `math` or `complete-svg`. The published alpha.6
-macro still includes math by default. The `merman` facade retains its `complete-svg` default, and
-both packages retain their explicit `complete-svg` and `complete-svg-elk` aggregates. Keep the
-macro dependency optional when ordinary builds should avoid its renderer closure; use generated
-fragments when documentation builds must avoid it too. See [ADR-0088](../adr/0088-lean-rustdoc-default-features.md).
+In `0.8.0-alpha.7`, the macro defaults to `all-diagrams`, `svg`,
+`layout-cytoscape`, and `layout-elk`; mathematical labels require `math` or `complete-svg-elk`.
+The published alpha.6 macro includes math and excludes ELK by default. The `merman` facade
+uses `all-diagrams + complete-svg-elk` by default.
+Both source defaults include the EPL-2.0 ELK implementation and its notice/source obligations.
+To omit ELK, disable default features and select the required diagram families plus `complete-svg`
+or narrower capability leaves; both packages retain those explicit options. Keep the macro dependency optional when ordinary builds should
+avoid its renderer closure; use generated fragments when documentation builds must avoid it too.
+[ADR-0088](../adr/0088-lean-rustdoc-default-features.md) records the earlier math opt-in decision;
+the alpha.7 Mermaid 12 alignment adds ELK to the product default.
 
 | Distribution property | `merman-cli rustdoc` | `merman-rustdoc` |
 | --- | --- | --- |
@@ -165,11 +179,12 @@ provide cross-package transactions, so the root package is deliberately publishe
 
 Current release semantics are intentionally explicit:
 
-- Cargo features describe positive capabilities; the source of truth for an exact shipped artifact
-  is the artifact profile catalog, not historical `full`, `tiny`, or per-diagram feature aliases.
-  The Rust facade keeps the result-named `complete-svg` convenience aggregate (`svg`, Cytoscape,
-  and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles select direct
-  leaf features when they need an artifact-specific closure.
+- Cargo features separately select positive diagram families and capabilities; the source of truth
+  for an exact shipped artifact is the artifact profile catalog. The Rust facade defaults to
+  `all-diagrams + complete-svg-elk` (all families, SVG, Cytoscape, math, and ELK). Consumers disabling
+  defaults must select `all-diagrams` or the required `diagram-*` selectors alongside output leaves
+  or an aggregate such as `complete-svg`. Products and release profiles select explicit families
+  and capabilities when they need an artifact-specific closure.
 - Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.

@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted for the next release after `0.8.0-alpha.6`.
+Accepted for the next release after `0.8.0-alpha.6`. The no-ELK product default is superseded by
+[Mermaid 12 Default ELK Products](0089-mermaid-12-default-elk-products.md) for `0.8.0-alpha.7`;
+math remains opt-in and the explicit aggregates retain their membership.
+[Selectable Diagram Families](0091-selectable-diagram-families.md) adds `all-diagrams` to the
+default and introduces independent family selectors. The original decision below is preserved.
 
 ## Date
 

@@ -149,7 +149,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2.87.9
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: wasm-tools
 
@@ -300,20 +300,90 @@ jobs:
             --target-dist-tag "$NPM_DIST_TAG" \
             --descriptor platforms/web/web-surface-descriptor.json
 
-      - name: Publish npm package group
-        shell: bash
+      - name: Restore prior npm reconciliation report
+        id: npm-recovery
+        if: ${{ needs.validate-inputs.outputs.recovery_run_id != '' || github.run_attempt > 1 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_RUN_ID: ${{ github.run_attempt > 1 && github.run_id || needs.validate-inputs.outputs.recovery_run_id }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          ANCESTOR_RUN_ID: ${{ needs.validate-inputs.outputs.recovery_run_id }}
         run: |
           set -euo pipefail
+          if [ "$RUN_ATTEMPT" -gt 1 ]; then
+            prior_attempt=$((RUN_ATTEMPT - 1))
+          else
+            prior_attempt="$(gh api "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID" --jq .run_attempt)"
+          fi
+          find_report() {
+            local expected_name="merman-web-npm-reconciliation-report-attempt-$prior_attempt"
+            gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts" \
+              --jq "[.[].artifacts[] | select(.expired == false and .name == \"$expected_name\")] | if length == 1 then .[0].name else empty end"
+          }
+          report_name="$(find_report)"
+          if [ -z "$report_name" ] && [ "$RUN_ATTEMPT" -gt 1 ] && [ -n "$ANCESTOR_RUN_ID" ]; then
+            history="$(python3 scripts/release_attempt_history.py \
+              --owner web --repository "$GITHUB_REPOSITORY" \
+              --run-id "$GITHUB_RUN_ID" --before-attempt "$RUN_ATTEMPT")"
+            if [ "$history" = "never-attempted" ]; then
+              RECOVERY_RUN_ID="$ANCESTOR_RUN_ID"
+              prior_attempt="$(gh api "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID" --jq .run_attempt)"
+              report_name="$(find_report)"
+            fi
+          fi
+          echo "run_id=$RECOVERY_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "attempt=$prior_attempt" >> "$GITHUB_OUTPUT"
+          if [ -n "$report_name" ]; then
+            gh run download "$RECOVERY_RUN_ID" --repo "$REPOSITORY" \
+              --name "$report_name" --dir target/npm-recovery
+          else
+            echo "::warning::No prior upload report survived; this attempt may only observe the original package group."
+          fi
+
+      - name: Retain the exact recovery package group
+        if: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && github.run_attempt == 1 }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merman-web-npm-package-group
+          path: target/npm-package-group
+          if-no-files-found: error
+
+      - name: Publish npm package group
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_RUN_ID: ${{ needs.validate-inputs.outputs.recovery_run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRIOR_RUN_ID: ${{ steps.npm-recovery.outputs.run_id }}
+          PRIOR_ATTEMPT: ${{ steps.npm-recovery.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          recovery_args=()
+          if [ -f target/npm-recovery/reconciliation-report.json ]; then
+            recovery_args+=(--recovery-report target/npm-recovery/reconciliation-report.json
+              --recovery-run-id "$PRIOR_RUN_ID" --recovery-attempt "$PRIOR_ATTEMPT")
+          elif [ -n "$RECOVERY_RUN_ID" ]; then
+            recovery_args+=(--observe-only)
+          elif [ "$RUN_ATTEMPT" -gt 1 ]; then
+            history="$(python3 scripts/release_attempt_history.py \
+              --owner web --repository "$GITHUB_REPOSITORY" \
+              --run-id "$GITHUB_RUN_ID" --before-attempt "$RUN_ATTEMPT")"
+            if [ "$history" != "never-attempted" ]; then
+              recovery_args+=(--observe-only)
+            fi
+          fi
           python3 scripts/web_package_group.py reconcile \
             --manifest target/npm-package-group/web-package-group.json \
             --artifact-dir target/npm-package-group \
             --registry https://registry.npmjs.org \
-            --report target/npm-package-group/reconciliation-report.json
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$RUN_ATTEMPT" \
+            --report target/npm-package-group/reconciliation-report.json "${recovery_args[@]}"
 
       - name: Upload npm reconciliation report
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: merman-web-npm-reconciliation-report
+          name: merman-web-npm-reconciliation-report-attempt-${{ github.run_attempt }}
           path: target/npm-package-group/reconciliation-report.json
           if-no-files-found: warn

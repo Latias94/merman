@@ -192,3 +192,97 @@ fn run_with_timeout(mut command: Command, timeout: Duration) -> Output {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+#[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
+#[test]
+fn native_defaults_render_nested_class_in_every_graphical_format() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("nested.mmd");
+    fs::write(
+        &input,
+        include_str!("../../merman-rustdoc/tests/fixtures/class_nested_namespaces.mmd"),
+    )
+    .expect("write Class diagram");
+    let formats = [
+        "svg",
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let output = tmp.path().join(format!("nested.{format}"));
+        let mut command = Command::new(assert_cmd::cargo_bin!("merman-cli"));
+        command
+            .args([
+                "render",
+                "--format",
+                format,
+                "--operation-timeout-ms",
+                "30000",
+                "--output",
+            ])
+            .arg(&output)
+            .arg(&input);
+        if matches!(format, "png" | "jpg") {
+            command.args(["--raster-fit-width", "256", "--raster-fit-height", "256"]);
+        } else if format == "pdf" {
+            // Exercise native admission/output without high-resolution blur work in debug tests.
+            command.args(["--pdf-filter-scale", "0.1"]);
+        }
+        let result = command.output().expect("render Class diagram");
+        assert!(
+            result.status.success(),
+            "{format}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let bytes = fs::read(output).expect("read diagram");
+        match format {
+            "svg" => assert!(String::from_utf8(bytes).unwrap().contains("C19")),
+            "png" => assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n")),
+            "jpg" => assert!(bytes.starts_with(b"\xff\xd8")),
+            "pdf" => assert!(bytes.starts_with(b"%PDF-")),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "diagram-class",
+    feature = "layout-elk",
+    feature = "parallel-markdown"
+))]
+#[test]
+fn native_batch_completes_multiple_nested_class_diagrams() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("input.md");
+    let output_dir = tmp.path().join("rendered");
+    let source = include_str!("../../merman-rustdoc/tests/fixtures/class_nested_namespaces.mmd");
+    fs::write(
+        &input,
+        format!("```mermaid\n{source}\n```\n\n```mermaid\n{source}\n```\n"),
+    )
+    .expect("write Markdown");
+    let mut command = Command::new(assert_cmd::cargo_bin!("merman-cli"));
+    command
+        .args(["batch", "--jobs", "2", "--output-dir"])
+        .arg(&output_dir)
+        .arg(&input);
+    let result = run_with_timeout(command, Duration::from_secs(30));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let svgs = fs::read_dir(output_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "svg"))
+        .collect::<Vec<_>>();
+    assert_eq!(svgs.len(), 2);
+    for svg in svgs {
+        assert!(fs::read_to_string(svg.path()).unwrap().contains("C19"));
+    }
+}

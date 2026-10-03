@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
+import { BuildIdentity } from "@/src/components/BuildIdentity";
 import { useAppStore } from "@/src/store";
 import {
   selectCurrentDetectionValidity,
@@ -98,10 +99,16 @@ export function StatusBar() {
           {charCount} {t("status.chars")}
         </span>
       </div>
-      <div className="scrollbar-thin flex min-w-0 items-center gap-3 overflow-x-auto sm:gap-4">
+      <div
+        role="region"
+        aria-label={t("status.renderingStatus")}
+        tabIndex={0}
+        className="scrollbar-thin flex min-w-0 items-center gap-3 overflow-x-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:gap-4"
+      >
         <span className="shrink-0 whitespace-nowrap" aria-live="polite">
           {t("status.wasm")}: {runtimeLabel}
         </span>
+        <BuildIdentity />
         {runtimeFailure && (
           <span
             className="hidden max-w-52 truncate text-destructive sm:inline"

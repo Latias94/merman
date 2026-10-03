@@ -67,7 +67,9 @@ cargo run --locked --release -p xtask -- compare-all-svgs \
 ```
 
 When comparator or root viewport behavior changes, also run the focused root-contract tests and the
-remaining blocking parity sweeps:
+remaining blocking parity modes. A single full-corpus invocation with
+`--dom-modes structure,parity,parity-root --report-root` proves the same three policies while
+reusing parsing and rendering; use separate modes only for diagnosis:
 
 ```text
 cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
@@ -86,9 +88,12 @@ signature preserves text, styles, namespaces, IDs, classes, element order, and n
 only `path d` numeric operands are quantized to the gate precision. New or stale differences remain
 blocking.
 `parity-root` also blocks malformed viewports, strategy changes, semantic evidence failures, and
-the deterministic root canaries. Pages CI owns the painted-content containment oracle; run the
-focused Playground desktop browser suite locally only when changing that oracle or its browser
-integration.
+the deterministic root canaries. The central Linux SVG parity job in `.github/workflows/ci.yml`
+owns the painted-content containment oracle and runs it against the same generated SVGs after
+DOM and semantic gates. Pages owns Playground interaction and cross-browser smoke. When changing
+the oracle or root geometry, run the focused oracle contracts and the same `oracle:root-viewport`
+command used by the Linux owner; record platform-specific evidence separately from that owner
+lane.
 
 Completion criterion: selected-source verification passes when applicable; the exact full structure
 gate passes for renderer, profile, normalization, or tracked-SVG changes; and the root-contract and
@@ -143,7 +148,7 @@ cargo deny check advisories bans licenses sources
 
 Security Audit owns this check in CI; record it as deferred when the local tool is unavailable
 instead of replacing it with an ad hoc dependency parser. Derive feature strings from
-`capabilities/artifact-profiles-v1.json` or the owner workflow. For a real public-consumer proof,
+`capabilities/artifact-profiles-v2.json` or the owner workflow. For a real public-consumer proof,
 reuse the exact recipe in `.github/workflows/ci.yml` (C `c_consumer_smoke`, the Apple UniFFI smoke,
 or the platform binding verifier) rather than inventing a second feature list. For an intentional
 breaking API, update all in-repository consumers and tests to the new contract; do not restore a
@@ -200,7 +205,7 @@ scheduled, or manual lanes. When that lane is explicitly in scope, use the compl
 capability set:
 
 ```text
-python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
+python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,layout-cytoscape,layout-elk,math
 ```
 
 A high-cost check earns a standing PR slot only when it detects a unique merge-blocking failure.

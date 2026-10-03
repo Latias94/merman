@@ -121,9 +121,12 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -133,7 +136,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -176,6 +179,7 @@ mod tests {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         });
         graph.layerless_nodes.push(dummy);
         graph.set_node_layer(0, 0);

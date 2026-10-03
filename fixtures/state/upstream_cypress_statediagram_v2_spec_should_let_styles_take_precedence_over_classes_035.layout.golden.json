@@ -5,28 +5,28 @@
       "nodes": [
         {
           "id": "AState",
-          "x": 84.8,
-          "y": 28.0,
-          "width": 153.6,
-          "height": 40.0,
+          "x": 80.0,
+          "y": 41.0,
+          "width": 136.0,
+          "height": 58.0,
           "is_cluster": false
         },
         {
           "id": "BState",
-          "x": 242.96,
-          "y": 28.0,
-          "width": 62.72,
-          "height": 40.0,
+          "x": 256.0,
+          "y": 41.0,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 274.32,
-        "max_y": 48.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 324.0,
+        "max_y": 70.0
       }
     }
   }

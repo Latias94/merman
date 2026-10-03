@@ -22,7 +22,7 @@ const PACKAGE_VERSION = JSON.parse(
   await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
 
-test("candidate builds project its private capability recipe plus one transport", async () => {
+test("candidate builds project diagram selection, capabilities, and one transport", async () => {
   const descriptor = await readJson(path.join(nodeRoot, "candidate-builds.json"));
   const featureSurface = await readJson(
     path.join(repositoryRoot, descriptor.capability_recipe.descriptor),
@@ -59,9 +59,11 @@ test("candidate builds project its private capability recipe plus one transport"
     assert.notEqual(featureIndex, -1);
     assert.deepEqual(recipe.capabilityFeatures, descriptor.capability_recipe.capabilities);
     assert.equal(recipe.targetId, item.target);
+    assert.deepEqual(recipe.diagramFamilies, descriptor.expected.diagram_families);
+    assert.equal(recipe.capabilityFeatures.includes("all-diagrams"), false);
     assert.deepEqual(
       invocation.args[featureIndex + 1].split(","),
-      [...descriptor.capability_recipe.capabilities, item.transportFeature].sort(),
+      [...descriptor.cargo.features, ...descriptor.capability_recipe.capabilities, item.transportFeature].sort(),
     );
     assert.equal(invocation.args.includes("--no-default-features"), true);
     assert.equal(invocation.args.includes("-j1"), true);
@@ -69,6 +71,15 @@ test("candidate builds project its private capability recipe plus one transport"
   }
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-gnu").glibcFloor, "2.31");
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-musl").glibcFloor, null);
+});
+
+test("full candidate parser families match the core artifact contract", async () => {
+  const profiles = await readJson(path.join(repositoryRoot, "capabilities/artifact-profiles-v2.json"));
+  const core = profiles.profiles.find((profile) => profile.id === "rust-core");
+  const contract = resolveCandidateRuntimeContract();
+  assert.deepEqual(contract.diagramFamilies, core.expected.diagram_families);
+  assert.equal(contract.capabilityIds.includes("all-diagrams"), false);
+  assert.equal(contract.diagramFamilies.includes("error"), false);
 });
 
 test("Windows native candidates request reproducible MSVC linking", () => {
@@ -128,6 +139,7 @@ test("merman-node forwards every candidate capability leaf without a private agg
   );
   const features = declaredCargoFeatures(manifest);
   for (const feature of [
+    ...descriptor.cargo.features,
     ...descriptor.capability_recipe.capabilities,
     "transport-napi",
     "transport-wasm",

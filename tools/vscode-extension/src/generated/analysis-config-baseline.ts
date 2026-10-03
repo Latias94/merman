@@ -33,6 +33,9 @@ export const BUNDLED_ANALYSIS_CONFIG_PROJECTION = {
     "merman.block.width_exceeds_columns",
     "merman.authoring.flowchart.explicit_direction",
     "merman.semantic.flowchart.unknown_style_target",
+    "merman.semantic.agentflow.shape_removed",
+    "merman.semantic.agentflow.shape_unsupported",
+    "merman.semantic.agentflow.containment_violation",
     "merman.git_graph.duplicate_commit_id"
   ],
   "constraints": {

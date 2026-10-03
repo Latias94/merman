@@ -10,14 +10,15 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Upstream baseline | Mermaid `@11.17.2` |
-| Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-31; exact gate state belongs to the revision that ran it |
-| Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
+| Current transition | Unreleased Merman `0.8.0` targets Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`; validation and package publication remain in progress |
+| Prior baseline evidence | Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b` |
+| Reference graph | The selected bundle binds source, package, lock and provenance identities; 12.1 transition verification remains in progress |
+| Dashboard review | The Mermaid 12.1 transition is recorded without promoting prior corpus results to the new selection; exact gate state belongs to the revision that ran it |
+| Admission | 37 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
-| Language catalog | All 35 built-in families are available independently of optional render backends |
-| Editor facts | Strict facts use schema `2`, diagnostics use schema `1`, and all 35 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
+| Language catalog | All 37 built-in families are available independently of optional render backends |
+| Editor facts | Strict facts use schema `2`, diagnostics use schema `1`, and all 37 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
 | Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
 
 Admission describes available capability and required evidence. It does not certify that every
@@ -61,6 +62,8 @@ not a quality ranking. Callers may select another supported mode explicitly.
 
 | Family | Corpus | Compare command | Default DOM mode |
 | --- | ---: | --- | --- |
+| `agentflow` | N | `compare-agentflow-svgs` | `parity` |
+| `usecase` | N | `compare-usecase-svgs` | `parity` |
 | `er` | N+D | `compare-er-svgs` | `parity` |
 | `flowchart` | N+D | `compare-flowchart-svgs` | `parity` |
 | `state` | N+D | `compare-state-svgs` | `structure` |
@@ -141,7 +144,7 @@ out of ordinary snapshot sweeps. Family-specific fixtures and upstream SVG basel
 promotion mechanism.
 
 Five exact parser-only fixtures remain: one Flowchart parser case, two Sankey circular-link cases,
-and two XYChart inputs without plot data. The selected Mermaid 11.17.2 runtime fails to render all five, so
+and two XYChart inputs without plot data. The selected Mermaid 12.0.0 runtime fails to render all five, so
 `cargo run -p xtask -- audit-gaps --check-upstream-render` reports zero actionable parser-only
 gaps. Exact family-scoped capability facts own these exclusions; filename patterns do not.
 
@@ -152,14 +155,16 @@ admission.
 
 ## Evidence Layers
 
-| Layer | Scope | Current worktree count |
-| --- | --- | ---: |
-| Semantic goldens | Parse and semantic JSON | 3,747 |
-| Layout goldens | Typed geometry and bounds | 3,744 |
-| Upstream SVG baselines | Pinned Mermaid CLI output | 3,696 |
+| Layer | Scope | Evidence owner |
+| --- | --- | --- |
+| Semantic goldens | Parse and semantic JSON | Family fixture inputs and their semantic goldens |
+| Layout goldens | Typed geometry and bounds | Family fixture inputs and their layout goldens |
+| Upstream SVG baselines | Pinned Mermaid reference output | Per-family `_baseline-manifest.json` and SVG files |
 
-Counts are an audit snapshot, not an API contract. `check-alignment` validates required evidence
-for each admission record rather than relying on these totals.
+`check-alignment` validates the required evidence for each admission record. Use its report and the
+per-family manifests for the checked revision; this dashboard does not maintain a second fixture
+count. Raw upstream inputs, deferred fixtures, and temporary staging directories are not admitted
+corpus merely because they contain matching file extensions.
 
 Refresh semantic and layout goldens with `cargo run -p xtask -- update-snapshots` and
 `cargo run -p xtask -- update-layout-snapshots`. The upstream baseline procedure lives in

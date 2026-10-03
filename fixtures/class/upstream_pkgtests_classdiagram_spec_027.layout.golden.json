@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "space",
-          "x": 165.698,
-          "y": 131.0,
-          "width": 331.396,
-          "height": 262.0,
+          "x": 149.675,
+          "y": 137.5,
+          "width": 275.351,
+          "height": 251.0,
           "is_cluster": true
         },
         {
           "id": "Square",
-          "x": 165.698,
-          "y": 131.0,
-          "width": 256.396,
-          "height": 192.0,
+          "x": 149.675,
+          "y": 150.5,
+          "width": 227.351,
+          "height": 177.0,
           "is_cluster": false
         }
       ],
@@ -24,31 +24,31 @@
       "clusters": [
         {
           "id": "space",
-          "x": 165.698,
-          "y": 131.0,
-          "width": 331.396,
-          "height": 262.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 149.675,
+          "y": 137.5,
+          "width": 275.351,
+          "height": 251.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "space",
           "title_label": {
-            "x": 165.698,
-            "y": 12.0,
-            "width": 34.4,
-            "height": 24.0
+            "x": 149.675,
+            "y": 22.5,
+            "width": 30.1,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 331.396,
-        "max_y": 262.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 287.351,
+        "max_y": 263.0
       }
     }
   }

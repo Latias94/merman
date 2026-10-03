@@ -26,6 +26,24 @@ performing a hidden synthetic warmup, and they are not presented as cross-engine
 `presentedAt` is recorded separately when a validated SVG reaches its preview presentation
 boundary.
 
+## Configuration trust boundary
+
+Both Compare and benchmark engines initialize only a known global theme name and the
+font stack selected by the validated font control. Automatic appearance omits the theme;
+explicit `default` selects the classic palette. An invalid authored global theme is omitted
+from initialization, leaving the engine default palette.
+
+The Config editor remains untrusted source configuration. Its complete object is inserted
+after frontmatter and before authored directives, and each engine's existing source sanitizer
+owns validation. Arbitrary `themeVariables`, font strings, family settings, `secure`,
+`securityLevel`, `themeCSS`, startup controls, and resource limits do not become trusted site
+configuration. In particular, an authored `secure` array cannot replace the host policy.
+Merman retains its strict defaults; Mermaid's isolated reference realm retains its own policy.
+
+The string `theme: "null"` keeps the initialized palette and merges admitted source variables
+without recomputing it. It does not elevate raw theme variables into initialization authority.
+Both engines share this theme/font boundary; their security policies remain host-owned.
+
 ## Ownership
 
 ```text

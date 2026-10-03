@@ -16,6 +16,7 @@
             "widthInColumns": 1
           }
         ],
+        "colorIndex": 0,
         "columns": 1,
         "widthInColumns": 1
       }
@@ -40,6 +41,7 @@
                 "widthInColumns": 1
               }
             ],
+            "colorIndex": 0,
             "columns": 1,
             "widthInColumns": 1
           }
@@ -59,6 +61,7 @@
             "widthInColumns": 1
           }
         ],
+        "colorIndex": 0,
         "columns": 1,
         "widthInColumns": 1
       },

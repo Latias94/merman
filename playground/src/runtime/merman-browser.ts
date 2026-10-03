@@ -157,7 +157,10 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
       try {
         return {
-          ascii: renderAscii(input.configuredSource),
+          ascii: renderAscii(input.configuredSource, {
+            version: 2,
+            site_config: input.bindingOptions.site_config,
+          }),
           error: null,
           status: "success",
         };

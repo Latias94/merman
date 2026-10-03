@@ -244,6 +244,77 @@ fn load_bundle(path: &Path) -> Result<MermaidReferenceBundle, XtaskError> {
     serde_json::from_str(&text).map_err(XtaskError::from)
 }
 
+/// Runtime identity for staging generated config/theme artifacts before bundle admission.
+/// This validates the runtime being projected; it does not admit the rest of the bundle.
+pub(super) struct MermaidProjectionRuntime {
+    pub workspace: PathBuf,
+    pub version: String,
+    pub package_sha256: String,
+    pub source_tag: String,
+    pub source_commit: String,
+}
+
+impl MermaidProjectionRuntime {
+    pub fn selected() -> Self {
+        Self {
+            workspace: crate::cmd::mermaid_cli_root(),
+            version: crate::cmd::PINNED_MERMAID_VERSION.to_string(),
+            package_sha256: crate::cmd::PINNED_MERMAID_PACKAGE_SHA256.to_string(),
+            source_tag: crate::cmd::MERMAID_SOURCE_TAG.to_string(),
+            source_commit: crate::cmd::MERMAID_SOURCE_COMMIT.to_string(),
+        }
+    }
+
+    pub fn load(bundle_path: Option<&Path>) -> Result<Self, XtaskError> {
+        let runtime = if let Some(path) = bundle_path {
+            let bundle = load_bundle(path)?;
+            if bundle.release.package != "mermaid" {
+                return Err(XtaskError::MermaidReference(
+                    "projection release must be mermaid".into(),
+                ));
+            }
+            Self {
+                workspace: crate::cmd::workspace_root().join(&bundle.reference_cli.workspace),
+                version: bundle.release.version,
+                package_sha256: bundle.release.installed_content_sha256.ok_or_else(|| {
+                    XtaskError::MermaidReference(
+                        "projection requires the Mermaid package digest".into(),
+                    )
+                })?,
+                source_tag: bundle.release.source.reference,
+                source_commit: bundle.release.source.commit,
+            }
+        } else {
+            if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+                != crate::cmd::PINNED_MERMAID_VERSION
+            {
+                return Err(XtaskError::MermaidReference(
+                    "core and generator Mermaid pins differ".into(),
+                ));
+            }
+            Self::selected()
+        };
+        crate::cmd::validate_mermaid_cli_install(&runtime.workspace)?;
+        let package_root = runtime.workspace.join("node_modules/mermaid");
+        let manifest: JsonValue =
+            serde_json::from_str(&crate::util::read_text(&package_root.join("package.json"))?)?;
+        if manifest.get("version").and_then(JsonValue::as_str) != Some(&runtime.version) {
+            return Err(XtaskError::MermaidReference(format!(
+                "projection requires installed Mermaid {}",
+                runtime.version
+            )));
+        }
+        let actual = crate::cmd::upstream_svg_package_tree_sha256(&package_root)?;
+        if actual != runtime.package_sha256 {
+            return Err(XtaskError::MermaidReference(format!(
+                "Mermaid {} projection content drift: expected {}, found {actual}",
+                runtime.version, runtime.package_sha256
+            )));
+        }
+        Ok(runtime)
+    }
+}
+
 fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference> {
     let mut references = vec![
         &bundle.release,
@@ -257,6 +328,23 @@ fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference>
         references.extend([&diagram.plugin, &diagram.behavior]);
     }
     references
+}
+
+pub(super) fn selected_runtime_package_hashes() -> Result<BTreeMap<String, String>, XtaskError> {
+    let bundle = load_bundle(&crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH))?;
+    validate_bundle(&bundle)?;
+    materialized_runtime_references(&bundle)?
+        .into_iter()
+        .map(|package| {
+            let digest = package.installed_content_sha256.clone().ok_or_else(|| {
+                XtaskError::MermaidReference(format!(
+                    "selected runtime package {} has no installed content digest",
+                    package.package
+                ))
+            })?;
+            Ok((package.package.clone(), digest))
+        })
+        .collect()
 }
 
 fn materialized_runtime_references(
@@ -374,14 +462,22 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         .iter()
         .map(|reference| reference.package.as_str())
         .collect::<BTreeSet<_>>();
-    if renderer_tools != BTreeSet::from(["@puppeteer/browsers", "puppeteer", "puppeteer-core"])
+    if bundle.renderer_tools.len() != 4
+        || renderer_tools
+            != BTreeSet::from([
+                "@puppeteer/browsers",
+                "esbuild",
+                "puppeteer",
+                "puppeteer-core",
+            ])
         || bundle
             .renderer_tools
             .iter()
             .any(|reference| reference.role != "renderer-tool")
     {
         failures.push(
-            "rendererTools must bind the selected Puppeteer browser-driver closure".to_string(),
+            "rendererTools must bind esbuild and the selected Puppeteer browser-driver closure"
+                .to_string(),
         );
     }
     if bundle.install_policy.registry != OFFICIAL_NPM_REGISTRY_PREFIX
@@ -658,23 +754,12 @@ fn render_xtask_projection(bundle: &MermaidReferenceBundle) -> Result<String, Xt
         .ok_or_else(|| {
             XtaskError::MermaidReference("release installedContentSha256 is required".to_string())
         })?;
-    let cli_content = bundle
-        .reference_cli
-        .package
-        .installed_content_sha256
-        .as_deref()
-        .ok_or_else(|| {
-            XtaskError::MermaidReference(
-                "reference CLI installedContentSha256 is required".to_string(),
-            )
-        })?;
     let mut output = String::from(
         "// This file is @generated by `cargo run -p xtask -- gen-mermaid-reference`.\n\
          // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.\n\n",
     );
     for (name, value) in [
         ("PINNED_MERMAID_PACKAGE_SHA256", mermaid_content),
-        ("PINNED_MERMAID_CLI_PACKAGE_SHA256", cli_content),
         ("PINNED_MERMAID_VERSION", bundle.release.version.as_str()),
         (
             "PINNED_DOMPURIFY_VERSION",
@@ -726,8 +811,7 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
     let elk = bundle
         .external_layouts
         .iter()
-        .find(|reference| reference.id == "layout-elk")
-        .ok_or_else(|| XtaskError::MermaidReference("missing ELK layout reference".to_string()))?;
+        .find(|reference| reference.id == "layout-elk");
     let tidy_tree = bundle
         .external_layouts
         .iter()
@@ -746,26 +830,43 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
         bundle.schema_version
     )
     .expect("writing to a String cannot fail");
+    // Only an explicitly selected plugin owns a companion version. Standard Mermaid 12
+    // registers its own ELK and therefore has no external ELK version here.
     for (name, value) in [
-        ("MERMAID_JS_VERSION", bundle.release.version.as_str()),
-        ("MERMAID_PARSER_VERSION", bundle.parser.version.as_str()),
-        ("MERMAID_ZENUML_VERSION", zenuml.plugin.version.as_str()),
-        ("ZENUML_CORE_VERSION", zenuml.behavior.version.as_str()),
-        ("MERMAID_LAYOUT_ELK_VERSION", elk.version.as_str()),
+        ("MERMAID_JS_VERSION", Some(bundle.release.version.as_str())),
+        (
+            "MERMAID_PARSER_VERSION",
+            Some(bundle.parser.version.as_str()),
+        ),
+        (
+            "MERMAID_ZENUML_VERSION",
+            Some(zenuml.plugin.version.as_str()),
+        ),
+        (
+            "ZENUML_CORE_VERSION",
+            Some(zenuml.behavior.version.as_str()),
+        ),
+        (
+            "MERMAID_LAYOUT_ELK_VERSION",
+            elk.map(|elk| elk.version.as_str()),
+        ),
         (
             "MERMAID_LAYOUT_TIDY_TREE_VERSION",
-            tidy_tree.version.as_str(),
+            Some(tidy_tree.version.as_str()),
         ),
         (
             "MERMAID_REFERENCE_CLI_VERSION",
-            bundle.reference_cli.package.version.as_str(),
+            Some(bundle.reference_cli.package.version.as_str()),
         ),
     ] {
-        writeln!(
-            output,
-            "export const {name} = {} as const;",
-            rust_string(value)?
-        )
+        match value {
+            Some(value) => writeln!(
+                output,
+                "export const {name} = {} as const;",
+                rust_string(value)?
+            ),
+            None => writeln!(output, "export const {name} = null;"),
+        }
         .expect("writing to a String cannot fail");
     }
     writeln!(
@@ -881,6 +982,12 @@ fn file_sha256(path: &Path) -> Result<String, XtaskError> {
     Ok(crate::util::sha256_hex(&bytes))
 }
 
+// Registry inputs are UTF-8 source files; Git may check them out with CRLF on Windows.
+// Preserve all other bytes, including trailing whitespace, when checking their source identity.
+fn registry_source_sha256(source: &str) -> String {
+    crate::util::sha256_hex(source.replace("\r\n", "\n").as_bytes())
+}
+
 fn verify_reference_cli_files(
     root: &Path,
     bundle: &MermaidReferenceBundle,
@@ -915,6 +1022,10 @@ fn verify_reference_cli_files(
 fn expected_provenance_source(bundle: &MermaidReferenceBundle) -> BTreeMap<&'static str, &str> {
     BTreeMap::from([
         ("mermaid_version", bundle.release.version.as_str()),
+        (
+            "renderer_revision",
+            super::upstream_svg_provenance::RENDERER_REVISION,
+        ),
         (
             "mermaid_cli_version",
             bundle.reference_cli.package.version.as_str(),
@@ -1057,7 +1168,7 @@ fn verify_source_checkouts(
                     source_path.display()
                 ));
             } else {
-                let actual = file_sha256(&source_path)?;
+                let actual = registry_source_sha256(&crate::util::read_text(&source_path)?);
                 if actual != registration.source_sha256 {
                     failures.push(format!(
                         "runtime registration source digest drift for {}: expected {}, found {actual}",
@@ -1142,7 +1253,7 @@ fn verify_builtin_registry_inventory(
                 continue;
             }
         };
-        let actual_sha256 = crate::util::sha256_hex(source.as_bytes());
+        let actual_sha256 = registry_source_sha256(&source);
         if actual_sha256 != registry.source_sha256 {
             failures.push(format!(
                 "{kind} registry source digest drift for {}: expected {}, found {actual_sha256}",
@@ -1161,7 +1272,10 @@ fn verify_builtin_registry_inventory(
                     .join(&bundle.release.package),
             )
         } else {
-            (extract_builtin_layout_ids(&source), source_path.clone())
+            (
+                builtin_layout_ids_from_checkout(&checkout, &bundle.release.source.commit, &source),
+                source_path.clone(),
+            )
         };
         match actual_ids {
             Ok(actual_ids) if actual_ids != registry.ids => failures.push(format!(
@@ -1213,6 +1327,60 @@ fn installed_builtin_diagram_ids(
     if ids.is_empty() {
         return Err("Mermaid diagram metadata API returned no registered diagrams".to_string());
     }
+    Ok(ids)
+}
+
+// The selected source commit authenticates both files. This is the one upstream ELK
+// registration shape, not a TypeScript evaluator: changed registration requires review.
+fn builtin_layout_ids_from_checkout(
+    checkout: &Path,
+    commit: &str,
+    source: &str,
+) -> Result<Vec<String>, String> {
+    let mut ids = extract_builtin_layout_ids(source)?;
+    if source.contains("...elkLayoutLoaders()") {
+        // Read the companion constant from the exact commit, not an unverified working-tree file.
+        let object = format!(
+            "{commit}:packages/mermaid/src/rendering-util/layout-algorithms/elk/algorithms.ts"
+        );
+        let output = Command::new("git")
+            .args(["show", &object])
+            .current_dir(checkout)
+            .output()
+            .map_err(|error| format!("cannot read pinned ELK algorithms: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "cannot read pinned ELK algorithms: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let algorithms = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
+        ids.extend(extract_builtin_elk_layout_ids(source, &algorithms)?);
+    }
+    ensure_unique_registry_ids(&ids, "layout")?;
+    Ok(ids)
+}
+
+fn extract_builtin_elk_layout_ids(source: &str, algorithms: &str) -> Result<Vec<String>, String> {
+    if !source.contains("{ name: 'elk', loader, algorithm: 'elk.layered' }")
+        || !source.contains(
+            "...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))",
+        )
+    {
+        return Err(
+            "unrecognized built-in ELK registration; review the selected source".to_string(),
+        );
+    }
+    let declaration = "export const ELK_ALGORITHMS = [";
+    let start = algorithms
+        .find(declaration)
+        .ok_or_else(|| "missing ELK_ALGORITHMS declaration".to_string())?;
+    let algorithms =
+        crate::util::extract_string_array_at(algorithms, start + declaration.len() - 1)
+            .map_err(|error| error.to_string())?;
+    let mut ids = vec!["elk".to_string()];
+    ids.extend(algorithms);
+    ensure_unique_registry_ids(&ids, "ELK layout")?;
     Ok(ids)
 }
 
@@ -1359,7 +1527,17 @@ fn workspace_graph_expectations<'a>(
         .iter()
         .find(|reference| reference.package == "puppeteer")
         .expect("validated rendererTools must contain puppeteer");
-    let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin, puppeteer];
+    let compiler = bundle
+        .renderer_tools
+        .iter()
+        .find(|reference| reference.package == "esbuild")
+        .expect("validated rendererTools must contain esbuild");
+    let mut cli_direct = vec![
+        &bundle.reference_cli.package,
+        &zenuml.plugin,
+        puppeteer,
+        compiler,
+    ];
     cli_direct.extend(layout_refs.iter().copied());
     let mut cli_expected = vec![
         &bundle.reference_cli.package,
@@ -1757,7 +1935,7 @@ type SelectionPackageIdentity = (String, String, String);
 fn collect_selection_packages(
     value: &JsonValue,
     path: &str,
-    packages: &mut BTreeMap<String, (JsonValue, SelectionPackageIdentity)>,
+    packages: &mut BTreeMap<(String, SelectionPackageIdentity), Vec<JsonValue>>,
 ) {
     match value {
         JsonValue::Object(object) => {
@@ -1774,7 +1952,10 @@ fn collect_selection_packages(
                     )
                 });
             if let Some(identity) = identity {
-                packages.insert(path.to_string(), (value.clone(), identity));
+                packages
+                    .entry((path.to_string(), identity))
+                    .or_default()
+                    .push(value.clone());
                 return;
             }
             for (key, child) in object {
@@ -1787,8 +1968,8 @@ fn collect_selection_packages(
             }
         }
         JsonValue::Array(values) => {
-            for (index, child) in values.iter().enumerate() {
-                collect_selection_packages(child, &format!("{path}[{index}]"), packages);
+            for child in values {
+                collect_selection_packages(child, &format!("{path}[]"), packages);
             }
         }
         _ => {}
@@ -1803,13 +1984,25 @@ fn changed_current_selection_packages(
     let mut current_packages = BTreeMap::new();
     collect_selection_packages(previous, "", &mut previous_packages);
     collect_selection_packages(current, "", &mut current_packages);
-    current_packages
-        .into_iter()
-        .filter_map(|(path, (value, identity))| {
-            (previous_packages.get(&path).map(|(value, _)| value) != Some(&value))
-                .then_some(identity)
-        })
-        .collect()
+    let mut changed = BTreeSet::new();
+    for ((path, identity), values) in current_packages {
+        // Array positions are not package identity. Match complete records once each so
+        // reordered or inserted entries do not hide changes to roles, sources, or duplicates.
+        let previous_values = previous_packages
+            .entry((path, identity.clone()))
+            .or_default();
+        for value in values {
+            if let Some(index) = previous_values
+                .iter()
+                .position(|previous| previous == &value)
+            {
+                previous_values.swap_remove(index);
+            } else {
+                changed.insert(identity.clone());
+            }
+        }
+    }
+    changed
 }
 
 fn validate_selection_snapshot(
@@ -2320,6 +2513,113 @@ mod tests {
             .expect("verify standing selected graph without candidate artifacts");
     }
 
+    fn selection_package_fixture(package: &str) -> JsonValue {
+        serde_json::json!({
+            "package": package,
+            "version": "1.0.0",
+            "integrity": "sha512-test",
+            "role": "renderer-tool",
+            "source": { "commit": "selected-commit" },
+            "requiredSurfaces": ["reference-cli"],
+            "runtimeRegistration": null,
+        })
+    }
+
+    fn test_package_identity(package: &str) -> SelectionPackageIdentity {
+        (
+            package.to_string(),
+            "1.0.0".to_string(),
+            "sha512-test".to_string(),
+        )
+    }
+
+    #[test]
+    fn selection_package_changes_ignore_array_insertion_and_reordering() {
+        let browser = selection_package_fixture("@puppeteer/browsers");
+        let puppeteer = selection_package_fixture("puppeteer");
+        let core = selection_package_fixture("puppeteer-core");
+        let compiler = selection_package_fixture("esbuild");
+        let previous = serde_json::json!({
+            "rendererTools": [browser.clone(), puppeteer.clone(), core.clone()],
+        });
+        let inserted = serde_json::json!({
+            "rendererTools": [compiler, browser, puppeteer.clone(), core.clone()],
+        });
+        assert_eq!(
+            changed_current_selection_packages(&previous, &inserted),
+            BTreeSet::from([test_package_identity("esbuild")])
+        );
+        let reordered = serde_json::json!({
+            "rendererTools": [core, puppeteer, selection_package_fixture("@puppeteer/browsers")],
+        });
+        assert!(changed_current_selection_packages(&previous, &reordered).is_empty());
+    }
+
+    #[test]
+    fn selection_package_changes_preserve_complete_record_and_surface_identity() {
+        let package = selection_package_fixture("shared");
+        let previous = serde_json::json!({ "rendererTools": [package.clone()] });
+        for (field, value) in [
+            (
+                "source",
+                serde_json::json!({ "commit": "replacement-commit" }),
+            ),
+            ("role", serde_json::json!("external-layout")),
+            (
+                "requiredSurfaces",
+                serde_json::json!(["reference-cli", "playground"]),
+            ),
+            (
+                "runtimeRegistration",
+                serde_json::json!({ "moduleId": "replacement-module" }),
+            ),
+        ] {
+            let mut changed = package.clone();
+            changed[field] = value;
+            let current = serde_json::json!({ "rendererTools": [changed] });
+            assert_eq!(
+                changed_current_selection_packages(&previous, &current),
+                BTreeSet::from([test_package_identity("shared")]),
+                "{field}"
+            );
+        }
+        let moved = serde_json::json!({ "externalLayouts": [package] });
+        assert_eq!(
+            changed_current_selection_packages(&previous, &moved),
+            BTreeSet::from([test_package_identity("shared")])
+        );
+    }
+
+    #[test]
+    fn selection_package_changes_match_duplicate_identities_once_per_record() {
+        let original = selection_package_fixture("shared");
+        let mut second_role = original.clone();
+        second_role["role"] = serde_json::json!("external-layout");
+        let previous = serde_json::json!({
+            "packages": [original.clone(), second_role.clone()],
+        });
+        let reordered = serde_json::json!({
+            "packages": [second_role.clone(), original.clone()],
+        });
+        assert!(changed_current_selection_packages(&previous, &reordered).is_empty());
+        let replaced = serde_json::json!({
+            "packages": [original.clone(), original.clone()],
+        });
+        assert_eq!(
+            changed_current_selection_packages(&previous, &replaced),
+            BTreeSet::from([test_package_identity("shared")])
+        );
+        let added_duplicate = serde_json::json!({
+            "packages": [original.clone(), second_role, original.clone()],
+        });
+        assert_eq!(
+            changed_current_selection_packages(&previous, &added_duplicate),
+            BTreeSet::from([test_package_identity("shared")])
+        );
+        let removed_duplicate = serde_json::json!({ "packages": [original] });
+        assert!(changed_current_selection_packages(&previous, &removed_duplicate).is_empty());
+    }
+
     #[test]
     fn selected_identity_drift_invalidates_the_receipt() {
         let root = crate::cmd::workspace_root();
@@ -2417,6 +2717,52 @@ mod tests {
     }
 
     #[test]
+    fn renderer_tools_bind_exactly_the_compiler_and_browser_driver_closure() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        validate_bundle(&bundle).expect("selected reference bundle is valid");
+        let mut missing_compiler = bundle.clone();
+        missing_compiler
+            .renderer_tools
+            .retain(|tool| tool.package != "esbuild");
+        let error =
+            validate_bundle(&missing_compiler).expect_err("the runtime compiler must be selected");
+        assert!(error.to_string().contains("rendererTools"));
+        let mut duplicate = bundle.clone();
+        duplicate
+            .renderer_tools
+            .push(bundle.renderer_tools[0].clone());
+        let error = validate_bundle(&duplicate).expect_err("renderer tools must be unique");
+        assert!(error.to_string().contains("rendererTools"));
+    }
+
+    #[test]
+    fn runtime_compiler_is_a_cli_dependency_and_provenance_binds_the_renderer_revision() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let zenuml = bundle
+            .external_diagrams
+            .iter()
+            .find(|diagram| diagram.id == "zenuml")
+            .expect("selected ZenUML plugin");
+        let expectations = workspace_graph_expectations(&bundle, zenuml);
+        for expectation in expectations {
+            let has_compiler = expectation
+                .direct_dependencies
+                .iter()
+                .any(|package| package.package == "esbuild");
+            assert_eq!(
+                has_compiler,
+                expectation.workspace == bundle.reference_cli.workspace
+            );
+        }
+        assert_eq!(
+            expected_provenance_source(&bundle)["renderer_revision"],
+            super::super::upstream_svg_provenance::RENDERER_REVISION
+        );
+    }
+
+    #[test]
     fn provenance_inventory_fails_closed_when_a_primary_family_manifest_is_missing() {
         let temporary = tempfile::tempdir().expect("temporary provenance root");
         let provenance_root = temporary.path().join(UPSTREAM_SVG_PROVENANCE_RELATIVE_PATH);
@@ -2444,6 +2790,23 @@ mod tests {
     }
 
     #[test]
+    fn registry_source_identity_ignores_only_checkout_crlf() {
+        let source = "export const ids = ['elk'];\n";
+        assert_eq!(
+            registry_source_sha256(source),
+            registry_source_sha256(&source.replace('\n', "\r\n"))
+        );
+        assert_ne!(
+            registry_source_sha256(source),
+            registry_source_sha256(source.trim_end())
+        );
+        assert_ne!(
+            registry_source_sha256(source),
+            registry_source_sha256("export const ids = ['dagre'];\n")
+        );
+    }
+
+    #[test]
     fn materialized_runtime_graph_covers_every_selected_companion() {
         let root = crate::cmd::workspace_root();
         let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
@@ -2455,7 +2818,6 @@ mod tests {
         assert_eq!(
             packages,
             BTreeSet::from([
-                "@mermaid-js/layout-elk",
                 "@mermaid-js/layout-tidy-tree",
                 "@mermaid-js/mermaid-cli",
                 "@mermaid-js/mermaid-zenuml",
@@ -2463,6 +2825,7 @@ mod tests {
                 "@puppeteer/browsers",
                 "@zenuml/core",
                 "dompurify",
+                "esbuild",
                 "mermaid",
                 "puppeteer",
                 "puppeteer-core",
@@ -2532,6 +2895,44 @@ registerDefaultLayoutLoaders();
             extract_builtin_layout_ids(source).expect("extract default layouts"),
             ["dagre", "cose-bilkent"]
         );
+    }
+
+    #[test]
+    fn builtin_elk_registration_expands_the_pinned_algorithm_list() {
+        let source = "{ name: 'elk', loader, algorithm: 'elk.layered' },\n...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))";
+        let algorithms = "export const ELK_ALGORITHMS = ['elk.stress', 'elk.force', 'elk.mrtree', 'elk.sporeOverlap', 'elk.box', 'elk.rectpacking'] as const;";
+        assert_eq!(
+            extract_builtin_elk_layout_ids(source, algorithms).unwrap(),
+            [
+                "elk",
+                "elk.stress",
+                "elk.force",
+                "elk.mrtree",
+                "elk.sporeOverlap",
+                "elk.box",
+                "elk.rectpacking"
+            ]
+        );
+        assert!(
+            extract_builtin_elk_layout_ids(
+                &source.replace("name: algorithm", "name: 'other'"),
+                algorithms
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn builtin_elk_does_not_require_an_external_plugin_projection() {
+        let mut bundle =
+            load_bundle(&crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH)).unwrap();
+        bundle
+            .external_layouts
+            .retain(|reference| reference.id != "layout-elk");
+        let projection = render_typescript_projection(&bundle).unwrap();
+        assert!(projection.contains("export const MERMAID_LAYOUT_ELK_VERSION = null;"));
+        assert!(!projection.contains(r#""elk": "elk""#));
+        assert!(projection.contains(r#""tidy-tree": "tidy-tree""#));
     }
 
     #[test]

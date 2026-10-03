@@ -31,14 +31,14 @@ test("checked-in Web descriptor owns one capability-complete default package gra
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
     capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
     runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
     outputs: ["ascii", "svg"],
   });
   assertPackageContract("render", {
     runtimeProfile: "render",
-    features: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
     capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
     runtimeIds: ["layout-cytoscape", "layout-elk", "math", "svg"],
     outputs: ["svg"],
@@ -210,6 +210,28 @@ test("artifact loader rejects a Web target outside the web namespace", () => {
   }
 });
 
+test("artifact loader requires v2 sorted parser family sets and preserves logical IDs", () => {
+  const descriptor = JSON.parse(readFileSync(artifactDescriptorPath(), "utf8"));
+  const full = descriptor.profiles.find((profile) => profile.id === "web-full");
+  const directory = mkdtempSync(path.join(tmpdir(), "merman-web-artifacts-"));
+  const file = path.join(directory, "artifact-profiles.json");
+  try {
+    for (const families of [undefined, ["gantt", "flowchart"], ["flowchart", "flowchart"], ["error"]]) {
+      full.expected.diagram_families = families;
+      writeFileSync(file, JSON.stringify(descriptor));
+      assert.throws(() => loadWebArtifactProfiles(file), /diagram families/);
+    }
+    full.expected.diagram_families = ["flowchart", "gitGraph"];
+    writeFileSync(file, JSON.stringify(descriptor));
+    assert.deepEqual(loadWebArtifactProfiles(file).get("web-full").expected.diagram_families, ["flowchart", "gitGraph"]);
+    descriptor.schema_version = 1;
+    writeFileSync(file, JSON.stringify(descriptor));
+    assert.throws(() => loadWebArtifactProfiles(file), /schema_version must be 2/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function cloneDescriptor() {
   const descriptorPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -226,7 +248,7 @@ function artifactDescriptorPath() {
     "..",
     "..",
     "capabilities",
-    "artifact-profiles-v1.json",
+    "artifact-profiles-v2.json",
   );
 }
 

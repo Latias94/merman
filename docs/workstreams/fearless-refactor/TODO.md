@@ -465,12 +465,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: Sankey first collapsed redundant padding component helpers, then moved its remaining
   node geometry values into `sankey` owner constants and deleted the now-empty generated module,
   reducing helper footprint without changing layout behavior.
-- [x] Recheck the obsolete flowchart degenerate path helper before attempting removal again.
-  Evidence: removing `crates/merman-render/src/svg/parity/flowchart/edge_geom/degenerate_path.rs`
-  caused `cargo run -p xtask -- verify --strict` to fail with flowchart DOM mismatches on
-  `stress_flowchart_subgraph_title_margins_extreme_nested_030`,
-  `upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044`,
-  and `upstream_flowchart_v2_subgraph_child_links_outside_spec`, so the helper stays in place.
+- [x] Recheck the obsolete flowchart degenerate path helper against the admitted Mermaid 12 corpus.
+  Evidence: the historical Mermaid 11 corpus required the helper, but the refreshed Mermaid 12
+  baselines render the three formerly blocking subgraph-descendant fixtures as ordinary line paths.
+  Removing `crates/merman-render/src/svg/parity/flowchart/edge_geom/degenerate_path.rs` now passes
+  all three focused DOM comparisons and the complete `merman-render` nextest suite.
 - [x] Add generated metadata for generated overrides with expected removal criteria.
   Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
   metadata for every generated override category and manual raw SVG/path bridge category, with a

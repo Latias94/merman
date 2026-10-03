@@ -34,7 +34,7 @@ LINUX_TARGET = "x86_64-unknown-linux-gnu"
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATHS = (
-    "capabilities/artifact-profiles-v1.json",
+    "capabilities/artifact-profiles-v2.json",
     "capabilities/feature-surface-v1.json",
     "tools/upstreams/REPOS.lock.json",
     "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json",
@@ -167,7 +167,7 @@ def valid_capabilities_payload(
     *,
     version: str = VERSION,
 ) -> dict[str, object]:
-    profiles = read_json(repo_root, "capabilities/artifact-profiles-v1.json")
+    profiles = read_json(repo_root, "capabilities/artifact-profiles-v2.json")
     profile = next(
         profile
         for profile in profiles["profiles"]
@@ -239,6 +239,7 @@ def valid_capabilities_payload(
             "digest": semantic_surface_digest(surface),
         },
         "commands": CLI_RELEASE_COMMANDS,
+        "diagram_families": profile["expected"]["diagram_families"],
         "capabilities": capabilities,
         "outputs": outputs,
         "ascii": valid_ascii_capabilities_payload(),
@@ -1350,6 +1351,15 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_ascii_contract_covers_every_release_diagram_family(self) -> None:
+        contract = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        aliases = {"gitGraph": "gitgraph", "quadrantChart": "quadrantchart"}
+        expected = sorted(aliases.get(family, family) for family in contract["diagram_families"])
+        actual = canonical_ascii_capabilities()
+        self.assertEqual([family["family"] for family in actual["families"]], expected)
+        mappings = {mapping["family"] for mapping in actual["detected_type_mappings"]}
+        self.assertEqual(mappings, set(expected) - {"swimlane"})
+
     def test_pdf_validator_accepts_pdf_token_spacing_without_matching_pages_tree(self) -> None:
         for page_type in (b"/Type/Page", b"/Type /Page", b"/Type\t/Page"):
             with self.subTest(page_type=page_type):
@@ -1632,6 +1642,9 @@ class RuntimeContractTests(unittest.TestCase):
             repo_root = Path(temp_dir)
             write_repo_assets(repo_root, required_files(LINUX_TARGET))
             mutations = (
+                ("diagram_families", lambda value: value.pop("diagram_families")),
+                ("diagram_families", lambda value: value["diagram_families"].pop()),
+                ("diagram_families", lambda value: value["diagram_families"].append("error")),
                 ("missing", lambda value: value.pop("cli_contract_version")),
                 ("extra", lambda value: value.__setitem__("unknown", None)),
                 (
@@ -1880,7 +1893,7 @@ class RuntimeContractTests(unittest.TestCase):
             repo_root = Path(temp_dir)
             write_repo_assets(repo_root, required_files(LINUX_TARGET))
             surface_path = repo_root / "capabilities/feature-surface-v1.json"
-            profiles_path = repo_root / "capabilities/artifact-profiles-v1.json"
+            profiles_path = repo_root / "capabilities/artifact-profiles-v2.json"
             bundle_path = (
                 repo_root / "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json"
             )
@@ -1903,7 +1916,7 @@ class RuntimeContractTests(unittest.TestCase):
             digest = semantic_surface_digest(surface)
             profiles = read_json(
                 repo_root,
-                "capabilities/artifact-profiles-v1.json",
+                "capabilities/artifact-profiles-v2.json",
             )
             profiles["capability_authority"]["digest"] = digest
             profiles_path.write_text(

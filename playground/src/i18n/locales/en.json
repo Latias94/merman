@@ -4,6 +4,15 @@
     "description": "Online Mermaid diagram editor powered by Rust + WebAssembly",
     "playground": "Playground"
   },
+  "build": {
+    "main": "Main build",
+    "preview": "Preview build",
+    "tag": "Tag build",
+    "local": "Local build",
+    "modified": "modified",
+    "description": "Playground is built from this source checkout. Its package version may match a release while containing different changes.",
+    "viewCommit": "View the deployed source commit"
+  },
   "toolbar": {
     "examples": "Examples",
     "theme": "Theme",
@@ -325,6 +334,7 @@
     "svgBounds": "Show SVG Bounds"
   },
   "status": {
+    "renderingStatus": "Rendering status",
     "diagramType": "Type",
     "lines": "Lines",
     "chars": "Chars",
@@ -345,6 +355,7 @@
     "syntaxIssues": "Syntax issues"
   },
   "themes": {
+    "auto": "Automatic (diagram default)",
     "default": "Default",
     "dark": "Dark",
     "forest": "Forest",

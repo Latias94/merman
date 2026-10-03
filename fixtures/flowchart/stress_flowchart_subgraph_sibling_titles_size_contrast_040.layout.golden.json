@@ -4,81 +4,85 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "l1",
-          "x": 82.28,
-          "y": 60.0,
-          "width": 78.56,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "sg_right",
+          "x": 159.91,
+          "y": 385.5,
+          "width": 200.0,
+          "height": 255.0,
+          "is_cluster": true
         },
         {
-          "id": "l2",
-          "x": 82.28,
-          "y": 164.0,
-          "width": 78.56,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "sg_left",
+          "x": 159.91,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
+          "is_cluster": true
         },
         {
           "id": "r1",
-          "x": 82.28,
-          "y": 318.0,
-          "width": 78.56,
-          "height": 54.0,
+          "x": 159.91,
+          "y": 328.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "r2",
-          "x": 82.28,
-          "y": 422.0,
-          "width": 78.56,
-          "height": 54.0,
+          "x": 159.91,
+          "y": 397.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "r3",
-          "x": 82.28,
-          "y": 526.0,
-          "width": 78.56,
-          "height": 54.0,
+          "x": 159.91,
+          "y": 466.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "sg_left",
-          "x": 82.28,
-          "y": 112.0,
-          "width": 148.56,
-          "height": 208.0,
-          "is_cluster": true
+          "id": "l1",
+          "x": 159.91,
+          "y": 82.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         },
         {
-          "id": "sg_right",
-          "x": 82.28,
-          "y": 422.0,
-          "width": 346.08,
-          "height": 312.0,
-          "is_cluster": true
+          "id": "l2",
+          "x": 159.91,
+          "y": 151.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "id": "L_l1_l2_0",
-          "from": "l1",
-          "to": "l2",
+          "id": "L_l2_r1_0",
+          "from": "l2",
+          "to": "r1",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 82.28,
-              "y": 87.0
+              "x": 159.91,
+              "y": 174.0
             },
             {
-              "x": 82.28,
-              "y": 112.0
+              "x": 159.91,
+              "y": 208.0
             },
             {
-              "x": 82.28,
-              "y": 137.0
+              "x": 159.91,
+              "y": 248.0
+            },
+            {
+              "x": 159.91,
+              "y": 306.0
             }
           ],
           "label": null,
@@ -98,16 +102,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 82.28,
-              "y": 345.0
+              "x": 159.91,
+              "y": 351.0
             },
             {
-              "x": 82.28,
-              "y": 370.0
-            },
-            {
-              "x": 82.28,
-              "y": 395.0
+              "x": 159.91,
+              "y": 375.0
             }
           ],
           "label": null,
@@ -127,16 +127,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 82.28,
-              "y": 449.0
+              "x": 159.91,
+              "y": 420.0
             },
             {
-              "x": 82.28,
-              "y": 474.0
-            },
-            {
-              "x": 82.28,
-              "y": 499.0
+              "x": 159.91,
+              "y": 444.0
             }
           ],
           "label": null,
@@ -149,31 +145,19 @@
           "stroke_dasharray": null
         },
         {
-          "id": "L_l2_r1_0",
-          "from": "l2",
-          "to": "r1",
+          "id": "L_l1_l2_0",
+          "from": "l1",
+          "to": "l2",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 82.28,
-              "y": 191.0
+              "x": 159.91,
+              "y": 105.0
             },
             {
-              "x": 82.28,
-              "y": 216.0
-            },
-            {
-              "x": 82.28,
-              "y": 241.0
-            },
-            {
-              "x": 82.28,
-              "y": 266.0
-            },
-            {
-              "x": 82.28,
-              "y": 291.0
+              "x": 159.91,
+              "y": 129.0
             }
           ],
           "label": null,
@@ -189,18 +173,18 @@
       "clusters": [
         {
           "id": "sg_left",
-          "x": 82.28,
-          "y": 112.0,
-          "width": 148.56,
-          "height": 208.0,
+          "x": 159.91,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "short",
           "title_label": {
-            "x": 82.28,
-            "y": 20.0,
-            "width": 34.4,
-            "height": 24.0
+            "x": 159.91,
+            "y": 21.5,
+            "width": 30.1,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -210,18 +194,18 @@
         },
         {
           "id": "sg_right",
-          "x": 82.28,
-          "y": 422.0,
-          "width": 346.08,
-          "height": 312.0,
-          "diff": 90.76,
-          "offset_y": 20.0,
+          "x": 159.91,
+          "y": 385.5,
+          "width": 200.0,
+          "height": 255.0,
+          "diff": 43.91,
+          "offset_y": 15.0,
           "title": "a much much longer title that should expand the box",
           "title_label": {
-            "x": 82.28,
-            "y": 278.0,
-            "width": 338.08,
-            "height": 24.0
+            "x": 159.91,
+            "y": 267.5,
+            "width": 295.82,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -231,10 +215,10 @@
         }
       ],
       "bounds": {
-        "min_x": -90.76,
-        "min_y": 8.0,
-        "max_x": 255.32,
-        "max_y": 578.0
+        "min_x": 59.91,
+        "min_y": 12.0,
+        "max_x": 259.91,
+        "max_y": 513.0
       }
     }
   }

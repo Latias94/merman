@@ -5,108 +5,108 @@
       "nodes": [
         {
           "id": "Company",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 414.52,
-          "height": 445.0,
+          "x": 172.79,
+          "y": 193.5,
+          "width": 321.58,
+          "height": 363.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 339.52,
-          "height": 375.0,
+          "x": 172.79,
+          "y": 206.5,
+          "width": 273.58,
+          "height": 289.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Company.Project.Module",
+          "x": 172.79,
+          "y": 219.5,
+          "width": 225.58,
+          "height": 215.0,
           "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 199.52,
-          "height": 150.0,
+          "x": 172.79,
+          "y": 232.5,
+          "width": 177.58,
+          "height": 141.0,
           "is_cluster": false
-        },
-        {
-          "id": "Company.Project.Module",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 269.52,
-          "height": 275.0,
-          "is_cluster": true
         }
       ],
       "edges": [],
       "clusters": [
         {
           "id": "Company",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 414.52,
-          "height": 445.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 172.79,
+          "y": 193.5,
+          "width": 321.58,
+          "height": 363.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Company",
           "title_label": {
-            "x": 207.26,
-            "y": 12.0,
-            "width": 58.4,
-            "height": 24.0
+            "x": 172.79,
+            "y": 22.5,
+            "width": 51.1,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "Company.Project",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 339.52,
-          "height": 375.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 172.79,
+          "y": 206.5,
+          "width": 273.58,
+          "height": 289.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Project",
           "title_label": {
-            "x": 207.26,
-            "y": 47.0,
-            "width": 50.88,
-            "height": 24.0
+            "x": 172.79,
+            "y": 72.5,
+            "width": 44.52,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "Company.Project.Module",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 269.52,
-          "height": 275.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 172.79,
+          "y": 219.5,
+          "width": 225.58,
+          "height": 215.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Module",
           "title_label": {
-            "x": 207.26,
-            "y": 97.0,
-            "width": 41.6,
-            "height": 24.0
+            "x": 172.79,
+            "y": 122.5,
+            "width": 36.4,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 414.52,
-        "max_y": 445.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 333.58,
+        "max_y": 375.0
       }
     }
   }

@@ -4,28 +4,28 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "SG",
+          "x": 149.76,
+          "y": 148.5,
+          "width": 248.0,
+          "height": 273.0,
+          "is_cluster": true
+        },
+        {
           "id": "A",
-          "x": 135.5,
-          "y": 94.0,
-          "width": 180.0,
-          "height": 102.0,
+          "x": 149.76,
+          "y": 93.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 549.06,
-          "y": 94.0,
-          "width": 97.12,
-          "height": 54.0,
+          "x": 149.76,
+          "y": 238.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
-        },
-        {
-          "id": "SG",
-          "x": 321.56,
-          "y": 94.0,
-          "width": 627.12,
-          "height": 172.0,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -37,23 +37,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 225.5,
-              "y": 94.0
+              "x": 149.76,
+              "y": 126.0
             },
             {
-              "x": 363.0,
-              "y": 94.0
-            },
-            {
-              "x": 500.5,
-              "y": 94.0
+              "x": 149.76,
+              "y": 216.0
             }
           ],
           "label": {
-            "x": 363.0,
-            "y": 94.0,
+            "x": 149.76,
+            "y": 171.0,
             "width": 200.0,
-            "height": 48.0
+            "height": 42.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -67,31 +63,31 @@
       "clusters": [
         {
           "id": "SG",
-          "x": 321.56,
-          "y": 94.0,
-          "width": 627.12,
-          "height": 172.0,
-          "diff": -4.0,
-          "offset_y": 20.0,
+          "x": 149.76,
+          "y": 148.5,
+          "width": 248.0,
+          "height": 273.0,
+          "diff": 9.76,
+          "offset_y": 15.0,
           "title": "This subgraph title should wrap at 200 not 120",
           "title_label": {
-            "x": 321.56,
-            "y": 20.0,
-            "width": 314.88,
-            "height": 24.0
+            "x": 149.76,
+            "y": 21.5,
+            "width": 275.52,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "LR",
+          "effective_dir": "TB",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 635.12,
-        "max_y": 180.0
+        "min_x": 25.76,
+        "min_y": 12.0,
+        "max_x": 273.76,
+        "max_y": 285.0
       }
     }
   }

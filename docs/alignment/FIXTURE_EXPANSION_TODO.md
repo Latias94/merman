@@ -1,10 +1,20 @@
-# Fixture Expansion TODO (Mermaid@11.16.1)
+# Fixture Expansion History (through Mermaid 11.16.1)
 
-This document tracks fixture expansion work that is not yet imported into `fixtures/**`.
+Status: Historical. This file retains earlier import decisions and proposed follow-up work; it is
+not the current fixture inventory or an active execution checklist. Current admission and source
+identity live in [`STATUS.md`](STATUS.md), the per-family baseline manifests, and
+`tools/upstreams/REPOS.lock.json`. Active parity work belongs in
+[`GAP_BACKLOG.md`](GAP_BACKLOG.md). Revalidate any uncompleted item against those owners before
+starting it.
 
-Policy:
+References below to fixture-derived root or label overrides describe removed implementations.
+ADR-0062 and ADR-0073 now require computed geometry and operation-owned measurement; import work
+must preserve that boundary. The retained commands and family status notes describe their original
+workstreams and are not current release evidence.
 
-- Upstream baseline is Mermaid `@11.16.1` (see `tools/upstreams/REPOS.lock.json`).
+Historical policy:
+
+- The baseline recorded by this log was Mermaid `@11.16.1`; the repository lock now owns the selected baseline.
 - Prefer small, reviewable batches.
 - Every imported fixture must remain traceable to an upstream source file.
 - After each batch, keep the global parity gates green:
@@ -215,8 +225,10 @@ TODO (next incremental batches from docs):
 - Participant annotators beyond `@Actor` (document the mapping / degradation policy).
 - Negative fixtures: known-unsupported statements should fail deterministically in strict mode.
 
-## Bookkeeping
+## Current Bookkeeping
 
-- If a fixture batch changes the upstream SVG corpus size, update:
-  - `docs/alignment/STATUS.md`
-  - `docs/alignment/PARITY_HARDENING_PLAN.md`
+New imports update their family inputs, semantic/layout goldens, upstream baseline manifest, and
+source coverage notes. Run `xtask check-alignment` and the affected parity gates. Change
+[`STATUS.md`](STATUS.md) when support or a documented boundary changes; keep raw counts in the
+verification report. Do not append new work to this historical log or the superseded
+`PARITY_HARDENING_PLAN.md`.

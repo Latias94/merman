@@ -5,35 +5,35 @@
       "nodes": [
         {
           "id": "entity-CAR-0",
-          "x": 116.12,
-          "y": 93.5,
-          "width": 216.24,
-          "height": 171.0,
+          "x": 109.73,
+          "y": 91.5,
+          "width": 195.46,
+          "height": 159.0,
           "is_cluster": false
         },
         {
           "id": "entity-HOUSE-2",
-          "x": 710.96,
-          "y": 93.5,
+          "x": 480.84,
+          "y": 91.5,
           "width": 100.0,
-          "height": 84.0,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "entity-PERSON-1",
-          "x": 442.6,
-          "y": 93.5,
-          "width": 156.72,
-          "height": 171.0,
+          "x": 319.15,
+          "y": 91.5,
+          "width": 143.38,
+          "height": 159.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 760.96,
-        "max_y": 179.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 530.84,
+        "max_y": 171.0
       }
     }
   }

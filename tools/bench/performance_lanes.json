@@ -45,7 +45,7 @@
       "package": "merman",
       "bench": "ascii_pipeline",
       "corpus": "tools/bench/ascii_corpus.json",
-      "features": "ascii",
+      "features": "all-diagrams,ascii",
       "default_features": false,
       "artifact": "perf-ascii",
       "title": "Merman ASCII Performance Regression",

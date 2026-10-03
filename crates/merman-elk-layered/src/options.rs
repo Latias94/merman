@@ -86,6 +86,14 @@ pub enum NodePlacementStrategy {
     NetworkSimplex,
 }
 
+/// Node-placement flexibility reachable through Mermaid's container options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodeFlexibility {
+    #[default]
+    None,
+    PortPosition,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FixedAlignment {
     #[default]
@@ -253,20 +261,44 @@ pub enum NodeLabelPlacement {
     OutsideRightBottom,
 }
 
+/// Alignment of graph contents when a minimum size leaves additional space on an axis.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ContentAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("ELK node size minimum must have finite dimensions")]
+pub struct NodeSizeError;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     pub direction: ElkDirection,
     pub direction_congruency: DirectionCongruency,
     pub hierarchy_handling: HierarchyHandling,
+    pub separate_connected_components: bool,
+    pub aspect_ratio: f64,
     pub port_labels_placement_next_to_port_if_possible: bool,
     pub port_labels_treat_as_group: bool,
     pub inside_self_loops_activate: bool,
     pub edge_routing: EdgeRouting,
     pub padding: ElkPadding,
     pub node_labels_padding: ElkPadding,
+    /// `Some` enables ELK's `MINIMUM_SIZE` constraint; dimensions include graph padding.
+    pub node_size_minimum: Option<crate::graph::LSize>,
+    pub node_size_default_minimum: bool,
+    pub node_size_include_labels: bool,
+    pub horizontal_content_alignment: ContentAlignment,
+    pub vertical_content_alignment: ContentAlignment,
     pub spacing: SpacingOptions,
     pub cycle_breaking_strategy: CycleBreakingStrategy,
     pub layering_strategy: LayeringStrategy,
+    pub layering_coffman_graham_layer_bound: i32,
+    pub layering_min_width_upper_bound: i32,
+    pub layering_min_width_upper_layer_estimation_scaling_factor: i32,
     pub crossing_minimization_strategy: CrossingMinimizationStrategy,
     pub node_placement_strategy: NodePlacementStrategy,
     pub hierarchical_sweepiness: f64,
@@ -334,6 +366,7 @@ impl Default for ElkPadding {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpacingOptions {
+    pub component_component: f64,
     pub node_node: f64,
     pub node_self_loop: f64,
     pub edge_edge: f64,
@@ -361,6 +394,7 @@ pub struct SpacingMargin {
 impl Default for SpacingOptions {
     fn default() -> Self {
         Self {
+            component_component: 20.0,
             node_node: 20.0,
             node_self_loop: 10.0,
             edge_edge: 10.0,
@@ -388,6 +422,7 @@ impl SpacingOptions {
         let defaults = Self::default();
         let scale = base_value / defaults.node_node;
         Self {
+            component_component: defaults.component_component * scale,
             node_node: base_value,
             node_self_loop: defaults.node_self_loop * scale,
             edge_edge: defaults.edge_edge * scale,
@@ -412,15 +447,25 @@ impl Default for LayeredOptions {
             direction: ElkDirection::Undefined,
             direction_congruency: DirectionCongruency::ReadingDirection,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
+            separate_connected_components: true,
+            aspect_ratio: f64::from(1.6_f32),
             port_labels_placement_next_to_port_if_possible: false,
             port_labels_treat_as_group: true,
             inside_self_loops_activate: false,
             edge_routing: EdgeRouting::Orthogonal,
             padding: ElkPadding::default(),
             node_labels_padding: ElkPadding::uniform(5.0),
+            node_size_minimum: None,
+            node_size_default_minimum: true,
+            node_size_include_labels: false,
+            horizontal_content_alignment: ContentAlignment::Start,
+            vertical_content_alignment: ContentAlignment::Start,
             spacing: SpacingOptions::default(),
             cycle_breaking_strategy: CycleBreakingStrategy::Greedy,
             layering_strategy: LayeringStrategy::NetworkSimplex,
+            layering_coffman_graham_layer_bound: i32::MAX,
+            layering_min_width_upper_bound: 4,
+            layering_min_width_upper_layer_estimation_scaling_factor: 2,
             crossing_minimization_strategy: CrossingMinimizationStrategy::LayerSweep,
             node_placement_strategy: NodePlacementStrategy::BrandesKoepf,
             hierarchical_sweepiness: 0.1,
@@ -464,6 +509,65 @@ impl Default for LayeredOptions {
 }
 
 impl LayeredOptions {
+    pub fn validate_node_size_minimum(&self) -> Result<(), NodeSizeError> {
+        if self
+            .node_size_minimum
+            .is_some_and(|size| !size.width.is_finite() || !size.height.is_finite())
+        {
+            return Err(NodeSizeError);
+        }
+        Ok(())
+    }
+    pub(crate) fn effective_node_size_minimum(&self) -> Option<crate::graph::LSize> {
+        self.node_size_minimum.map(|mut minimum| {
+            if self.node_size_default_minimum {
+                if minimum.width <= 0.0 {
+                    minimum.width = 20.0;
+                }
+                if minimum.height <= 0.0 {
+                    minimum.height = 20.0;
+                }
+            }
+            minimum
+        })
+    }
+
+    /// Accounts for Mermaid's single inside-top-center container title in the source
+    /// `NODE_LABELS` minimum. ELK's default symmetric label grid reserves both outer rows.
+    /// A standalone scope uses this before import because its owner label is outside the graph.
+    pub fn include_inside_top_center_label_minimum(
+        &mut self,
+        label: crate::graph::LSize,
+    ) -> Result<(), NodeSizeError> {
+        self.validate_node_size_minimum()?;
+        if !self.node_size_include_labels {
+            return Ok(());
+        }
+        if !label.width.is_finite() || !label.height.is_finite() {
+            return Err(NodeSizeError);
+        }
+        let width = if label.width > 0.0 {
+            label.width + self.node_labels_padding.left + self.node_labels_padding.right
+        } else {
+            0.0
+        };
+        let height = if label.height > 0.0 {
+            2.0 * label.height
+                + 2.0 * self.spacing.label_label
+                + self.node_labels_padding.top
+                + self.node_labels_padding.bottom
+        } else {
+            0.0
+        };
+        if !width.is_finite() || !height.is_finite() {
+            return Err(NodeSizeError);
+        }
+        let minimum = self.node_size_minimum.get_or_insert_default();
+        minimum.width = minimum.width.max(width);
+        minimum.height = minimum.height.max(height);
+        Ok(())
+    }
+
     /// Options set by Mermaid's ELK adapter before calling `elk.layout(...)`.
     ///
     /// Source:
@@ -479,7 +583,9 @@ impl LayeredOptions {
             consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
             spacing: SpacingOptions::layered_base_value(40.0),
             unnecessary_bendpoints: true,
-            self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            // Mermaid sets EQUALLY on the root graph, but ELK resolves this node-scoped
+            // option from each node's default (NORTH) unless a node overrides it.
+            self_loop_distribution: SelfLoopDistributionStrategy::North,
             self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,

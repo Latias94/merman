@@ -23,3 +23,20 @@ export function normalizeMermaidThemeName(
     ? (theme as ThemeName)
     : "default";
 }
+
+export type MermaidThemeSelection = "auto" | ThemeName;
+
+export function isMermaidThemeSelection(
+  value: unknown,
+): value is MermaidThemeSelection {
+  return (
+    value === "auto" ||
+    (typeof value === "string" && Object.hasOwn(MERMAID_THEME_NAMES, value))
+  );
+}
+
+export function normalizeMermaidThemeSelection(
+  value: string,
+): MermaidThemeSelection {
+  return isMermaidThemeSelection(value) ? value : "auto";
+}

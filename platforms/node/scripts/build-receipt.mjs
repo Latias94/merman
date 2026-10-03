@@ -252,7 +252,8 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
       JSON.stringify(expectedRuntime.capabilityIds) ||
     JSON.stringify(outputIds) !== JSON.stringify(expectedRuntime.outputIds) ||
     JSON.stringify(operationIds) !== JSON.stringify(expectedRuntime.operationIds) ||
-    JSON.stringify(systemAdapterIds) !== JSON.stringify(expectedRuntime.systemAdapterIds)
+    JSON.stringify(systemAdapterIds) !== JSON.stringify(expectedRuntime.systemAdapterIds) ||
+    JSON.stringify(catalog.registry.diagram_families) !== JSON.stringify(expectedRuntime.diagramFamilies)
   ) {
     throw new Error("candidate build receipt runtime catalog disagrees with its capability recipe.");
   }
@@ -295,6 +296,7 @@ function validateCapabilityRecipe(config) {
     "default_features",
     "capability_recipe",
     "features",
+    "diagram_families",
   ], "candidate build receipt config");
   const recipe = config.capability_recipe;
   if (
@@ -337,15 +339,19 @@ function validateCapabilityRecipe(config) {
   ) {
     throw new Error("candidate build receipt target configuration is not canonical.");
   }
+  if (JSON.stringify(config.diagram_families) !== JSON.stringify(expectedBuildRecipe.diagramFamilies)) {
+    throw new Error("candidate build receipt diagram families do not match the canonical Node recipe.");
+  }
   if (JSON.stringify(cargoFeatures) !== JSON.stringify(expectedBuildRecipe.cargoFeatures)) {
     throw new Error(
-      "candidate build receipt Cargo features must equal the capability recipe capabilities plus its transport.",
+      "candidate build receipt Cargo features must equal the diagram selectors, capability recipe capabilities, and transport.",
     );
   }
   return {
     buildRecipe: expectedBuildRecipe,
     capabilityRecipe: {
       default_features: false,
+      diagram_families: expectedBuildRecipe.diagramFamilies,
       capability_recipe: {
         descriptor: recipe.descriptor,
         target: recipe.target,

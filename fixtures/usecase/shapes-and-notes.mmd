@@ -1,0 +1,12 @@
+usecase-beta
+direction LR
+actor User("Customer")@{type:hollow} <<Human>>
+systemBoundary Auth(Authentication)@{type:package}
+Login("Sign & go")@{business:true}
+Verify[Check]
+end
+User link@--> Login
+Login ..> : include Verify
+note for Login "Remember"
+json Data@{"second":2,"first":{"z":0,"a":1}}
+Data -- Login

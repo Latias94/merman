@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "Server",
-          "x": 54.761,
-          "y": 263.0,
-          "width": 98.16,
-          "height": 126.0,
+          "x": 61.414,
+          "y": 293.0,
+          "width": 88.89,
+          "height": 120.0,
           "is_cluster": false
         },
         {
           "id": "Client",
-          "x": 54.761,
-          "y": 63.0,
-          "width": 109.522,
-          "height": 126.0,
+          "x": 61.414,
+          "y": 72.0,
+          "width": 98.828,
+          "height": 120.0,
           "is_cluster": false
         }
       ],
@@ -29,23 +29,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 54.761,
-              "y": 126.0
+              "x": 61.414,
+              "y": 132.0
             },
             {
-              "x": 54.761,
-              "y": 163.0
-            },
-            {
-              "x": 54.761,
-              "y": 200.0
+              "x": 61.414,
+              "y": 233.0
             }
           ],
           "label": {
-            "x": 54.761,
-            "y": 163.0,
-            "width": 55.04,
-            "height": 24.0
+            "x": 60.994,
+            "y": 182.5,
+            "width": 48.16,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -58,10 +54,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 109.522,
-        "max_y": 326.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 110.828,
+        "max_y": 353.0
       }
     }
   }

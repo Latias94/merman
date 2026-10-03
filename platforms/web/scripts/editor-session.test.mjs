@@ -278,7 +278,7 @@ function runtimeCatalogFixture({
     constructor_service_contracts: structuredClone(constructorServiceContracts),
     capabilities,
     output_contracts: outputContracts,
-    registry: { diagram_family_count: 0 },
+    registry: { diagram_family_count: 0, diagram_families: [] },
     resources: {
       general_binding_default_profile: "interactive",
       cli_default_profile: "trusted-native",
@@ -305,6 +305,14 @@ function runtimeCatalogFixture({
 
 test("runtime catalog rejects malformed shapes and invalid local relations", async () => {
   const cases = [
+    ...[undefined, ["gantt", "flowchart"], ["flowchart", "flowchart"], ["error"]].map((families) => [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.registry.diagram_families = families;
+        return catalog;
+      },
+      /runtime registry diagram families/,
+    ]),
     [
       () => {
         const catalog = runtimeCatalogFixture();
@@ -792,6 +800,7 @@ test("runtime catalog accepts unknown future IDs", async () => {
   futureCatalog.future_root_metadata = true;
   futureCatalog.future_ratio = 0.5;
   futureCatalog.registry.future_registry_metadata = true;
+  futureCatalog.registry.diagram_families = ["flowchart", "gitGraph"];
   futureCatalog.resources.future_resource_metadata = true;
   futureCatalog.resources.limits = [
     {
@@ -866,6 +875,7 @@ test("runtime catalog accepts unknown future IDs", async () => {
   assert.equal(catalog.future_ratio, 0.5);
   assert.equal(catalog.capabilities.future_capability_metadata.version, 1);
   assert.equal(catalog.registry.future_registry_metadata, true);
+  assert.deepEqual(catalog.registry.diagram_families, ["flowchart", "gitGraph"]);
   assert.equal(catalog.resources.future_resource_metadata, true);
   assert.equal(catalog.resources.limits[0].future_limit_metadata, true);
   assert.equal(catalog.resources.profiles[0].future_profile_metadata, true);

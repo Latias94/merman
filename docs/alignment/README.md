@@ -14,7 +14,7 @@ be corrected.
 | Primary SVG matrix and compare commands | [`../../crates/xtask/src/cmd/compare/diagrams.rs`](../../crates/xtask/src/cmd/compare/diagrams.rs) |
 | Admission consistency checks | [`../../crates/xtask/src/cmd/admission.rs`](../../crates/xtask/src/cmd/admission.rs) |
 | Family fixture admission | Per-family `_baseline-manifest.json` files under [`../../fixtures/upstream-svgs/`](../../fixtures/upstream-svgs/) |
-| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle_11_17_2.json`](../../fixtures/_verification/theme_variables_oracle_11_17_2.json) |
+| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle_12_1_0.json`](../../fixtures/_verification/theme_variables_oracle_12_1_0.json) |
 | Deterministic root contracts | [`../../fixtures/_verification/deterministic-root-contracts.json`](../../fixtures/_verification/deterministic-root-contracts.json) |
 | Semantic label residuals | [`../../fixtures/_verification/label-geometry-residuals.json`](../../fixtures/_verification/label-geometry-residuals.json) |
 
@@ -28,9 +28,10 @@ alignment prose or require paired Markdown documents.
 | --- | --- |
 | [`STATUS.md`](STATUS.md) | Current human dashboard and verification entry point. |
 | [`ADMISSION_INVENTORY.md`](ADMISSION_INVENTORY.md) | Human explanation of the structured admission model; not the model itself. |
-| `*_MINIMUM.md` | Family-scoped operator guides describing supported behavior and known boundaries. |
+| `*_MINIMUM.md` | Family scope and behavior notes, often retaining the source version at first admission. Read their status and source date before treating a claim as current. |
 | `*_UPSTREAM_TEST_COVERAGE.md` | Source and fixture evidence reports. Counts and commands may be dated; manifests and executable compare facts remain authoritative. |
-| Gap, backlog, and admission-plan documents | Active work only when their own status and owner say so; otherwise historical planning context. |
+| [`GAP_BACKLOG.md`](GAP_BACKLOG.md) and [`MILESTONES.md`](MILESTONES.md) | Active work and maintained exit criteria; neither records a current successful gate run. |
+| [`FIXTURE_EXPANSION_TODO.md`](FIXTURE_EXPANSION_TODO.md), [`PARITY_HARDENING_PLAN.md`](PARITY_HARDENING_PLAN.md), and completed admission plans | Historical import or decision evidence; revisit individual claims against the selected source before new work. |
 
 The paired family documents remain useful for source provenance and review, but their filenames,
 pair count, wording, and embedded paths are not standing release evidence. Rewording or

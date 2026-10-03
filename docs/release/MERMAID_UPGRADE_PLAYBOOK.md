@@ -5,6 +5,24 @@ release or changing any behavior-owning companion. A release is a pinned behavio
 single npm version. Completion means parser, semantics, editor services, headless output, browser
 reference execution, examples, provenance, and package surfaces all describe the same graph.
 
+## Current Transition: Mermaid 12.1.0
+
+As of 2026-10-02, development toward unreleased Merman `0.8.0` selects `mermaid@12.1.0` at
+`21f72f07ea22c0af48a3149c550654e80d8e40cb`, `@mermaid-js/parser@2.0.1`, and
+`@mermaid-js/mermaid-cli@12.0.0`. Other selected companions remain unchanged by this transition.
+The previous Mermaid `12.0.0` source at `98a0945418c76238f15df2afaddbba4272656c3b` remains comparison
+evidence, not a second selected graph.
+
+The scope combines the 12.1 parser, configuration, theme and ELK behavior deltas with the current
+ELK correctness fixes. It adds no diagram family or Cargo feature and changes no FFI or
+editor-facts schema version. The independent Tree-sitter baseline does not move. Low-level ELK
+Rust initializer changes are documented in the
+[alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+Reference generation, source-bound oracle refresh, focused regressions, and full release gates are
+still under validation. This note is a scope record, not an admission receipt or publication
+statement; the bundle, selection decision, and completed gate results remain the authorities.
+
 ## 1. Freeze The Delivery Boundary
 
 Record the requested Mermaid release, exact tag and commit, current branch and dirty-tree ownership,
@@ -59,12 +77,15 @@ Move the source graph and all reference workspaces together. Before running the 
 3. Update `playground/package.json` and `tools/mermaid-cli/package.json`, including their exact
    `overrides`, then regenerate both package locks with lifecycle scripts disabled. The reference
    CLI's direct Mermaid, CLI, layout, external-diagram, and behavior-source versions must resolve to
-   the selected graph rather than whatever an upstream range happens to install.
+   the selected graph rather than whatever an upstream range happens to install. Before hashing,
+   ensure these reviewed JSON files use the LF endings required by `.gitattributes`: npm can write
+   CRLF on Windows. Workspace digests are byte-exact; local file bytes must match the bytes Git
+   will commit, or Linux verification will reject an otherwise valid selection.
 4. Recompute the descriptor's workspace hashes from those reviewed manifests, locks, and reference
    config. Record `installedContentSha256` for every package that can participate in reference
    execution: Mermaid, the parser, the sanitizer, the reference CLI, every external diagram and
-   layout module, each selected behavior package, and the complete browser-driver toolchain loaded
-   by the renderer. Do not copy old hashes forward.
+   layout module, each selected behavior package, the reference-runtime compiler, and the complete
+   browser-driver toolchain loaded by the renderer. Do not copy old hashes forward.
 
 When the selected identity changes, write a new `MERMAID_SELECTION_DECISION.json` from the reviewed
 admission outputs. Its previous/current identity digests, exact changed fields, npm version and
@@ -123,6 +144,13 @@ npm ci --ignore-scripts --prefix tools/mermaid-cli
 npm ls --all --prefix tools/mermaid-cli
 cargo nextest run -p merman-core baseline
 ```
+
+Run `node --test tools/mermaid-cli/reference-runtime.test.mjs` after installing the reference CLI.
+The shared builder compiles Mermaid's module entry point and selected companions into one browser
+artifact. The renderer probe verifies that Mermaid actually calls the selected DOMPurify instance;
+reading an installed package version cannot establish this. Published Mermaid bundles embed their
+own sanitizer and must not substitute for the owned artifact. Baseline provenance records the
+artifact digest and compiler identity, and promotion rejects package or artifact drift.
 
 Only after reviewed browser/reference evidence demonstrates that the new graph produced the intended
 baselines may the primary SVG provenance be regenerated:

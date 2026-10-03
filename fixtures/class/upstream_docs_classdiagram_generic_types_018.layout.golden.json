@@ -5,20 +5,20 @@
       "nodes": [
         {
           "id": "Square",
-          "x": 168.438,
-          "y": 144.0,
-          "width": 336.876,
-          "height": 288.0,
+          "x": 160.885,
+          "y": 142.5,
+          "width": 297.771,
+          "height": 261.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 336.876,
-        "max_y": 288.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 309.771,
+        "max_y": 273.0
       }
     }
   }

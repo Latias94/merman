@@ -5,19 +5,19 @@
       "nodes": [
         {
           "id": "entity-This ❤ Unicode-0",
-          "x": 76.24,
-          "y": 50.0,
-          "width": 136.48,
-          "height": 84.0,
+          "x": 74.21,
+          "y": 52.5,
+          "width": 124.42,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 144.48,
-        "max_y": 92.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 136.42,
+        "max_y": 93.0
       }
     }
   }

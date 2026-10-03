@@ -1,6 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error"
+    "type": "error",
+    "errorMessage": "Diagram parse error (stateDiagram): Unexpected character '-'"
   }
 }

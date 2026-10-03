@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ThemeName } from "@mermanjs/web";
+import type { MermaidThemeSelection } from "../lib/mermaid-theme-name.ts";
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import type {
   ShareViewWarning,
@@ -18,7 +18,7 @@ import {
   type SvgPresentationMode,
 } from "../lib/svg-presentation.ts";
 
-export type Theme = ThemeName;
+export type Theme = MermaidThemeSelection;
 export type UITheme = "light" | "dark" | "system";
 export type ResolvedUITheme = Exclude<UITheme, "system">;
 export type EditorMode = "code" | "config";

@@ -100,8 +100,8 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.13`
-- Source: https://github.com/cure53/DOMPurify.git @ `3067f774676975de12306effd6db6ad7a9a8c17f`
+- Version: `3.4.16`
+- Source: https://github.com/cure53/DOMPurify.git @ `b9b9d80f7e401771c2ccaef5f45def7eec8f27d7`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License: `(Apache-2.0 OR MPL-2.0)`
@@ -160,8 +160,8 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.17.2`
-- Source: https://github.com/mermaid-js/mermaid.git @ `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
+- Version: `12.1.0`
+- Source: https://github.com/mermaid-js/mermaid.git @ `21f72f07ea22c0af48a3149c550654e80d8e40cb`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
@@ -242,11 +242,11 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 
 ### Eclipse Layout Kernel
 
-The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0.
 
 - Version: `0.9.1`
 - Source: https://github.com/eclipse-elk/elk.git @ `62d5909f96fad541bc101ad52dabaece6b7eab7e`
-- Source path: `plugins/org.eclipse.elk.alg.layered`
+- Source path: `plugins`
 - Relationship: `modified`, `translated`
 - License: `EPL-2.0`
 - Local evidence: `crates/merman-elk-layered`, `crates/merman-layout-elk`
@@ -268,8 +268,8 @@ Mermaid's ELK adapter behavior is compared against this JavaScript distribution,
 
 The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text.
 
-- Version: `0.2.0`
-- Source: https://github.com/typst-community/wasm-minimal-protocol.git @ `cc08c96b8e7683188eb16ad315a9689b89290f85`
+- Version: `0.2.1`
+- Source: https://github.com/typst-community/wasm-minimal-protocol.git @ `b595eb790d9926dd91afc37d98c2e1fd3102cb2a`
 - Source path: `crates/macro`
 - Relationship: `linked`
 - License: `Unlicense`

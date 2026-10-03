@@ -203,7 +203,7 @@ fn analysis_facts_v2_accepts_payload_without_additive_effective_layout() {
     let syntax = value["diagrams"][0]["syntax"]
         .as_object_mut()
         .expect("syntax facts should be an object");
-    assert_eq!(syntax.remove("effective_layout"), Some(json!("dagre")));
+    assert_eq!(syntax.remove("effective_layout"), Some(json!("elk")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
         .expect("a compatible facts v2 payload should remain readable");

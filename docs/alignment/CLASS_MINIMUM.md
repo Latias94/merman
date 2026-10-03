@@ -4,15 +4,15 @@ This document defines the admitted `classDiagram` parser, model, Dagre/ELK layou
 
 ## Baseline
 
-Upstream baseline: Mermaid `11.16.1` at
-`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
+Selected upstream baseline: Mermaid `12.0.0` at
+`98a0945418c76238f15df2afaddbba4272656c3b`. Historical fixture comments retain their
+original collection versions.
 
 ## Supported (current)
 
 - Header:
   - `classDiagram`
-  - `classDiagram-v2` (parsed as the same semantic model; detector selection depends on
-    `class.defaultRenderer`)
+  - `classDiagram-v2` (the same semantic model and detector identity; layout uses top-level `layout`)
 - Statement separators: newline
 - Comments: `%% ...`
 - Accessibility metadata:
@@ -69,6 +69,54 @@ Upstream baseline: Mermaid `11.16.1` at
   order are part of the contract.
 - `stress_class_many_relations_labels_020` is the signed semantic-label canary; nested namespaces
   are additionally covered by `stress_class_nested_namespaces_cross_edges_008`.
+
+### Mermaid 12 ELK paint routes
+
+The default Class renderer consumes the routes prepared by the common ELK paint pass.
+`straightenTerminalJogs` in the pinned `layout-algorithms/elk/render.ts` moves a short
+terminal channel onto the existing port row only when this introduces no extra crossings.
+The SVG painter must use those prepared edges, including repositioned terminal labels;
+reloading edges from the layout would silently discard the pass. Explicit
+`elk.straightenEdges: false` preserves the original channels.
+
+`class_svg_elk_paints_straightened_terminal_channels_without_moving_ports` covers both
+source and target staircases in `stress_class_many_relations_labels_020`, checks unchanged
+ports, and distinguishes the opt-out. The eight signed label residuals for that canary
+cover browser measurement only after this routing correction. `shapeUtil.ts` uses
+`getBBox()` and `getBoundingClientRect()` for Class text; their width differences propagate
+through ELK node placement, channel lengths, label anchors, and Neo dash masks. Label text,
+style, markers, CSS, edge identity, and route topology remain checked.
+
+### Namespace paint order and the font-size receipt
+
+The common ELK painter emits `clusters`, `edges edgePaths`, `edgeLabels`, then `nodes`,
+matching pinned `rendering-util/createGraph.ts`. Namespace backgrounds therefore paint
+behind relation paths and markers. Margin marker paths also retain the shared
+`markers.js` stroke widths: aggregation uses 2; composition and dependency use 0.
+
+The exact browser-text receipt for
+`stress_class_svg_font_size_px_string_precedence_026` was rebound after these corrections.
+An old/new compiled-render replay reproduced the previously admitted signature and
+proved that reversing only the six marker style additions and empty-group ordering/class
+change restored the old SVG byte-for-byte. All path geometry, text/tspan subtrees, CSS,
+and root attributes were unchanged, as were the input and pinned upstream SVG hashes.
+At that point, the first long member occupied two local text rows versus three upstream,
+with a concatenated-text space difference. Receipt modes, precision, and comparator policy
+were unchanged by that local-renderer correction.
+
+The owned-runtime baseline refresh on 2026-10-01 also refreshed the upstream binding.
+On Edge `154.0.4258.48`, replaying the previous Mermaid IIFE and the owned reference runtime
+produced byte-identical SVGs for this fixture and the adjacent numeric-font-size fixture
+`stress_class_svg_font_size_precedence_025`. The current upstream wraps each long member
+into two rows while preserving the `24px` stylesheet and complete member text. This is
+browser-dependent text measurement; the local SVG signature and admitted modes remain
+unchanged.
+
+The same browser replay reproduced `stress_class_many_relations_labels_020` byte-for-byte.
+Its only upstream differences are five HTML label `max-width` measurements. Relation
+identities, text, stylesheet, edge paths, label anchors, and descendant dimensions are unchanged,
+so its eight exact geometry residuals retain their existing upstream and local signatures.
+Only their upstream artifact digest and the signed canary digest were rebound.
 
 ## Remaining Gaps
 

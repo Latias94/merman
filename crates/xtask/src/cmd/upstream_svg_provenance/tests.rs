@@ -63,8 +63,12 @@ fn test_render_environment() -> UpstreamSvgRenderEnvironment {
             release: "10.0.26100".to_string(),
         },
         mermaid_runtime: UpstreamSvgRuntimeEnvironment {
-            esm_version: PINNED_MERMAID_VERSION.to_string(),
-            iife_version: PINNED_MERMAID_VERSION.to_string(),
+            mermaid_version: PINNED_MERMAID_VERSION.to_string(),
+            dompurify_version: crate::cmd::PINNED_DOMPURIFY_VERSION.to_string(),
+            compiler_version: "0.28.1".to_string(),
+            artifact_sha256: "d".repeat(64),
+            dompurify_package_sha256: "e".repeat(64),
+            compiler_package_sha256: "f".repeat(64),
             mermaid_package_sha256:
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
             mermaid_cli_package_sha256:
@@ -151,14 +155,14 @@ fn write_wardley_svg(dir: &Path, stem: &str, include_flow_markers: bool) -> Path
 }
 
 #[test]
-fn pinned_source_metadata_is_mermaid_11_17_2() {
+fn pinned_source_metadata_is_mermaid_12_1_0() {
     let source = current_source().expect("read pinned Mermaid source metadata");
-    assert_eq!(source.mermaid_version, "11.17.2");
-    assert_eq!(source.mermaid_cli_version, "11.16.0");
-    assert_eq!(source.mermaid_source_tag, "mermaid@11.17.2");
+    assert_eq!(source.mermaid_version, "12.1.0");
+    assert_eq!(source.mermaid_cli_version, "12.0.0");
+    assert_eq!(source.mermaid_source_tag, "mermaid@12.1.0");
     assert_eq!(
         source.mermaid_source_commit,
-        "dcb694ddb58dc5ad3502e7e903cac05fd812eac3"
+        "21f72f07ea22c0af48a3149c550654e80d8e40cb"
     );
     assert_eq!(
         source.package_json_sha256,
@@ -196,7 +200,10 @@ fn renderer_profiles_capture_seed_and_width_variants() {
         renderer_profile("error", None),
         "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     );
-    assert_eq!(renderer_profile("flowchart", None), "mmdc-default");
+    assert_eq!(
+        renderer_profile("flowchart", None),
+        "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    );
 
     let loose = FixtureRenderContext::derive(
         "flowchart/loose.mmd",
@@ -206,7 +213,7 @@ fn renderer_profiles_capture_seed_and_width_variants() {
     .expect("loose render context");
     assert_eq!(
         renderer_profile("flowchart", Some(&loose)),
-        "mmdc-default-host-security-loose-v1"
+        "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1"
     );
 
     let sandbox = FixtureRenderContext::derive(
@@ -217,7 +224,7 @@ fn renderer_profiles_capture_seed_and_width_variants() {
     .expect("sandbox render context");
     assert_eq!(
         renderer_profile("class", Some(&sandbox)),
-        "mmdc-default-host-security-sandbox-to-strict-v1"
+        "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-sandbox-to-strict-v1"
     );
 }
 
@@ -252,7 +259,7 @@ fn fixture_renderer_profile_is_bound_to_the_committed_host_context() {
     assert_eq!(
         renderer_profile_for_fixture("flowchart", &fixture_path, &loaded)
             .expect("resolve fixture renderer profile"),
-        "mmdc-default-host-security-loose-v1"
+        "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1"
     );
 }
 
@@ -310,7 +317,9 @@ fn generated_manifest_profile_uses_the_captured_render_context_snapshot() {
             .fixtures
             .get("loose")
             .map(|entry| entry.renderer_profile.as_str()),
-        Some("mmdc-default-host-security-loose-v1")
+        Some(
+            "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000-host-security-loose-v1"
+        )
     );
 
     let live_catalog = render_context_catalog_for_family("flowchart", &fixtures_dir)
@@ -318,7 +327,7 @@ fn generated_manifest_profile_uses_the_captured_render_context_snapshot() {
     assert_eq!(
         renderer_profile_for_fixture("flowchart", &fixture_path, &live_catalog)
             .expect("resolve replacement renderer profile"),
-        "mmdc-default"
+        "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     );
 }
 
@@ -535,12 +544,15 @@ fn render_environment_equality_covers_every_recorded_field() {
         },
         {
             let mut changed = environment.clone();
-            changed.mermaid_runtime.esm_version.push_str("-changed");
+            changed.mermaid_runtime.mermaid_version.push_str("-changed");
             changed
         },
         {
             let mut changed = environment.clone();
-            changed.mermaid_runtime.iife_version.push_str("-changed");
+            changed
+                .mermaid_runtime
+                .dompurify_version
+                .push_str("-changed");
             changed
         },
         {
@@ -553,6 +565,35 @@ fn render_environment_equality_covers_every_recorded_field() {
             let mut changed = environment.clone();
             changed.mermaid_runtime.mermaid_cli_package_sha256 =
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed
+                .mermaid_runtime
+                .compiler_version
+                .push_str("-changed");
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed.mermaid_runtime.artifact_sha256.push_str("-changed");
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed
+                .mermaid_runtime
+                .dompurify_package_sha256
+                .push_str("-changed");
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed
+                .mermaid_runtime
+                .compiler_package_sha256
+                .push_str("-changed");
             changed
         },
         {
@@ -687,10 +728,15 @@ fn partial_generation_requires_matching_generated_attestation() {
     assert!(different.to_string().contains("render environment differs"));
 
     let mut legacy = generated.clone();
-    legacy.schema_version = 1;
+    legacy.schema_version = 3;
     let legacy = prepare_partial_generated_manifest(Some(legacy), &source, &environment)
         .expect_err("legacy provenance cannot be partially merged");
-    assert!(legacy.to_string().contains("schema 1"));
+    assert!(legacy.to_string().contains("schema 3"));
+
+    let mut stale_renderer = generated.clone();
+    stale_renderer.source.renderer_revision = "xtask-upstream-svg-v4".to_string();
+    prepare_partial_generated_manifest(Some(stale_renderer), &source, &environment)
+        .expect_err("the previous renderer cannot extend an owned-runtime corpus");
 
     let accepted = prepare_partial_generated_manifest(Some(generated), &source, &environment)
         .expect("the exact generated environment can extend its own corpus");

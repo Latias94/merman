@@ -6,12 +6,139 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::common::networksimplex::{NGraph, NetworkSimplex};
+use crate::common::networksimplex::{NGraph, NetworkSimplex, NetworkSimplexError};
 use crate::graph::{LGraph, LayeredEdge};
+
+mod coffman_graham;
+#[cfg(test)]
+mod elkjs_0_9_3_cases;
+#[cfg(test)]
+mod execution_tests;
+mod interactive;
+mod longest_path;
+mod min_width;
+mod stretch_width;
+
+use crate::options::LayeringStrategy;
+use crate::work::{WorkControl, WorkError, checked_add, checked_mul, checked_sum};
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum LayeringError {
+    #[error(transparent)]
+    Work(#[from] WorkError),
+    #[error("layer assignment requires an acyclic graph")]
+    CyclicGraph,
+    #[error("stretch-width layering cannot normalize these node dimensions")]
+    InvalidStretchWidthDimensions,
+}
+
+type LayeringResult<T> = Result<T, LayeringError>;
+
+/// Snapshot adjacency in ELK port order; hidden constraint nodes are not layerless input.
+struct LayeringInput<'a> {
+    graph: &'a LGraph,
+    nodes: Vec<usize>,
+    incoming: Vec<Vec<usize>>,
+    outgoing: Vec<Vec<usize>>,
+}
+
+impl<'a> LayeringInput<'a> {
+    fn new(graph: &'a LGraph, work: &mut dyn WorkControl) -> LayeringResult<Self> {
+        let ports = graph
+            .layerless_nodes
+            .iter()
+            .try_fold(0, |total, node| checked_add(total, node.ports.len()))?;
+        charge(
+            work,
+            checked_sum([
+                checked_mul(graph.layerless_nodes.len(), 8)?,
+                checked_mul(graph.edges.len(), 4)?,
+                ports,
+            ])?,
+        )?;
+        let nodes = graph
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| (!node.hidden).then_some(index))
+            .collect();
+        let incoming = (0..graph.layerless_nodes.len())
+            .map(|node| {
+                graph
+                    .node_incoming_edges(node)
+                    .into_iter()
+                    .filter(|&edge| !graph.layerless_nodes[graph.edges[edge].source.node].hidden)
+                    .collect()
+            })
+            .collect();
+        let outgoing = (0..graph.layerless_nodes.len())
+            .map(|node| {
+                graph
+                    .node_outgoing_edges(node)
+                    .into_iter()
+                    .filter(|&edge| !graph.layerless_nodes[graph.edges[edge].target.node].hidden)
+                    .collect()
+            })
+            .collect();
+        Ok(Self {
+            graph,
+            nodes,
+            incoming,
+            outgoing,
+        })
+    }
+
+    fn source(&self, edge: usize) -> usize {
+        self.graph.edges[edge].source.node
+    }
+    fn target(&self, edge: usize) -> usize {
+        self.graph.edges[edge].target.node
+    }
+    fn len(&self) -> usize {
+        self.graph.layerless_nodes.len()
+    }
+}
+
+fn charge(work: &mut dyn WorkControl, units: usize) -> LayeringResult<()> {
+    work.check(units)?;
+    work.charge(units)?;
+    Ok(())
+}
+
+/// Compute in private state, including bounded checkpoints inside adaptive searches. Only a
+/// completed layering mutates the graph, so interruption never exposes half-assigned layers.
+pub(crate) fn layer_with_strategy(
+    graph: &mut LGraph,
+    strategy: LayeringStrategy,
+    work: &mut dyn WorkControl,
+) -> LayeringResult<()> {
+    let input = LayeringInput::new(graph, work)?;
+    let layers = match strategy {
+        LayeringStrategy::LongestPath => longest_path::layer(&input, false, work)?,
+        LayeringStrategy::LongestPathSource => longest_path::layer(&input, true, work)?,
+        LayeringStrategy::CoffmanGraham => coffman_graham::layer(&input, work)?,
+        LayeringStrategy::Interactive => interactive::layer(&input, work)?,
+        LayeringStrategy::MinWidth => min_width::layer(&input, work)?,
+        LayeringStrategy::StretchWidth => stretch_width::layer(&input, work)?,
+        _ => unreachable!("the pipeline dispatches only the six source-backed layerers here"),
+    };
+    charge(work, checked_add(input.len(), layers.len())?)?;
+    graph.clear_layers();
+    for nodes in layers {
+        let index = graph.layers.len();
+        for &node in &nodes {
+            graph.layerless_nodes[node].layer_index = Some(index);
+        }
+        let mut layer = crate::graph::Layer::new();
+        layer.nodes = nodes;
+        graph.layers.push(layer);
+    }
+    Ok(())
+}
 
 const ITER_LIMIT_FACTOR: usize = 4;
 
-pub fn layer_network_simplex(graph: &mut LGraph) {
+pub fn layer_network_simplex(graph: &mut LGraph) -> Result<(), NetworkSimplexError> {
     graph.clear_layers();
     let nodes = graph
         .layerless_nodes
@@ -20,7 +147,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
         .filter_map(|(index, node)| (!node.hidden).then_some(index))
         .collect::<Vec<_>>();
     if nodes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let connected_components = connected_components(graph, &nodes);
@@ -36,7 +163,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
             .with_iteration_limit(iter_limit)
             .with_previous_layering(previous_layering_node_counts.clone())
             .with_balancing(true)
-            .execute();
+            .execute()?;
 
         for n_node in ngraph.active_nodes().iter().copied() {
             let Some(l_node) = ngraph.nodes[n_node].origin else {
@@ -50,6 +177,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
                 Some(graph.layers.iter().map(|layer| layer.nodes.len()).collect());
         }
     }
+    Ok(())
 }
 
 fn connected_components(graph: &LGraph, nodes: &[usize]) -> Vec<Vec<usize>> {
@@ -153,7 +281,7 @@ mod tests {
     use crate::options::{ElkDirection, LayeredOptions};
     use crate::p1cycles::break_cycles_greedy;
 
-    fn node(id: &str) -> ElkInputNode {
+    pub(super) fn node(id: &str) -> ElkInputNode {
         ElkInputNode {
             id: id.to_string(),
             width: 80.0,
@@ -162,19 +290,22 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
 
-    fn edge(id: &str, source: &str, target: &str) -> ElkInputEdge {
+    pub(super) fn edge(id: &str, source: &str, target: &str) -> ElkInputEdge {
         ElkInputEdge {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -184,7 +315,7 @@ mod tests {
         }
     }
 
-    fn graph(nodes: Vec<ElkInputNode>, edges: Vec<ElkInputEdge>) -> LGraph {
+    pub(super) fn graph(nodes: Vec<ElkInputNode>, edges: Vec<ElkInputEdge>) -> LGraph {
         import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
@@ -201,7 +332,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_eq!(graph.layers.len(), 3);
         assert_layer_order(&graph, "A", "B");
@@ -215,7 +346,7 @@ mod tests {
             vec![edge("A-A", "A", "A"), edge("A-B", "A", "B")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_layer_order(&graph, "A", "B");
     }
@@ -227,7 +358,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("C-D", "C", "D")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_layer_order(&graph, "A", "B");
         assert_layer_order(&graph, "C", "D");
@@ -246,7 +377,7 @@ mod tests {
         );
 
         break_cycles_greedy(&mut graph);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         for edge in &graph.edges {
             if edge.source.node == edge.target.node {

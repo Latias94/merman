@@ -367,6 +367,20 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             runner=fixture.run,
                         )
 
+    def test_installed_parser_families_must_match_the_release_recipe(self) -> None:
+        for families in (None, ["flowchart", "gantt"], ["error"]):
+            with self.subTest(families=families), self.installation_fixture() as fixture:
+                fixture.capabilities["diagram_families"] = families
+                with self.assertRaisesRegex(verifier.HomebrewVerificationError, "diagram family set differs"):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
     def test_capabilities_package_version_must_match_formula(self) -> None:
         with self.installation_fixture() as fixture:
             fixture.capabilities["package"]["version"] = "0.8.1"
@@ -493,6 +507,7 @@ class InstallationFixture:
                 "digest": authority["digest"],
             },
             "commands": list(verifier.COMMANDS),
+            "diagram_families": profile["expected"]["diagram_families"],
             "capabilities": [
                 {"id": identifier}
                 for identifier in profile["expected"]["capabilities"]

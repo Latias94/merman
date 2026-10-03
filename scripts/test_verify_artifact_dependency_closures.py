@@ -37,6 +37,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     _lockfile_external_identities,
     _select_cases,
     cargo_metadata_command,
+    cargo_tree_command,
     check_case,
     load_verification_cases,
     parse_cargo_metadata,
@@ -182,6 +183,31 @@ def metadata_document(
     }
 
 
+def fixture_tree_output(document: dict[str, object] | str) -> str:
+    if isinstance(document, str):
+        document = json.loads(document)
+    nodes = {node["id"]: node for node in document["resolve"]["nodes"]}
+    return "\n".join(
+        f"{package['name']} v{package['version']}\t"
+        + ",".join(nodes[package["id"]]["features"])
+        for package in document["packages"]
+        if not any("proc-macro" in target["kind"] for target in package["targets"])
+    )
+
+
+def parse_fixture_metadata(document: dict[str, object], *, root_package: str):
+    return parse_cargo_metadata(
+        document,
+        root_package=root_package,
+        tree_output=fixture_tree_output(document),
+    )
+
+
+def successful_cargo_result(command: Sequence[str], document: str):
+    stdout = fixture_tree_output(document) if command[1] == "tree" else document
+    return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+
 def write_descriptor(
     directory: Path,
     *profile_ids: str,
@@ -191,11 +217,12 @@ def write_descriptor(
     path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "profiles": [
                     {
                         "id": profile_id,
                         "semantic_target": "native",
+                        "expected": {"diagram_families": []},
                         "cargo": {
                             "package": "fixture",
                             "manifest": "Cargo.toml",
@@ -228,7 +255,7 @@ class VerificationCaseTests(unittest.TestCase):
                 required=("fixture",),
             )
         )
-        closure = parse_cargo_metadata(
+        closure = parse_fixture_metadata(
             metadata_document(
                 "fixture",
                 {
@@ -258,7 +285,7 @@ class VerificationCaseTests(unittest.TestCase):
                         required=("merman-lsp",),
                     ),
                 )
-                closure = parse_cargo_metadata(
+                closure = parse_fixture_metadata(
                     metadata_document(
                         "merman-lsp",
                         {
@@ -404,7 +431,7 @@ class VerificationCaseTests(unittest.TestCase):
                         TREE_SITTER_FORBIDDEN_PACKAGES,
                     )
 
-                closure = parse_cargo_metadata(
+                closure = parse_fixture_metadata(
                     metadata_document(
                         current.recipe.package,
                         {
@@ -441,11 +468,11 @@ class VerificationCaseTests(unittest.TestCase):
 class DescriptorTests(unittest.TestCase):
     def test_maintenance_profiles_are_default_empty_exact_recipes(self) -> None:
         expected = {
-            "cli-analysis": ("merman-cli", ("analysis",)),
+            "cli-analysis": ("merman-cli", ("all-diagrams", "analysis")),
             "rust-export-jpeg": ("merman-export", ("jpeg",)),
             "rust-export-pdf": ("merman-export", ("pdf",)),
             "rust-export-png": ("merman-export", ("png",)),
-            "rust-svg-basic": ("merman", ("svg",)),
+            "rust-svg-basic": ("merman", ("all-diagrams", "svg")),
         }
         for profile_id, (package, features) in expected.items():
             with self.subTest(profile_id=profile_id):
@@ -487,6 +514,18 @@ class CargoMetadataCommandTests(unittest.TestCase):
             command[command.index("--manifest-path") + 1],
             str(probe_manifest),
         )
+
+    def test_tree_command_selects_only_runtime_edges_with_exact_features_and_target(self) -> None:
+        current = case(loaded_recipe=recipe("fixture", features=("diagram-flowchart",)))
+        command = cargo_tree_command(current, probe_manifest=Path("probe/Cargo.toml"))
+        self.assertEqual(command[:2], ["cargo", "tree"])
+        self.assertEqual(command[command.index("--edges") + 1], "normal,no-proc-macro")
+        self.assertEqual(command[command.index("--target") + 1], current.target)
+        self.assertEqual(command[command.index("--features") + 1], "diagram-flowchart")
+        self.assertEqual(command[command.index("--format") + 1], "{p}\t{f}")
+        self.assertIn("--no-default-features", command)
+        self.assertIn("--frozen", command)
+        self.assertNotIn("--no-dedupe", command)
 
     def test_probe_projects_features_and_normal_dependency_semantics(self) -> None:
         loaded = recipe(
@@ -629,8 +668,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 
 class CargoMetadataParserTests(unittest.TestCase):
-    def test_parser_traverses_normal_dependencies_and_unions_features(self) -> None:
-        closure = parse_cargo_metadata(
+    def test_parser_projects_runtime_tree_features(self) -> None:
+        closure = parse_fixture_metadata(
             metadata_document(
                 "app",
                 {"app": ("one", "two"), "dep": ("dep-feature",), "proc": ()},
@@ -642,6 +681,57 @@ class CargoMetadataParserTests(unittest.TestCase):
         self.assertEqual(closure.packages, frozenset({"app", "dep"}))
         self.assertEqual(closure.features_by_package["app"], {"one", "two"})
 
+    def test_tree_omits_inactive_weak_optional_edges_from_metadata(self) -> None:
+        document = metadata_document(
+            "app",
+            {"app": ("diagram-flowchart",), "core": (), "render": ("diagram-flowchart",)},
+        )
+        document["packages"][0]["features"] = {
+            "diagram-flowchart": ["core/diagram-flowchart", "render?/diagram-flowchart"]
+        }
+        closure = parse_cargo_metadata(
+            document,
+            root_package="app",
+            tree_output="app v1.2.3\tdiagram-flowchart\ncore v1.2.3\tdiagram-flowchart\n",
+        )
+        self.assertEqual(closure.packages, {"app", "core"})
+        self.assertEqual(closure.features_by_package["core"], {"diagram-flowchart"})
+
+    def test_tree_duplicates_union_actual_features_and_keep_source_identity(self) -> None:
+        document = metadata_document("app", {"app": (), "dep": ("metadata-only",)})
+        closure = parse_cargo_metadata(
+            document,
+            root_package="app",
+            tree_output="app v1.2.3\t\ndep v1.2.3\tone,one\ndep v1.2.3\ttwo (*)\n",
+        )
+        self.assertEqual(closure.features_by_package["dep"], {"one", "two"})
+        self.assertIn(
+            ("dep", "1.2.3", "registry+https://github.com/rust-lang/crates.io-index"),
+            closure.features_by_package_identity,
+        )
+
+    def test_tree_rejects_ambiguous_same_name_version_from_different_sources(self) -> None:
+        document = metadata_document("app", {"app": (), "dep": ()})
+        duplicate = dict(document["packages"][1])
+        duplicate.update(
+            id="git+https://example.invalid/dep#1",
+            source="git+https://example.invalid/dep#1",
+        )
+        document["packages"].append(duplicate)
+        with self.assertRaisesRegex(ClosureVerificationError, "identity ambiguity for dep 1.2.3"):
+            parse_cargo_metadata(
+                document,
+                root_package="app",
+                tree_output="app v1.2.3\t\ndep v1.2.3 (unparsed source display)\t\n",
+            )
+
+    def test_tree_rejects_empty_malformed_or_unknown_output(self) -> None:
+        document = metadata_document("app", {"app": ()})
+        for output in ("", "app v1.2.3", "app v1.2.3\t\nunknown v1.2.3\t"):
+            with self.subTest(output=output), self.assertRaises(ClosureVerificationError):
+                parse_cargo_metadata(document, root_package="app", tree_output=output)
+
+
 class ClaimTests(unittest.TestCase):
     def test_native_binding_claim_rejects_tooling_and_application_dependencies(
         self,
@@ -651,7 +741,7 @@ class ClaimTests(unittest.TestCase):
             for current in load_verification_cases()
             if current.recipe.profile_id == "c-abi-native"
         )
-        closure = parse_cargo_metadata(
+        closure = parse_fixture_metadata(
             metadata_document(
                 "merman-ffi",
                 {
@@ -683,7 +773,7 @@ class ClaimTests(unittest.TestCase):
                 PackageFeatureExclusion("root", ("bad-feature",)),
             ),
         )
-        closure = parse_cargo_metadata(
+        closure = parse_fixture_metadata(
             metadata_document(
                 "root",
                 {"root": ("bad-feature",), "forbidden": ()},
@@ -696,7 +786,7 @@ class ClaimTests(unittest.TestCase):
         self.assertTrue(any("enables forbidden features" in x for x in failures))
 
     def test_observation_keeps_readable_package_count(self) -> None:
-        closure = parse_cargo_metadata(
+        closure = parse_fixture_metadata(
             metadata_document("fixture", {"fixture": (), "dependency": ()}),
             root_package="fixture",
         )
@@ -712,7 +802,7 @@ class ClaimTests(unittest.TestCase):
             for current in SEMANTIC_CLAIMS
             if current.profile_id == "rust-svg-basic"
         )
-        closure = parse_cargo_metadata(
+        closure = parse_fixture_metadata(
             metadata_document(
                 "merman",
                 {
@@ -758,7 +848,7 @@ class VerificationTests(unittest.TestCase):
 
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
             commands.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+            return successful_cargo_result(command, output)
 
         observations = verify_cases(
             cases,
@@ -769,12 +859,18 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(
             tuple(
                 command[command.index("--filter-platform") + 1]
-                for command in commands
+                for command in commands if command[1] == "metadata"
             ),
             targets,
         )
-        self.assertTrue(all("--offline" in command for command in commands))
-        self.assertTrue(all("--frozen" not in command for command in commands))
+        metadata_commands = [command for command in commands if command[1] == "metadata"]
+        tree_commands = [command for command in commands if command[1] == "tree"]
+        self.assertTrue(all("--offline" in command for command in metadata_commands))
+        self.assertTrue(all("--frozen" in command for command in tree_commands))
+        self.assertEqual(
+            tuple(command[command.index("--target") + 1] for command in tree_commands),
+            targets,
+        )
         self.assertEqual(
             tuple(observation.closure_target for observation in observations),
             targets,
@@ -799,7 +895,7 @@ class VerificationTests(unittest.TestCase):
 
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
             commands.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+            return successful_cargo_result(command, output)
 
         observations = verify_cases(
             cases,
@@ -807,7 +903,7 @@ class VerificationTests(unittest.TestCase):
             probe_preparer=write_test_metadata_probe,
         )
 
-        self.assertEqual(len(commands), 1)
+        self.assertEqual([command[1] for command in commands], ["metadata", "tree"])
         self.assertEqual(len(observations), 2)
 
     def test_semantic_claims_are_enforced_for_host_cases(self) -> None:
@@ -820,16 +916,14 @@ class VerificationTests(unittest.TestCase):
         ):
             verify_cases(
                 (semantic_case,),
-                runner=lambda command: subprocess.CompletedProcess(
+                runner=lambda command: successful_cargo_result(
                     command,
-                    0,
-                    stdout=json.dumps(
+                    json.dumps(
                         metadata_document(
                             "fixture",
                             {"fixture": (), "forbidden": ()},
                         )
                     ),
-                    stderr="",
                 ),
                 probe_preparer=write_test_metadata_probe,
             )
@@ -858,13 +952,13 @@ class VerificationTests(unittest.TestCase):
             for profile_id in ("one", "two")
         )
 
+        current_output = ""
+
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=next(outputs),
-                stderr="",
-            )
+            nonlocal current_output
+            if command[1] == "metadata":
+                current_output = next(outputs)
+            return successful_cargo_result(command, current_output)
 
         with self.assertRaises(ClosureVerificationError) as raised:
             verify_cases(

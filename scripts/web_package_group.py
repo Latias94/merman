@@ -1284,6 +1284,13 @@ def reconcile_group(
     *,
     observation_attempts: int = DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
     observation_delay_seconds: float = DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+    recovery_report: dict[str, Any] | None = None,
+    report_path: Path | None = None,
+    observe_only: bool = False,
+    publication_run_id: str | None = None,
+    publication_attempt: int | None = None,
+    recovery_run_id: str | None = None,
+    recovery_attempt: int | None = None,
 ) -> dict[str, Any]:
     return reconcile_registry_group(
         validate_group_manifest(manifest),
@@ -1291,6 +1298,9 @@ def reconcile_group(
         client,
         observation_attempts=observation_attempts,
         observation_delay_seconds=observation_delay_seconds,
+        recovery_report=recovery_report, report_path=report_path, observe_only=observe_only,
+        publication_run_id=publication_run_id, publication_attempt=publication_attempt,
+        recovery_run_id=recovery_run_id, recovery_attempt=recovery_attempt,
     )
 
 
@@ -1325,6 +1335,12 @@ def cli() -> argparse.ArgumentParser:
     reconcile.add_argument("--registry", default=NPMJS_REGISTRY_URL)
     reconcile.add_argument("--report", type=Path, required=True)
     reconcile.add_argument("--dry-run", action="store_true")
+    reconcile.add_argument("--recovery-report", type=Path)
+    reconcile.add_argument("--observe-only", action="store_true")
+    reconcile.add_argument("--publication-run-id")
+    reconcile.add_argument("--publication-attempt", type=int)
+    reconcile.add_argument("--recovery-run-id")
+    reconcile.add_argument("--recovery-attempt", type=int)
     return parser
 
 
@@ -1373,7 +1389,19 @@ def main(argv: list[str] | None = None) -> int:
                 client = DryRunNpmClient(manifest)
             else:
                 client = NpmCli(args.registry)
-            report = reconcile_group(manifest, args.artifact_dir, client)
+            recovery_report = None
+            if args.recovery_report:
+                try:
+                    recovery_report = json.loads(args.recovery_report.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise PackageGroupError(f"cannot read recovery report: {exc}") from exc
+            report = reconcile_group(
+                manifest, args.artifact_dir, client,
+                recovery_report=recovery_report, report_path=args.report,
+                observe_only=args.observe_only,
+                publication_run_id=args.publication_run_id, publication_attempt=args.publication_attempt,
+                recovery_run_id=args.recovery_run_id, recovery_attempt=args.recovery_attempt,
+            )
             if isinstance(client, DryRunNpmClient):
                 report["dry_run_operations"] = client.operations
             write_json(args.report, report)

@@ -27,20 +27,20 @@ From a repository checkout, build the complete native SDK recipe with:
 python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 ```
 
-`merman-ffi` has no default features. Choose an explicit capability set:
+`merman-ffi` has no default features. Choose explicit diagram families and capabilities:
 
 The committed `c-abi-native` artifact profile owns the complete host C ABI recipe, and Flutter owns separate C ABI target-set recipes. The Kotlin Android AAR uses the independent, internal `merman-android-jni` crate instead of this crate.
 
 ```sh
 # Complete C ABI reference artifact: SVG, analysis, ASCII, exports, layouts, math, and native adapters.
 # This explicit recipe includes the EPL-2.0 ELK and OFL-1.1 font closures; ship the matching notices.
-cargo build -p merman-ffi --profile native-sdk --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+cargo build -p merman-ffi --profile native-sdk --no-default-features --features all-diagrams,svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
-# A semantic-only embedding.
-cargo build -p merman-ffi --release --no-default-features
+# A semantic-only embedding with all built-in parsers.
+cargo build -p merman-ffi --release --no-default-features --features all-diagrams
 
 # A focused SVG artifact.
-cargo build -p merman-ffi --release --no-default-features --features svg
+cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart,diagram-gantt
 ```
 
 The crate produces `cdylib`, `staticlib`, and `rlib` artifacts. Include the release-matched [`include/merman.h`](include/merman.h) instead of copying a header from a moving branch.

@@ -200,7 +200,7 @@ fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
         assert_eq!(actual, expected);
         assert_eq!(
             actual.diagrams[0].syntax.effective_layout.as_deref(),
-            Some("dagre")
+            Some("elk")
         );
     }
 }
@@ -407,8 +407,8 @@ fn analysis_facts_project_canonical_effective_layout() {
                 })),
             )),
             "classDiagram\nclass A\n",
-            "class",
-            "dagre",
+            "classDiagram",
+            "elk",
         ),
     ];
 
@@ -1676,6 +1676,16 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
             source: "graph TD;style Q background:#fff;",
         },
         CorpusCase {
+            name: "agentflow shape diagnostics",
+            analyzer: Analyzer::new(),
+            source: "agentflow-beta\na((Circle))\nb@{ shape: cloud }\n",
+        },
+        CorpusCase {
+            name: "agentflow containment diagnostic",
+            analyzer: Analyzer::new(),
+            source: "agentflow-beta\nflow A\n a --> B\nend\nflow B\n b --> A\nend\n",
+        },
+        CorpusCase {
             name: "git graph duplicate",
             analyzer: Analyzer::new(),
             source: "gitGraph\ncommit id:\"duplicate\"\ncommit id:\"duplicate\"\n",
@@ -2113,6 +2123,58 @@ fn parser_panic_reprojects_from_captured_evidence() {
             .message
             .contains("fixture parser panic")
     );
+}
+
+#[test]
+fn agentflow_domain_diagnostics_preserve_parse_success_and_source_ranges() {
+    let source = concat!(
+        "agentflow-beta\n",
+        "removed((Circle))\n",
+        "unsupported@{ shape: cloud }\n",
+        "flow A\n a --> B\nend\n",
+        "flow B\n b --> A\nend\n",
+    );
+    let payload = Analyzer::new().analyze_facts(source);
+
+    assert_eq!(payload.diagrams.len(), 1);
+    assert_eq!(
+        payload.diagrams[0].parse_disposition,
+        crate::DiagramParseDisposition::Parsed,
+    );
+    assert!(!payload.valid, "the removed shape is a semantic error");
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.summary.warnings, 2);
+    assert_eq!(payload.diagnostics.len(), 3);
+
+    for (rule_id, severity, source_text) in [
+        (
+            merman_core::AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+            DiagnosticSeverity::Error,
+            "removed((Circle))",
+        ),
+        (
+            merman_core::AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
+            DiagnosticSeverity::Warning,
+            "unsupported@{ shape: cloud }",
+        ),
+        (
+            merman_core::AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
+            DiagnosticSeverity::Warning,
+            "B",
+        ),
+    ] {
+        let diagnostic = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == rule_id)
+            .expect("registered Agentflow domain diagnostic");
+        assert_eq!(diagnostic.severity, severity);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Semantic);
+        let span = diagnostic.span.as_ref().expect("domain source range");
+        let start = source.find(source_text).unwrap();
+        assert_eq!(span.byte_start, start);
+        assert_eq!(span.byte_end, start + source_text.len());
+    }
 }
 
 #[test]

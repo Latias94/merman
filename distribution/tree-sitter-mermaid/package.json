@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/tree-sitter-mermaid",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
   "license": "MIT",
   "repository": {
@@ -80,15 +80,15 @@
     "node-gyp-build": "4.8.4"
   },
   "devDependencies": {
-    "node-gyp": "13.0.1",
+    "node-gyp": "13.0.2",
     "prebuildify": "6.0.1",
     "tree-sitter": "0.25.1",
-    "tree-sitter-cli": "0.26.12",
-    "web-tree-sitter": "0.26.12"
+    "tree-sitter-cli": "0.27.0",
+    "web-tree-sitter": "0.27.0"
   },
   "allowScripts": {
     "tree-sitter@0.25.1": true,
-    "tree-sitter-cli@0.26.12": true
+    "tree-sitter-cli@0.27.0": true
   },
   "peerDependencies": {
     "tree-sitter": "^0.25.0"

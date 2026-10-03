@@ -1,25 +1,28 @@
 # Choosing Merman capabilities
 
-This page documents the current development source. Registry channels publish independently, so
-verify the exact package version and provenance before copying an install command; workspace path
-snippets are for source-tree development.
+This page documents the development source for `0.8.0-alpha.7`. The published workspace release is
+`0.8.0-alpha.6`; the ELK product defaults below apply to this checkout and the planned alpha.7
+release. Registry channels publish independently, so verify the exact package version and provenance
+before copying an install command; workspace path snippets are for source-tree development.
 
-Choose Merman by the operation you need, not by Mermaid diagram family or implementation
-dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
-configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
-user-visible capabilities, output backends, or host adapters.
+Choose the diagram families your application accepts and the operations it performs. Positive
+`diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
+families preserve the pinned Mermaid semantics; lightweight detection, configuration namespaces,
+and sanitization remain available independently. Output, layout, math, and host-adapter features
+are separate choices.
 
-There are three separate decisions:
+There are four separate decisions:
 
-1. **Compiled capabilities** decide which APIs and output backends exist.
-2. **Runtime policy** decides whether an operation uses deterministic values or explicitly selected
+1. **Diagram families** decide which built-in languages can be parsed.
+2. **Compiled capabilities** decide which APIs and output backends exist.
+3. **Runtime policy** decides whether an operation uses deterministic values or explicitly selected
    system adapters.
-3. **Resource policy** bounds work performed by an available capability.
+4. **Resource policy** bounds work performed by an available capability.
 
 The canonical vocabulary is
 [`capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json). Reproducible
 release recipes are maintained separately in
-[`capabilities/artifact-profiles-v1.json`](../capabilities/artifact-profiles-v1.json).
+[`capabilities/artifact-profiles-v2.json`](../capabilities/artifact-profiles-v2.json).
 Artifact profiles are not Cargo features and are not part of an application dependency declaration.
 
 ## The short version
@@ -47,9 +50,11 @@ global capability implications.
 
 The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
 `merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
-not include the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk` aggregate
-when that closure is intended and its notices/provenance will accompany the artifact. Neither
-aggregate includes system adapters, analysis, ASCII, or binary exports.
+not include the EPL-2.0 ELK implementation. The `complete-svg-elk` aggregate adds ELK; the
+`merman` facade defaults to `all-diagrams + complete-svg-elk`. Its notices and source provenance
+must accompany distributed artifacts. To omit ELK, disable default features and select the
+required diagram families plus `complete-svg` or individual capability leaves. Neither aggregate
+includes diagram families, system adapters, analysis, ASCII, or binary exports.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -68,16 +73,16 @@ select their own direct leaf set instead.
 
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
-| Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
-| Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
-| Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
-| Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
-| Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
-| Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
-| Complete CLI | `merman-cli` | Default direct leaves without ELK, or the exact `cli-release` recipe with ELK |
-| Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
+| Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + complete-svg-elk`), or `default-features = false, features = ["all-diagrams", "svg"]` for basic SVG |
+| SVG, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
+| SVG, Cytoscape, ELK, and math | `merman` | Defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
+| Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
+| Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
+| Standalone LSP server | `merman-lsp` | `--no-default-features --features all-diagrams,stdio` |
+| Complete CLI | `merman-cli` | Default direct leaves including all families and ELK, or the exact `cli-release` recipe |
+| Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
-| One-step Rustdoc attributes | `merman-rustdoc` | Default `svg + layout-cytoscape`; add `math` or `complete-svg` for mathematical labels |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` or `complete-svg` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
@@ -91,13 +96,84 @@ loader plus one exact-version N-API platform package and uses the deterministic 
 SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
 a supported Node transport or fallback.
 
+## Select diagram families
+
+This is a source and typed-API migration for the current checkout and the next release. Published
+`0.8.0-alpha.6` packages predate these selectors; use a checkout containing this change for the
+following path dependencies. Default facade, CLI, and Rustdoc users retain all built-in families.
+Low-level crates keep empty defaults. Existing `default-features = false` consumers must add
+`all-diagrams` to retain the previous language surface, or list the families they require.
+`complete-svg` alone selects outputs and engines, not languages.
+
+### Flowchart and Gantt embedding
+
+For an application checked out beside this repository:
+
+```toml
+[dependencies]
+merman = { path = "../merman/crates/merman", default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"] }
+```
+
+Use the `Renderer::render(RenderRequest::svg(...))` example below for either Flowchart or Gantt
+input. No optional layout engine or math renderer is implied. Add `layout-elk`, `layout-cytoscape`,
+or `math` only if an input requires it. Parser-only applications can instead use:
+
+```toml
+[dependencies]
+merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-gantt"] }
+```
+
+The parser-owned `merman_core::diagram_family_selectors()` catalog maps logical family IDs to the
+34 selectors. `all-diagrams` is their union. Aliases, such as Flowchart's `graph` header and
+`flowchart-v2` ID, belong to their logical family. `diagram-flowchart` and `diagram-swimlane` remain
+independent language selections despite sharing grammar, models, labels, and layout routes.
+
+Family-exclusive public types and `RenderSemanticModel` variants are conditionally compiled.
+Consumers importing those types must enable their owner, and reusable consumers should forward
+the relevant selectors and gate their family-specific code. Infrastructure variants such as
+Error and CustomJson remain available without built-in families.
+
+Cargo unifies features additively. Another dependency can enable additional core parsers, and
+`default-features = false` on one edge does not disable defaults selected elsewhere. Inspect the
+actual consumer graph with `cargo tree -e features`; an isolated consumer build is the right
+place to verify an intended subset. Facade family selectors weak-forward to optional output and
+language-tool dependencies, so a language-only selection does not instantiate a renderer.
+
+### Availability and errors
+
+- `supported_diagrams()` and typed implementation lists describe compiled parsers.
+- `diagram_family_capabilities()` retains every known family with truthful parser/editor/typed
+  implementation flags. Detection and a known header alone do not promise an executable parser.
+- SVG and ASCII require their own local family handlers. A dependency may widen core while the
+  local renderer remains narrow; consult output planning or ASCII capabilities for that output.
+- Actionable editor headers and templates are limited to compiled parsers. Unavailable editor
+  facts retain the original parse diagnostic without inventing body symbols.
+
+Strict parsing of a known disabled family returns `UnsupportedDiagram`. Suppressed semantic or
+render parsing produces the existing Error diagram; suppressed unknown input returns `None`.
+Cancellation is never suppressed, and custom registry overlays keep their existing precedence.
+Rendering rejects a missing local handler after cancellation, provenance, and semantic/layout
+pair validation, before optional backend planning. A selected family with an unavailable requested
+backend still returns the existing missing-capability result.
+
+Existing distributed products retain their all-family recipes; this change adds no family-specific
+prebuilt package. Artifact profile schema 2 records the exact compiled parser set in
+`expected.diagram_families` as sorted logical IDs, excluding Error infrastructure. This set does
+not certify renderer or ASCII availability. Runtime capability IDs remain in the unchanged
+`feature-surface-v1.json` namespace.
+
+See [ADR-0091](adr/0091-selectable-diagram-families.md) for ownership and compatibility decisions.
+Native size evidence is tracked separately in the
+[controlled measurement report](performance/diagram_selection_native_2026-09-26.md); measurements
+must be completed before claiming a reduction.
+
 ## Rust examples
 
 ### Complete SVG
 
 ```toml
 [dependencies]
-merman = { path = "crates/merman", default-features = false, features = ["complete-svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "complete-svg"] }
 ```
 
 ```rust
@@ -117,7 +193,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The ordinary `merman = { path = "crates/merman" }` dependency uses the same `complete-svg`
+The ordinary `merman = { path = "crates/merman" }` dependency enables `all-diagrams` and the `complete-svg-elk`
 aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
@@ -132,7 +208,7 @@ explicit SVG pipeline. The complete set of copyable task examples lives in
 
 ```toml
 [dependencies]
-merman = { path = "crates/merman", default-features = false, features = ["svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg"] }
 ```
 
 If an input requires a compiled-out layout engine or math renderer, the operation returns a typed
@@ -142,17 +218,17 @@ If an input requires a compiled-out layout engine or math renderer, the operatio
 
 ```toml
 [dependencies]
-merman-analysis = { path = "crates/merman-analysis", default-features = false }
+merman-analysis = { path = "crates/merman-analysis", default-features = false, features = ["all-diagrams"] }
 merman = {
     path = "crates/merman",
     default-features = false,
-    features = ["analysis", "editor"],
+    features = ["all-diagrams", "analysis", "editor"],
 }
 ```
 
 On the `merman` facade, enabling the `editor` Cargo feature also enables `analysis`. The canonical
 `editor` capability has no global implication, so another package must declare the pair explicitly
-when its workflow exposes both. Neither capability adds or removes a Mermaid diagram family.
+when its workflow exposes both. Select families separately; neither capability enables a built-in parser by itself.
 
 ### Explicit system adapters
 
@@ -164,6 +240,7 @@ merman = {
     path = "crates/merman",
     default-features = false,
     features = [
+        "all-diagrams",
         "complete-svg",
         "system-clock",
         "system-timezone",
@@ -185,7 +262,7 @@ binding feature instead:
 merman-ffi = {
     path = "crates/merman-ffi",
     default-features = false,
-    features = ["svg", "native-runtime"],
+    features = ["all-diagrams", "svg", "native-runtime"],
 }
 ```
 
@@ -203,7 +280,7 @@ Binary output is opt-in and additive:
 merman = {
     path = "crates/merman",
     default-features = false,
-    features = ["svg", "png", "pdf"],
+    features = ["all-diagrams", "svg", "png", "pdf"],
 }
 ```
 
@@ -212,12 +289,13 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 
 ## CLI
 
-`merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
-analysis, ASCII, PNG, JPEG, PDF, Cytoscape layout, math, local Iconify loading,
+`merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
+SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
 Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
 Markdown, and shell completions.
-The separately assembled `cli-release` artifact additionally includes the ELK layout engine and
-its EPL-2.0 notices; a source install with ordinary defaults does not imply ELK availability.
+The `cli-release` artifact selects the same capabilities explicitly. Both closures include the
+EPL-2.0 ELK implementation and its notices. The published alpha.6 source default excludes ELK;
+its release archives already include it.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
@@ -236,7 +314,7 @@ adapter returns the CLI's invalid-configuration exit status instead of falling b
 For a lean lint executable:
 
 ```sh
-cargo run -p merman-cli --no-default-features --features analysis -- lint diagram.mmd
+cargo run -p merman-cli --no-default-features --features all-diagrams,analysis -- lint diagram.mmd
 ```
 
 For a complete release build, use the repository's `cli-release` artifact profile. Do not use a
@@ -249,8 +327,8 @@ Likewise, `markdown` enables serial document conversion without analysis command
 `parallel-markdown` implies `markdown` and adds only the Rayon worker pool and `--jobs` to
 `batch` and Markdown-mode `mmdc`. Disabling it does not remove Markdown support or change chart
 numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
-Use `--no-default-features --features markdown` for the smallest sequential Markdown CLI and
-`--no-default-features --features parallel-markdown` when measured throughput justifies Rayon.
+Use `--no-default-features --features all-diagrams,markdown` for a sequential all-family Markdown CLI and
+`--no-default-features --features all-diagrams,parallel-markdown` when measured throughput justifies Rayon.
 
 ## Rustdoc
 
@@ -262,14 +340,17 @@ packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
-features compile SVG and Cytoscape into the proc-macro host. Add `math` for mathematical labels,
-or select `complete-svg` explicitly for SVG, Cytoscape, and math. This smaller default applies to
-the current source and the next release after `0.8.0-alpha.6`; the published alpha.6 macro still
-includes math by default. The `merman` facade default remains `complete-svg`.
-The explicit `complete-svg-elk` feature adds the EPL-2.0 ELK closure when a documentation artifact
-needs it. Optional dependency gating can keep that closure out of ordinary builds, but selecting
-the explicit ELK feature, `--all-features`, or an artifact profile that lists `layout-elk` compiles
-it.
+features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
+optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults
+apply to the current source and planned `0.8.0-alpha.7`; the published alpha.6 macro enables math
+and excludes ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
+and continues to include math.
+
+The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
+out of ordinary builds while the dependency is disabled. To exclude ELK from documentation builds,
+use `default-features = false` and select the required diagram families plus `complete-svg` or
+narrower capability leaves. Cargo features are additive: selecting `complete-svg` alone does not
+remove an enabled default or a feature enabled by another dependency.
 
 | Concern | Checked CLI generation | Attribute macro |
 | --- | --- | --- |
@@ -409,7 +490,7 @@ vocabularies:
 
 | Removed name | Replacement |
 | --- | --- |
-| `full`, `core-full`, `tiny`, registry profiles | Low-level crates are default-empty; choose observable leaves |
+| `full`, `core-full`, `tiny`, registry profiles | Low-level crates are default-empty; choose family selectors and observable capability leaves |
 | `render` | `svg` |
 | `raster` | One or more of `png`, `jpeg`, `pdf` |
 | `cytoscape-layout` | `layout-cytoscape` |
@@ -418,6 +499,7 @@ vocabularies:
 | `host-*`, `core-host` | `system-clock`, `system-timezone`, `system-random`, `system-timing` |
 | `preset-*`, `*-no-elk` | Direct positive leaf features; use an artifact profile for exact recipes |
 
-Do not add one feature per diagram. A diagram family belongs to the shared language contract; a
-public feature is justified only by a user-visible API, output, reusable engine, host adapter,
-or compiled CLI tool with a meaningful closure boundary.
+Add logical family selectors through the parser-owned family catalog and existing forwarding
+rules. Keep them separate from runtime capability IDs. A capability leaf is justified by a
+user-visible API, output, reusable engine, host adapter, or compiled CLI tool with a meaningful
+closure boundary.

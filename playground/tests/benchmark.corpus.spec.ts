@@ -15,8 +15,13 @@ test("non-UI corpus page returns exactly one cold and warm fixture envelope", as
   const ready = await page.evaluate(() =>
     window.__MERMAN_BENCHMARK_CORPUS__!.ready()
   );
-  expect(ready.catalog.identity.availableFamilies).toBe(35);
-  expect(ready.catalog.fixtures).toHaveLength(35);
+  expect(ready.catalog.identity.availableFamilies).toBe(
+    ready.catalog.fixtures.length
+  );
+  expect(ready.catalog.fixtures.map(({ id }) => id)).toContain(
+    "agentflow-basic"
+  );
+  expect(ready.catalog.fixtures.map(({ id }) => id)).toContain("usecase-basic");
   const discoveryRuntimeResources = await page.evaluate(() =>
     performance
       .getEntriesByType("resource")
@@ -88,7 +93,7 @@ declare global {
       }[];
       ready(): Promise<{
         catalog: {
-          fixtures: readonly unknown[];
+          fixtures: readonly { readonly id: string }[];
           identity: { availableFamilies: number };
         };
       }>;

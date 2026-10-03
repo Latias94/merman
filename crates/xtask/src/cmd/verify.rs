@@ -303,6 +303,9 @@ fn run_npm_script(
 ) -> Result<(), XtaskError> {
     let what = format!("npm run {script} ({package_dir})");
     println!("{what}");
+    #[cfg(windows)]
+    let mut command = Command::new("npm.cmd");
+    #[cfg(not(windows))]
     let mut command = Command::new("npm");
     command
         .args(["run", script])

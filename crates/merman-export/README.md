@@ -12,6 +12,8 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
+
 ## Choose A Feature
 
 The crate has no default features. Enable only the formats the application emits:
@@ -35,7 +37,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
+merman = { version = "=0.8.0-alpha.7", default-features = false, features = ["diagram-flowchart", "png"] }
 ```
 
 ```rust
@@ -78,9 +80,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.6", default-features = false }
-merman-render = { version = "=0.8.0-alpha.6", default-features = false }
-merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
+merman-core = { version = "=0.8.0-alpha.7", default-features = false }
+merman-render = { version = "=0.8.0-alpha.7", default-features = false }
+merman-export = { version = "=0.8.0-alpha.7", default-features = false, features = ["png"] }
 ```
 
 ```rust

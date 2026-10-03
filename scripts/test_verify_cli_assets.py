@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -95,6 +96,32 @@ class CliAssetValidationTests(unittest.TestCase):
             self.assertTrue(any("-NoProfile" in command for command in commands))
             self.assertTrue(any("-T" in command and "lint" in command for command in commands))
             self.assertTrue(any("-T" in command and "utf8" in command for command in commands))
+
+    @unittest.skipUnless(shutil.which("bash"), "Bash is unavailable")
+    def test_bash_routing_uses_the_registered_completion_function(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "completion.bash"
+            path.write_text(
+                """_generated_completion() {
+    case "${COMP_WORDS[1]}" in
+        render) COMPREPLY=(--format) ;;
+        mmdc) COMPREPLY=(-e) ;;
+        rustdoc)
+            if [[ "$COMP_CWORD" -eq 2 ]]; then
+                COMPREPLY=(build)
+            else
+                COMPREPLY=(--config)
+            fi
+            ;;
+    esac
+}
+complete -F _generated_completion merman-cli
+""",
+                encoding="utf-8",
+            )
+            verifier.verify_bash_routing(
+                shutil.which("bash"), path, subprocess.run
+            )
 
     def test_parser_failure_includes_native_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

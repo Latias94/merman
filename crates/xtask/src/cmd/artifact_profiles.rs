@@ -7,8 +7,8 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-pub(super) const ARTIFACT_PROFILE_DESCRIPTOR_PATH: &str = "capabilities/artifact-profiles-v1.json";
-const ARTIFACT_PROFILE_SCHEMA_VERSION: u32 = 1;
+pub(super) const ARTIFACT_PROFILE_DESCRIPTOR_PATH: &str = "capabilities/artifact-profiles-v2.json";
+const ARTIFACT_PROFILE_SCHEMA_VERSION: u32 = 2;
 const CAPABILITY_DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const CARGO_DIST_PROFILE_IDS: [&str; 2] = ["cli-release", "lsp-stdio-release"];
 const NATIVE_RUNTIME_FEATURE: &str = "native-runtime";
@@ -72,6 +72,7 @@ enum BuildTarget {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExpectedSurface {
+    diagram_families: Vec<String>,
     capabilities: Vec<String>,
     runtime_ids: Vec<String>,
     outputs: Vec<String>,
@@ -84,6 +85,7 @@ struct ExpectedSurface {
 /// used for release recipes. It must not reconstruct a second Web feature map.
 #[derive(Debug, Clone)]
 pub(crate) struct WasmArtifactProfile {
+    pub(crate) diagram_families: Vec<String>,
     pub(crate) id: String,
     pub(crate) semantic_target: String,
     pub(crate) package: String,
@@ -101,6 +103,7 @@ pub(crate) struct WasmArtifactProfile {
 /// A validated exact artifact recipe compiled for the executing Rust host.
 #[derive(Debug, Clone)]
 pub(crate) struct HostArtifactProfile {
+    pub(crate) diagram_families: Vec<String>,
     pub(crate) id: String,
     pub(crate) package: String,
     pub(crate) manifest_path: PathBuf,
@@ -712,6 +715,20 @@ fn validate_profile(
         }
     }
     validate_capability_feature_closure(profile, package, &enabled, &context.capability, path)?;
+    let diagram_families = validate_sorted_unique(
+        &profile.expected.diagram_families,
+        &format!("{path}.expected.diagram_families"),
+    )?;
+    let selected_families = merman_core::diagram_family_selectors()
+        .iter()
+        .filter(|selector| enabled.contains(selector.feature))
+        .map(|selector| selector.logical_family_kind.to_string())
+        .collect::<BTreeSet<_>>();
+    if diagram_families != selected_families {
+        return Err(format!(
+            "{path}.expected.diagram_families: must equal the canonical family selector closure; expected {selected_families:?}, found {diagram_families:?}"
+        ));
+    }
 
     if let BuildTarget::TargetSet { triples } = &profile.cargo.build_target {
         if triples.is_empty() {
@@ -973,6 +990,7 @@ fn host_artifact_profiles(descriptor: ArtifactProfileDescriptor) -> Vec<HostArti
             features: profile.cargo.features,
             target_name: profile.cargo.target.name,
             target_kinds: profile.cargo.target.kinds,
+            diagram_families: profile.expected.diagram_families,
         })
         .collect()
 }
@@ -1030,6 +1048,7 @@ fn wasm_artifact_profiles(
             capabilities: profile.expected.capabilities.clone(),
             runtime_ids: profile.expected.runtime_ids.clone(),
             outputs: profile.expected.outputs.clone(),
+            diagram_families: profile.expected.diagram_families.clone(),
         });
     }
 
@@ -1061,6 +1080,28 @@ mod tests {
     fn context() -> &'static ValidationContext {
         static CONTEXT: OnceLock<ValidationContext> = OnceLock::new();
         CONTEXT.get_or_init(|| ValidationContext::load(&super::super::workspace_root()).unwrap())
+    }
+
+    #[test]
+    fn diagram_families_are_required_sorted_and_match_the_recipe() {
+        for replacement in [
+            None,
+            Some(json!(["error"])),
+            Some(json!(["gantt", "flowchart"])),
+            Some(json!([])),
+        ] {
+            let mut value = committed_value();
+            let expected = value["profiles"][0]["expected"].as_object_mut().unwrap();
+            match replacement {
+                Some(families) => {
+                    expected.insert("diagram_families".to_string(), families);
+                }
+                None => {
+                    expected.remove("diagram_families");
+                }
+            }
+            assert!(validate_fixture(value).is_err());
+        }
     }
 
     #[test]
@@ -1182,7 +1223,13 @@ mod tests {
         let index = profile_index(&value, "rustdoc-static-svg");
         assert_eq!(
             value["profiles"][index]["cargo"]["features"],
-            json!(["layout-cytoscape", "layout-elk", "math", "svg"])
+            json!([
+                "all-diagrams",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "svg"
+            ])
         );
         assert_eq!(
             value["profiles"][index]["expected"]["capabilities"],

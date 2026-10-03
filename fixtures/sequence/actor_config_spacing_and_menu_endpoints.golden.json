@@ -1,0 +1,152 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "lead-actor",
+      "order-svc",
+      "data=svc",
+      "Link",
+      "Links",
+      "Properties",
+      "Details"
+    ],
+    "actors": {
+      "Details": {
+        "name": "Details",
+        "description": "Inspector",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "Link": {
+        "name": "Link",
+        "description": "Channel",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "Links": {
+        "name": "Links",
+        "description": "Catalog",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "Properties": {
+        "name": "Properties",
+        "description": "Settings",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "data=svc": {
+        "name": "data=svc",
+        "description": "Store",
+        "type": "database",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "lead-actor": {
+        "name": "lead-actor",
+        "description": "Lead",
+        "type": "control",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "order-svc": {
+        "name": "order-svc",
+        "description": "Orders",
+        "type": "queue",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "lead-actor",
+        "to": "order-svc",
+        "type": 0,
+        "message": "Submit order",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "order-svc",
+        "to": "data=svc",
+        "type": 0,
+        "message": "Store order",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "data=svc",
+        "to": "lead-actor",
+        "type": 1,
+        "message": "Order stored",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Link",
+        "to": "Links",
+        "type": 1,
+        "message": "List channels",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Links",
+        "to": "Properties",
+        "type": 0,
+        "message": "Read settings",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Properties",
+        "to": "Details",
+        "type": 1,
+        "message": "Inspect settings",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Details",
+        "to": "Link",
+        "type": 0,
+        "message": "Return details",
+        "wrap": false,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

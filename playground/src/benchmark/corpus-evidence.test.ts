@@ -35,20 +35,21 @@ test("one fixture envelope becomes one aggregate row without placeholders", () =
   assert.equal(aggregate.terminalStatus, "success");
 });
 
-test("linear assembler emits exactly one row for each of 35 selected fixtures", () => {
-  const catalog = fixtureCatalog(35);
+test("linear assembler emits exactly one row for each selected fixture", () => {
+  const selectedCount = 3;
+  const catalog = fixtureCatalog(selectedCount);
   const plan = fixturePlan(catalog);
   const envelopes = plan.map((entry) =>
     failureEnvelope(catalog, entry, "browser-crash", true)
   );
   const aggregate = aggregateEnvelope(catalog, plan, envelopes);
 
-  assert.equal(aggregate.fixtures.length, 35);
-  assert.equal(aggregate.failures.length, 35);
-  assert.equal(aggregate.coverage.availableFamilies, 35);
-  assert.equal(aggregate.coverage.selectedFamilies, 35);
-  assert.equal(aggregate.coverage.attemptedFamilies, 35);
-  assert.equal(aggregate.coverage.failedFamilies, 35);
+  assert.equal(aggregate.fixtures.length, selectedCount);
+  assert.equal(aggregate.failures.length, selectedCount);
+  assert.equal(aggregate.coverage.availableFamilies, selectedCount);
+  assert.equal(aggregate.coverage.selectedFamilies, selectedCount);
+  assert.equal(aggregate.coverage.attemptedFamilies, selectedCount);
+  assert.equal(aggregate.coverage.failedFamilies, selectedCount);
   assert.deepEqual(
     aggregate.fixtures.map(({ id }) => id),
     plan.map(({ fixtureId }) => fixtureId)

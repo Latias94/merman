@@ -114,7 +114,7 @@ version = "2.0.0"
     descriptor.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "profiles": [{"id": "full"}, {"id": "slim"}],
             }
         ),

@@ -518,9 +518,12 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -530,7 +533,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -780,13 +783,14 @@ mod tests {
     #[test]
     fn reverse_edge_swaps_endpoint_adjacency_labels_and_bendpoints() {
         let mut ab = edge("A-B", "A", "B");
-        ab.label = Some(ElkInputLabel {
+        ab.labels = vec![ElkInputLabel {
+            source_index: None,
             text: "end".to_string(),
             width: 20.0,
             height: 12.0,
             placement: EdgeLabelPlacement::Head,
             inline: false,
-        });
+        }];
         let mut graph = graph(vec![node("A"), node("B")], vec![ab]);
         graph.edges[0].bend_points = vec![LPoint { x: 1.0, y: 2.0 }, LPoint { x: 3.0, y: 4.0 }];
         let old_source = graph.edges[0].source;

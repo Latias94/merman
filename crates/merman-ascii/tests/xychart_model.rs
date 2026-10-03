@@ -1103,7 +1103,7 @@ fn xychart_imported_fixture_matrix_remains_smoke_green() {
     fixtures.sort();
     assert_eq!(
         fixtures.len(),
-        73,
+        74,
         "the pinned XYChart fixture inventory changed; update the semantic gate intentionally"
     );
 

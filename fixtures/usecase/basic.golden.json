@@ -1,0 +1,72 @@
+{
+  "diagramType": "usecase",
+  "model": {
+    "type": "usecase",
+    "direction": "LR",
+    "nodes": [
+      {
+        "id": "Customer",
+        "label": "Customer",
+        "labelType": "text",
+        "kind": "actor",
+        "actorType": "normal",
+        "icon": null,
+        "parentId": null,
+        "business": false,
+        "stereotype": null,
+        "classes": [],
+        "styles": []
+      },
+      {
+        "id": "Checkout",
+        "label": "Place order",
+        "labelType": "text",
+        "kind": "useCaseEllipse",
+        "actorType": "normal",
+        "icon": null,
+        "parentId": "Order_system",
+        "business": false,
+        "stereotype": null,
+        "classes": [],
+        "styles": []
+      }
+    ],
+    "boundaries": [
+      {
+        "id": "Order_system",
+        "label": "Order system",
+        "labelType": "text",
+        "members": [
+          "Checkout"
+        ],
+        "package": false,
+        "classes": [],
+        "styles": []
+      }
+    ],
+    "relationships": [
+      {
+        "id": "edge-0",
+        "explicitId": false,
+        "source": "Customer",
+        "target": "Checkout",
+        "relationshipType": "association",
+        "arrowType": 0,
+        "label": null,
+        "labelType": null,
+        "dotted": false,
+        "minlen": 1,
+        "classes": [],
+        "styles": [],
+        "animate": false,
+        "animation": null
+      }
+    ],
+    "notes": [],
+    "jsonNodes": [],
+    "classDefs": [],
+    "title": null,
+    "accTitle": null,
+    "accDescr": null
+  }
+}

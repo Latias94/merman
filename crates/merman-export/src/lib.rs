@@ -24,7 +24,7 @@ pub use raster_paint_cutover::{
 };
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-use cssparser::{Delimiter, Parser, ParserInput, Token};
+use cssparser::{Delimiter, Parser, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_core::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
@@ -2606,7 +2606,7 @@ fn plan_embedded_data_resources_with_occurrences(
                 .key
                 .local_name()
                 .as_ref()
-                .eq_ignore_ascii_case(b"href")
+                .eq_ignore_ascii_case("href")
             {
                 continue;
             }
@@ -2669,10 +2669,10 @@ fn plan_embedded_data_resources_with_occurrences(
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn is_embedded_image_element(local_name: &[u8]) -> bool {
+fn is_embedded_image_element(local_name: &str) -> bool {
     // usvg resolves both elements through the same image resolver. Match qualified-name aliases
     // conservatively so namespace spelling cannot turn the preflight into a false-negative gate.
-    local_name.eq_ignore_ascii_case(b"image") || local_name.eq_ignore_ascii_case(b"feImage")
+    local_name.eq_ignore_ascii_case("image") || local_name.eq_ignore_ascii_case("feImage")
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2845,9 +2845,9 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
             || matches!(
                 namespace,
                 ResolveResult::Bound(namespace)
-                    if namespace.as_ref() == b"http://www.w3.org/2000/svg"
+                    if namespace.as_ref() == "http://www.w3.org/2000/svg"
             );
-        if !is_svg_namespace || local_name.as_ref() != b"svg" {
+        if !is_svg_namespace || local_name.as_ref() != "svg" {
             return Err(ExportError::SvgParse);
         }
 
@@ -2867,9 +2867,9 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
                 ResolveResult::Unbound => true,
                 ResolveResult::Bound(namespace) => matches!(
                     namespace.as_ref(),
-                    b"http://www.w3.org/2000/svg"
-                        | b"http://www.w3.org/1999/xlink"
-                        | b"http://www.w3.org/XML/1998/namespace"
+                    "http://www.w3.org/2000/svg"
+                        | "http://www.w3.org/1999/xlink"
+                        | "http://www.w3.org/XML/1998/namespace"
                 ),
             };
             if !consumed_by_usvg {
@@ -2880,13 +2880,13 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
                 .normalized_value(XmlVersion::Implicit1_0)
                 .map_err(|_| ExportError::SvgParse)?;
             match local_name.as_ref() {
-                b"viewBox" if !view_box_seen => {
+                "viewBox" if !view_box_seen => {
                     view_box_seen = true;
                     metadata.has_view_box = has_valid_svg_view_box(value.as_ref());
                 }
                 // usvg projects namespaced presentation attributes by local name, but parses the
                 // `style` declaration list only from the unbound XML attribute.
-                b"style" if is_unbound_attribute && !style_seen => {
+                "style" if is_unbound_attribute && !style_seen => {
                     style_seen = true;
                     metadata.max_width_px = parse_inline_max_width_px(value.as_ref(), control)?;
                 }
@@ -2913,8 +2913,7 @@ fn has_valid_svg_view_box(value: &str) -> bool {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn parse_inline_max_width_px(style: &str, control: &OperationControl) -> Result<Option<f32>> {
-    let mut input = ParserInput::new(style);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(style);
     let mut max_width = None;
 
     while !parser.is_exhausted() {
@@ -2925,7 +2924,7 @@ fn parse_inline_max_width_px(style: &str, control: &OperationControl) -> Result<
 
             if !property.eq_ignore_ascii_case("max-width") {
                 declaration.expect_no_error_token()?;
-                return Ok::<_, cssparser::ParseError<'_, ()>>(None);
+                return Ok::<_, cssparser::ParseError<()>>(None);
             }
 
             let token = declaration.next()?.clone();

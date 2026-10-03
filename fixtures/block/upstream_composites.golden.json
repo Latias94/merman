@@ -22,7 +22,8 @@
             "children": [],
             "widthInColumns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       }
     ],
     "edges": [],
@@ -51,7 +52,8 @@
                 "children": [],
                 "widthInColumns": 1
               }
-            ]
+            ],
+            "colorIndex": 0
           }
         ],
         "columns": -1
@@ -75,7 +77,8 @@
             "children": [],
             "widthInColumns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       },
       {
         "id": "aBlock",

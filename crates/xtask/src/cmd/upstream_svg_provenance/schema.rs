@@ -58,8 +58,12 @@ pub(crate) struct UpstreamSvgOperatingSystemEnvironment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct UpstreamSvgRuntimeEnvironment {
-    pub(crate) esm_version: String,
-    pub(crate) iife_version: String,
+    pub(crate) mermaid_version: String,
+    pub(crate) dompurify_version: String,
+    pub(crate) compiler_version: String,
+    pub(crate) artifact_sha256: String,
+    pub(crate) dompurify_package_sha256: String,
+    pub(crate) compiler_package_sha256: String,
     pub(crate) mermaid_package_sha256: String,
     pub(crate) mermaid_cli_package_sha256: String,
 }
@@ -98,12 +102,24 @@ impl UpstreamSvgRenderEnvironment {
                 self.operating_system.release.as_str(),
             ),
             (
-                "mermaid_runtime.esm_version",
-                self.mermaid_runtime.esm_version.as_str(),
+                "mermaid_runtime.mermaid_version",
+                self.mermaid_runtime.mermaid_version.as_str(),
             ),
             (
-                "mermaid_runtime.iife_version",
-                self.mermaid_runtime.iife_version.as_str(),
+                "mermaid_runtime.dompurify_version",
+                self.mermaid_runtime.dompurify_version.as_str(),
+            ),
+            (
+                "mermaid_runtime.artifact_sha256",
+                self.mermaid_runtime.artifact_sha256.as_str(),
+            ),
+            (
+                "mermaid_runtime.dompurify_package_sha256",
+                self.mermaid_runtime.dompurify_package_sha256.as_str(),
+            ),
+            (
+                "mermaid_runtime.compiler_package_sha256",
+                self.mermaid_runtime.compiler_package_sha256.as_str(),
             ),
             (
                 "mermaid_runtime.mermaid_package_sha256",
@@ -112,6 +128,10 @@ impl UpstreamSvgRenderEnvironment {
             (
                 "mermaid_runtime.mermaid_cli_package_sha256",
                 self.mermaid_runtime.mermaid_cli_package_sha256.as_str(),
+            ),
+            (
+                "mermaid_runtime.compiler_version",
+                self.mermaid_runtime.compiler_version.as_str(),
             ),
             ("font_probe.revision", self.font_probe.revision.as_str()),
             ("font_probe.sha256", self.font_probe.sha256.as_str()),
@@ -124,6 +144,18 @@ impl UpstreamSvgRenderEnvironment {
         }
         for (field, digest) in [
             ("font_probe.sha256", self.font_probe.sha256.as_str()),
+            (
+                "mermaid_runtime.artifact_sha256",
+                self.mermaid_runtime.artifact_sha256.as_str(),
+            ),
+            (
+                "mermaid_runtime.dompurify_package_sha256",
+                self.mermaid_runtime.dompurify_package_sha256.as_str(),
+            ),
+            (
+                "mermaid_runtime.compiler_package_sha256",
+                self.mermaid_runtime.compiler_package_sha256.as_str(),
+            ),
             (
                 "mermaid_runtime.mermaid_package_sha256",
                 self.mermaid_runtime.mermaid_package_sha256.as_str(),
@@ -258,8 +290,12 @@ mod tests {
                 "release": "test"
             },
             "mermaid_runtime": {
-                "esm_version": "11.16.0",
-                "iife_version": "11.16.0",
+                "mermaid_version": "11.16.0",
+                "dompurify_version": "3.4.16",
+                "compiler_version": "0.28.1",
+                "artifact_sha256": "d".repeat(64),
+                "dompurify_package_sha256": "e".repeat(64),
+                "compiler_package_sha256": "f".repeat(64),
                 "mermaid_package_sha256": "a".repeat(64),
                 "mermaid_cli_package_sha256": "b".repeat(64)
             },
@@ -290,5 +326,46 @@ mod tests {
             .validate()
             .expect_err("blank locale must not attest a corpus");
         assert!(error.to_string().contains("browser.locale"));
+    }
+
+    #[test]
+    fn render_environment_requires_owned_runtime_identity() {
+        for field in [
+            "mermaid_version",
+            "dompurify_version",
+            "compiler_version",
+            "artifact_sha256",
+            "dompurify_package_sha256",
+            "compiler_package_sha256",
+        ] {
+            let mut value = render_environment_json();
+            value["browser"]["locale"] = serde_json::json!("en-US");
+            value["mermaid_runtime"]
+                .as_object_mut()
+                .expect("runtime object")
+                .remove(field);
+            let error = serde_json::from_value::<UpstreamSvgRenderEnvironment>(value)
+                .expect_err("legacy environment identity cannot attest the owned runtime");
+            assert!(error.to_string().contains(field), "{field}: {error}");
+        }
+    }
+
+    #[test]
+    fn render_environment_rejects_invalid_owned_runtime_digests() {
+        for field in [
+            "artifact_sha256",
+            "dompurify_package_sha256",
+            "compiler_package_sha256",
+        ] {
+            let mut value = render_environment_json();
+            value["browser"]["locale"] = serde_json::json!("en-US");
+            value["mermaid_runtime"][field] = serde_json::json!("not-a-sha256");
+            let environment = serde_json::from_value::<UpstreamSvgRenderEnvironment>(value)
+                .expect("decode render environment");
+            let error = environment
+                .validate()
+                .expect_err("runtime digests must be complete SHA-256");
+            assert!(error.to_string().contains(field), "{field}: {error}");
+        }
     }
 }

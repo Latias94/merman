@@ -6,12 +6,31 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
+This guide documents the current unreleased `0.8.0` development line. For published alpha.7 APIs,
+use the matching tagged release documentation and dependency versions in the examples below.
+
+## Source Feature Migration
+
+The current checkout keeps empty default features and adds positive `diagram-*` selectors.
+Select `all-diagrams` to retain every built-in parser, or select only the families your host accepts:
+
+```toml
+merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-gantt"] }
+```
+
+Family-exclusive typed models and enum variants are conditional. The complete
+identity catalog still recognizes disabled families, whose strict parse returns
+`UnsupportedDiagram`. `supported_diagrams()` enumerates compiled parsers;
+`diagram_family_capabilities()` retains complete identities with actual implementation flags.
+See the [feature guide](../../docs/FEATURES.md#select-diagram-families) for custom registries,
+suppression, and Cargo feature-unification rules.
+
 ## Quick Start
 
-Add the exact alpha.6 prerelease:
+Add the exact alpha.7 prerelease with all built-in parsers:
 
 ```sh
-cargo add merman-core@0.8.0-alpha.6
+cargo add merman-core@=0.8.0-alpha.7 --features all-diagrams
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:
@@ -44,7 +63,10 @@ fn main() -> Result<(), merman_core::Error> {
 - Project-owned civil and offset time types that preserve Mermaid's wide year domain.
 - Runtime-agnostic async APIs plus synchronous helpers.
 
-`merman-core` has no default Cargo features. Mermaid parsing, configuration, sanitization, detection, and family facts are unconditional; optional `system-*` features only make explicit host runtime adapters available.
+`merman-core` has no default Cargo features. Select `all-diagrams` or the required `diagram-*`
+families to compile built-in parsers and typed models. Configuration, sanitization, detection, and
+complete identity facts remain available without a family; optional `system-*` features make
+explicit host runtime adapters available.
 
 Relative operation deadlines use the native monotonic clock on supported targets. Browser-facing
 `wasm32-unknown-unknown` artifacts must enable `operation-deadlines` to expose the deadline methods
@@ -110,7 +132,12 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Compatibility
 
-`merman-core` tracks Mermaid `@11.17.2` and treats pinned upstream behavior as the compatibility target. Compatibility semantic JSON is the public serialized parser projection. It is not a second successful grammar or the master built-in render input. Typed render models and editor facts project the same family semantic construction into purpose-specific shapes.
+The development version of `merman-core` targets Mermaid `12.1.0` at
+`21f72f07ea22c0af48a3149c550654e80d8e40cb` for unreleased Merman `0.8.0`; published alpha.7 targets
+Mermaid `12.0.0`. The selected pinned upstream behavior graph is the compatibility authority.
+Compatibility semantic JSON is the public serialized parser projection. It is not a second
+successful grammar or the master built-in render input. Typed render models and editor facts
+project the same family semantic construction into purpose-specific shapes.
 
 The built-in Diagram Family catalog is the authoritative source for ids, aliases, detector order, parser/editor/render capabilities, metadata, configuration namespaces, and authoring headers. The pinned Mermaid catalog is complete and independent of Cargo feature selection. Custom parser overlays remain explicit and do not inherit a built-in renderer or editor capability.
 

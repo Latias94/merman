@@ -40,6 +40,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "flowchart",
     "sequence",
     "state",
+    "swimlane",
     "xychart",
 }
 ASCII_SUMMARY_FAMILIES = {
@@ -52,8 +53,9 @@ ASCII_SUMMARY_FAMILIES = {
     "timeline",
     "treeView",
 }
-ASCII_COMPACT_FAMILIES = {"flowchart", "sequence"}
+ASCII_COMPACT_FAMILIES = {"flowchart", "sequence", "swimlane"}
 ASCII_FAMILIES = (
+    "agentflow",
     "architecture",
     "block",
     "c4",
@@ -78,24 +80,25 @@ ASCII_FAMILIES = (
     "sankey",
     "sequence",
     "state",
+    "swimlane",
     "timeline",
     "treeView",
     "treemap",
+    "usecase",
     "venn",
     "wardley",
     "xychart",
     "zenuml",
 )
 ASCII_DETECTED_TYPE_MAPPINGS = (
+    ("agentflow", "agentflow"),
     ("architecture", "architecture"),
     ("block", "block"),
     ("c4", "c4"),
-    ("class", "class"),
     ("classDiagram", "class"),
     ("cynefin", "cynefin"),
     ("er", "er"),
     ("eventmodeling", "eventmodeling"),
-    ("flowchart", "flowchart"),
     ("flowchart-elk", "flowchart"),
     ("flowchart-v2", "flowchart"),
     ("gantt", "gantt"),
@@ -116,12 +119,12 @@ ASCII_DETECTED_TYPE_MAPPINGS = (
     ("requirement", "requirement"),
     ("sankey", "sankey"),
     ("sequence", "sequence"),
-    ("state", "state"),
     ("stateDiagram", "state"),
     ("swimlane", "flowchart"),
     ("timeline", "timeline"),
     ("treeView", "treeView"),
     ("treemap", "treemap"),
+    ("usecase", "usecase"),
     ("venn", "venn"),
     ("wardley", "wardley"),
     ("xychart", "xychart"),
