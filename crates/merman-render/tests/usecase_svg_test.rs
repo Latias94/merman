@@ -1033,7 +1033,9 @@ fn usecase_elk_hops_rewrite_explicit_masks_without_moving_markers() {
                     .collect();
                 assert_eq!(mask.len(), 4);
                 assert_eq!([mask[0], mask[1], mask[3]], [0.0, 4.0, 4.0]);
-                let length = kurbo::BezPath::from_svg(&after[0]).unwrap().perimeter(1e-6);
+                // getTotalLength() returns an SVG DOM float before marker-offset arithmetic.
+                let length =
+                    f64::from(kurbo::BezPath::from_svg(&after[0]).unwrap().perimeter(1e-6) as f32);
                 assert!((mask[2] - (length - 8.0).max(0.0)).abs() < 1e-9);
             }
             assert!(rewritten > 0, "crossing masks at {look}/{hops}");

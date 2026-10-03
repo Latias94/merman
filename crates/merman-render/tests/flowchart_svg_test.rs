@@ -4497,9 +4497,12 @@ fn flowchart_elk_line_hops_rewrite_original_dashed_and_authored_masks() {
                         "{context}: upstream takes the fourth number, not marker clearance"
                     );
                 }
-                let length = kurbo::BezPath::from_svg(&after.d)
-                    .unwrap()
-                    .perimeter(1.0e-6);
+                // getTotalLength() returns an SVG DOM float before marker-offset arithmetic.
+                let length = f64::from(
+                    kurbo::BezPath::from_svg(&after.d)
+                        .unwrap()
+                        .perimeter(1.0e-6) as f32,
+                );
                 for mask in rewritten {
                     assert_eq!(
                         mask.len(),

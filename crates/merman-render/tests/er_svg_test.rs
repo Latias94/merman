@@ -717,7 +717,9 @@ fn er_elk_neo_hops_update_solid_and_dashed_masks_from_final_path_length() {
                     continue;
                 }
                 changed += 1;
-                let length = kurbo::BezPath::from_svg(d).unwrap().perimeter(1.0e-6);
+                // getTotalLength() returns an SVG DOM float before marker-offset arithmetic.
+                let length =
+                    f64::from(kurbo::BezPath::from_svg(d).unwrap().perimeter(1.0e-6) as f32);
                 let dasharray: Vec<f64> = style
                     .split(';')
                     .find_map(|declaration| declaration.trim().strip_prefix("stroke-dasharray:"))
