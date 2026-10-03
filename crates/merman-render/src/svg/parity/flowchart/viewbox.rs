@@ -137,6 +137,11 @@ where
         .enumerate()
         .filter_map(|(index, label)| label.map(|label| (index, label)))
         {
+            // ELK main labels may move after clipping. Include their final painted position
+            // below, after terminal straightening and paired-label separation.
+            if ctx.uses_elk_adapter_dom && label_index == 0 {
+                continue;
+            }
             let edge_label_padding = if ctx.edge_html_labels && lbl.width > 0.0 && lbl.height > 0.0
             {
                 ctx.edge_label_padding
@@ -240,6 +245,13 @@ where
         );
         let mut prepared_routes = Vec::new();
         let mut prepared_edges = Vec::new();
+        let original_label_path_work = render_edges
+            .iter()
+            .filter_map(|edge| ctx.layout_edges_by_id.get(edge.as_ref().id.as_str()))
+            .fold(0usize, |sum, edge| {
+                sum.saturating_add(edge.points.len().max(2))
+            });
+        ctx.work_meter.charge(original_label_path_work)?;
         if ctx.uses_elk_adapter_dom {
             let route_work = render_edges
                 .iter()
@@ -330,6 +342,19 @@ where
             {
                 edge_geom::straighten_edge_terminals(&mut prepared_routes, ctx.work_meter)?;
             }
+            edge_geom::separate_edge_labels(
+                &mut prepared_routes,
+                prepared_edges.iter().map(|(edge, _)| {
+                    (
+                        edge.from.as_str(),
+                        edge.to.as_str(),
+                        ctx.model
+                            .edge_label_for_render(edge)
+                            .is_some_and(|label| !label.is_empty()),
+                    )
+                }),
+                ctx.work_meter,
+            )?;
             for ((edge, off), route) in prepared_edges.into_iter().zip(prepared_routes) {
                 detail.viewbox_edge_curve_geom_calls += 1;
                 let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
@@ -386,6 +411,38 @@ where
                     bbox_max_y = bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform);
                 }
             }
+        }
+    }
+
+    if ctx.uses_elk_adapter_dom {
+        ctx.work_meter.charge(render_edges.len())?;
+        for edge in render_edges {
+            let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
+                continue;
+            };
+            let Some(label) = layout_edge.label.as_ref() else {
+                continue;
+            };
+            let anchor = render::resolve_flowchart_edge_label_position(
+                ctx,
+                layout_edge,
+                label,
+                0.0,
+                0.0,
+                edge_path_cache,
+                false,
+            );
+            let padding = if ctx.edge_html_labels && label.width > 0.0 && label.height > 0.0 {
+                ctx.edge_label_padding
+            } else {
+                0.0
+            };
+            let half_width = label.width / 2.0 + padding;
+            let half_height = label.height / 2.0 + padding;
+            bbox_min_x = bbox_min_x.min(anchor.x - half_width);
+            bbox_min_y = bbox_min_y.min(anchor.y - half_height);
+            bbox_max_x = bbox_max_x.max(anchor.x + half_width);
+            bbox_max_y = bbox_max_y.max(anchor.y + half_height);
         }
     }
 

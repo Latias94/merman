@@ -53,7 +53,10 @@ pub(in crate::svg::parity) struct LineHopCrossing<'a> {
 pub(in crate::svg::parity) struct LineHopPath<'a> {
     pub(in crate::svg::parity) edge_id: &'a str,
     pub(in crate::svg::parity) path: String,
+    /// At least one arc or gap survived the available-radius checks.
     pub(in crate::svg::parity) has_hops: bool,
+    /// A crossing triggered after-paint processing, even if all visible hops were suppressed.
+    pub(in crate::svg::parity) was_rewritten: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -304,6 +307,7 @@ pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
                 edge_id: edge.id,
                 path: plain_path(edge.points),
                 has_hops: false,
+                was_rewritten: false,
             })
             .collect());
     }
@@ -325,6 +329,7 @@ pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
                     edge_id: edge.id,
                     path: plain_path(edge.points),
                     has_hops: false,
+                    was_rewritten: false,
                 };
             };
             let (path, has_hops) = rewrite_edge_path(*edge, jumps, config);
@@ -332,9 +337,150 @@ pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
                 edge_id: edge.id,
                 path,
                 has_hops,
+                was_rewritten: true,
             }
         })
         .collect())
+}
+
+/// Return ELK paths rewritten for a crossing, even when nearby bends suppress every visible hop.
+/// Callers supply draw-projected points before marker offsets and retain their
+/// original paths for labels, marker placement, and all non-crossing edges.
+/// Curve eligibility applies after intersection discovery, as in Mermaid.
+pub(in crate::svg::parity) fn elk_line_hop_paths<'a>(
+    config: &serde_json::Value,
+    edges: &[LineHopEdge<'a>],
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<HashMap<&'a str, String>> {
+    let line_hops = config.pointer("/elk/lineHops");
+    if line_hops.and_then(serde_json::Value::as_bool) == Some(false) {
+        return Ok(HashMap::new());
+    }
+    work_meter.charge(edges.len().saturating_mul(2))?;
+    let rendered_edges: Vec<_> = edges
+        .iter()
+        .copied()
+        .filter(|edge| edge.points.len() >= 2)
+        .collect();
+    let paths = process_edges_with_line_hops(
+        &rendered_edges,
+        LineHopConfig {
+            enabled: true,
+            jump_radius: 6.0,
+            jump_style: if line_hops.and_then(serde_json::Value::as_str) == Some("gap") {
+                LineHopStyle::Gap
+            } else {
+                LineHopStyle::Arc
+            },
+        },
+        work_meter,
+    )?;
+    Ok(paths
+        .into_iter()
+        .zip(rendered_edges)
+        .filter(|(path, edge)| path.was_rewritten && curve_supports_line_hops(edge.curve))
+        .map(|(path, _)| (path.edge_id, path.path))
+        .collect())
+}
+
+/// Mirror lineJump.ts's after-paint mask rewrite, including its dashed-prefix behavior.
+/// The first matching mask supplies the second and fourth numbers, even when that
+/// fourth number belongs to a repeated dash pattern. Every declaration is replaced.
+pub(in crate::svg::parity) fn rewrite_style_after_line_hop<'a>(
+    original_style: &'a str,
+    hopped_d: &str,
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<std::borrow::Cow<'a, str>> {
+    work_meter.charge(original_style.len().saturating_add(hopped_d.len()))?;
+    use std::borrow::Cow;
+    const PROPERTY: &str = "stroke-dasharray";
+
+    use crate::text::is_ecmascript_whitespace as js_space;
+
+    fn value_start(style: &str, property_start: usize) -> Option<usize> {
+        let suffix = style[property_start + PROPERTY.len()..].trim_start_matches(js_space);
+        let value = suffix.strip_prefix(':')?;
+        Some(style.len() - value.len())
+    }
+    fn mask_offsets(value: &str) -> Option<(f64, f64)> {
+        let mut rest = value.trim_start_matches(js_space).strip_prefix('0')?;
+        let mut fields = [0.0; 3];
+        for field in &mut fields {
+            let trimmed = rest.trim_start_matches(js_space);
+            if trimmed.len() == rest.len() {
+                return None;
+            }
+            let end = trimmed
+                .find(|ch: char| !ch.is_ascii_digit() && ch != '.')
+                .unwrap_or(trimmed.len());
+            if end == 0 {
+                return None;
+            }
+            let raw = &trimmed[..end];
+            // The source uses parseFloat on [\d.]+, which accepts a numeric prefix.
+            let numeric_end = raw.match_indices('.').nth(1).map_or(raw.len(), |(i, _)| i);
+            *field = raw[..numeric_end].parse().unwrap_or(f64::NAN);
+            rest = &trimmed[end..];
+        }
+        Some((fields[0], fields[2]))
+    }
+
+    let offsets = original_style
+        .match_indices(PROPERTY)
+        .find_map(|(start, _)| {
+            mask_offsets(&original_style[value_start(original_style, start)?..])
+        });
+    let Some((start_offset, end_offset)) = offsets else {
+        return Ok(Cow::Borrowed(original_style));
+    };
+    let Some(length) = super::svg_path_length_from_d(hopped_d) else {
+        return Ok(Cow::Borrowed(original_style));
+    };
+    let remaining = length - start_offset - end_offset;
+    let on_length = if remaining.is_nan() {
+        f64::NAN
+    } else {
+        remaining.max(0.0)
+    };
+    let number = |value| ryu_js::Buffer::new().format(value).to_owned();
+    let replacement = format!(
+        "stroke-dasharray: 0 {} {} {};",
+        number(start_offset),
+        number(on_length),
+        number(end_offset)
+    );
+    let mut rewritten = String::with_capacity(original_style.len());
+    let mut copied = 0;
+    let mut search = 0;
+    while let Some(relative) = original_style[search..].find(PROPERTY) {
+        let start = search + relative;
+        let Some(value) = value_start(original_style, start) else {
+            search = start + PROPERTY.len();
+            continue;
+        };
+        let end = original_style[value..]
+            .find(';')
+            .map_or(original_style.len(), |end| value + end + 1);
+        rewritten.push_str(&original_style[copied..start]);
+        rewritten.push_str(&replacement);
+        copied = end;
+        search = end;
+    }
+    rewritten.push_str(&original_style[copied..]);
+
+    // Single left-to-right replacement of /;\s*;+/g, not recursive CSS normalization.
+    let mut cleaned = String::with_capacity(rewritten.len());
+    let mut remaining = rewritten.as_str();
+    while let Some(index) = remaining.find(';') {
+        cleaned.push_str(&remaining[..=index]);
+        remaining = &remaining[index + 1..];
+        let trimmed = remaining.trim_start_matches(js_space);
+        if trimmed.starts_with(';') {
+            remaining = trimmed.trim_start_matches(';');
+        }
+    }
+    cleaned.push_str(remaining);
+    Ok(Cow::Owned(cleaned))
 }
 
 pub(in crate::svg::parity) fn curve_supports_line_hops(curve: Option<&str>) -> bool {
@@ -733,6 +879,11 @@ mod tests {
             .expect("unbounded line-hop processing")
     }
 
+    fn rewrite_style_after_line_hop<'a>(style: &'a str, path: &str) -> std::borrow::Cow<'a, str> {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::rewrite_style_after_line_hop(style, path, &meter).unwrap()
+    }
+
     fn brute_force_edge_intersections<'a>(edges: &[LineHopEdge<'a>]) -> Vec<LineHopCrossing<'a>> {
         let mut crossings = Vec::new();
         for (edge_a_index, edge_a) in edges.iter().enumerate() {
@@ -820,6 +971,211 @@ mod tests {
             jump_radius: radius,
             jump_style: LineHopStyle::Arc,
         }
+    }
+
+    #[test]
+    fn elk_hop_modes_only_override_crossings_and_preserve_terminal_offsets() {
+        let horizontal = [point(0.0, 50.0), point(100.0, 50.0)];
+        let vertical = [point(50.0, 0.0), point(50.0, 100.0)];
+        let separate = [point(0.0, 150.0), point(100.0, 150.0)];
+        let mut edges = [
+            edge("horizontal", &horizontal),
+            edge("vertical", &vertical),
+            edge("separate", &separate),
+        ];
+        edges[0].curve = Some("rounded");
+        edges[0].arrow_type_start = Some("dependency");
+        edges[0].arrow_type_end = Some("arrow_point");
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let default_paths = elk_line_hop_paths(&serde_json::json!({}), &edges, &meter).unwrap();
+        let arc_paths = elk_line_hop_paths(
+            &serde_json::json!({"elk": {"lineHops": true}}),
+            &edges,
+            &meter,
+        )
+        .unwrap();
+        let gap_paths = elk_line_hop_paths(
+            &serde_json::json!({"elk": {"lineHops": "gap"}}),
+            &edges,
+            &meter,
+        )
+        .unwrap();
+        assert_eq!(default_paths, arc_paths);
+        assert_eq!(arc_paths.len(), 1);
+        assert_eq!(gap_paths.len(), 1);
+        let arc = &arc_paths["horizontal"];
+        let gap = &gap_paths["horizontal"];
+        assert!(arc.contains("A6,6"), "{arc}");
+        assert!(!gap.contains('A'), "{gap}");
+        assert_eq!(gap.matches('M').count(), 2, "{gap}");
+        for path in [arc, gap] {
+            assert!(path.starts_with("M6,50"), "{path}");
+            assert!(path.ends_with("L96,50"), "{path}");
+        }
+        assert_eq!(horizontal[0].x, 0.0);
+        assert_eq!(horizontal[1].x, 100.0);
+    }
+
+    #[test]
+    fn elk_hop_neo_masks_follow_after_paint_for_arcs_gaps_and_markers() {
+        let horizontal = [point(0.0, 50.0), point(100.0, 50.0)];
+        let vertical = [point(50.0, 0.0), point(50.0, 100.0)];
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        for gap in [false, true] {
+            for marker in [None, Some("arrow_point")] {
+                let mut edges = [edge("horizontal", &horizontal), edge("vertical", &vertical)];
+                edges[0].curve = Some("rounded");
+                edges[0].arrow_type_start = marker;
+                edges[0].arrow_type_end = marker;
+                let config = serde_json::json!({"elk": {"lineHops":
+                    if gap { serde_json::json!("gap") } else { serde_json::json!(true) }
+                }});
+                let paths = elk_line_hop_paths(&config, &edges, &meter).unwrap();
+                let hopped = &paths["horizontal"];
+                let original = super::super::edge_path::render_path(
+                    &mut horizontal.to_vec(),
+                    "rounded",
+                    marker,
+                    marker,
+                );
+                let original_length = super::super::svg_path_length_from_d(&original).unwrap();
+                let new_length = super::super::svg_path_length_from_d(hopped).unwrap();
+                let offset = if marker.is_some() { 4.0 } else { 0.0 };
+                let expected_length = 100.0 - 2.0 * offset - 12.0
+                    + if gap { 0.0 } else { 6.0 * std::f64::consts::PI };
+                assert!((new_length - expected_length).abs() < 0.01);
+                for dashed in [false, true] {
+                    let mut style = String::new();
+                    super::super::edge_path::write_neo_edge_mask(
+                        &mut style,
+                        original_length,
+                        marker,
+                        marker,
+                        dashed,
+                        false,
+                    );
+                    style.push_str(";;fill:none;stroke-dasharray:10,7;");
+                    let rewritten = rewrite_style_after_line_hop(&style, hopped);
+                    assert!(!rewritten.contains(";;"));
+                    let masks: Vec<Vec<f64>> = rewritten
+                        .split(';')
+                        .filter_map(|part| part.trim().strip_prefix("stroke-dasharray:"))
+                        .map(|mask| {
+                            mask.split_whitespace()
+                                .map(|n| n.parse().unwrap())
+                                .collect()
+                        })
+                        .collect();
+                    assert_eq!(masks.len(), 2);
+                    assert_eq!(masks[0], masks[1]);
+                    let expected_end = if dashed { 2.0 } else { offset };
+                    assert_eq!(masks[0].len(), 4);
+                    assert_eq!(masks[0][0], 0.0);
+                    assert_eq!(masks[0][1], offset);
+                    assert_eq!(masks[0][3], expected_end);
+                    assert!((masks[0][2] - (new_length - offset - expected_end)).abs() < 1e-9);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn after_hop_style_charges_input_before_scanning_or_parsing_the_path() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let error = super::rewrite_style_after_line_hop(
+            "stroke-dasharray:0 0 100 0;",
+            "M0,0 L100,0",
+            &meter,
+        )
+        .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected line-hop style resource limit");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn after_hop_style_matches_the_source_prefix_and_single_pass_cleanup() {
+        let path = "M0,0 L100,0";
+        for (style, expected) in [
+            ("stroke-dasharray:3;", "stroke-dasharray:3;"),
+            ("stroke-dasharray:0 1e2 3 4;", "stroke-dasharray:0 1e2 3 4;"),
+            ("stroke-dasharray:0 1 -2 3;", "stroke-dasharray:0 1 -2 3;"),
+            ("stroke-dasharray:0 1 2 3e2;", "stroke-dasharray: 0 1 96 3;"),
+            (
+                "stroke-dasharray:0 .5.9 2 3.5.7;",
+                "stroke-dasharray: 0 0.5 96 3.5;",
+            ),
+            (
+                "stroke-dasharray:0 60 1 60;",
+                "stroke-dasharray: 0 60 0 60;",
+            ),
+            (
+                "stroke-dasharray:0 0 100 0; ; ;",
+                "stroke-dasharray: 0 0 100 0; ;",
+            ),
+            (
+                "stroke-dasharray:3;stroke-dasharray:0 4 92 4;stroke-dasharray:10,7",
+                "stroke-dasharray: 0 4 92 4;stroke-dasharray: 0 4 92 4;stroke-dasharray: 0 4 92 4;",
+            ),
+        ] {
+            assert_eq!(
+                rewrite_style_after_line_hop(style, path),
+                expected,
+                "{style}"
+            );
+        }
+    }
+
+    #[test]
+    fn elk_hop_curve_eligibility_does_not_remove_crossing_partners() {
+        let horizontal = [point(0.0, 50.0), point(100.0, 50.0)];
+        let vertical = [point(50.0, 0.0), point(50.0, 100.0)];
+        let mut edges = [edge("horizontal", &horizontal), edge("vertical", &vertical)];
+        edges[0].curve = Some("rounded");
+        edges[1].curve = Some("basis");
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let paths = elk_line_hop_paths(&serde_json::json!({}), &edges, &meter).unwrap();
+        assert!(paths.contains_key("horizontal"));
+        assert!(!paths.contains_key("vertical"));
+        edges[0].curve = Some("basis");
+        assert!(
+            elk_line_hop_paths(&serde_json::json!({}), &edges, &meter)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn elk_hop_wrapper_honors_disabled_mode_and_the_shared_work_budget() {
+        let horizontal = [point(0.0, 50.0), point(100.0, 50.0)];
+        let vertical = [point(50.0, 0.0), point(50.0, 100.0)];
+        let edges = [edge("horizontal", &horizontal), edge("vertical", &vertical)];
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        assert!(
+            elk_line_hop_paths(
+                &serde_json::json!({"elk": {"lineHops": false}}),
+                &edges,
+                &meter,
+            )
+            .unwrap()
+            .is_empty()
+        );
+        assert_eq!(meter.used(), 0);
+        let error = elk_line_hop_paths(&serde_json::json!({}), &edges, &meter).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected ELK hop collection resource limit");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 4);
+        assert_eq!(meter.used(), 0);
     }
 
     fn path_for<'a>(paths: &'a [LineHopPath<'_>], id: &str) -> &'a str {
@@ -1107,6 +1463,11 @@ mod tests {
         let paths = process_edges_with_line_hops(&tiny_edges, arc_config(2.0));
         assert_eq!(path_for(&paths, "horizontal"), "M0,0 L10,0");
         assert!(!paths[1].has_hops);
+        assert!(paths[1].was_rewritten);
+        assert!(!paths[0].was_rewritten);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let overrides = elk_line_hop_paths(&serde_json::json!({}), &tiny_edges, &meter).unwrap();
+        assert_eq!(overrides["horizontal"], "M0,0 L10,0");
     }
 
     #[test]

@@ -35,12 +35,16 @@ impl<'a> RequirementConfigView<'a> {
             font_size: self.font_size(),
             calculation_font_family: self.calculation_font_family(),
             calculation_font_size: self.calculation_font_size(),
+            html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
+            edge_html_labels: crate::config::config_effective_html_labels(self.effective_config),
         }
     }
 
     pub(crate) fn render_settings(&self) -> RequirementRenderSettings<'a> {
         RequirementRenderSettings {
             look: config_diagram_look(self.effective_config),
+            html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
+            edge_html_labels: crate::config::config_effective_html_labels(self.effective_config),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: self
                 .requirement_bool("useMaxWidth")
@@ -119,11 +123,15 @@ pub(crate) struct RequirementLayoutSettings {
     pub(crate) font_size: f64,
     pub(crate) calculation_font_family: String,
     pub(crate) calculation_font_size: f64,
+    pub(crate) html_labels: bool,
+    pub(crate) edge_html_labels: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementRenderSettings<'a> {
     pub(crate) look: DiagramLook<'a>,
+    pub(crate) html_labels: bool,
+    pub(crate) edge_html_labels: bool,
     pub(crate) viewport_padding: f64,
     pub(crate) use_max_width: bool,
     pub(crate) hand_drawn_seed: f64,
@@ -270,5 +278,29 @@ mod tests {
         assert_eq!(settings.font_size, 24.0);
         assert_eq!(settings.calculation_font_family, "Trebuchet MS,sans-serif");
         assert_eq!(settings.calculation_font_size, 10.0);
+    }
+    #[test]
+    fn requirement_html_label_modes_follow_node_and_edge_source_precedence() {
+        for (config, node_html, edge_html) in [
+            (
+                json!({"htmlLabels": false, "flowchart": {"htmlLabels": true}}),
+                false,
+                false,
+            ),
+            (
+                json!({"htmlLabels": true, "flowchart": {"htmlLabels": false}}),
+                true,
+                true,
+            ),
+            (json!({"flowchart": {"htmlLabels": false}}), true, false),
+        ] {
+            let view = RequirementConfigView::new(&config);
+            let layout = view.layout_settings();
+            let render = view.render_settings();
+            assert_eq!(layout.html_labels, node_html);
+            assert_eq!(render.html_labels, node_html);
+            assert_eq!(layout.edge_html_labels, edge_html);
+            assert_eq!(render.edge_html_labels, edge_html);
+        }
     }
 }

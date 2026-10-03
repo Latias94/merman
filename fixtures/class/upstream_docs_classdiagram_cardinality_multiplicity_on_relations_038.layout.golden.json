@@ -14,7 +14,7 @@
         {
           "id": "Ticket",
           "x": 51.719,
-          "y": 173.5,
+          "y": 226.5,
           "width": 62.078,
           "height": 81.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "Course",
           "x": 165.695,
-          "y": 173.5,
+          "y": 226.5,
           "width": 62.5,
           "height": 81.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "Star",
           "x": 270.992,
-          "y": 294.5,
+          "y": 380.0,
           "width": 50.453,
           "height": 81.0,
           "is_cluster": false
@@ -66,22 +66,22 @@
             },
             {
               "x": 51.719,
-              "y": 133.0
+              "y": 186.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 36.719,
-            "y": 110.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 43.639,
+            "y": 105.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 61.719,
-            "y": 110.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 65.194,
+            "y": 167.75,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -101,22 +101,22 @@
             },
             {
               "x": 165.695,
-              "y": 133.0
+              "y": 186.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 150.695,
-            "y": 110.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 157.615,
+            "y": 105.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 175.695,
-            "y": 110.5,
-            "width": 21.98,
-            "height": 21.0
+            "x": 185.33,
+            "y": 167.75,
+            "width": 17.27,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -136,22 +136,22 @@
             },
             {
               "x": 270.992,
-              "y": 254.0
+              "y": 339.5
             }
           ],
           "label": {
             "x": 270.712,
-            "y": 173.5,
+            "y": 210.25,
             "width": 48.44,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": {
-            "x": 280.992,
-            "y": 231.5,
-            "width": 30.66,
-            "height": 21.0
+            "x": 294.037,
+            "y": 321.25,
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -163,8 +163,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 302.031,
-        "max_y": 335.0
+        "max_x": 306.082,
+        "max_y": 420.5
       }
     }
   }

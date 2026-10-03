@@ -63,9 +63,10 @@ impl DetectorRegistry {
     ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        let no_frontmatter = remove_frontmatter(text);
+        let no_frontmatter = crate::preprocess::locate_frontmatter_block_controlled(text, control)?
+            .map_or(text, |block| block.stripped);
         control.checkpoint()?;
-        let no_directives = remove_directives_controlled(no_frontmatter.as_ref(), control)?;
+        let no_directives = remove_directives_controlled(no_frontmatter, control)?;
         control.checkpoint()?;
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
         control.checkpoint()?;
@@ -138,12 +139,6 @@ impl DetectorRegistry {
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.detectors.iter().map(|detector| detector.id)
     }
-}
-
-fn remove_frontmatter(text: &str) -> Cow<'_, str> {
-    crate::preprocess::split_frontmatter_block(text)
-        .map(|block| Cow::Borrowed(block.stripped))
-        .unwrap_or(Cow::Borrowed(text))
 }
 
 #[cfg(test)]
@@ -407,6 +402,27 @@ mod remove_directives_tests {
         );
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
+    }
+
+    #[test]
+    fn detection_uses_the_greedy_frontmatter_match_without_parsing_yaml() {
+        let registry = DetectorRegistry::pinned_mermaid_baseline();
+        let mut config = MermaidConfig::empty_object();
+        let source = "---\n\n---\n\nMORE\n---\nerror";
+        assert_eq!(registry.detect_type(source, &mut config).unwrap(), "error");
+    }
+
+    #[test]
+    fn detection_observes_cancellation_inside_frontmatter_whitespace() {
+        let source = format!("---\n{}", " \n".repeat(16_000));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
+            &source,
+            &mut MermaidConfig::empty_object(),
+            &control,
+        );
+        assert!(result.is_err());
     }
 
     #[test]

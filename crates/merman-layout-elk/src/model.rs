@@ -288,8 +288,55 @@ pub struct Edge {
     pub source: String,
     pub target: String,
     pub label: Option<Label>,
+    /// Measured HEAD/TAIL labels. Non-layered providers leave them unplaced.
+    pub terminal_labels: Vec<TerminalLabel>,
     pub minlen: usize,
     pub inside_self_loops_yo: bool,
+}
+
+/// Semantic terminal identity survives compound splitting and reversed provider routes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TerminalLabelKey {
+    StartLeft,
+    StartRight,
+    EndLeft,
+    EndRight,
+}
+
+impl TerminalLabelKey {
+    pub const ALL: [Self; 4] = [
+        Self::StartLeft,
+        Self::StartRight,
+        Self::EndLeft,
+        Self::EndRight,
+    ];
+
+    pub const fn at_start(self) -> bool {
+        matches!(self, Self::StartLeft | Self::StartRight)
+    }
+
+    pub const fn on_right(self) -> bool {
+        matches!(self, Self::StartRight | Self::EndRight)
+    }
+
+    pub(crate) const fn source_index(self) -> usize {
+        match self {
+            Self::StartLeft => 0,
+            Self::StartRight => 1,
+            Self::EndLeft => 2,
+            Self::EndRight => 3,
+        }
+    }
+
+    pub(crate) fn from_source_index(index: usize) -> Option<Self> {
+        Self::ALL.get(index).copied()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TerminalLabel {
+    pub key: TerminalLabelKey,
+    pub label: Label,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -325,6 +372,8 @@ pub struct EdgeLayout {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeLabelLayout {
+    /// `None` identifies the center label.
+    pub terminal: Option<TerminalLabelKey>,
     pub x: f64,
     pub y: f64,
     pub width: f64,

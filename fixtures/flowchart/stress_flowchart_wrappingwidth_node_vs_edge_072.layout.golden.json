@@ -5,24 +5,24 @@
       "nodes": [
         {
           "id": "SG",
-          "x": 136.0,
-          "y": 169.5,
+          "x": 149.76,
+          "y": 148.5,
           "width": 248.0,
-          "height": 315.0,
+          "height": 273.0,
           "is_cluster": true
         },
         {
           "id": "A",
-          "x": 136.0,
-          "y": 135.0,
+          "x": 149.76,
+          "y": 93.0,
           "width": 152.0,
           "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 136.0,
-          "y": 280.5,
+          "x": 149.76,
+          "y": 238.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -37,17 +37,17 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 136.0,
-              "y": 168.0
+              "x": 149.76,
+              "y": 126.0
             },
             {
-              "x": 136.0,
-              "y": 258.0
+              "x": 149.76,
+              "y": 216.0
             }
           ],
           "label": {
-            "x": 136.0,
-            "y": 213.0,
+            "x": 149.76,
+            "y": 171.0,
             "width": 200.0,
             "height": 42.0
           },
@@ -63,18 +63,18 @@
       "clusters": [
         {
           "id": "SG",
-          "x": 136.0,
-          "y": 169.5,
+          "x": 149.76,
+          "y": 148.5,
           "width": 248.0,
-          "height": 315.0,
-          "diff": -4.0,
-          "offset_y": 57.0,
+          "height": 273.0,
+          "diff": 9.76,
+          "offset_y": 15.0,
           "title": "This subgraph title should wrap at 200 not 120",
           "title_label": {
-            "x": 136.0,
-            "y": 42.5,
-            "width": 120.0,
-            "height": 61.0
+            "x": 149.76,
+            "y": 21.5,
+            "width": 275.52,
+            "height": 19.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -84,10 +84,10 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 25.76,
         "min_y": 12.0,
-        "max_x": 260.0,
-        "max_y": 327.0
+        "max_x": 273.76,
+        "max_y": 285.0
       }
     }
   }

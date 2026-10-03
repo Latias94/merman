@@ -1577,10 +1577,9 @@ fn layout_flowchart_with_model(
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
     work_control.charge_adapter(model.subgraphs.len())?;
-    // Mermaid's FlowDB emits duplicate subgraph ids in reverse order and Graphlib's repeated
-    // `setNode` calls leave the earliest semantic definition's label/style as the winner. Keep a
-    // first-definition index for all presentation lookups while retaining the full source list
-    // for reverse membership assignment below.
+    // Parsed Mermaid 12.1 models already contain one canonical group per id. Public typed
+    // callers can still construct duplicate groups; retain first-owner presentation and merged
+    // membership for that supported input without rebuilding parser semantics here.
     let mut subgraphs_by_id: FlowSubgraphIndex<'_> = HashMap::with_capacity(model.subgraphs.len());
     let mut subgraph_index_by_id: HashMap<&str, usize> =
         HashMap::with_capacity(model.subgraphs.len());

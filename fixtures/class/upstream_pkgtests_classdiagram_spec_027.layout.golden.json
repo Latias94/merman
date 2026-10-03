@@ -28,8 +28,8 @@
           "y": 137.5,
           "width": 275.351,
           "height": 251.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "space",
           "title_label": {
             "x": 149.675,
@@ -39,7 +39,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

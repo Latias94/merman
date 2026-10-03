@@ -74,7 +74,7 @@ fn elk_layout(
         "BT" => elk::Direction::Up,
         _ => elk::Direction::Down,
     };
-    let graph = elk::Graph {
+    let mut graph = elk::Graph {
         id: "usecase".into(),
         direction,
         nodes: plans
@@ -117,6 +117,7 @@ fn elk_layout(
                     height: label.metrics.height,
                 }),
                 minlen: plan.minlen,
+                terminal_labels: Vec::new(),
                 inside_self_loops_yo: false,
             })
             .collect(),
@@ -127,8 +128,35 @@ fn elk_layout(
         },
         options: crate::elk_options::layout_options(config),
     };
-    let placed = elk::layout_with_operation_seed_and_work_control(&graph, operation_seed, work)
-        .map_err(|error| work.map_elk_error_with_context(error, "Usecase ELK"))?;
+    if config
+        .pointer("/elk/keepEntryNodeOnTop")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        crate::elk_adapter::apply_cyclic_entry_constraints(
+            &mut graph.nodes,
+            graph
+                .edges
+                .iter()
+                .map(|edge| (edge.source.as_str(), edge.target.as_str())),
+            &mut Some(&mut *work),
+        )?;
+    }
+    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut graph,
+        config,
+        &mut Some(&mut *work),
+    )?;
+    let mut placed =
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+            .map_err(|error| work.map_elk_error_with_context(error, "Usecase ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
+    let frames = crate::elk_adapter::drawing_group_frames(
+        &graph,
+        &placed,
+        |node| node.label.as_ref().map_or(0.0, |label| label.width) + node.container.padding,
+        &mut Some(&mut *work),
+    )?;
     let plans_by_id: HashMap<_, _> = plans.iter().map(|plan| (plan.id.as_str(), plan)).collect();
     let edges_by_id: HashMap<_, _> = edge_plans
         .iter()
@@ -141,7 +169,12 @@ fn elk_layout(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("ELK returned unknown Usecase node {}", placed.id),
             })?;
-        nodes.push(node(plan, placed.x, placed.y, placed.width, placed.height));
+        // Project only the drawn group frame; provider routes keep their original origins.
+        let frame = frames
+            .get(placed.id.as_str())
+            .copied()
+            .unwrap_or_else(|| crate::elk_adapter::GroupFrame::from(&placed));
+        nodes.push(node(plan, frame.x, frame.y, frame.width, frame.height));
     }
     let mut edges = Vec::with_capacity(placed.edges.len());
     for placed in placed.edges {
@@ -396,6 +429,8 @@ pub(super) fn prepare_edge_paths(
             }
         }
     }
+    work.charge_adapter(edge_plans.len())?;
+    let mut route_layout_indexes = Vec::with_capacity(edge_plans.len());
     let mut routes = Vec::with_capacity(edge_plans.len());
     for plan in edge_plans {
         let Some(&index) = edge_indexes.get(plan.id.as_str()) else {
@@ -458,6 +493,7 @@ pub(super) fn prepare_edge_paths(
         };
         // Empty diagrams can have one coincident endpoint after source deduplication.
         // Do not synthesize a second terminal, which would change the source fallback.
+        route_layout_indexes.push(index);
         routes.push(points);
     }
     drop(edge_indexes);
@@ -467,7 +503,16 @@ pub(super) fn prepare_edge_paths(
             .and_then(Value::as_bool)
             != Some(false)
     {
-        geometry::straighten_routes(&mut routes, work)?;
+        let changes =
+            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut routes, |units| {
+                work.charge_adapter(units)
+            })?;
+        for change in changes {
+            let index = route_layout_indexes[change.route_index];
+            if let Some(label) = layout.edges[index].label.as_mut() {
+                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
+            }
+        }
     }
     let paths: HashMap<_, _> = edge_plans
         .iter()
@@ -487,6 +532,15 @@ pub(super) fn prepare_edge_paths(
                 label.y = (first.y + last.y) / 2.0;
             }
         }
+    }
+    if elk {
+        crate::elk_terminal_jogs::separate_opposite_edge_labels(
+            layout
+                .edges
+                .iter_mut()
+                .map(|edge| (edge.from.as_str(), edge.to.as_str(), edge.label.as_mut())),
+            |units| work.charge_adapter(units),
+        )?;
     }
     layout.bounds = Bounds::from_points(
         layout

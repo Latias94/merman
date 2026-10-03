@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Active",
-          "x": 341.96,
+          "x": 341.66,
           "y": 415.0,
-          "width": 659.92,
+          "width": 549.9,
           "height": 698.0,
           "is_cluster": true
         },
@@ -61,9 +61,9 @@
         },
         {
           "id": "divider-id-1",
-          "x": 182.42,
+          "x": 182.71,
           "y": 264.5,
-          "width": 292.84,
+          "width": 184.0,
           "height": 301.0,
           "is_cluster": true
         },
@@ -77,9 +77,9 @@
         },
         {
           "id": "divider-id-2",
-          "x": 500.38,
+          "x": 500.61,
           "y": 264.5,
-          "width": 295.08,
+          "width": 184.0,
           "height": 301.0,
           "is_cluster": true
         },
@@ -93,9 +93,9 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 183.54,
+          "x": 183.77,
           "y": 589.5,
-          "width": 295.08,
+          "width": 184.0,
           "height": 301.0,
           "is_cluster": true
         },
@@ -497,15 +497,15 @@
       "clusters": [
         {
           "id": "Active",
-          "x": 341.96,
+          "x": 341.66,
           "y": 415.0,
-          "width": 659.92,
+          "width": 549.9,
           "height": 698.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Active",
           "title_label": {
-            "x": 341.96,
+            "x": 341.66,
             "y": 76.5,
             "width": 36.4,
             "height": 21.0
@@ -518,15 +518,15 @@
         },
         {
           "id": "divider-id-1",
-          "x": 182.42,
+          "x": 182.71,
           "y": 264.5,
-          "width": 292.84,
+          "width": 184.0,
           "height": 301.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 182.42,
+            "x": 182.71,
             "y": 114.0,
             "width": 0.0,
             "height": 0.0
@@ -539,15 +539,15 @@
         },
         {
           "id": "divider-id-2",
-          "x": 500.38,
+          "x": 500.61,
           "y": 264.5,
-          "width": 295.08,
+          "width": 184.0,
           "height": 301.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 500.38,
+            "x": 500.61,
             "y": 114.0,
             "width": 0.0,
             "height": 0.0
@@ -560,15 +560,15 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 183.54,
+          "x": 183.77,
           "y": 589.5,
-          "width": 295.08,
+          "width": 184.0,
           "height": 301.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 183.54,
+            "x": 183.77,
             "y": 439.0,
             "width": 0.0,
             "height": 0.0
@@ -581,9 +581,9 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 60.0,
         "min_y": 12.0,
-        "max_x": 671.92,
+        "max_x": 623.92,
         "max_y": 764.0
       }
     }

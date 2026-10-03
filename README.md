@@ -20,8 +20,13 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This guide covers `0.8.0-alpha.7`, which follows `mermaid@12.0.0`. Alpha.6 follows `mermaid@11.17.2`. Parser, layout, configuration, theming, sanitization,
-and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor, or the [versioned upgrade index](docs/release/README.md) when upgrading from an earlier release.
+This README covers development toward **`0.8.0` (unreleased)**, with Mermaid `12.1.0` selected at
+commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid
+`12.0.0`; alpha.6 follows `11.17.2`. Parser, layout, configuration, theming, sanitization, and SVG
+structure follow the pinned source and fixtures. The current transition is still under validation;
+see the [alpha.7 to 0.8.0 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for semantic,
+ELK, and low-level Rust changes, or the [versioned upgrade index](docs/release/README.md) for an
+earlier release.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -32,7 +37,10 @@ and SVG structure are checked against the selected pinned Mermaid source and fix
 
 ## Quick start
 
-Add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies. Upgrade coupled Merman crates together; use the matching tagged documentation for an older release.
+For the published alpha.7 release, add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies and
+use its [tagged documentation](https://github.com/Latias94/merman/blob/v0.8.0-alpha.7/README.md).
+The source-checkout examples below describe current development. Upgrade coupled Merman crates
+together; `0.8.0` is not yet a published installation target.
 
 Run the maintained SVG example from a source checkout:
 

@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Configuring",
-          "x": 226.72,
+          "x": 235.15,
           "y": 523.0,
-          "width": 381.44,
+          "width": 295.3,
           "height": 458.0,
           "is_cluster": true
         },
@@ -45,9 +45,9 @@
         },
         {
           "id": "NotShooting",
-          "x": 226.72,
+          "x": 235.15,
           "y": 421.0,
-          "width": 429.44,
+          "width": 343.3,
           "height": 710.0,
           "is_cluster": true
         },
@@ -395,15 +395,15 @@
       "clusters": [
         {
           "id": "Configuring",
-          "x": 226.72,
+          "x": 235.15,
           "y": 523.0,
-          "width": 381.44,
+          "width": 295.3,
           "height": 458.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Configuring",
           "title_label": {
-            "x": 226.72,
+            "x": 235.15,
             "y": 304.5,
             "width": 64.4,
             "height": 21.0
@@ -437,15 +437,15 @@
         },
         {
           "id": "NotShooting",
-          "x": 226.72,
+          "x": 235.15,
           "y": 421.0,
-          "width": 429.44,
+          "width": 343.3,
           "height": 710.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "NotShooting",
           "title_label": {
-            "x": 226.72,
+            "x": 235.15,
             "y": 76.5,
             "width": 68.88,
             "height": 21.0
@@ -458,9 +458,9 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 60.0,
         "min_y": 12.0,
-        "max_x": 441.44,
+        "max_x": 406.8,
         "max_y": 776.0
       }
     }

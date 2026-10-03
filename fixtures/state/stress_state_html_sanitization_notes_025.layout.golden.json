@@ -22,9 +22,9 @@
         {
           "id": "A----parent",
           "x": 454.31,
-          "y": 474.67,
+          "y": 246.0,
           "width": 198.0,
-          "height": 643.34,
+          "height": 186.0,
           "is_cluster": true
         },
         {
@@ -183,9 +183,9 @@
         {
           "id": "A----parent",
           "x": 454.31,
-          "y": 474.67,
+          "y": 246.0,
           "width": 198.0,
-          "height": 643.34,
+          "height": 186.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",

@@ -5,24 +5,24 @@
       "nodes": [
         {
           "id": "wrap",
-          "x": 112.0,
-          "y": 119.7,
+          "x": 198.06,
+          "y": 96.6,
           "width": 200.0,
-          "height": 215.4,
+          "height": 169.2,
           "is_cluster": true
         },
         {
           "id": "A",
-          "x": 112.0,
-          "y": 120.3,
+          "x": 198.06,
+          "y": 74.1,
           "width": 152.0,
           "height": 39.4,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 112.0,
-          "y": 183.7,
+          "x": 198.06,
+          "y": 137.5,
           "width": 152.0,
           "height": 39.4,
           "is_cluster": false
@@ -37,12 +37,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 112.0,
-              "y": 140.0
+              "x": 198.06,
+              "y": 93.8
             },
             {
-              "x": 112.0,
-              "y": 164.0
+              "x": 198.06,
+              "y": 117.8
             }
           ],
           "label": null,
@@ -58,18 +58,18 @@
       "clusters": [
         {
           "id": "wrap",
-          "x": 112.0,
-          "y": 119.7,
+          "x": 198.06,
+          "y": 96.6,
           "width": 200.0,
-          "height": 215.4,
-          "diff": -4.0,
-          "offset_y": 55.6,
+          "height": 169.2,
+          "diff": 82.06,
+          "offset_y": 9.4,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
-            "x": 112.0,
-            "y": 41.8,
-            "width": 119.56,
-            "height": 59.6
+            "x": 198.06,
+            "y": 18.7,
+            "width": 372.12,
+            "height": 13.4
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -79,10 +79,10 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 98.06,
         "min_y": 12.0,
-        "max_x": 212.0,
-        "max_y": 227.4
+        "max_x": 298.06,
+        "max_y": 181.2
       }
     }
   }

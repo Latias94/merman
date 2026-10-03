@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 5a7bb930fb4176061d66383b4cd761c500d973e720b69a66a1a28eaeb9b75188
+package-lock.json SHA-256: f20058801bfd4299778145f0bdb482d35b4fa241c42dcce5f1098569eba338a2
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -36,12 +36,12 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - @chevrotain/cst-dts-gen@11.1.2
- - @chevrotain/gast@11.1.2
- - @chevrotain/regexp-to-ast@11.1.2
- - @chevrotain/types@11.1.2
- - @chevrotain/utils@11.1.2
- - chevrotain@11.1.2
+ - @chevrotain/cst-dts-gen@13.2.0
+ - @chevrotain/gast@13.2.0
+ - @chevrotain/regexp-to-ast@13.2.0
+ - @chevrotain/types@13.2.0
+ - @chevrotain/utils@13.2.0
+ - chevrotain@13.2.0
  - dompurify@3.4.16
 
 These packages each contain the following license:
@@ -5037,7 +5037,7 @@ The following npm packages may be included in this product:
 
  - @mermaid-js/layout-tidy-tree@1.0.1
  - @mermaid-js/mermaid-zenuml@1.0.1
- - mermaid@12.0.0
+ - mermaid@12.1.0
 
 These packages each contain the following license:
 
@@ -5337,7 +5337,7 @@ THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - @mermaid-js/parser@2.0.0
+ - @mermaid-js/parser@2.0.1
 
 This package contains the following license:
 

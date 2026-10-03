@@ -563,10 +563,11 @@ fn materialize_hierarchy_edge_segments(edge: &HierarchyEdge) -> Vec<ScopedHierar
     let mut tail_segment = None;
     let mut center_segment = None;
     let mut head_segment = None;
-    let label_segments = edge
-        .labels
-        .iter()
-        .map(|label| match label.placement {
+    let mut labels_by_segment = (0..segments.len())
+        .map(|_| Vec::new())
+        .collect::<Vec<Vec<LLabel>>>();
+    for label in &edge.labels {
+        let segment_index = match label.placement {
             EdgeLabelPlacement::Tail => *tail_segment.get_or_insert_with(|| {
                 compound_label_segment_index(&segments, EdgeLabelPlacement::Tail)
             }),
@@ -576,43 +577,33 @@ fn materialize_hierarchy_edge_segments(edge: &HierarchyEdge) -> Vec<ScopedHierar
             EdgeLabelPlacement::Head => *head_segment.get_or_insert_with(|| {
                 compound_label_segment_index(&segments, EdgeLabelPlacement::Head)
             }),
-        })
-        .collect::<Vec<_>>();
+        };
+        let mut label = label.clone();
+        label.original_label_edge = Some(edge.id.clone());
+        labels_by_segment[segment_index].push(label);
+    }
 
     segments
         .into_iter()
         .enumerate()
-        .map(|(segment_index, pending)| {
-            let labels = edge
-                .labels
-                .iter()
-                .zip(label_segments.iter())
-                .filter(|(_, label_segment)| **label_segment == segment_index)
-                .map(|(label, _)| {
-                    let mut label = label.clone();
-                    label.original_label_edge = Some(edge.id.clone());
-                    label
-                })
-                .collect::<Vec<_>>();
-            ScopedHierarchySegment {
-                edge: HierarchyEdge {
-                    id: edge.id.clone(),
-                    source_node_id: edge.source_node_id.clone(),
-                    target_node_id: edge.target_node_id.clone(),
-                    source_port_key: edge.source_port_key.clone(),
-                    target_port_key: edge.target_port_key.clone(),
-                    source_path: Vec::new(),
-                    target_path: Vec::new(),
-                    labels: Vec::new(),
-                    minlen: edge.minlen,
-                    model_order: edge.model_order,
-                    priority_direction: edge.priority_direction,
-                    priority_shortness: edge.priority_shortness,
-                    priority_straightness: edge.priority_straightness,
-                },
-                pending,
-                labels,
-            }
+        .map(|(segment_index, pending)| ScopedHierarchySegment {
+            edge: HierarchyEdge {
+                id: edge.id.clone(),
+                source_node_id: edge.source_node_id.clone(),
+                target_node_id: edge.target_node_id.clone(),
+                source_port_key: edge.source_port_key.clone(),
+                target_port_key: edge.target_port_key.clone(),
+                source_path: Vec::new(),
+                target_path: Vec::new(),
+                labels: Vec::new(),
+                minlen: edge.minlen,
+                model_order: edge.model_order,
+                priority_direction: edge.priority_direction,
+                priority_shortness: edge.priority_shortness,
+                priority_straightness: edge.priority_straightness,
+            },
+            pending,
+            labels: std::mem::take(&mut labels_by_segment[segment_index]),
         })
         .collect()
 }
@@ -1935,7 +1926,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -2060,6 +2051,55 @@ mod tests {
                 ..
             } if node_id == "sibling" && port_key == "B:target"
         ));
+    }
+
+    #[test]
+    fn compound_label_buckets_preserve_order_identity_and_single_ownership() {
+        for depth in [1, 16, 128] {
+            let edge = HierarchyEdge {
+                id: "ab".into(),
+                source_node_id: "A".into(),
+                target_node_id: "B".into(),
+                source_port_key: "A:source".into(),
+                target_port_key: "B:target".into(),
+                source_path: (0..depth).map(|index| format!("group-{index}")).collect(),
+                target_path: vec!["other".into()],
+                labels: (0..4096)
+                    .map(|index| {
+                        let mut label = LLabel::new(index.to_string(), 12.0, 10.0);
+                        label.placement = [
+                            EdgeLabelPlacement::Tail,
+                            EdgeLabelPlacement::Center,
+                            EdgeLabelPlacement::Head,
+                        ][index % 3];
+                        label.source_index = Some(index);
+                        label
+                    })
+                    .collect(),
+                minlen: 1,
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+            };
+            let output = materialize_hierarchy_edge_segments(&edge);
+            let mut seen = vec![false; edge.labels.len()];
+            for segment in output {
+                let indices = segment
+                    .labels
+                    .iter()
+                    .map(|label| label.source_index.unwrap())
+                    .collect::<Vec<_>>();
+                assert!(indices.windows(2).all(|pair| pair[0] < pair[1]));
+                for label in segment.labels {
+                    let index = label.source_index.unwrap();
+                    assert!(!seen[index]);
+                    seen[index] = true;
+                    assert_eq!(label.original_label_edge.as_deref(), Some("ab"));
+                }
+            }
+            assert!(seen.into_iter().all(|seen| seen));
+        }
     }
 
     #[test]

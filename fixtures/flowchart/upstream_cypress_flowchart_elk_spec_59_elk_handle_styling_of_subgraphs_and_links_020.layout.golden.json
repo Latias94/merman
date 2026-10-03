@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "T",
-          "x": 201.87,
+          "x": 189.87,
           "y": 160.5,
-          "width": 379.74,
+          "width": 355.74,
           "height": 297.0,
           "is_cluster": true
         },
@@ -149,15 +149,15 @@
       "clusters": [
         {
           "id": "T",
-          "x": 201.87,
+          "x": 189.87,
           "y": 160.5,
-          "width": 379.74,
+          "width": 355.74,
           "height": 297.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "Test",
           "title_label": {
-            "x": 201.87,
+            "x": 189.87,
             "y": 21.5,
             "width": 26.46,
             "height": 19.0

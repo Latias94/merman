@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
+import { load as parseYaml } from "js-yaml";
 
 import { SUPPORTED_THEMES } from "@mermanjs/web";
 import { resolveMermaidCanvasTone } from "./mermaid-canvas-tone.ts";
+import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 import {
   buildMermaidConfig,
   buildMermaidOperationInput,
@@ -236,4 +238,117 @@ test("invalid authored themes initialize the default palette without inheriting 
     assert.deepEqual(operation.initializationConfig, {});
     assert.equal(resolveMermaidCanvasTone(JSON.stringify({ theme }), "dark", "flowchart TD\nA-->B", "flowchart"), "light");
   }
+});
+
+// Mermaid's unchanged published regex is an oracle only for these bounded inputs.
+const publishedFrontmatter = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/s;
+
+function assertFrontmatterMatchesPublished(source: string): void {
+  const expected = publishedFrontmatter.exec(source);
+  const actual = locateMermaidFrontmatter(source);
+  if (!expected) {
+    assert.equal(actual, undefined, JSON.stringify(source));
+    return;
+  }
+  assert.ok(actual, JSON.stringify(source));
+  assert.equal(actual.indent, expected[1], JSON.stringify(source));
+  assert.equal(source.slice(actual.bodyStart, actual.bodyEnd), expected[2], JSON.stringify(source));
+  assert.equal(actual.end, expected[0].length, JSON.stringify(source));
+}
+
+test("frontmatter boundaries retain Mermaid 12.1 greedy whitespace and UTF-16 semantics", () => {
+  for (const source of [
+    "---\ntitle: Hello\n---\nflowchart TD\nA-->B",
+    "---\n\n---\ntitle: Hello\n---\nflowchart TD\nA-->B",
+    "---\n\n---\n\nMORE\n---\n",
+    "---\n\n\n---\nflowchart TD\n",
+    "---   \ntitle: 😀\n---   \n\n \nflowchart TD\n",
+    "---\rtitle: Bare CR\r---\rflowchart TD\rA-->B",
+    "\t---\r\n\ttitle: Tab\r\n\t---\r\nflowchart TD\n",
+    "\u00a0\u2003---\n\u00a0\u2003title: Unicode\n\u00a0\u2003---\nflowchart TD",
+    "\ufeff---\ntitle: BOM indent\n\ufeff---\nflowchart TD",
+    "---\u2028\ntitle: Separator\n---\u2029\nflowchart TD",
+    "---\ntitle: |\n  ---\n  a scalar\n---\nflowchart TD",
+    "---\ntitle: no newline after close\n---",
+    "---\ntitle: unterminated\nflowchart TD",
+    "  ---\ntitle: different indent\n---\nflowchart TD",
+    "----\ntitle: four dashes\n----\nflowchart TD",
+    "\u0085---\ntitle: non-JavaScript whitespace\n\u0085---\nflowchart TD",
+    "---", "---\n", "", "\n\n\n", "flowchart TD\nA-->B",
+  ]) {
+    assertFrontmatterMatchesPublished(source);
+  }
+});
+
+test("frontmatter boundaries agree with the published contract on mixed fences and whitespace", () => {
+  let seed = 0x2f6e2b1;
+  const pieces = ["---", "----", "\n", "\r\n", "\r", " ", "\t", "\u00a0", "\u2003", "\u2028", "a", "😀", "title: x", ""];
+  for (let sample = 0; sample < 3_000; sample++) {
+    let source = "";
+    for (let part = 0; part < 12; part++) {
+      seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+      source += pieces[seed % pieces.length];
+    }
+    assertFrontmatterMatchesPublished(source);
+  }
+});
+
+test("injected configuration stays outside greedy frontmatter without changing source bytes", () => {
+  const directive = '%%{init: {"theme":"dark"}}%%';
+  for (const source of [
+    "---\n\n---\ntitle: Hello\n---\nflowchart TD\nA-->B",
+    "---\rtitle: Bare CR\r---\rflowchart TD\rA-->B",
+    "  ---\r\n  title: Mixed\n  ---\r\n\n \r\nflowchart TD\nA-->B",
+    "\u00a0---\ntitle: Unicode\n\u00a0---\nflowchart TD",
+  ]) {
+    const original = locateMermaidFrontmatter(source);
+    assert.ok(original);
+    const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
+    const rendered = sourceWithConfig(source, "dark", "{}");
+    assert.equal(rendered, `${source.slice(0, original.end)}${directive}${newline}${source.slice(original.end)}`);
+    assert.equal(rendered.slice(0, original.end) + rendered.slice(original.end + directive.length + newline.length), source);
+    const after = locateMermaidFrontmatter(rendered);
+    assert.deepEqual(after, original);
+    assert.ok(after);
+    assert.deepEqual(
+      parseYaml(rendered.slice(after.bodyStart, after.bodyEnd)),
+      parseYaml(source.slice(original.bodyStart, original.bodyEnd)),
+    );
+  }
+});
+
+test("configuration injection preserves malformed and unclosed source verbatim", () => {
+  for (const source of [
+    "---\ntitle: no closing fence\nflowchart TD",
+    "---\ntitle: no trailing newline\n---",
+    "---\rtitle: no closing fence\rflowchart TD",
+    "  ---\ntitle: different indent\n---\nflowchart TD",
+    "----\ntitle: four dashes\n----\nflowchart TD",
+    "---\n", "---",
+  ]) {
+    const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
+    assert.equal(sourceWithConfig(source, "dark", "{}"), `%%{init: {"theme":"dark"}}%%${newline}${source}`);
+    assert.equal(sourceWithConfig(source, "auto", "{}"), source);
+  }
+});
+
+test("canvas tone shares greedy and Unicode frontmatter boundaries with injection", () => {
+  for (const source of [
+    "---\n\n---\nconfig: {theme: dark}\n---\nflowchart TD",
+    "---\rconfig: {theme: dark}\r---\rflowchart TD",
+    "\t---\r\tconfig: {theme: dark}\r\t---\rflowchart TD",
+    "\u00a0---\n\u00a0config: {theme: dark}\n\u00a0---\nflowchart TD",
+  ]) {
+    assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark", JSON.stringify(source));
+  }
+  assert.equal(resolveMermaidCanvasTone("{}", "auto", "---\nconfig: {theme: dark}\n---"), "light");
+});
+
+test("frontmatter consumers scan a whitespace-heavy unterminated block without backtracking", () => {
+  const source = "---\n" + " \n".repeat(16_000);
+  const startedAt = performance.now();
+  assert.equal(locateMermaidFrontmatter(source), undefined);
+  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "light");
+  assert.equal(sourceWithConfig(source, "dark", "{}"), `%%{init: {"theme":"dark"}}%%\n${source}`);
+  assert.ok(performance.now() - startedAt < 500, "frontmatter consumers must not rescan unmatched suffixes");
 });

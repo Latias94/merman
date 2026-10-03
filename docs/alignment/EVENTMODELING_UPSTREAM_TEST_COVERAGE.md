@@ -70,3 +70,17 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   the syntax/editor information.
 - Strict data-block HTML parity for `html` / `md` / rich content data types.
 - Full strict DOM parity for the current Cypress image snapshot corpus.
+
+## Mermaid 12.1.0 Regression Coverage
+
+The pinned `21f72f07ea22c0af48a3149c550654e80d8e40cb` Eventmodeling tests add duplicate-frame
+rejection, comment-aware duplicate locations, and explicit reset-frame sources. Local coverage:
+
+- `crates/merman-core/tests/eventmodeling_contract.rs` exercises duplicate IDs through semantic,
+  typed-render and editor APIs, preserves declarations after the invalid frame, and verifies a
+  subsequent valid parse on the same engine.
+- `crates/merman-render/tests/eventmodeling_svg_test.rs` verifies `03 -> 04` for an explicit reset
+  source, absence of the inferred `04 -> 05`, and the emitted relation-path count.
+
+These assertions exercise the shared parser facts and normal layout/SVG paths. They do not
+reinterpret the existing browser text-measurement and HTML residuals as semantic differences.

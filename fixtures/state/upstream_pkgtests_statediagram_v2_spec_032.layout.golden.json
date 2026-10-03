@@ -38,9 +38,9 @@
         {
           "id": "NotShooting----parent",
           "x": 112.94,
-          "y": 549.94,
+          "y": 513.0,
           "width": 198.0,
-          "height": 217.88,
+          "height": 144.0,
           "is_cluster": true
         },
         {
@@ -258,9 +258,9 @@
         {
           "id": "NotShooting----parent",
           "x": 112.94,
-          "y": 549.94,
+          "y": 513.0,
           "width": 198.0,
-          "height": 217.88,
+          "height": 144.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is a note on a composite state",
@@ -281,7 +281,7 @@
         "min_x": 13.94,
         "min_y": 12.0,
         "max_x": 211.94,
-        "max_y": 658.88
+        "max_y": 585.0
       }
     }
   }

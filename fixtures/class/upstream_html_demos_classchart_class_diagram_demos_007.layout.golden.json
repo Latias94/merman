@@ -21,18 +21,18 @@
         },
         {
           "id": "interface0",
-          "x": 213.97,
+          "x": 229.97,
           "y": 82.5,
-          "width": 30.38,
-          "height": 21.0,
+          "width": 62.38,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "interface1",
-          "x": 213.97,
+          "x": 229.97,
           "y": 274.0,
-          "width": 30.38,
-          "height": 21.0,
+          "width": 62.38,
+          "height": 45.0,
           "is_cluster": false
         }
       ],
@@ -92,7 +92,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 229.16,
+        "max_x": 261.16,
         "max_y": 355.0
       }
     }

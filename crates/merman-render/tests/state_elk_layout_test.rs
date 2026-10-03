@@ -641,3 +641,68 @@ fn state_elk_remaining_routes_with_controlled_browser_measurements() {
         }
     }
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_fork_join_resolves_nearest_enclosing_direction() {
+    // Every composite gets its own StateDB direction, defaulting to TB. A leaf inherits
+    // that nearest value, not the closest *explicit* direction on an outer composite.
+    for (root, outer, inner, expected) in [
+        ("TB", "LR", None, (10.0, 70.0)),
+        ("LR", "TB", None, (70.0, 10.0)),
+        ("TB", "LR", Some(""), (70.0, 10.0)),
+        ("LR", "LR", Some(""), (70.0, 10.0)),
+        ("TB", "LR", Some("direction BT"), (70.0, 10.0)),
+        ("LR", "TB", Some("direction RL"), (10.0, 70.0)),
+    ] {
+        let contents = "state F <<fork>>\nstate J <<join>>\nF --> A\nA --> J\n";
+        let contents = inner.map_or_else(
+            || contents.to_owned(),
+            |inner| format!("state Inner {{\n{inner}\n{contents}}}\n"),
+        );
+        let source = format!(
+            "stateDiagram-v2\ndirection {root}\nstate Outer {{\ndirection {outer}\n{contents}}}\n"
+        );
+        let (layout, svg) = render(&source, "elk");
+        for id in ["F", "J"] {
+            let node = layout["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == id)
+                .unwrap();
+            assert_eq!(node["width"], expected.0, "{source}");
+            assert_eq!(node["height"], expected.1, "{source}");
+        }
+        // The actual fill polygon must use the same dimensions as the ELK node.
+        let polygon = format!(
+            "M{} {} L{} {} L{} {} L{} {}",
+            -expected.0 / 2.0,
+            -expected.1 / 2.0,
+            expected.0 / 2.0,
+            -expected.1 / 2.0,
+            expected.0 / 2.0,
+            expected.1 / 2.0,
+            -expected.0 / 2.0,
+            expected.1 / 2.0
+        );
+        assert!(
+            svg.contains(&polygon),
+            "fork/join painted orientation: {source}\n{svg}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_cyclic_entry_uses_edge_order_inside_a_container() {
+    let source = "---\nconfig:\n  elk:\n    keepEntryNodeOnTop: true\n    cycleBreakingStrategy: GREEDY_MODEL_ORDER\n---\nstateDiagram-v2\nstate Group {\nstate B\nstate A\nstate C\nA --> B\nB --> C\nC --> A\n}\n";
+    let (layout, _) = render(source, "elk");
+    let nodes = layout["nodes"].as_array().unwrap();
+    let y = |id| {
+        nodes.iter().find(|node| node["id"] == id).unwrap()["y"]
+            .as_f64()
+            .unwrap()
+    };
+    assert!(y("A") < y("B") && y("A") < y("C"), "{layout}");
+}

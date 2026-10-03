@@ -567,6 +567,7 @@ mod tests {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         }
     }
 
@@ -591,6 +592,7 @@ mod tests {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         });
         graph.layerless_nodes.push(node);
         graph.set_node_layer(0, 0);
@@ -782,6 +784,7 @@ mod tests {
                 label_side: None,
                 end_label_edge: None,
                 original_label_edge: None,
+                source_index: None,
             });
 
         calculate_node_margins(&mut graph, [node]);

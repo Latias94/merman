@@ -1383,7 +1383,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,

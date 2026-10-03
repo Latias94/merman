@@ -2389,3 +2389,32 @@ test2: id2,after missing,1d
         .timestamp_millis();
     assert_eq!(tasks[1]["startTime"].as_i64().unwrap(), expected);
 }
+
+#[test]
+fn gantt_unknown_reference_warnings_preserve_fallback_and_resolved_dates() {
+    let engine = Engine::new()
+        .with_fixed_today(Some(CivilDate::new(2026, 2, 15).unwrap()))
+        .try_with_fixed_local_offset_minutes(0)
+        .unwrap();
+    let parsed = engine
+        .parse_diagram_sync(
+            concat!(
+                "gantt\ndateFormat YYYY-MM-DD\n",
+                "Base: base,2013-01-01,2d\n",
+                "Missing after: missing_after,after missing,1d\n",
+                "Missing until: missing_until,2013-01-01,until missing\n",
+                "Mixed after: mixed_after,after missing  base,1d\n",
+                "Mixed until: mixed_until,2012-12-01,until missing  base\n",
+                "M1: milestone, 2023-01-01, m1\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let tasks = parsed.model["tasks"].as_array().unwrap();
+    assert_eq!(tasks[1]["startTime"], json!(1_771_113_600_000_i64));
+    assert_eq!(tasks[2]["endTime"], json!(1_771_113_600_000_i64));
+    assert_eq!(tasks[3]["startTime"], tasks[0]["endTime"]);
+    assert_eq!(tasks[4]["endTime"], tasks[0]["startTime"]);
+    assert_eq!(tasks[5]["startTime"], tasks[5]["endTime"]);
+}

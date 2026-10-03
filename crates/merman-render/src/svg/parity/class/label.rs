@@ -76,6 +76,20 @@ pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpe
     out.push_str("</span>");
 }
 
+pub(super) fn write_class_svg_plain_node_text(out: &mut String, text: &str) {
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
+        .into_iter()
+        .map(|line| {
+            crate::text::non_markdown_svg_words(&line)
+                .map(str::to_owned)
+                .collect()
+        })
+        .collect::<Vec<_>>();
+    out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+    crate::svg::parity::label::write_svg_text_source_word_lines(out, &lines, true, false);
+    out.push_str("</g>");
+}
+
 pub(super) fn write_class_svg_text_markdown(out: &mut String, markdown: &str, include_style: bool) {
     crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
 }

@@ -5,6 +5,24 @@ release or changing any behavior-owning companion. A release is a pinned behavio
 single npm version. Completion means parser, semantics, editor services, headless output, browser
 reference execution, examples, provenance, and package surfaces all describe the same graph.
 
+## Current Transition: Mermaid 12.1.0
+
+As of 2026-10-02, development toward unreleased Merman `0.8.0` selects `mermaid@12.1.0` at
+`21f72f07ea22c0af48a3149c550654e80d8e40cb`, `@mermaid-js/parser@2.0.1`, and
+`@mermaid-js/mermaid-cli@12.0.0`. Other selected companions remain unchanged by this transition.
+The previous Mermaid `12.0.0` source at `98a0945418c76238f15df2afaddbba4272656c3b` remains comparison
+evidence, not a second selected graph.
+
+The scope combines the 12.1 parser, configuration, theme and ELK behavior deltas with the current
+ELK correctness fixes. It adds no diagram family or Cargo feature and changes no FFI or
+editor-facts schema version. The independent Tree-sitter baseline does not move. Low-level ELK
+Rust initializer changes are documented in the
+[alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+Reference generation, source-bound oracle refresh, focused regressions, and full release gates are
+still under validation. This note is a scope record, not an admission receipt or publication
+statement; the bundle, selection decision, and completed gate results remain the authorities.
+
 ## 1. Freeze The Delivery Boundary
 
 Record the requested Mermaid release, exact tag and commit, current branch and dirty-tree ownership,

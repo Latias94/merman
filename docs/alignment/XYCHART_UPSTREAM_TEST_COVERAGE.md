@@ -76,3 +76,35 @@ upstream SVG baselines under `fixtures/upstream-svgs/xychart/*.svg` via:
 - `fixtures/xychart/upstream_cypress_xychart_spec_should_render_a_single_bar_with_label_for_a_horizontal_xy_chart_027.mmd`
 - `fixtures/xychart/upstream_cypress_xychart_spec_should_render_negative_and_decimal_values_with_correct_labels_fo_029.mmd`
 - `fixtures/xychart/upstream_cypress_xychart_spec_should_render_data_labels_within_each_bar_in_the_horizontal_xy_c_033.mmd`
+
+## Mermaid 12.1 title geometry and measurement units
+
+Source: Mermaid `12.1.0` commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`,
+`chartBuilder/components/chartTitle.spec.ts` and `chartBuilder/textDimensionCalculator.spec.ts`.
+
+- Unit tests in `crates/merman-render/src/xychart.rs` cover title alignment over vertical and
+  horizontal plots, legend exclusion, title clamping to the chart, spanning legend columns,
+  titles wider than the chart, and title omission when the reserved plot leaves insufficient
+  height. The supplied text measurer reports SVG user units directly.
+- `crates/merman-render/tests/xychart_svg_test.rs` verifies that rendered title coordinates use
+  the final plot-axis span and that short charts omit the title while retaining in-bounds bars.
+- The upstream CTM correction is browser-specific: no screen scaling enters Merman's headless
+  layout inputs. It therefore requires no DOM emulation or second measurement conversion in Rust.
+
+The historical baseline list above remains provenance for those artifacts. Updated reference SVGs
+are generated and reviewed by the selected-release workflow, not by these local regressions.
+
+### Primary 12.1 title and partial-theme fixture
+
+`fixtures/xychart/title_partial_theme.mmd` combines the vertical plot/legend input admitted by the
+selected-runtime `xy-title-plot-center-vertical` case with the `theme-partial-object-default` case's
+`themeVariables.xyChart.backgroundColor: "#123456"` override. The title centers over the plot span,
+while unspecified XYChart palette entries retain their generated values. These contracts come from
+Mermaid `12.1.0` commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`,
+`packages/mermaid/src/diagrams/xychart/chartBuilder/components/chartTitle.spec.ts` and
+`packages/mermaid/src/themes/theme-nested-overrides.spec.ts`.
+
+The two inputs were validated separately in the selected-runtime matrix; the combined fixture's
+semantic/layout goldens and reference SVG are generated and reviewed by the selected-release
+workflow. `xychart_svg_test.rs` includes this fixture for its orientation/legend title-placement
+regressions. This note does not claim that the combined fixture already has an admitted SVG.

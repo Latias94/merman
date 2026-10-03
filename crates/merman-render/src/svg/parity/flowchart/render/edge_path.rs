@@ -24,6 +24,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     // Trace collection recomputes the geometry before graph-wide postprocessing for diagnostics, but the emitted SVG
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
+        if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+            ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+        }
         flowchart_compute_edge_path_geom(
             FlowchartEdgePathGeomRequest {
                 ctx,
@@ -101,7 +104,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             } else {
                 out.push(';');
             }
-            let _ = write!(out, "{}", escape_xml_display(part));
+            // Decode each original token before adding CSS delimiters: a trailing semicolon
+            // would make a literal hex color look like a Mermaid entity (#abcdef;).
+            out.push_str(crate::entities::decode_mermaid_entities_for_render_text(part).as_ref());
         }
     }
 
@@ -118,33 +123,46 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         out.push_str(" transition");
     }
     out.push_str(r#"" style=""#);
+    scratch.edge_style.clear();
     if data_look == "neo"
         && !flowchart_edge_is_animated(ctx, edge)
-        && let Some(path_length) = flowchart_neo_edge_path_length(geom, edge)
+        && let Some(path_length) = geom.original_path_length
     {
-        write_flowchart_neo_edge_mask(out, path_length, edge, geom.line_hop_applied);
+        write_flowchart_neo_edge_mask(&mut scratch.edge_style, path_length, edge);
     }
     if hand_drawn {
-        scratch.style_escaped.clear();
         write_style_joined(
-            &mut scratch.style_escaped,
+            &mut scratch.edge_style,
             &ctx.default_edge_style,
             &edge.style,
         );
-        out.push_str(&scratch.style_escaped);
     } else if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
-        out.push(';');
+        scratch.edge_style.push(';');
     } else {
-        scratch.style_escaped.clear();
+        let style_start = scratch.edge_style.len();
         write_style_joined(
-            &mut scratch.style_escaped,
+            &mut scratch.edge_style,
             &ctx.default_edge_style,
             &edge.style,
         );
-        out.push_str(&scratch.style_escaped);
-        out.push_str(";;;");
-        out.push_str(&scratch.style_escaped);
+        let style_end = scratch.edge_style.len();
+        scratch.edge_style.push_str(";;;");
+        scratch
+            .edge_style
+            .extend_from_within(style_start..style_end);
     }
+    // lineJump.ts rewrites the complete painted style after replacing the path. In
+    // particular, its first four dash numbers can come from a repeated dotted pattern.
+    let style = if geom.line_hop_applied {
+        crate::svg::parity::line_hops::rewrite_style_after_line_hop(
+            &scratch.edge_style,
+            d,
+            ctx.work_meter,
+        )?
+    } else {
+        std::borrow::Cow::Borrowed(scratch.edge_style.as_str())
+    };
+    let _ = write!(out, "{}", escape_attr_display(&style));
     if hand_drawn {
         out.push_str(r##"" stroke="#000" stroke-width="1" fill="none"##);
     }
@@ -191,22 +209,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     Ok(())
 }
 
-fn flowchart_neo_edge_path_length(
-    geom: &FlowchartEdgePathGeom,
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<f64> {
-    if geom.line_hop_applied && !matches!(edge.stroke.as_deref(), Some("dotted" | "dashed")) {
-        geom.path_length
-    } else {
-        geom.original_path_length
-    }
-}
-
 fn write_flowchart_neo_edge_mask(
     out: &mut String,
     path_length: f64,
     edge: &crate::flowchart::FlowEdge,
-    line_hop_applied: bool,
 ) {
     let (arrow_type_start, arrow_type_end) =
         super::super::edge_geom::arrow_types_for_edge(edge.edge_type.as_deref());
@@ -216,7 +222,7 @@ fn write_flowchart_neo_edge_mask(
         arrow_type_start,
         arrow_type_end,
         matches!(edge.stroke.as_deref(), Some("dotted" | "dashed")),
-        line_hop_applied,
+        false,
     );
 }
 
@@ -261,18 +267,13 @@ mod tests {
     }
 
     #[test]
-    fn neo_solid_mask_uses_final_line_hop_length_and_marker_offsets() {
+    fn neo_solid_mask_uses_original_length_and_marker_offsets() {
         let mut style = String::new();
-        write_flowchart_neo_edge_mask(&mut style, 40.0, &edge("arrow_point", "normal"), true);
+        write_flowchart_neo_edge_mask(&mut style, 40.0, &edge("arrow_point", "normal"));
         assert_eq!(style, "stroke-dasharray: 0 0 36 4; stroke-dashoffset: 0;");
 
         style.clear();
-        write_flowchart_neo_edge_mask(
-            &mut style,
-            50.0,
-            &edge("double_arrow_circle", "normal"),
-            true,
-        );
+        write_flowchart_neo_edge_mask(&mut style, 50.0, &edge("double_arrow_circle", "normal"));
         assert_eq!(
             style,
             "stroke-dasharray: 0 12.5 25 12.5; stroke-dashoffset: 0;"
@@ -282,7 +283,7 @@ mod tests {
     #[test]
     fn neo_dotted_mask_preserves_upstream_two_pixel_pattern() {
         let mut style = String::new();
-        write_flowchart_neo_edge_mask(&mut style, 16.0, &edge("arrow_open", "dotted"), false);
+        write_flowchart_neo_edge_mask(&mut style, 16.0, &edge("arrow_open", "dotted"));
         assert_eq!(
             style,
             "stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;"

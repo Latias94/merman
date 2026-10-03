@@ -16,7 +16,7 @@ pub(super) fn layout(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     let keys = graph.edge_keys();
-    let input = elk::Graph {
+    let mut input = elk::Graph {
         id: "root".to_owned(),
         direction: match graph.graph().rankdir {
             RankDir::TB => elk::Direction::Down,
@@ -55,6 +55,7 @@ pub(super) fn layout(
                         height: edge.height,
                     }),
                     minlen: 1,
+                    terminal_labels: Vec::new(),
                     inside_self_loops_yo: false,
                 })
             })
@@ -64,9 +65,26 @@ pub(super) fn layout(
         spacing: elk::Spacing::default(),
         options: crate::elk_options::layout_options(config),
     };
+    if crate::config::config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        crate::elk_adapter::apply_cyclic_entry_constraints(
+            &mut input.nodes,
+            input
+                .edges
+                .iter()
+                .map(|edge| (edge.source.as_str(), edge.target.as_str())),
+            &mut Some(&mut *work),
+        )?;
+    }
     work.charge_adapter(input.nodes.len().saturating_add(input.edges.len()))?;
-    let placed = elk::layout_with_operation_seed_and_work_control(&input, operation_seed, work)
-        .map_err(|error| work.map_elk_error_with_context(error, "Requirement ELK"))?;
+    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut input,
+        config,
+        &mut Some(&mut *work),
+    )?;
+    let mut placed =
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+            .map_err(|error| work.map_elk_error_with_context(error, "Requirement ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
     for placed in placed.nodes {
         let node = graph
             .node_mut(&placed.id)
@@ -167,7 +185,15 @@ pub(super) fn render_layout(
         .and_then(Value::as_bool)
         != Some(false)
     {
-        geometry::straighten_routes(&mut routes, work)?;
+        let changes =
+            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut routes, |units| {
+                work.charge_adapter(units)
+            })?;
+        for change in changes {
+            if let Some(label) = render.edges[change.route_index].label.as_mut() {
+                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
+            }
+        }
     }
     for ((edge, raw), points) in render.edges.iter_mut().zip(&layout.edges).zip(routes) {
         if raw.points.is_empty() {
@@ -185,6 +211,13 @@ pub(super) fn render_layout(
         }
         edge.points = points;
     }
+    crate::elk_terminal_jogs::separate_opposite_edge_labels(
+        render
+            .edges
+            .iter_mut()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str(), edge.label.as_mut())),
+        |units| work.charge_adapter(units),
+    )?;
     // The SVG renderer reconstructs final viewport bounds from these painted paths and labels.
     Ok(render)
 }

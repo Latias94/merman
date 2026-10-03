@@ -49,3 +49,22 @@ Upstream references:
 
 This is an incremental slice. The ultimate goal is full Mermaid `packet` grammar and DB behavior
 compatibility at the pinned baseline tag.
+
+## Mermaid 12.1 display order
+
+Source: Mermaid `12.1.0`, commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`,
+`packages/mermaid/src/diagrams/packet/renderer.ts` and
+`packages/mermaid/src/schemas/config.schema.yaml`.
+
+- `packet.bitOrder` defaults to `ascending`; `descending` mirrors each row independently.
+- Fields remain declared from their lowest bit to their highest bit. Semantic `start`, `end`,
+  `bits`, label, row splitting, and declaration order do not change.
+- A descending block's left number is its inclusive `end`; its right number is its `start`.
+  Single-bit fields keep one centered number. Numbers remain absolute across rows.
+- A partially filled descending row keeps its low bits at the right and unused columns at the
+  left. `showBits: false` hides numbers without disabling the mirrored field positions.
+- The semantic/ASCII range listing remains in declaration order; bit order is a drawing policy.
+
+The existing Packet feature owns this configuration and rendering behavior. No new Cargo feature,
+parser rule, public typed-model field, or dependency is required. The generated configuration
+schema supplies editor and LSP discovery of `bitOrder` and its two values.

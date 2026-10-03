@@ -428,6 +428,38 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
     );
 }
 
+/// Emit a node's wrapped Markdown label with the same explicit font style used for measurement.
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_style(
+    out: &mut String,
+    markdown: &str,
+    css: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let mut lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        style,
+        max_width_px,
+    );
+    if style.font_weight.as_deref() == Some("bold") {
+        for line in &mut lines {
+            for (_, is_strong, _) in line {
+                *is_strong = true;
+            }
+        }
+    }
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        Some(css),
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{write_svg_text_centered, write_svg_text_source_word_lines};

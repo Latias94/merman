@@ -287,6 +287,8 @@ struct ErSubgraphRenderContext<'a> {
     data_look: &'a str,
     classes: &'a indexmap::IndexMap<String, crate::er::ErClassDef>,
     use_html_labels: bool,
+    measurer: &'a dyn crate::text::TextMeasurer,
+    label_style: &'a crate::text::TextStyle,
     translate_x: f64,
     translate_y: f64,
 }
@@ -327,10 +329,9 @@ fn render_er_subgraph_cluster(
     let title_height = cluster.title_label.height.max(0.0);
     let title_x = cluster.title_label.x + context.translate_x;
     let title_y = cluster.title_label.y + context.translate_y;
-    let title_fragment = er_subgraph_label_fragment(subgraph);
     let _ = write!(
         out,
-        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g></g>"#,
+        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml(&format!("{}", context.diagram_id)),
         escape_xml(&subgraph.id),
         escape_xml(&class_attr),
@@ -340,19 +341,47 @@ fn render_er_subgraph_cluster(
         fmt(top),
         fmt(width),
         fmt(height),
-        fmt(title_x),
-        fmt(title_y),
-        fmt(-title_width / 2.0),
-        fmt(-title_height / 2.0),
-        fmt(title_width),
-        fmt(title_height),
-        text_style_attr,
-        if context.use_html_labels {
-            title_fragment
-        } else {
-            escape_xml(&subgraph.title)
-        }
     );
+    if context.use_html_labels {
+        let _ = write!(
+            out,
+            r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
+            fmt(title_x),
+            fmt(title_y),
+            fmt(-title_width / 2.0),
+            fmt(-title_height / 2.0),
+            fmt(title_width),
+            fmt(title_height),
+            text_style_attr,
+            er_subgraph_label_fragment(subgraph),
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="cluster-label" transform="translate({}, {})" {}>"#,
+            fmt(title_x),
+            fmt(title_y - title_height / 2.0),
+            text_style_attr.replace("color:", "fill:"),
+        );
+        if subgraph.label_type == "string" || subgraph.label_type == "text" {
+            super::super::label::write_svg_text_centered_from_create_text_source_with_style(
+                out,
+                &subgraph.title,
+                &style_decls_with_important(&text_styles).replace("color:", "fill:"),
+            );
+        } else {
+            super::super::label::write_svg_text_markdown_wrapped_centered_with_style(
+                out,
+                &subgraph.title,
+                &style_decls_with_important(&text_styles).replace("color:", "fill:"),
+                context.measurer,
+                context.label_style,
+                None,
+            );
+        }
+        out.push_str("</g>");
+    }
+    out.push_str("</g>");
     out.push('\n');
 }
 
@@ -561,6 +590,19 @@ pub(crate) fn render_er_diagram_svg_model(
                 options.work_meter().charge(units).map_err(Into::into)
             })?;
         }
+        crate::elk_terminal_jogs::separate_opposite_edge_labels(
+            edges.iter_mut().map(|edge| {
+                let has_label = er_rel_idx_from_edge_id(&edge.id)
+                    .and_then(|index| model.relationships.get(index))
+                    .is_some_and(|relation| !relation.role_a.is_empty());
+                (
+                    edge.from.as_str(),
+                    edge.to.as_str(),
+                    if has_label { edge.label.as_mut() } else { None },
+                )
+            }),
+            |units| options.work_meter().charge(units).map_err(Into::into),
+        )?;
     }
 
     let include_md_parent = edges.iter().any(|e| {
@@ -794,7 +836,9 @@ pub(crate) fn render_er_diagram_svg_model(
         diagram_id,
         data_look,
         classes: &model.classes,
-        use_html_labels: matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike),
+        use_html_labels: edge_html_labels,
+        measurer,
+        label_style: &label_style,
         translate_x,
         translate_y,
     };
@@ -814,6 +858,61 @@ pub(crate) fn render_er_diagram_svg_model(
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
+    let line_hops_enabled = is_elk_layout
+        && options.debug.include_edges
+        && effective_config
+            .pointer("/elk/lineHops")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false);
+    let shifted_hop_points: Vec<Vec<crate::model::LayoutPoint>> = if line_hops_enabled {
+        options
+            .work_meter()
+            .charge(edges.iter().fold(0usize, |work, edge| {
+                work.saturating_add(edge.points.len()).saturating_add(1)
+            }))?;
+        edges
+            .iter()
+            .map(|edge| {
+                edge.points
+                    .iter()
+                    .map(|point| crate::model::LayoutPoint {
+                        x: point.x + translate_x,
+                        y: point.y + translate_y,
+                    })
+                    .collect()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let hop_paths = if line_hops_enabled {
+        options.work_meter().charge(edges.len())?;
+        let hop_edges: Vec<_> = edges
+            .iter()
+            .zip(&shifted_hop_points)
+            .map(|(edge, points)| {
+                super::super::line_hops::LineHopEdge {
+                    id: edge.id.as_str(),
+                    points,
+                    curve: Some(if missing_sections.contains(&edge.id) {
+                        "linear"
+                    } else {
+                        "rounded"
+                    }),
+                    // ER cardinality markers do not shorten the routed path terminals.
+                    arrow_type_start: None,
+                    arrow_type_end: None,
+                }
+            })
+            .collect();
+        super::super::line_hops::elk_line_hop_paths(
+            effective_config,
+            &hop_edges,
+            options.work_meter(),
+        )?
+    } else {
+        std::collections::HashMap::new()
+    };
     if options.debug.include_edges {
         for e in &edges {
             let missing_section = missing_sections.contains(&e.id);
@@ -840,28 +939,47 @@ pub(crate) fn render_er_diagram_svg_model(
                 .collect();
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let d = er_edge_path_d(&shifted, is_elk_layout, missing_section);
+            let original_d = er_edge_path_d(&shifted, is_elk_layout, missing_section);
+            let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
+            let d = hopped_d.unwrap_or(&original_d);
 
-            let _ = write!(
-                &mut out,
-                r#"<path d="{}" id="{}" class="{}" style=""#,
-                escape_xml(&d),
-                escape_xml(&edge_svg_id),
-                escape_xml(&line_classes),
-            );
+            let mut edge_style = String::new();
             if data_look == "neo"
-                && let Some(length) = super::super::svg_path_length_from_d(&d)
+                && let Some(length) = super::super::svg_path_length_from_d(&original_d)
             {
                 super::super::edge_path::write_neo_edge_mask(
-                    &mut out, length, None, None, is_dashed, false,
+                    &mut edge_style,
+                    length,
+                    None,
+                    None,
+                    is_dashed,
+                    false,
                 );
             }
             // ELK's buildEdgeData supplies fill:none when the ER model has no edge style.
-            out.push_str(if is_elk_layout {
+            edge_style.push_str(if is_elk_layout {
                 "fill:none;;;fill:none"
             } else {
                 "undefined;;;undefined"
             });
+            let edge_style = if let Some(hopped_d) = hopped_d {
+                super::super::line_hops::rewrite_style_after_line_hop(
+                    &edge_style,
+                    hopped_d,
+                    options.work_meter(),
+                )?
+            } else {
+                std::borrow::Cow::Borrowed(edge_style.as_str())
+            };
+
+            let _ = write!(
+                &mut out,
+                r#"<path d="{}" id="{}" class="{}" style="{}"#,
+                escape_xml(d),
+                escape_xml(&edge_svg_id),
+                escape_xml(&line_classes),
+                escape_xml(&edge_style),
+            );
             let _ = write!(
                 &mut out,
                 r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
@@ -924,12 +1042,9 @@ pub(crate) fn render_er_diagram_svg_model(
             };
 
             if has_label_text && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
-                // Mermaid positions edge labels using Dagre's `edge.x/edge.y` by default, but it
-                // recomputes the label position along the polyline when the edge path `d` doesn't
-                // contain the midpoint coordinates (see `edges.js:isLabelCoordinateInPath`).
-                //
-                // Replicate that behavior here to match upstream DOM parity for certain curved
-                // edges (notably parallel relationship edges in ER diagrams).
+                // Mermaid 12.1 preserves the layout anchor and adds only the midpoint delta
+                // from paint-time clipping. ER has no additional clipping here: curve and marker
+                // projection change `d`, while both label polylines remain the layout route.
                 let shifted: Vec<crate::model::LayoutPoint> = e
                     .points
                     .iter()
@@ -941,6 +1056,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 let rendered_d = er_edge_path_d(&shifted, is_elk_layout, false);
                 let position = super::super::edge_label_geometry::position_edge_label(
                     crate::model::LayoutPoint { x: cx, y: cy },
+                    Some(&shifted),
                     &shifted,
                     &rendered_d,
                     false,
@@ -1054,7 +1170,15 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cy)
                 );
                 out.push_str(r#"<rect width="0.1" height="0.1"/>"#);
-                out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#);
+                out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/>"#);
+                if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                    out.push_str(r#"<foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject>"#);
+                } else {
+                    super::super::label::write_svg_text_markdown_from_create_text_source(
+                        &mut out, "", true,
+                    );
+                }
+                out.push_str("</g></g>");
             }
             continue;
         };
@@ -1073,7 +1197,11 @@ pub(crate) fn render_er_diagram_svg_model(
         } else {
             format!(
                 r#"style="{}""#,
-                escape_xml(&style_decls_with_important(&text_style_decls))
+                escape_xml(&if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                    style_decls_with_important(&text_style_decls)
+                } else {
+                    style_decls_with_important(&text_style_decls).replace("color:", "fill:")
+                })
             )
         };
 
@@ -1133,31 +1261,32 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(w),
                 fmt(h)
             );
-            let wrap_mode = entity_wrap_mode;
-            let label_metrics = measurer.measure_wrapped(
-                measure.label.rendered_text(),
-                &label_style,
-                None,
-                wrap_mode,
-            );
-            let lw = if wrap_mode == crate::text::WrapMode::HtmlLike {
-                measure.label_html_width.max(0.0)
-            } else {
-                label_metrics.width.max(0.0)
-            };
-            let lh = label_metrics.height.max(0.0);
-
+            let lw = measure.label_html_width.max(0.0);
+            let lh = measure.label_height.max(0.0);
             let _ = write!(
                 &mut out,
-                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g>"#,
+                r#"<g class="label" transform="translate({}, {})" {}><rect/>"#,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),
                 label_style_attr,
-                fmt(lw),
-                fmt(lh),
-                measure.label_max_width_px.max(0),
-                html_label_content(&measure.label, "", true)
             );
+            if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                let _ = write!(
+                    &mut out,
+                    r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject>"#,
+                    fmt(lw),
+                    fmt(lh),
+                    measure.label_max_width_px.max(0),
+                    html_label_content(&measure.label, "", true),
+                );
+            } else {
+                super::super::label::write_svg_text_markdown_from_create_text_source(
+                    &mut out,
+                    measure.label.markdown_input(),
+                    true,
+                );
+            }
+            out.push_str("</g>");
             out.push_str("</g>");
             continue;
         }
@@ -1206,7 +1335,7 @@ pub(crate) fn render_er_diagram_svg_model(
             )
         };
 
-        // Mermaid ER attribute tables (erBox.ts) use HTML labels (`foreignObject`) and paths for the table rows.
+        // Mermaid erBox.ts uses the configured label mode and paths for the table rows.
         let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
         let box_x0 = ox;
         let box_y0 = oy;
@@ -1431,8 +1560,12 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str("</g>");
         }
 
-        // HTML labels
-        let line_h = (font_size * 1.5).max(1.0);
+        // ER table labels use createText in both HTML and SVG modes.
+        let line_h = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+            (font_size * 1.5).max(1.0)
+        } else {
+            measure.label_height.max(1.0)
+        };
         let mut pad = entity_measurement.diagram_padding;
         // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
         // when `htmlLabels` is unset (undefined), upstream still applies the 1.25 multiplier.
@@ -1450,17 +1583,29 @@ pub(crate) fn render_er_diagram_svg_model(
         ) + 100;
         let _ = write!(
             &mut out,
-            r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+            r#"<g class="label name" transform="translate({}, {})" {}>"#,
             fmt(name_x),
             fmt(name_y),
             label_style_attr,
-            fmt(name_w),
-            fmt(line_h),
-            escape_xml(&label_div_color_prefix),
-            name_mw_px.max(0),
-            html_label_content(&measure.label, &span_style_attr, false)
         );
-        out.push_str("</div></foreignObject></g>");
+        if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+            let _ = write!(
+                &mut out,
+                r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}</div></foreignObject>"#,
+                fmt(name_w),
+                fmt(line_h),
+                escape_xml(&label_div_color_prefix),
+                name_mw_px.max(0),
+                html_label_content(&measure.label, &span_style_attr, false),
+            );
+        } else {
+            super::super::label::write_svg_text_markdown_from_create_text_source(
+                &mut out,
+                measure.label.markdown_input(),
+                true,
+            );
+        }
+        out.push_str("</g>");
 
         let type_col_w = measure.type_col_w.max(0.0);
         let name_col_w = measure.name_col_w.max(0.0);
@@ -1476,106 +1621,60 @@ pub(crate) fn render_er_diagram_svg_model(
         let mut row_top = sep_y;
         for row in &measure.rows {
             let row_h = row.height.max(1.0);
-            let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
+            let cell_y = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                row_top + row_h / 2.0 - line_h / 2.0
+            } else {
+                row_top + measure.text_padding / 2.0
+            };
 
-            let type_w = crate::er::er_box_label_metrics(&row.type_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let name_w = crate::er::er_box_label_metrics(&row.name_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let keys_w = crate::er::er_box_label_metrics(&row.key_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let comment_w =
-                crate::er::er_box_label_metrics(&row.comment_label, measurer, &attr_style)
-                    .width
-                    .max(0.0);
-
-            let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.type_label.markdown_input(),
-            ) + 100;
-            let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.name_label.markdown_input(),
-            ) + 100;
-            let keys_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.key_label.markdown_input(),
-            ) + 100;
-            let comment_mw_px = crate::er::calculate_text_width_like_mermaid_px(
-                measurer,
-                &attr_style,
-                row.comment_label.markdown_input(),
-            ) + 100;
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(type_left),
-                fmt(cell_y),
-                label_style_attr,
-                fmt(type_w),
-                fmt(line_h),
-                escape_xml(&label_div_color_prefix),
-                type_mw_px.max(0),
-                html_label_content(&row.type_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(name_left),
-                fmt(cell_y),
-                label_style_attr,
-                fmt(name_w),
-                fmt(line_h),
-                escape_xml(&label_div_color_prefix),
-                name_mw_px.max(0),
-                html_label_content(&row.name_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(key_left),
-                fmt(cell_y),
-                label_style_attr,
-                fmt(keys_w),
-                fmt(if row.key_label.rendered_text().is_empty() {
-                    0.0
+            for (class, label, left) in [
+                ("attribute-type", &row.type_label, type_left),
+                ("attribute-name", &row.name_label, name_left),
+                ("attribute-keys", &row.key_label, key_left),
+                ("attribute-comment", &row.comment_label, comment_left),
+            ] {
+                let metrics =
+                    crate::er::er_box_label_metrics(label, measurer, &attr_style, entity_wrap_mode);
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label {}" transform="translate({}, {})" {}>"#,
+                    class,
+                    fmt(left),
+                    fmt(cell_y),
+                    label_style_attr,
+                );
+                if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                    let max_width = crate::er::calculate_text_width_like_mermaid_px(
+                        measurer,
+                        &attr_style,
+                        label.markdown_input(),
+                    ) + 100;
+                    let _ = write!(
+                        &mut out,
+                        r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}</div></foreignObject>"#,
+                        fmt(metrics.width.max(0.0)),
+                        fmt(
+                            if matches!(class, "attribute-keys" | "attribute-comment")
+                                && label.rendered_text().is_empty()
+                            {
+                                0.0
+                            } else {
+                                line_h
+                            }
+                        ),
+                        escape_xml(&label_div_color_prefix),
+                        max_width.max(0),
+                        html_label_content(label, &span_style_attr, false),
+                    );
                 } else {
-                    line_h
-                }),
-                escape_xml(&label_div_color_prefix),
-                keys_mw_px.max(0),
-                html_label_content(&row.key_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(comment_left),
-                fmt(cell_y),
-                label_style_attr,
-                fmt(comment_w),
-                fmt(if row.comment_label.rendered_text().is_empty() {
-                    0.0
-                } else {
-                    line_h
-                }),
-                escape_xml(&label_div_color_prefix),
-                comment_mw_px.max(0),
-                html_label_content(&row.comment_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
+                    super::super::label::write_svg_text_markdown_from_create_text_source(
+                        &mut out,
+                        label.markdown_input(),
+                        true,
+                    );
+                }
+                out.push_str("</g>");
+            }
 
             row_top += row_h;
         }

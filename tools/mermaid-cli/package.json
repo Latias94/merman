@@ -3,7 +3,7 @@
   "private": true,
   "devDependencies": {
     "@mermaid-js/layout-tidy-tree": "1.0.1",
-    "@mermaid-js/mermaid-cli": "11.17.0",
+    "@mermaid-js/mermaid-cli": "12.0.0",
     "@mermaid-js/mermaid-zenuml": "1.0.1",
     "puppeteer": "25.6.0",
     "esbuild": "0.28.1"
@@ -16,7 +16,7 @@
     "dompurify": "3.4.16",
     "ip-address": "10.7.2",
     "js-yaml": "4.3.1",
-    "mermaid": "12.0.0",
+    "mermaid": "12.1.0",
     "lodash-es": "4.18.1",
     "nanoid": "3.3.18",
     "postcss": "8.5.25"

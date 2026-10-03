@@ -3,7 +3,7 @@ use super::{
     strip_wrapping_backticks, trim_flowdb_label_text, unquote,
 };
 use crate::{OperationControl, OperationControlResult};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 enum StatementItem {
@@ -21,6 +21,8 @@ struct EvalFrame<'a> {
 pub(super) struct SubgraphBuilder {
     sub_count: usize,
     pub(super) subgraphs: Vec<FlowSubGraph>,
+    pub(super) declaration_owners: Vec<usize>,
+    subgraph_index: HashMap<String, usize>,
     inherit_dir: bool,
     global_dir: Option<String>,
 }
@@ -30,6 +32,8 @@ impl SubgraphBuilder {
         Self {
             sub_count: 0,
             subgraphs: Vec::new(),
+            declaration_owners: Vec::new(),
+            subgraph_index: HashMap::new(),
             inherit_dir,
             global_dir,
         }
@@ -210,22 +214,33 @@ impl SubgraphBuilder {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            if !nested_members.contains(member.as_str()) {
+            if member != id && !nested_members.contains(member.as_str()) {
                 retained_members.push(member);
             }
         }
 
-        self.subgraphs.push(FlowSubGraph {
-            id: id.clone(),
-            nodes: retained_members,
-            title,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            dir,
-            has_explicit_dir,
-            label_type,
-            metadata: None,
-        });
+        // Mermaid 12.1 keeps the first completed declaration as the single group owner.
+        // Replay still visits every declaration, so retain its canonical owner separately.
+        let owner = if let Some(&index) = self.subgraph_index.get(&id) {
+            self.subgraphs[index].nodes.extend(retained_members);
+            index
+        } else {
+            let index = self.subgraphs.len();
+            self.subgraph_index.insert(id.clone(), index);
+            self.subgraphs.push(FlowSubGraph {
+                id: id.clone(),
+                nodes: retained_members,
+                title,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                dir,
+                has_explicit_dir,
+                label_type,
+                metadata: None,
+            });
+            index
+        };
+        self.declaration_owners.push(owner);
 
         Ok(id)
     }

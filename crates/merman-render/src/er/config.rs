@@ -103,6 +103,7 @@ impl<'a> ErConfigView<'a> {
     pub(crate) fn entity_measurement_settings(&self) -> ErEntityMeasurementSettings {
         ErEntityMeasurementSettings {
             html_labels_raw: self.root_bool("htmlLabels").unwrap_or(false),
+            wrap_mode: self.entity_html_label_wrap_mode(),
             diagram_padding: self
                 .er_f64("diagramPadding")
                 .unwrap_or(DEFAULT_DIAGRAM_PADDING),
@@ -219,6 +220,7 @@ pub(super) struct ErLayoutSettings {
 #[derive(Clone, Copy)]
 pub(crate) struct ErEntityMeasurementSettings {
     pub(crate) html_labels_raw: bool,
+    pub(crate) wrap_mode: WrapMode,
     pub(crate) diagram_padding: f64,
     pub(crate) entity_padding: f64,
     pub(crate) min_entity_width: f64,
@@ -347,6 +349,7 @@ mod tests {
         let settings = ErConfigView::new(&cfg).entity_measurement_settings();
 
         assert!(!settings.html_labels_raw);
+        assert_eq!(settings.wrap_mode, WrapMode::HtmlLike);
         assert_eq!(settings.diagram_padding, 21.0);
         assert_eq!(settings.entity_padding, 17.0);
         assert_eq!(settings.min_entity_width, 120.0);
@@ -379,6 +382,7 @@ mod tests {
         assert!(!settings.use_max_width);
         assert!(!settings.relationship_html_labels);
         assert_eq!(settings.entity_html_label_wrap_mode, WrapMode::SvgLike);
+        assert_eq!(settings.entity_measurement.wrap_mode, WrapMode::SvgLike);
 
         let root_fallback = ErConfigView::new(&json!({
             "titleTopMargin": 33

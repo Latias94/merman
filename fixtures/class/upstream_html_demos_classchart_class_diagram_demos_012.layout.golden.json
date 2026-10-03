@@ -333,8 +333,8 @@
           "y": 679.0,
           "width": 328.278,
           "height": 368.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Shapes",
           "title_label": {
             "x": 187.795,
@@ -344,7 +344,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -354,8 +354,8 @@
           "y": 193.0,
           "width": 362.722,
           "height": 362.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Vehicles",
           "title_label": {
             "x": 193.361,
@@ -365,7 +365,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

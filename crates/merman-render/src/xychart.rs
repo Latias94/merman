@@ -196,6 +196,8 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
             height: 0.0,
         };
     }
+    // These metrics and the chart dimensions already share SVG user units. Mermaid 12.1
+    // divides browser screen measurements by the SVG's CTM; no display scale enters this path.
     for t in texts {
         let m = measurer.measure(t, &style);
         max_w = max_w.max(m.width);
@@ -1118,28 +1120,22 @@ pub(crate) fn layout_xychart_diagram_typed(
         })
         .unwrap_or_default()
         .to_owned();
-    let title_height = single_text_height(&title, chart_cfg.title_font_size, text_measurer)
-        + 2.0 * chart_cfg.title_padding;
+    let mut chart_width = (chart_cfg.width * chart_cfg.plot_reserved_space_percent / 100.0).floor();
+    let mut chart_height =
+        (chart_cfg.height * chart_cfg.plot_reserved_space_percent / 100.0).floor();
+    let mut available_width = chart_cfg.width - chart_width;
+    let mut available_height = chart_cfg.height - chart_height;
+    let title_dimension = max_text_dimension(
+        std::slice::from_ref(&title),
+        chart_cfg.title_font_size,
+        text_measurer,
+    );
+    let title_height = title_dimension.height + 2.0 * chart_cfg.title_padding;
     let show_chart_title =
-        chart_cfg.show_title && !title.is_empty() && title_height <= chart_cfg.height;
+        chart_cfg.show_title && !title.is_empty() && title_height <= available_height;
 
     let mut drawables: Vec<XyChartDrawableElem> =
         Vec::with_capacity(model.plots.len().saturating_mul(2).saturating_add(4));
-    if show_chart_title {
-        drawables.push(XyChartDrawableElem::Text {
-            group_texts: vec!["chart-title".to_string()],
-            data: vec![XyChartTextData {
-                text: title.clone(),
-                x: chart_cfg.width / 2.0,
-                y: title_height / 2.0,
-                fill: theme_cfg.title_color.clone(),
-                font_size: chart_cfg.title_font_size,
-                rotation: 0.0,
-                vertical_pos: "middle".to_string(),
-                horizontal_pos: "center".to_string(),
-            }],
-        });
-    }
 
     let (x_axis_kind, x_axis_title) = match &model.x_axis {
         XyChartAxisRenderModel::Band { title, categories } => (
@@ -1196,12 +1192,6 @@ pub(crate) fn layout_xychart_diagram_typed(
         y_axis_title,
     );
 
-    let mut chart_width = (chart_cfg.width * chart_cfg.plot_reserved_space_percent / 100.0).floor();
-    let mut chart_height =
-        (chart_cfg.height * chart_cfg.plot_reserved_space_percent / 100.0).floor();
-
-    let mut available_width = chart_cfg.width - chart_width;
-    let mut available_height = chart_cfg.height - chart_height;
     let mut legend_plots = if chart_cfg.show_legend {
         model
             .plots
@@ -1340,6 +1330,28 @@ pub(crate) fn layout_xychart_diagram_typed(
         y_axis.set_bounding_box_xy(pt(0.0, plot_y));
         plot_rect
     };
+
+    if show_chart_title {
+        // The title owns a row above both plot and legend. Center it over the plot,
+        // allowing a wide title to span legend columns while staying inside the chart.
+        let half_width = title_dimension.width.min(chart_cfg.width) / 2.0;
+        let title_x = (plot_rect.x + plot_rect.width / 2.0)
+            .max(half_width)
+            .min(chart_cfg.width - half_width);
+        drawables.push(XyChartDrawableElem::Text {
+            group_texts: vec!["chart-title".to_string()],
+            data: vec![XyChartTextData {
+                text: title,
+                x: title_x,
+                y: title_height / 2.0,
+                fill: theme_cfg.title_color.clone(),
+                font_size: chart_cfg.title_font_size,
+                rotation: 0.0,
+                vertical_pos: "middle".to_string(),
+                horizontal_pos: "center".to_string(),
+            }],
+        });
+    }
 
     if model
         .plots
@@ -1507,4 +1519,169 @@ pub(crate) fn layout_xychart_diagram_typed(
         label_data,
         drawables,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::TextMetrics;
+    use kurbo::Shape;
+    use serde_json::json;
+
+    struct UserUnitMeasurer;
+
+    impl TextMeasurer for UserUnitMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text.encode_utf16().count() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn layout(title: &str, orientation: &str, height: f64, legend: bool) -> XyChartDiagramLayout {
+        let model = XyChartDiagramRenderModel {
+            orientation: orientation.to_string(),
+            title: Some(title.to_string()),
+            acc_title: None,
+            acc_descr: None,
+            x_axis: XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            },
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: "A fairly wide y-axis title".to_string(),
+                min: Some(0.0),
+                max: Some(100000.0),
+            },
+            plots: vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: Some("series".to_string()),
+                values: vec![10.0, 20.0, 30.0],
+                data: vec![
+                    ("a".to_string(), Some(10.0)),
+                    ("b".to_string(), Some(20.0)),
+                    ("c".to_string(), Some(30.0)),
+                ],
+                point_labels: Vec::new(),
+            }],
+            display: Default::default(),
+        };
+        layout_xychart_diagram_typed(
+            &model,
+            None,
+            &json!({ "xyChart": {
+                "width": 700, "height": height, "showLegend": legend
+            }}),
+            &UserUnitMeasurer,
+        )
+        .unwrap()
+    }
+
+    fn title(layout: &XyChartDiagramLayout) -> Option<&XyChartTextData> {
+        layout.drawables.iter().find_map(|drawable| match drawable {
+            XyChartDrawableElem::Text { group_texts, data } if group_texts == &["chart-title"] => {
+                data.first()
+            }
+            _ => None,
+        })
+    }
+
+    fn plot_span(layout: &XyChartDiagramLayout) -> (f64, f64) {
+        let axis = if layout.chart_orientation == "horizontal" {
+            "top-axis"
+        } else {
+            "bottom-axis"
+        };
+        let path = layout
+            .drawables
+            .iter()
+            .find_map(|drawable| match drawable {
+                XyChartDrawableElem::Path { group_texts, data }
+                    if group_texts == &[axis, "axis-line"] =>
+                {
+                    data.first()
+                }
+                _ => None,
+            })
+            .expect("axis spanning the plot");
+        let bounds = kurbo::BezPath::from_svg(&path.path).unwrap().bounding_box();
+        (bounds.x0, bounds.x1)
+    }
+
+    #[test]
+    fn xychart_title_centers_on_plot_for_both_orientations_and_legend_modes() {
+        for orientation in ["vertical", "horizontal"] {
+            for legend in [false, true] {
+                let layout = layout("Title", orientation, 500.0, legend);
+                let (start, end) = plot_span(&layout);
+                assert!(start > 0.0);
+                assert!((title(&layout).unwrap().x - (start + end) / 2.0).abs() < 1e-9);
+                if legend {
+                    assert!(end < layout.width);
+                } else {
+                    assert_eq!(end, layout.width);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn xychart_wide_title_clamps_to_chart_and_can_span_legend_columns() {
+        let wide = "x".repeat(32);
+        let without_legend = layout(&wide, "vertical", 500.0, false);
+        assert_eq!(title(&without_legend).unwrap().x, 380.0);
+
+        let with_legend = layout(&wide, "vertical", 500.0, true);
+        let (start, end) = plot_span(&with_legend);
+        let label = title(&with_legend).unwrap();
+        assert_eq!(label.x, (start + end) / 2.0);
+        assert!(label.x + 320.0 > end);
+        assert!(label.x + 320.0 <= with_legend.width);
+        let legend_marker = with_legend
+            .drawables
+            .iter()
+            .find_map(|drawable| match drawable {
+                XyChartDrawableElem::Rect { group_texts, data }
+                    if group_texts == &["legend", "markers"] =>
+                {
+                    data.first()
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(label.y + 10.0 <= legend_marker.y - 10.0);
+
+        let oversized = layout(&"x".repeat(40), "vertical", 500.0, false);
+        assert_eq!(title(&oversized).unwrap().x, oversized.width / 2.0);
+    }
+
+    #[test]
+    fn xychart_title_needs_space_after_the_plot_reservation() {
+        for orientation in ["vertical", "horizontal"] {
+            let short = layout("Title", orientation, 60.0, false);
+            assert!(title(&short).is_none());
+            let mut bars = 0;
+            for drawable in &short.drawables {
+                if let XyChartDrawableElem::Rect { group_texts, data } = drawable
+                    && group_texts == &["plot", "bar-plot-0"]
+                {
+                    bars += data.len();
+                    for bar in data {
+                        assert!(bar.y + bar.height <= short.height + 1e-9);
+                    }
+                }
+            }
+            assert_eq!(bars, 3);
+            assert!(title(&layout("Title", orientation, 100.0, false)).is_some());
+        }
+    }
+
+    #[test]
+    fn xychart_measurement_keeps_svg_user_units_without_display_rescaling() {
+        let dimensions = max_text_dimension(&["CPU".to_string()], 14.0, &UserUnitMeasurer);
+        assert_eq!(dimensions.width, 42.0);
+        assert_eq!(dimensions.height, 14.0);
+    }
 }

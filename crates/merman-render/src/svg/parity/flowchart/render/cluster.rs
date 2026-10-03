@@ -219,6 +219,44 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
+    let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+        if ctx.edge_html_labels {
+            &ctx.html_label_text_style
+        } else {
+            &ctx.text_style
+        },
+        ctx.class_defs,
+        classes,
+        styles,
+    );
+    // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
+    // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
+    let markdown_wrap_width = if ctx.uses_elk_adapter_dom {
+        rect_w
+    } else {
+        FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH
+    };
+    let painted_markdown = (ctx.uses_elk_adapter_dom && label_type == "markdown").then(|| {
+        crate::flowchart::flowchart_label_metrics_for_layout(
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: render_title,
+                label_type,
+                style: title_text_style.as_ref(),
+                max_width_px: Some(markdown_wrap_width),
+                wrap_mode: ctx.edge_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+        )
+    });
+    let label_w = painted_markdown
+        .map_or(cluster.title_label.width, |metrics| metrics.width)
+        .max(0.0);
+    let label_h = painted_markdown
+        .map_or(cluster.title_label.height, |metrics| metrics.height)
+        .max(0.0);
+    let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
     let mut class_attr = String::new();
     for c in classes {
@@ -245,8 +283,6 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
     if !ctx.edge_html_labels {
-        let label_w = cluster.title_label.width.max(0.0);
-        let label_left = left + rect_w / 2.0 - label_w / 2.0;
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="{}"{color_attr}>"#,
@@ -271,14 +307,19 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             fmt_display(label_top)
         );
         if label_type == "markdown" {
-            write_flowchart_svg_text_markdown(out, render_title, true);
+            if ctx.uses_elk_adapter_dom {
+                write_flowchart_svg_text_markdown_wrapped(
+                    out,
+                    render_title,
+                    true,
+                    ctx.measurer,
+                    title_text_style.as_ref(),
+                    Some(markdown_wrap_width),
+                );
+            } else {
+                write_flowchart_svg_text_markdown(out, render_title, true);
+            }
         } else {
-            let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                classes,
-                styles,
-            );
             let owner = ctx
                 .svg_label_sidecar
                 .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
@@ -300,22 +341,24 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     }
 
     let title_html = flowchart_label_html(render_title, label_type, ctx.config, ctx.math_renderer);
-    let label_w = cluster.title_label.width.max(0.0);
-    let label_h = cluster.title_label.height.max(0.0);
-    let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
     let span_style_attr = OptionalStyleXmlAttr(label_style);
+    let markdown_uses_wrapped_box = if ctx.uses_elk_adapter_dom {
+        (label_w - markdown_wrap_width).abs() < 1e-3
+    } else {
+        label_w >= markdown_wrap_width - 1e-3
+    };
     let div_style = if label_type != "markdown" {
         "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-    } else if label_w >= FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH - 1e-3 {
+    } else if markdown_uses_wrapped_box {
         format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
+            mw = fmt_display(markdown_wrap_width)
         )
     } else {
         format!(
             "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
+            mw = fmt_display(markdown_wrap_width)
         )
     };
 

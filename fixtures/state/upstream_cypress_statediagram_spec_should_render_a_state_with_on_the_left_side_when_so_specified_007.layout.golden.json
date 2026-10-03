@@ -22,9 +22,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 131.23,
+          "y": 126.0,
           "width": 198.0,
-          "height": 238.46,
+          "height": 228.0,
           "is_cluster": true
         }
       ],
@@ -63,9 +63,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 131.23,
+          "y": 126.0,
           "width": 198.0,
-          "height": 238.46,
+          "height": 228.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write\nnotes with . and  in them.",

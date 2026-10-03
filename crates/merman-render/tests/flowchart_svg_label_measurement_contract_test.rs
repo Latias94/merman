@@ -263,7 +263,7 @@ flowchart LR
 "#;
 
 #[test]
-fn empty_subgraph_node_keeps_mermaid_bbox_measurement_after_svg_wrapping() {
+fn empty_subgraph_bbox_measurement_respects_backend_and_collapsed_group_semantics() {
     let source = r#"---
 config:
   htmlLabels: false
@@ -276,39 +276,74 @@ subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
 end
 "#;
 
-    for outcome in [HostOutcome::Success, HostOutcome::Missing] {
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse empty subgraph")
-            .expect("detect flowchart");
-        let identity = TextMeasurementProfileIdentity::new(
-            MeasurementProfileId::new(format!("test.flowchart-empty-subgraph-{}", outcome.name()))
+    for (backend, collapsed, wrapped) in [
+        ("dagre", false, true),
+        #[cfg(feature = "layout-elk")]
+        ("elk", false, false),
+        #[cfg(feature = "layout-elk")]
+        ("elk", true, true),
+    ] {
+        let source = if collapsed {
+            format!("{source}\nEmpty@{{view: collapsed}}\n")
+        } else {
+            source.to_owned()
+        };
+        for outcome in [HostOutcome::Success, HostOutcome::Missing] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(
+                    serde_json::json!({ "layout": backend }),
+                ))
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse empty subgraph")
+                .expect("detect flowchart");
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new(format!(
+                    "test.flowchart-empty-subgraph-{backend}-{collapsed}-{}",
+                    outcome.name()
+                ))
                 .expect("profile id"),
-            "1",
-        )
-        .expect("profile identity");
-        let host = Arc::new(RecordingFlowchartHost::new(outcome));
-        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-            TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
-        );
-        let session = environment.begin_session().expect("render session");
-        let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
-            .expect("prepare empty subgraph");
-        let requests = host.snapshot();
-        let final_title_request = requests
-            .iter()
-            .rfind(|request| request.text.contains("alpha"))
-            .expect("empty subgraph title measurement");
+                "1",
+            )
+            .expect("profile identity");
+            let host = Arc::new(RecordingFlowchartHost::new(outcome));
+            let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ),
+            );
+            let session = environment.begin_session().expect("render session");
+            let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                .expect("prepare empty subgraph");
+            let requests = host.snapshot();
+            let final_title_request = requests
+                .iter()
+                .rfind(|request| request.text.contains("alpha"))
+                .expect("empty subgraph title measurement");
 
-        assert_eq!(
-            final_title_request.operation,
-            TextMeasurementOperation::Wrapped,
-            "Mermaid wraps the empty-subgraph node with flowchart.wrappingWidth, then sizes the final SVG text through getBBox(): {requests:#?}"
-        );
-        assert!(
-            final_title_request.text.contains('\n'),
-            "the configured width must wrap the title before the final bbox measurement: {requests:#?}"
-        );
+            let context = format!(
+                "backend={backend}, collapsed={collapsed}, host={}",
+                outcome.name()
+            );
+            assert_eq!(
+                final_title_request.operation,
+                TextMeasurementOperation::Wrapped,
+                "{context}: the final SVG title must still use getBBox measurement: {requests:#?}"
+            );
+            // FlowDB keeps an ordinary empty subgraph as isGroup=true for ELK; createGraph's
+            // unwrapGroupLabels therefore applies. Dagre renders the empty group as a node,
+            // and an explicitly collapsed ELK group is also a leaf: both retain configured wrapping.
+            assert_eq!(
+                final_title_request.text.contains('\n'),
+                wrapped,
+                "{context}: title wrapping must follow the measured node kind: {requests:#?}"
+            );
+            assert_eq!(
+                final_title_request.max_width_bits, None,
+                "{context}: measure the final SVG rows without wrapping them a second time"
+            );
+        }
     }
 }
 

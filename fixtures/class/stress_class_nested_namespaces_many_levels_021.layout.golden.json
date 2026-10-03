@@ -169,8 +169,8 @@
           "y": 163.5,
           "width": 515.0,
           "height": 303.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Root",
           "title_label": {
             "x": 269.5,
@@ -180,7 +180,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -190,8 +190,8 @@
           "y": 176.5,
           "width": 178.469,
           "height": 155.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "A",
           "title_label": {
             "x": 125.234,
@@ -201,7 +201,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -211,8 +211,8 @@
           "y": 176.5,
           "width": 238.531,
           "height": 229.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "B",
           "title_label": {
             "x": 383.734,
@@ -222,7 +222,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -232,8 +232,8 @@
           "y": 189.5,
           "width": 190.531,
           "height": 155.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "B1",
           "title_label": {
             "x": 383.734,
@@ -243,7 +243,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

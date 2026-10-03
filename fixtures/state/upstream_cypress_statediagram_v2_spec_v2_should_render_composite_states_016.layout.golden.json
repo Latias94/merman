@@ -45,9 +45,9 @@
         },
         {
           "id": "NotShooting",
-          "x": 256.0,
+          "x": 272.969,
           "y": 333.0,
-          "width": 320.75,
+          "width": 232.313,
           "height": 412.0,
           "is_cluster": true
         },
@@ -316,15 +316,15 @@
       "clusters": [
         {
           "id": "NotShooting",
-          "x": 256.0,
+          "x": 272.969,
           "y": 333.0,
-          "width": 320.75,
+          "width": 232.313,
           "height": 412.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "NotShooting",
           "title_label": {
-            "x": 256.0,
+            "x": 272.969,
             "y": 137.5,
             "width": 68.88,
             "height": 21.0

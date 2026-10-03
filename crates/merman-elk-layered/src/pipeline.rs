@@ -2585,6 +2585,7 @@ fn compound_graph_round_work_units(graph_count: usize) -> Result<usize, WorkErro
 
 fn local_compound_preprocess_work_units(graph: &LGraph) -> Result<usize, WorkError> {
     let mut segment_count = 0usize;
+    let mut label_count = 0usize;
     for edge in &graph.hierarchy_edges {
         segment_count = checked_add(
             segment_count,
@@ -2595,12 +2596,14 @@ fn local_compound_preprocess_work_units(graph: &LGraph) -> Result<usize, WorkErr
                 &edge.target_path,
             )?,
         )?;
+        label_count = checked_add(label_count, edge.labels.len())?;
     }
 
-    checked_add(
+    checked_sum([
         checked_mul(local_hierarchy_work_units(graph)?, 4)?,
         segment_count,
-    )
+        label_count,
+    ])
 }
 
 fn compound_preprocess_work_units_with_preflight(
@@ -3265,7 +3268,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -3720,6 +3723,43 @@ mod tests {
             long_edge_joiner_work_units(&graph),
             Ok(base + layer_memberships)
         );
+    }
+
+    #[test]
+    fn compound_preflight_charges_hierarchy_label_payload_before_materialization() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.hierarchy_edges.push(crate::graph::HierarchyEdge {
+            id: "ab".into(),
+            source_node_id: "A".into(),
+            target_node_id: "B".into(),
+            source_port_key: "A:source".into(),
+            target_port_key: "B:target".into(),
+            source_path: vec!["group".into()],
+            target_path: Vec::new(),
+            labels: Vec::new(),
+            minlen: 1,
+            model_order: None,
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+        });
+        let base = local_compound_preprocess_work_units(&graph).unwrap();
+        for count in [1, 128, 4096] {
+            graph.hierarchy_edges[0].labels = (0..count)
+                .map(|index| crate::graph::LLabel::new(index.to_string(), 12.0, 10.0))
+                .collect();
+            let required = local_compound_preprocess_work_units(&graph).unwrap();
+            assert_eq!(required, base + count);
+            let mut below = BudgetWorkControl::new(required - 1);
+            assert_eq!(
+                charge_compound_preprocess_work(&graph, &mut below),
+                Err(PipelineError::Work(WorkError::Interrupted))
+            );
+            assert_eq!(below.charged, 0);
+            let mut exact = BudgetWorkControl::new(required);
+            charge_compound_preprocess_work(&graph, &mut exact).unwrap();
+            assert_eq!(exact.charged, required);
+        }
     }
 
     #[test]
@@ -4559,7 +4599,7 @@ mod tests {
         let mut head = ElkInputLabel::center("head", 20.0, 10.0);
         head.placement = crate::graph::EdgeLabelPlacement::Head;
         let mut labelled = edge("long", "A", "D");
-        labelled.label = Some(head);
+        labelled.labels = vec![head];
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::default(),
@@ -4583,7 +4623,7 @@ mod tests {
         let mut head = ElkInputLabel::center("head-0", 20.0, 10.0);
         head.placement = crate::graph::EdgeLabelPlacement::Head;
         let mut labelled = edge("long", "A", "E");
-        labelled.label = Some(head);
+        labelled.labels = vec![head];
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::default(),
@@ -5466,14 +5506,14 @@ mod tests {
         let mut head = ElkInputLabel::center("head", 20.0, 10.0);
         head.placement = crate::graph::EdgeLabelPlacement::Head;
         let mut end_label_edge = edge("A-B", "A", "B");
-        end_label_edge.label = Some(head);
+        end_label_edge.labels = vec![head];
         let label_and_self_loop_graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
             nodes: vec![node("A"), node("B")],
             edges: vec![
                 ElkInputEdge {
-                    label: Some(ElkInputLabel::center("center", 28.0, 12.0)),
+                    labels: vec![ElkInputLabel::center("center", 28.0, 12.0)],
                     ..edge("A-A", "A", "A")
                 },
                 end_label_edge,
@@ -5622,7 +5662,7 @@ mod tests {
                     id: "cluster-A".to_string(),
                     source: "cluster".to_string(),
                     target: "A".to_string(),
-                    label: Some(ElkInputLabel::center("inside", 24.0, 12.0)),
+                    labels: vec![ElkInputLabel::center("inside", 24.0, 12.0)],
                     minlen: 1,
                     inside_self_loops_yo: false,
                     model_order: None,
@@ -5634,7 +5674,7 @@ mod tests {
                     id: "A-A".to_string(),
                     source: "A".to_string(),
                     target: "A".to_string(),
-                    label: None,
+                    labels: Vec::new(),
                     minlen: 1,
                     inside_self_loops_yo: false,
                     model_order: None,
@@ -5686,7 +5726,7 @@ mod tests {
                 id: "A-A".to_string(),
                 source: "A".to_string(),
                 target: "A".to_string(),
-                label: None,
+                labels: Vec::new(),
                 minlen: 1,
                 inside_self_loops_yo: true,
                 model_order: None,
@@ -6102,7 +6142,7 @@ mod tests {
     #[test]
     fn source_ported_center_label_flowchart_runs_through_label_dummy_lifecycle() {
         let mut labelled = edge("A-C", "A", "C");
-        labelled.label = Some(ElkInputLabel::center("choice", 48.0, 12.0));
+        labelled.labels = vec![ElkInputLabel::center("choice", 48.0, 12.0)];
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
@@ -6355,18 +6395,18 @@ mod tests {
             edges.push(edge(&format!("c{component}AB"), &ids[0], &ids[1]));
             edges.push(edge(&format!("c{component}BC"), &ids[1], &ids[2]));
             let mut long = edge(&format!("c{component}AC"), &ids[0], &ids[2]);
-            long.label = Some(ElkInputLabel::center(
+            long.labels = vec![ElkInputLabel::center(
                 format!("center{component}"),
                 50.0,
                 18.0,
-            ));
+            )];
             edges.push(long);
             let mut loop_edge = edge(&format!("c{component}BB"), &ids[1], &ids[1]);
-            loop_edge.label = Some(ElkInputLabel::center(
+            loop_edge.labels = vec![ElkInputLabel::center(
                 format!("loop{component}"),
                 32.0,
                 12.0,
-            ));
+            )];
             edges.push(loop_edge);
         }
         let ids = nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>();
@@ -6961,7 +7001,7 @@ mod tests {
         let mut head = ElkInputLabel::center("head", 20.0, 10.0);
         head.placement = crate::graph::EdgeLabelPlacement::Head;
         let mut labelled_edge = edge("A-B", "A", "B");
-        labelled_edge.label = Some(head);
+        labelled_edge.labels = vec![head];
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {

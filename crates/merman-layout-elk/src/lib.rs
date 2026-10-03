@@ -4,7 +4,7 @@
 //!
 //! Source-port policy:
 //! - Mermaid's adapter layer is
-//!   https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
+//!   https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
 //! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
 //! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
@@ -23,6 +23,8 @@ use std::num::NonZeroU64;
 mod container;
 mod flat;
 mod model;
+#[cfg(test)]
+mod terminal_labels_tests;
 use container::ContainerMode;
 use merman_elk_layered as source_port;
 pub use model::*;
@@ -361,9 +363,7 @@ fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
                 id: edge.id.clone(),
                 source: edge.source.clone(),
                 target: edge.target.clone(),
-                label: edge
-                    .label
-                    .map(|label| ElkInputLabel::center("", label.width, label.height)),
+                labels: source_edge_labels(edge, true, true, true),
                 minlen: edge.minlen,
                 inside_self_loops_yo: edge.inside_self_loops_yo,
                 model_order: None,
@@ -373,6 +373,33 @@ fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
             })
             .collect(),
     })
+}
+
+fn source_edge_labels(edge: &Edge, center: bool, start: bool, end: bool) -> Vec<ElkInputLabel> {
+    let mut labels: Vec<_> = edge
+        .label
+        .filter(|_| center)
+        .into_iter()
+        .map(|label| ElkInputLabel::center("", label.width, label.height))
+        .collect();
+    labels.extend(
+        edge.terminal_labels
+            .iter()
+            .filter(|terminal| if terminal.key.at_start() { start } else { end })
+            .map(|terminal| ElkInputLabel {
+                source_index: Some(terminal.key.source_index()),
+                text: String::new(),
+                width: terminal.label.width,
+                height: terminal.label.height,
+                placement: if terminal.key.at_start() {
+                    source_port::EdgeLabelPlacement::Tail
+                } else {
+                    source_port::EdgeLabelPlacement::Head
+                },
+                inline: false,
+            }),
+    );
+    labels
 }
 
 fn apply_root_inside_top_center_label_padding(
@@ -607,7 +634,20 @@ impl<'a> HierarchyIndex<'a> {
             .edges
             .iter()
             .filter(|edge| !self.is_flat_hierarchy_edge(scope_index, edge))
-            .map(|edge| self.graph.edges[edge.original].clone())
+            .map(|edge| {
+                let source = &self.graph.edges[edge.original];
+                // Non-layered providers never place terminal labels. Avoid cloning the
+                // caller-owned terminal-label payload into a graph that cannot consume it.
+                Edge {
+                    id: source.id.clone(),
+                    source: source.source.clone(),
+                    target: source.target.clone(),
+                    label: source.label,
+                    terminal_labels: Vec::new(),
+                    minlen: source.minlen,
+                    inside_self_loops_yo: source.inside_self_loops_yo,
+                }
+            })
             .collect();
         let metadata = scope
             .edges
@@ -765,6 +805,7 @@ impl<'a> HierarchyIndex<'a> {
                     .label
                     .into_iter()
                     .map(|label| EdgeLabelLayout {
+                        terminal: None,
                         x: output.edge_translation.x,
                         y: output.edge_translation.y,
                         width: label.width,
@@ -1173,10 +1214,16 @@ impl<'a> HierarchyIndex<'a> {
         HashMap<String, ScopeEdgeMetadata>,
     )> {
         let scope = &self.scopes[scope_index];
+        let labels = scope.edges.iter().try_fold(0usize, |count, scoped| {
+            count
+                .checked_add(self.graph.edges[scoped.original].terminal_labels.len())
+                .ok_or(WorkError::ArithmeticOverflow)
+        })?;
         let materialized = scope
             .nodes
             .len()
             .checked_add(scope.edges.len())
+            .and_then(|count| count.checked_add(labels))
             .ok_or(WorkError::ArithmeticOverflow)?;
         work_control.check(materialized)?;
         work_control.charge(materialized)?;
@@ -1307,13 +1354,14 @@ impl<'a> HierarchyIndex<'a> {
                 id: source.id.clone(),
                 source: source.source.clone(),
                 target: source.target.clone(),
-                label: if scoped.carries_label {
-                    source
-                        .label
-                        .map(|label| ElkInputLabel::center("", label.width, label.height))
-                } else {
-                    None
-                },
+                labels: source_edge_labels(
+                    source,
+                    scoped.carries_label,
+                    scoped.segment_order.is_none_or(|order| order == 0),
+                    scoped
+                        .segment_order
+                        .is_none_or(|order| order + 1 == scoped.segment_count),
+                ),
                 minlen: source.minlen,
                 inside_self_loops_yo: source.inside_self_loops_yo,
                 model_order,
@@ -2651,6 +2699,9 @@ fn edge_labels_for_original_edge(
                 == original_edge_id
         })
         .map(|label| EdgeLabelLayout {
+            terminal: label
+                .source_index
+                .and_then(TerminalLabelKey::from_source_index),
             x: graph_origin.x + label.position.x,
             y: graph_origin.y + label.position.y,
             width: label.size.width,
@@ -2798,6 +2849,9 @@ fn edge_labels(graph_origin: LPoint, edge: &source_port::LayeredEdge) -> Vec<Edg
     edge.labels
         .iter()
         .map(|label| EdgeLabelLayout {
+            terminal: label
+                .source_index
+                .and_then(TerminalLabelKey::from_source_index),
             x: graph_origin.x + label.position.x,
             y: graph_origin.y + label.position.y,
             width: label.size.width,
@@ -2842,6 +2896,7 @@ mod tests {
             source: source.to_string(),
             target: target.to_string(),
             label: None,
+            terminal_labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
         }
@@ -3107,6 +3162,7 @@ mod tests {
                             labels: scoped
                                 .carries_label
                                 .then_some(EdgeLabelLayout {
+                                    terminal: None,
                                     x: 1.0,
                                     y: 1.0,
                                     width: 20.0,
@@ -3170,6 +3226,37 @@ mod tests {
                 .checked_add(units)
                 .ok_or(WorkError::ArithmeticOverflow)?;
             Ok(())
+        }
+    }
+
+    #[test]
+    fn flat_scope_omits_unused_terminal_payload_at_a_fixed_budget() {
+        for count in [0, 1, 8192] {
+            let mut source_edge = edge("ab", "A", "B");
+            source_edge.terminal_labels = vec![
+                TerminalLabel {
+                    key: TerminalLabelKey::StartLeft,
+                    label: Label {
+                        width: 20.0,
+                        height: 12.0
+                    },
+                };
+                count
+            ];
+            let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![source_edge]);
+            graph.options.algorithm = Algorithm::MrTree;
+            let index =
+                HierarchyIndex::build(&graph, &mut RecordingWorkControl::unlimited()).unwrap();
+            let mut work = RecordingWorkControl {
+                remaining: 3,
+                checked: 0,
+                charged: 0,
+            };
+            let (flat, _) = index.materialize_flat_scope(0, &[], &mut work).unwrap();
+            assert_eq!(work.charged, 3);
+            assert!(flat.edges[0].terminal_labels.is_empty());
+            assert_eq!(flat.edges[0].terminal_labels.capacity(), 0);
+            assert_eq!(graph.edges[0].terminal_labels.len(), count);
         }
     }
 

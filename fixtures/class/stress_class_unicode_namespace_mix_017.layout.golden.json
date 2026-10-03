@@ -140,8 +140,8 @@
           "y": 116.5,
           "width": 179.868,
           "height": 209.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Core",
           "title_label": {
             "x": 101.934,
@@ -151,7 +151,7 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -161,8 +161,8 @@
           "y": 365.5,
           "width": 161.32,
           "height": 209.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "支付",
           "title_label": {
             "x": 101.934,
@@ -172,7 +172,7 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

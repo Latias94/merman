@@ -304,7 +304,10 @@ impl CompareAllInvocationOptions<'_> {
             root_report_limit: supports_root_report
                 .then_some(self.root_report_limit)
                 .flatten(),
-            accepted_residual_policy: if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
+            accepted_residual_policy: if matches!(
+                diagram,
+                "c4" | "class" | "error" | "ishikawa" | "venn"
+            ) {
                 AcceptedResidualPolicy::ScopedDomEvidenceCatalog
             } else {
                 AcceptedResidualPolicy::None

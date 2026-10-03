@@ -95,8 +95,8 @@
           "y": 330.0,
           "width": 381.13,
           "height": 636.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Company",
           "title_label": {
             "x": 202.565,
@@ -106,7 +106,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -116,8 +116,8 @@
           "y": 343.0,
           "width": 333.13,
           "height": 562.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Project",
           "title_label": {
             "x": 202.565,
@@ -127,7 +127,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -137,8 +137,8 @@
           "y": 356.0,
           "width": 285.13,
           "height": 488.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Module",
           "title_label": {
             "x": 202.565,
@@ -148,7 +148,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -158,8 +158,8 @@
           "y": 468.5,
           "width": 237.13,
           "height": 215.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "SubModule",
           "title_label": {
             "x": 202.565,
@@ -169,7 +169,7 @@
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

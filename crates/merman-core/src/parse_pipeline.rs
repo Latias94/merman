@@ -626,6 +626,7 @@ impl<'a> ParsePipeline<'a> {
                     timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
                     return Ok(Ok(Some(error_diagram::suppressed_error_render_diagram(
                         &meta,
+                        &source_map.remap_parse_error(error),
                     ))));
                 }
             };
@@ -704,7 +705,7 @@ impl<'a> ParsePipeline<'a> {
         preprocess_path: PreprocessPath,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
         postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
@@ -732,7 +733,7 @@ impl<'a> ParsePipeline<'a> {
         operation_context: &runtime::OperationContext,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
         postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
@@ -759,7 +760,7 @@ impl<'a> ParsePipeline<'a> {
                 }
 
                 timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
-                return Ok(Some(suppressed(&meta)));
+                return Ok(Some(suppressed(&meta, &source_map.remap_parse_error(err))));
             }
         };
 
@@ -1190,7 +1191,7 @@ impl<'a> ParsePipeline<'a> {
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
         control.checkpoint()?;
 
-        if diagram_type == "agentflow"
+        if matches!(diagram_type.as_str(), "agentflow" | "eventmodeling")
             && let Some(with_comments) = pre.with_comments.take()
         {
             let max_text_size = effective_config

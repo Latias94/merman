@@ -6,9 +6,9 @@
         {
           "id": "parent_dash",
           "x": 136.0,
-          "y": 449.5,
+          "y": 439.0,
           "width": 248.0,
-          "height": 279.0,
+          "height": 258.0,
           "is_cluster": true
         },
         {
@@ -22,15 +22,15 @@
         {
           "id": "child_space",
           "x": 136.0,
-          "y": 461.5,
+          "y": 451.0,
           "width": 200.0,
-          "height": 207.0,
+          "height": 186.0,
           "is_cluster": true
         },
         {
           "id": "C",
           "x": 136.0,
-          "y": 449.5,
+          "y": 428.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "D",
           "x": 136.0,
-          "y": 518.5,
+          "y": 497.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -103,11 +103,11 @@
           "points": [
             {
               "x": 136.0,
-              "y": 472.0
+              "y": 451.0
             },
             {
               "x": 136.0,
-              "y": 496.0
+              "y": 475.0
             }
           ],
           "label": null,
@@ -170,17 +170,17 @@
         {
           "id": "child_space",
           "x": 136.0,
-          "y": 461.5,
+          "y": 451.0,
           "width": 200.0,
-          "height": 207.0,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 36.0,
+          "offset_y": 15.0,
           "title": "child title with spaces",
           "title_label": {
             "x": 136.0,
-            "y": 378.0,
-            "width": 120.0,
-            "height": 40.0
+            "y": 367.5,
+            "width": 128.66,
+            "height": 19.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -191,9 +191,9 @@
         {
           "id": "parent_dash",
           "x": 136.0,
-          "y": 449.5,
+          "y": 439.0,
           "width": 248.0,
-          "height": 279.0,
+          "height": 258.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "parent-with-dashes",
@@ -235,7 +235,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 260.0,
-        "max_y": 589.0
+        "max_y": 568.0
       }
     }
   }

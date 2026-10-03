@@ -5,6 +5,10 @@ Audit date: 2026-09-24
 Scope: dated engineering audit for the Mermaid 12 / Merman `0.8.0-alpha.7` release line. References to the worktree and initial findings describe this audit, not a live compliance certificate. Maintained procedures are in [Releasing](RELEASING.md); completed channel evidence is in the [alpha.7 publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot).
 Repository license expression: `MIT OR Apache-2.0`
 Mermaid behavior baseline: `mermaid@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
+This 12.0 reference is the historical alpha.7 audit scope. The current unreleased 0.8.0
+transition selects Mermaid 12.1.0 and is tracked in the [upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md)
+and [ADR-0092](../adr/0092-mermaid-12-1-upstream-transition.md); the component inventory records
+that target separately.
 
 > This is an engineering audit, not legal advice. It records primary-source evidence, packaging
 > expectations, and release checks. It does not determine whether a license is enforceable, whether

@@ -212,8 +212,7 @@ fn half_arrow_type(rest: &str) -> Option<(usize, i32)> {
 fn declaration_id_allows_config(actor_id: &str) -> bool {
     !actor_id.is_empty()
         && actor_id.chars().all(|ch| {
-            !is_ecmascript_whitespace(ch)
-                && !matches!(ch, '<' | '=' | '>' | '-' | ':' | ',' | ';' | '@')
+            !is_ecmascript_whitespace(ch) && !matches!(ch, '<' | '>' | ':' | ',' | ';' | '@')
         })
 }
 

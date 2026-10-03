@@ -926,3 +926,117 @@ fn usecase_neo_gradient_paint_references_have_scoped_resources() {
         );
     }
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn usecase_elk_cyclic_entry_follows_edges_and_respects_the_toggle() {
+    for nested in [false, true] {
+        let declarations = "B(B)\nA(A)\nC(C)";
+        let relationships = "A --> B\nB --> C\nC --> A";
+        let source = if nested {
+            format!(
+                "usecase-beta\ndirection LR\nsystemBoundary Group(Group)\n{declarations}\nend\n{relationships}"
+            )
+        } else {
+            format!("usecase-beta\ndirection LR\n{declarations}\n{relationships}")
+        };
+        let positions = |enabled| {
+            let (projection, _) = render_config(
+                &source,
+                json!({
+                    "layout": "elk", "htmlLabels": false,
+                    "elk": {
+                        "cycleBreakingStrategy": "GREEDY_MODEL_ORDER",
+                        "keepEntryNodeOnTop": enabled,
+                    },
+                }),
+            );
+            let nodes = projection["layout"]["UsecaseDiagram"]["nodes"]
+                .as_array()
+                .unwrap();
+            ["A", "B", "C"].map(|id| {
+                nodes.iter().find(|node| node["id"] == id).unwrap()["x"]
+                    .as_f64()
+                    .unwrap()
+            })
+        };
+        let disabled = positions(false);
+        let enabled = positions(true);
+        assert!(disabled[1] < disabled[0], "nested={nested}: {disabled:?}");
+        assert!(
+            enabled[0] < enabled[1] && enabled[0] < enabled[2],
+            "nested={nested}: {enabled:?}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn usecase_elk_hops_rewrite_explicit_masks_without_moving_markers() {
+    use kurbo::Shape;
+    use std::collections::BTreeMap;
+
+    let mut source = "usecase-beta\ndirection LR\n".to_owned();
+    for from in ["A", "B", "C"] {
+        for to in ["X", "Y", "Z"] {
+            source.push_str(&format!("{from} e{from}{to}@--> {to}\n"));
+            source.push_str(&format!("style e{from}{to} stroke-dasharray:0 4 100 4\n"));
+        }
+    }
+    let paths = |look: &str, hops: serde_json::Value| {
+        let (_, svg) = render_config(
+            &source,
+            json!({
+                "layout": "elk", "look": look, "htmlLabels": false,
+                "elk": {"lineHops": hops},
+            }),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .map(|node| {
+                (
+                    node.attribute("data-id").unwrap().to_owned(),
+                    [
+                        node.attribute("d").unwrap_or_default().to_owned(),
+                        node.attribute("style").unwrap_or_default().to_owned(),
+                        node.attribute("marker-start")
+                            .unwrap_or_default()
+                            .to_owned(),
+                        node.attribute("marker-end").unwrap_or_default().to_owned(),
+                        node.attribute("data-points").unwrap_or_default().to_owned(),
+                    ],
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    for look in ["classic", "neo"] {
+        let plain = paths(look, json!(false));
+        for hops in [json!(true), json!("gap")] {
+            let hopped = paths(look, hops.clone());
+            let mut rewritten = 0;
+            for (id, after) in &hopped {
+                let before = &plain[id];
+                assert_eq!(&after[2..], &before[2..], "{look}/{hops}/{id}");
+                if after[1] == before[1] {
+                    assert_eq!(after[0], before[0], "unmodified mask at {look}/{hops}/{id}");
+                    continue;
+                }
+                rewritten += 1;
+                let mask: Vec<f64> = after[1]
+                    .split(';')
+                    .find_map(|part| part.trim().strip_prefix("stroke-dasharray:"))
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|number| number.parse().unwrap())
+                    .collect();
+                assert_eq!(mask.len(), 4);
+                assert_eq!([mask[0], mask[1], mask[3]], [0.0, 4.0, 4.0]);
+                let length = kurbo::BezPath::from_svg(&after[0]).unwrap().perimeter(1e-6);
+                assert!((mask[2] - (length - 8.0).max(0.0)).abs() < 1e-9);
+            }
+            assert!(rewritten > 0, "crossing masks at {look}/{hops}");
+        }
+    }
+}
