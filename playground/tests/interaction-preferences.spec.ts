@@ -27,10 +27,11 @@ test("gallery keeps the active category visible when reopened and resized", asyn
 });
 
 test("tooltips share the configured initial delay and adjacent skip delay", async ({ page }) => {
+  // Load with a running clock, then pause ahead of it without racing the host clock.
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await openPlayground(page);
   await page.waitForLoadState("networkidle");
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.pauseAt(new Date("2026-01-01T01:00:00Z"));
   const bench = page.getByRole("button", { name: "Bench", exact: true });
   const examples = page.getByRole("button", { name: "Examples", exact: true });
   const tooltip = page.locator('[data-slot="tooltip-content"]');
