@@ -42,6 +42,23 @@ test("loads the production WASM and renders a safe SVG", async ({ page }, testIn
   errors.assertNone();
 });
 
+test("build identity distinguishes the deployed checkout from the package version", async ({ page }) => {
+  await openPlayground(page);
+  const response = await page.request.get("build-info.json");
+  expect(response.ok()).toBe(true);
+  const build = await response.json();
+  const badge = page.locator("footer [data-merman-build]");
+  await expect(badge).toHaveAttribute("data-merman-build", build.channel);
+  await expect(badge).toContainText("build");
+  if (build.commit) await expect(badge).toContainText(build.commit.slice(0, 9));
+  if (build.repository) {
+    await expect(badge).toHaveAttribute("href",
+      `https://github.com/${build.repository}/commit/${build.commit}`);
+  }
+  await expect(badge).toHaveAttribute("title", /package version may match a release/);
+  await expectNoDocumentOverflow(page);
+});
+
 test("rendering status remains reachable and horizontally scrollable by keyboard", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openPlayground(page);

@@ -41,6 +41,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        __PLAYGROUND_BUILD__: "readonly",
       },
     },
     plugins: {
