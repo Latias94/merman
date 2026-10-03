@@ -49,7 +49,7 @@
     "test:mermaid-requirements": "node --test --experimental-strip-types src/runtime/mermaid-requirements.test.ts src/runtime/external-module-registrar.test.ts",
     "test:realm": "node --test --experimental-strip-types src/runtime/realm/*.test.ts src/runtime/mermaid-realm-controller.test.ts",
     "lint": "eslint .",
-    "licenses:check": "node ../scripts/generate-npm-license-report.mjs --package-root playground --output playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
+    "licenses:check": "node --test ../scripts/npm-license-report.test.mjs && node ../scripts/generate-npm-license-report.mjs --package-root playground --output playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
     "licenses:generate": "node ../scripts/generate-npm-license-report.mjs --package-root playground --output playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
   },
   "dependencies": {
@@ -108,7 +108,6 @@
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "generate-license-file": "4.2.1",
     "globals": "^17.9.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^4.3.3",

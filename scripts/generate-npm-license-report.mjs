@@ -1,112 +1,109 @@
 #!/usr/bin/env node
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { spawnNpmSync } from "./npm-command.mjs";
+import { assertSuccessfulNpmSpawn, spawnNpmSync } from "./npm-command.mjs";
 
-const GENERATOR_VERSION = "4.2.1";
-const options = parseArgs(process.argv.slice(2));
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const packageRoot = path.resolve(repositoryRoot, options.packageRoot);
-const output = path.resolve(repositoryRoot, options.output);
-const packageJson = path.join(packageRoot, "package.json");
-const packageLock = path.join(packageRoot, "package-lock.json");
+const readText = (file) => fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n").trim();
+const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 
-for (const required of [packageJson, packageLock]) {
-  if (!fs.statSync(required, { throwIfNoEntry: false })?.isFile()) {
-    fail(`missing npm license-report input: ${path.relative(repositoryRoot, required)}`);
+/** npm owns dependency resolution, including peers, links and optional dependencies. */
+export function collectProductionLicenses(packageRoot, replacements = {}) {
+  const result = spawnNpmSync(["ls", "--omit=dev", "--parseable", "--all"], {
+    cwd: packageRoot,
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  assertSuccessfulNpmSpawn(result, "npm production dependency inventory");
+  const root = fs.realpathSync(packageRoot);
+  const manifest = readJson(path.join(root, "package.json"));
+  const groups = new Map();
+  for (const directory of new Set(result.stdout.trim().split(/\r?\n/).filter(Boolean))) {
+    if (fs.realpathSync(directory) === root) continue;
+    const dependency = readJson(path.join(directory, "package.json"));
+    // Platform canvas binaries are host tooling, not part of the browser payload.
+    if (manifest.name === "merman-playground" &&
+        /^@napi-rs\/canvas-(?:android|darwin|linux|win32)-/.test(dependency.name)) continue;
+    const identity = `${dependency.name}@${dependency.version}`;
+    const content = readLicenseContent(directory, dependency, replacements[dependency.name]);
+    const names = groups.get(content) ?? new Set();
+    names.add(identity);
+    groups.set(content, names);
   }
+  return [...groups].map(([content, names]) => ({ content, names: [...names].sort() }))
+    .sort((left, right) => left.names[0] < right.names[0] ? -1 : left.names[0] > right.names[0] ? 1 : 0);
 }
 
-const packageManifest = JSON.parse(fs.readFileSync(packageJson, "utf8"));
-const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-npm-licenses-"));
-const generatedPath = path.join(temporaryRoot, "licenses.txt");
-const generatorConfigPath = path.join(temporaryRoot, "generate-license-file.json");
-try {
-  const replacements = {};
-  const exclusions = [];
-  // Avoid filesystem-order and package-assembly differences in ambiguous packages.
-  for (const [packageName, relativeLicense] of Object.entries({
+export function readLicenseContent(directory, manifest, replacement) {
+  const files = fs.readdirSync(directory).filter((name) =>
+    fs.statSync(path.join(directory, name)).isFile()).sort();
+  const licenses = files.filter((name) => /^(?:license|licence|copying)(?:[-.]|$)/i.test(name) &&
+    !/\.(?:[cm]?[jt]s|sh|ps1)$/i.test(name));
+  if (!replacement && licenses.length > 1) {
+    throw new Error(`Ambiguous license files for ${manifest.name}; add a canonical replacement.`);
+  }
+  // Preserve the existing explicit choices for dual-licensed or assembled packages.
+  let content = replacement ? readText(replacement)
+    : licenses.length === 1 ? readText(path.join(directory, licenses[0])) : null;
+  if (content === null) {
+    // Some published packages contain only an SPDX declaration. Do not invent a license body.
+    if (typeof manifest.license !== "string" || !manifest.license.trim() ||
+        /^SEE LICENSE IN /i.test(manifest.license)) {
+      throw new Error(`Missing license text for ${manifest.name}; add a canonical replacement.`);
+    }
+    content = manifest.license.trim();
+  }
+  if (!content) throw new Error(`Empty license text for ${manifest.name}.`);
+  const notices = files.filter((name) => /^notice(?:[-.]|$)/i.test(name))
+    .map((name) => readText(path.join(directory, name))).filter(Boolean);
+  return notices.length ? `${content}\n\nWith the following notices:\n\n${notices.join("\n")}` : content;
+}
+
+export function formatLicenseGroups(groups) {
+  return groups.map(({ names, content }) => {
+    const plural = names.length > 1;
+    return [
+      `The following npm package${plural ? "s" : ""} may be included in this product:`,
+      "", ...names.map((name) => ` - ${name}`), "",
+      plural ? "These packages each contain the following license:"
+        : "This package contains the following license:",
+      "", content,
+    ].join("\n");
+  }).join("\n\n-----------\n\n");
+}
+
+function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const packageRoot = path.resolve(repositoryRoot, options.packageRoot);
+  const output = path.resolve(repositoryRoot, options.output);
+  const packageLock = path.join(packageRoot, "package-lock.json");
+  const manifest = readJson(path.join(packageRoot, "package.json"));
+  const replacements = Object.fromEntries(Object.entries({
     "@mermanjs/web": "platforms/web/LICENSE",
     cytoscape: "THIRD_PARTY_LICENSES/cytoscape/LICENSE",
     dompurify: "THIRD_PARTY_LICENSES/dompurify/LICENSE",
-  })) {
-    const license = path.join(repositoryRoot, relativeLicense);
-    if (!fs.statSync(license, { throwIfNoEntry: false })?.isFile()) {
-      fail(`missing canonical ${packageName} license: ${relativeLicense}`);
-    }
-    replacements[packageName] = path.relative(temporaryRoot, license);
-  }
-  // Native canvas artifacts are host tooling, not part of the browser payload.
-  if (packageManifest.name === "merman-playground") {
-    exclusions.push("/^@napi-rs\\/canvas-(?:android|darwin|linux|win32)-/");
-  }
-  fs.writeFileSync(
-    generatorConfigPath,
-    `${JSON.stringify({ replace: replacements, exclude: exclusions }, null, 2)}\n`,
-    "utf8",
-  );
-
-  const result = spawnNpmSync(
-    [
-      "exec",
-      "--",
-      "generate-license-file",
-      "--config",
-      generatorConfigPath,
-      "--input",
-      "package.json",
-      "--output",
-      generatedPath,
-      "--overwrite",
-      "--eol",
-      "lf",
-      "--ci",
-      "--no-spinner",
-    ],
-    { cwd: packageRoot, encoding: "utf8" },
-  );
-  if (result.error || result.status !== 0) {
-    fail(
-      `generate-license-file failed for ${options.packageRoot}: ${result.error?.message ?? result.stderr ?? result.stdout}`,
-    );
-  }
-
-  const lockDigest = crypto
-    .createHash("sha256")
-    .update(fs.readFileSync(packageLock))
-    .digest("hex");
+  }).map(([name, file]) => [name, path.join(repositoryRoot, file)]));
+  const groups = collectProductionLicenses(packageRoot, replacements);
+  const lockDigest = crypto.createHash("sha256").update(fs.readFileSync(packageLock)).digest("hex");
   const generated = [
     "Merman npm production dependency licenses",
-    `Package: ${packageManifest.name}`,
-    `Generator: generate-license-file ${GENERATOR_VERSION}`,
+    `Package: ${manifest.name}`,
+    "Generator: npm ls --omit=dev --parseable --all / Merman license report",
     `package-lock.json SHA-256: ${lockDigest}`,
-    "",
-    fs.readFileSync(generatedPath, "utf8").replaceAll("\r\n", "\n").trimEnd(),
-    "",
+    "", formatLicenseGroups(groups), "",
   ].join("\n");
-
   if (options.write) {
     fs.mkdirSync(path.dirname(output), { recursive: true });
     atomicWrite(output, generated);
   }
-  if (!fs.statSync(output, { throwIfNoEntry: false })?.isFile()) {
-    fail(`missing npm license report: ${path.relative(repositoryRoot, output)}`);
+  if (!fs.statSync(output, { throwIfNoEntry: false })?.isFile() || fs.readFileSync(output, "utf8") !== generated) {
+    throw new Error(`stale or missing npm license report: ${path.relative(repositoryRoot, output)}; run with --write`);
   }
-  if (fs.readFileSync(output, "utf8") !== generated) {
-    fail(
-      `stale npm license report: ${path.relative(repositoryRoot, output)}; run with --write`,
-    );
-  }
-  console.log(
-    `npm dependency license report: ok (${options.packageRoot}, ${Buffer.byteLength(generated)} bytes)`,
-  );
-} finally {
-  fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  console.log(`npm dependency license report: ok (${options.packageRoot}, ${Buffer.byteLength(generated)} bytes)`);
 }
 
 function parseArgs(args) {
@@ -117,10 +114,10 @@ function parseArgs(args) {
     else if (argument === "--output") parsed.output = args[++index];
     else if (argument === "--check") parsed.check = true;
     else if (argument === "--write") parsed.write = true;
-    else fail(`unknown argument: ${argument}`);
+    else throw new Error(`unknown argument: ${argument}`);
   }
   if (!parsed.packageRoot || !parsed.output || parsed.check === parsed.write) {
-    fail("usage: generate-npm-license-report.mjs --package-root <dir> --output <file> (--check|--write)");
+    throw new Error("usage: generate-npm-license-report.mjs --package-root <dir> --output <file> (--check|--write)");
   }
   return parsed;
 }
@@ -131,7 +128,9 @@ function atomicWrite(outputPath, contents) {
   fs.renameSync(temporary, outputPath);
 }
 
-function fail(message) {
-  console.error(message);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try { main(); } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }
