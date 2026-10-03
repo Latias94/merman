@@ -637,14 +637,13 @@
     "@types/node": "26.0.1",
     "@types/vscode": "1.120.0",
     "@vscode/test-electron": "3.1.0",
-    "@vscode/vsce": "3.9.2",
+    "@vscode/vsce": "4.0.0",
     "esbuild": "0.28.1",
     "generate-license-file": "4.2.1",
     "typescript": "6.0.3"
   },
   "allowScripts": {
-    "@vscode/vsce-sign@2.0.9": true,
-    "esbuild@0.28.1": true,
-    "keytar@7.9.0": true
+    "@vscode/vsce-sign@2.1.0": true,
+    "esbuild@0.28.1": true
   }
 }
