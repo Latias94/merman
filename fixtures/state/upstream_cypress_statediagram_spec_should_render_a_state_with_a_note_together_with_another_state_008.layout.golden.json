@@ -22,9 +22,9 @@
         {
           "id": "State1----parent",
           "x": 132.96,
-          "y": 248.96,
+          "y": 223.5,
           "width": 198.0,
-          "height": 257.92,
+          "height": 207.0,
           "is_cluster": true
         },
         {
@@ -46,9 +46,9 @@
         {
           "id": "State2----parent",
           "x": 480.24,
-          "y": 305.04,
+          "y": 303.66,
           "width": 198.0,
-          "height": 125.76,
+          "height": 123.0,
           "is_cluster": true
         }
       ],
@@ -178,9 +178,9 @@
         {
           "id": "State1----parent",
           "x": 132.96,
-          "y": 248.96,
+          "y": 223.5,
           "width": 198.0,
-          "height": 257.92,
+          "height": 207.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write +,-\nnotes.",
@@ -199,9 +199,9 @@
         {
           "id": "State2----parent",
           "x": 480.24,
-          "y": 305.04,
+          "y": 303.66,
           "width": 198.0,
-          "height": 125.76,
+          "height": 123.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is the note +,-<br/>",

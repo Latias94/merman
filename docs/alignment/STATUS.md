@@ -10,9 +10,10 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Upstream baseline | Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b` |
-| Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Dashboard review | Mermaid 12 additions and current authority links are reflected below; exact gate state belongs to the revision that ran it |
+| Current transition | Unreleased Merman `0.8.0` targets Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`; validation and package publication remain in progress |
+| Prior baseline evidence | Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b` |
+| Reference graph | The selected bundle binds source, package, lock and provenance identities; 12.1 transition verification remains in progress |
+| Dashboard review | The Mermaid 12.1 transition is recorded without promoting prior corpus results to the new selection; exact gate state belongs to the revision that ran it |
 | Admission | 37 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |

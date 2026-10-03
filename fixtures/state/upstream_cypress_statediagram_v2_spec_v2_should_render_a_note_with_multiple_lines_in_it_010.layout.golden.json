@@ -21,9 +21,9 @@
         },
         {
           "id": "State1----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 297.0,
-          "width": 216.0,
+          "width": 198.0,
           "height": 354.0,
           "is_cluster": true
         }
@@ -62,15 +62,15 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 297.0,
-          "width": 216.0,
+          "width": 198.0,
           "height": 354.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line...",
           "title_label": {
-            "x": 120.0,
+            "x": 111.0,
             "y": 172.5,
             "width": 162.26,
             "height": 105.0
@@ -85,7 +85,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 228.0,
+        "max_x": 210.0,
         "max_y": 474.0
       }
     }

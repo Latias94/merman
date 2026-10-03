@@ -4,6 +4,15 @@
     "description": "基于 Rust + WebAssembly 的在线 Mermaid 图表编辑器",
     "playground": "演练场"
   },
+  "build": {
+    "main": "主干构建",
+    "preview": "预览构建",
+    "tag": "标签构建",
+    "local": "本地构建",
+    "modified": "有未提交修改",
+    "description": "Playground 从此源码构建。包版本号可能与已发布版本相同，但包含不同的改动。",
+    "viewCommit": "查看部署对应的源码提交"
+  },
   "toolbar": {
     "examples": "示例",
     "theme": "主题",

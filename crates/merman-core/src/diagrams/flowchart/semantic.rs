@@ -16,6 +16,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) node_index: &'a mut HashMap<String, usize>,
     pub(super) edges: &'a mut Vec<Edge>,
     pub(super) subgraphs: &'a mut Vec<FlowSubGraph>,
+    pub(super) subgraph_declaration_owners: &'a [usize],
     pub(super) subgraph_vertex_styles: &'a mut FlowchartRenderStyleSources,
     pub(super) collapsed_subgraphs: &'a mut rustc_hash::FxHashSet<String>,
     pub(super) vertex_calls: &'a mut Vec<String>,
@@ -64,13 +65,19 @@ impl<'a> FlowchartSemanticContext<'a> {
             visited = visited.saturating_add(1);
 
             let ReplayItem::Statement(stmt) = item else {
-                let Some(subgraph) = self.subgraphs.get(next_built_subgraph_index) else {
+                let owner = self
+                    .subgraph_declaration_owners
+                    .get(next_built_subgraph_index)
+                    .copied();
+                let Some((owner, subgraph)) = owner
+                    .and_then(|owner| self.subgraphs.get(owner).map(|subgraph| (owner, subgraph)))
+                else {
                     return Ok(Err(Error::diagram_parse_fallback(
                         self.diagram_type.to_string(),
                         "flowchart subgraph replay diverged from the built model",
                     )));
                 };
-                active_subgraphs.insert(subgraph.id.clone(), next_built_subgraph_index);
+                active_subgraphs.insert(subgraph.id.clone(), owner);
                 next_built_subgraph_index = next_built_subgraph_index.saturating_add(1);
                 continue;
             };
@@ -334,7 +341,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         }
 
         if next_built_edge_index != self.edges.len()
-            || next_built_subgraph_index != self.subgraphs.len()
+            || next_built_subgraph_index != self.subgraph_declaration_owners.len()
         {
             return Ok(Err(Error::diagram_parse_fallback(
                 self.diagram_type.to_string(),
@@ -346,9 +353,8 @@ impl<'a> FlowchartSemanticContext<'a> {
                 self.control.checkpoint()?;
             }
             if let Some(&declaration_ordinal) = active_subgraphs.get(&id) {
-                // FlowDB emits duplicate subgraphs in reverse declaration order, then applies
-                // the single vertex record to the first matching node. Preserve that exact
-                // declaration owner instead of broadcasting vertex CSS to every duplicate id.
+                // Every completed declaration with this id resolves to the same canonical
+                // FlowDB group, including CSS authored between repeated declarations.
                 self.subgraph_vertex_styles
                     .insert(id, declaration_ordinal, style);
             }
@@ -699,6 +705,7 @@ mod tests {
             node_index: &mut node_index,
             edges: &mut edges,
             subgraphs: &mut subgraphs,
+            subgraph_declaration_owners: &[],
             subgraph_vertex_styles: &mut subgraph_vertex_styles,
             collapsed_subgraphs: &mut rustc_hash::FxHashSet::default(),
             vertex_calls: &mut vertex_calls,

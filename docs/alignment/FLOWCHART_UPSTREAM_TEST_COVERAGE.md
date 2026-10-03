@@ -217,6 +217,30 @@ Dedicated Flowchart ELK lane:
 - `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd` is
   sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.
 
+### Captured browser measurement replay
+
+`fixtures/_verification/flowchart-elk-browser-measurements.json` binds 45 fixtures, 395 nodes,
+and 373 provider routes to the Mermaid 12.1 inputs and upstream SVGs. The recorded browser
+identifies the original measurement capture; this migration preserves those measured values.
+`flowchart_elk_routes_with_captured_browser_dimensions` replays the provider with these dimensions,
+and `flowchart_browser_measured_terminals_preserve_upstream_geometry` checks the endpoint painter.
+The xtask provenance test independently binds the matrix to the current source artifacts.
+
+All 45 input files and 44 upstream SVGs are byte-identical to the previous signed baseline. The
+remaining SVG, `stress_flowchart_edge_labels_far_from_arrows_066`, changes only three outer
+`edgeLabel` translations. Mermaid 12.1 `resolveEdgeLabelPosition` preserves the layout label
+anchor plus the updated-minus-original path midpoint delta; it does not change the captured node
+or label dimensions or provider routes. Every node subtree, edge path, and label subtree below
+those three outer transforms remains unchanged. The migration therefore updates provenance and
+that one SVG digest while preserving every captured measurement and route.
+
+Current SVG attributes independently reproduce 366 HTML node label boxes, 92 HTML edge label
+boxes, and 149 rectangular node sizes exactly. Native SVG text and nonrectangular shape bounds
+remain browser measurements; they are supported here by unchanged source and shape artifacts.
+Two existing native-text rectangle heights serialize as `39.999999046325684` while their captured
+pre-layout size is `40`; both representations are unchanged. This distinction is preserved rather
+than replacing the provider's measured input with a post-render serialization value.
+
 ## Cypress platform HTML fixtures
 
 Source: `repo-ref/mermaid/cypress/platform/*.html`

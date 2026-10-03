@@ -1,7 +1,7 @@
 //! Shared Mermaid ELK configuration projection for graph families.
 //!
 //! Layer assignment keys follow Mermaid 12's `createRootElkGraph`:
-//! https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts
+//! https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts
 
 use crate::config::{config_bool, config_string, value_at};
 use merman_layout_elk as elk;
@@ -40,6 +40,11 @@ fn explicit_option<'a>(
     path: &[&str],
 ) -> Option<&'a serde_json::Value> {
     value_at(config, path).filter(|value| !value.is_null())
+}
+
+/// Mermaid 12.1 reverses compound feedback edges unless explicitly disabled.
+pub(crate) fn orient_feedback_edges(effective_config: &serde_json::Value) -> bool {
+    config_bool(effective_config, &["elk", "orientFeedbackEdges"]) != Some(false)
 }
 
 pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::LayoutOptions {

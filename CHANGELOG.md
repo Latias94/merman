@@ -6,8 +6,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+Development target: `0.8.0`, not yet released. Mermaid 12.1 alignment and validation are in progress;
+see the [alpha.7 to 0.8.0 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
 ### Changed
 
+- Prepared the unreleased `0.8.0` compatibility update for Mermaid 12.1; the [upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) records the selected components and migration details.
+- Expanded the low-level ELK edge-label contract to retain terminal identity and multiple labels; direct consumers should follow the upgrade guide before updating struct initializers.
 - Raised the general `interactive` layout-work allowance from 800,000 to 14,100,000 units for ordinary diagrams under Mermaid 12's ELK default. CLI and rustdoc use finite `trusted-native` defaults with 15,000,000 units. Per-profile source/model/output values are unchanged; work units are not a deadline or memory guarantee. Preview hosts should cancel obsolete operations and bound their own concurrency. The CLI interactive scheduling pool is now 1 GiB so its default graphical requests remain admissible. #158
 
 ### Fixed
@@ -16,7 +21,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added rustdoc `resource_profile` and positive `max_layout_work_units` options, with per-diagram/per-theme budgets, inheritance, and actionable limit errors. PNG/JPEG/PDF scheduling reserves the larger layout or encoding phase instead of adding non-overlapping workspaces. See the [host integration guide](docs/integration/RESOURCE_POLICY.md) for editor, document, and constrained-service recipes. #158
 - Updated the Playground and reference renderer to DOMPurify 3.4.16 for GHSA-p98j-92pf-mc4p. Reference tools now build and verify the selected dependency graph instead of executing older dependencies embedded in Mermaid's published bundle; sanitizer-default generation rejects unsupported input instead of silently producing empty allowlists.
 - Corrected C4 relationship endpoints for people, components, databases, queues, and nested boundaries, including self-relations and near-overlapping centers.
-- Kept Class relationships and arrowheads visible above ELK namespace backgrounds, and aligned relationship marker strokes with Mermaid 12.
+- Aligned ELK feedback and cyclic routing, nested container frames, fork/join direction, group-title wrapping, terminal labels, and container paint order with Mermaid 12.
+- Respected `htmlLabels: false` for Class, ER, and Requirement labels; kept Class lollipop interfaces outside namespaces; and left-aligned Requirement body text under ELK.
+- Enabled `elk.lineHops` for Class, ER, Requirement, and Usecase, preserving node and label placement while correcting post-crossing masks for solid, dashed, and gap styles.
+- Mirrored Packet fields and bit labels for descending bit order, and centered XYChart titles over the plot area while hiding them when the remaining height is insufficient.
+- Merged repeated Flowchart subgraph IDs without self-membership while retaining declaration locations and metadata. Sequence actor configuration now accepts inline spacing and hyphen/equal-sign IDs, and keyword-like actor IDs retain their spelling in declarations and messages.
+- Rejected duplicate Eventmodeling frame IDs before rendering, retained their original diagnostic locations through comments, and preserved explicit reset-frame source relations. Incomplete Usecase declarations and edges retain exact EOF diagnostic locations.
+- Preserved generated sibling keys when partially overriding object-valued theme variables across all 11 themes, including XYChart, Radar, and Cynefin.
+- Included actual suppressed parse-error messages in error diagrams with bounded Unicode wrapping, and aligned frontmatter detection/extraction on one linear scanner.
 - Restored Usecase Neo shadows, note borders, and gradient resources, and preserved explicit ER table styling across Redux themes.
 - Kept RoughJS shape geometry independent of CSS color spelling and prevented malformed Unicode color values from causing a panic.
 - Made the Playground editor follow panel resizing and preserved Example Gallery filters, active-category visibility, and reading position when reopening or changing viewport width.

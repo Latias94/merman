@@ -18,6 +18,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edges: &'a [LayoutEdge],
     pub(super) missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
+    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub(super) relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub(super) diagram_marker_class: &'a str,
@@ -65,6 +67,8 @@ pub(super) fn render_class_split_edge_groups(
         &ClassEdgeGroupsRenderContext {
             edges: ctx.edges,
             missing_section_points: ctx.missing_section_points,
+            work_meter: ctx.work_meter,
+            line_hop_paths: ctx.line_hop_paths,
             relations_by_id: ctx.relations_by_id,
             relation_index_by_id: ctx.relation_index_by_id,
             diagram_marker_class: ctx.diagram_marker_class,

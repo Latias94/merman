@@ -78,6 +78,34 @@ Run the affected catalog and semantic-label tests and focused fixture comparison
 refresh. The Linux CI owner performs the complete DOM, semantic-label, and root-paint gates.
 Do not batch-replace hashes merely to bypass stale-receipt failures.
 
+### Mermaid 12.1 reference transition
+
+The browser catalog migrated from 159 to 139 entries: 21 receipts were removed because their
+comparisons now match, and one Sequence receipt was added after review. Admitted modes, input
+bindings, and the three-decimal policy remain unchanged for retained entries. Of the current 139
+upstream artifacts, 126 retain the digest recorded at the trusted 12.0 base
+`d23ae6c469293aeb1029ddc6862367140bc760df`; the other 13 comprise changed or newly admitted bindings.
+The review of the original 159-entry catalog identified 33 changed upstream artifacts:
+
+- All 28 changed Sequence artifacts, one Timeline artifact, and the Class numeric-font-size
+  artifact are reproduced byte-for-byte by the 12.0 runtime in the same Chromium headless-shell
+  151.0.7922.77 environment as the selected 12.1 runtime. These differences belong to the earlier
+  collection environment, not a newly introduced diagram semantic. Replays use the maintained
+  seeded renderer, seed 1, fixed clock 1704067200000, and 800px viewport/container.
+- The Flowchart distant-edge-label fixture and the State multiple-transition fixture change only
+  label translations, following 12.1 `resolveEdgeLabelPosition`: retain the layout anchor and add
+  the updated-minus-original path midpoint delta.
+- The Sequence `stress_br_in_messages_notes_011` fixture is re-admitted with an exact local SVG signature because Mermaid 12.1 changes the upstream wrapped message to one line while the native renderer retains two lines; this is a browser text-measurement residual, and Strict remains blocking.
+- The State three-way-concurrency fixture also changes compound routing under the new
+  `elk.orientFeedbackEdges` behavior. The native source port restores semantic edge direction
+  after provider layout; the controlled-measurement State regression checks every routed edge's
+  path commands and control-point count against the new baseline.
+
+Source rebinding does not approve local signature drift. Current native comparisons must still
+validate every local signature, and any changed local output requires separate behavior review.
+The 45-fixture Flowchart browser measurement matrix has only one changed upstream artifact: the
+three label translations above. Its measured node and route geometry remains unchanged.
+
 ## Root reports
 
 `compare-all-svgs` forwards `--report-root` to diagram families that support the root-delta report.

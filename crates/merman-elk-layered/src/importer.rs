@@ -59,7 +59,7 @@ pub struct ElkInputEdge {
     pub id: String,
     pub source: String,
     pub target: String,
-    pub label: Option<ElkInputLabel>,
+    pub labels: Vec<ElkInputLabel>,
     pub minlen: usize,
     pub inside_self_loops_yo: bool,
     /// Explicit input-model position within the edge's owning hierarchy scope.
@@ -94,6 +94,8 @@ pub struct ElkInputEdgeSegment {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElkInputLabel {
+    /// Caller-owned stable label index, preserved in exported labels.
+    pub source_index: Option<usize>,
     pub text: String,
     pub width: f64,
     pub height: f64,
@@ -104,6 +106,7 @@ pub struct ElkInputLabel {
 impl ElkInputLabel {
     pub fn center(text: impl Into<String>, width: f64, height: f64) -> Self {
         Self {
+            source_index: None,
             text: text.into(),
             width,
             height,
@@ -309,7 +312,7 @@ fn import_graph_with_random_seed_authority_and_probe(
     work_control.charge(planning_work)?;
     let index = InputIndex::new(input)?;
     let scoped_work = plan_scoped_edge_segments(&index, segments)?;
-    let materialization = ImportMaterializationWorkPlan::new(input, &index, scoped_work)?;
+    let materialization = ImportMaterializationWorkPlan::new(input, segments, &index, scoped_work)?;
     let materialization_work = materialization.total()?;
     work_control.check(materialization_work)?;
     work_control.charge(materialization_work)?;
@@ -386,6 +389,8 @@ impl ImportPlanningWorkPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ImportMaterializationWorkPlan {
+    // Caller-owned edge labels cloned into imported graph objects.
+    edge_labels: usize,
     // Paths retained in hierarchy-edge output and paths consumed while producing scoped pieces.
     hierarchy_path_steps: usize,
     // Concrete hierarchy-local edge pieces allocated by compound materialization.
@@ -397,14 +402,24 @@ struct ImportMaterializationWorkPlan {
 impl ImportMaterializationWorkPlan {
     fn new(
         input: &ElkInputGraph,
+        segments: &[ElkInputEdgeSegment],
         index: &InputIndex<'_>,
         scoped_work: ScopedSegmentWorkPlan,
     ) -> ImportResult<Self> {
+        // Count descriptors only after the initial work check has admitted their traversal.
+        let edge_labels = input
+            .edges
+            .iter()
+            .chain(segments.iter().map(|segment| &segment.edge))
+            .try_fold(0usize, |count, edge| {
+                checked_sum([count, edge.labels.len()])
+            })?;
         let hierarchy_path_steps = checked_sum([
             hierarchical_import_output_path_steps(input, index)?,
             scoped_work.materialization_path_steps,
         ])?;
         Ok(Self {
+            edge_labels,
             hierarchy_path_steps,
             materialized_segments: scoped_work.materialized_segments,
             label_selection_steps: scoped_work.label_selection_steps,
@@ -413,6 +428,7 @@ impl ImportMaterializationWorkPlan {
 
     fn total(self) -> Result<usize, WorkError> {
         checked_sum([
+            self.edge_labels,
             self.hierarchy_path_steps,
             self.materialized_segments,
             self.label_selection_steps,
@@ -516,9 +532,10 @@ fn plan_scoped_edge_segments(
         materialization_path_steps =
             checked_sum([materialization_path_steps, materialization_steps])?;
         materialized_segments = checked_sum([materialized_segments, segment_count])?;
-        if scoped.edge.label.is_some() {
-            label_selection_steps = checked_sum([label_selection_steps, segment_count])?;
-        }
+        label_selection_steps = checked_sum([
+            label_selection_steps,
+            checked_mul(segment_count, scoped.edge.labels.len())?,
+        ])?;
     }
 
     Ok(ScopedSegmentWorkPlan {
@@ -609,23 +626,25 @@ fn materialize_scoped_edge_segments(
             pending.segment = rebase_scoped_segment(pending.segment, scoped.segment);
         }
 
-        let label_segment = scoped
+        let label_segments: Vec<_> = scoped
             .edge
-            .label
-            .as_ref()
-            .map(|label| compound_label_segment_index(&local, label.placement));
+            .labels
+            .iter()
+            .map(|label| compound_label_segment_index(&local, label.placement))
+            .collect();
         for (segment_index, pending) in local.into_iter().enumerate() {
             let labels = scoped
                 .edge
-                .label
-                .as_ref()
-                .filter(|_| label_segment == Some(segment_index))
-                .map(|label| {
+                .labels
+                .iter()
+                .zip(&label_segments)
+                .filter(|(_, owner)| **owner == segment_index)
+                .map(|(label, _)| {
                     let mut label = label_to_lgraph(label);
                     label.original_label_edge = Some(scoped.edge.id.clone());
-                    vec![label]
+                    label
                 })
-                .unwrap_or_default();
+                .collect();
             pending_segments.push(ScopedHierarchySegment {
                 edge: HierarchyEdge {
                     id: scoped.edge.id.clone(),
@@ -1234,7 +1253,7 @@ fn transform_inside_self_loop(
     )?;
 
     let mut labels = Vec::new();
-    if let Some(label) = edge.label.as_ref() {
+    for label in &edge.labels {
         match label.placement {
             EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
             EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
@@ -1554,62 +1573,29 @@ fn transform_edge(
     model_order: Option<usize>,
     port_index: &mut ImportPortIndex<'_>,
 ) -> ImportResult<usize> {
-    transform_edge_between(
-        edge,
-        graph,
-        graph_parent,
-        model_order,
-        edge.source.as_str(),
-        edge.target.as_str(),
-        index.child_position(edge.source.as_str()),
-        index.child_position(edge.target.as_str()),
-        edge.source.as_str(),
-        edge.target.as_str(),
-        None,
-        edge.label.as_ref(),
-        port_index,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn transform_edge_between(
-    edge: &ElkInputEdge,
-    graph: &mut LGraph,
-    graph_parent: Option<&str>,
-    model_order: Option<usize>,
-    local_source: &str,
-    local_target: &str,
-    local_source_index: usize,
-    local_target_index: usize,
-    source_node_id: &str,
-    target_node_id: &str,
-    compound_segment: Option<CompoundEdgeSegment>,
-    label: Option<&ElkInputLabel>,
-    port_index: &mut ImportPortIndex<'_>,
-) -> ImportResult<usize> {
     let source = ensure_port_at_node(
         graph,
         graph_parent,
-        local_source_index,
-        local_source,
+        index.child_position(edge.source.as_str()),
+        edge.source.as_str(),
         PortType::Output,
         port_index,
     )?
     .ok_or_else(|| ImportError::MissingEndpoint {
         edge_id: edge.id.clone(),
-        node_id: local_source.to_string(),
+        node_id: edge.source.clone(),
     })?;
     let target = ensure_port_at_node(
         graph,
         graph_parent,
-        local_target_index,
-        local_target,
+        index.child_position(edge.target.as_str()),
+        edge.target.as_str(),
         PortType::Input,
         port_index,
     )?
     .ok_or_else(|| ImportError::MissingEndpoint {
         edge_id: edge.id.clone(),
-        node_id: local_target.to_string(),
+        node_id: edge.target.clone(),
     })?;
 
     if source.node == target.node {
@@ -1617,7 +1603,7 @@ fn transform_edge_between(
     }
 
     let mut labels = Vec::new();
-    if let Some(label) = label {
+    for label in &edge.labels {
         match label.placement {
             EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
             EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
@@ -1632,8 +1618,8 @@ fn transform_edge_between(
             id: edge.id.clone(),
             source,
             target,
-            source_node_id: source_node_id.to_string(),
-            target_node_id: target_node_id.to_string(),
+            source_node_id: edge.source.clone(),
+            target_node_id: edge.target.clone(),
             labels,
             minlen: edge.minlen.max(1),
             reversed: false,
@@ -1644,7 +1630,7 @@ fn transform_edge_between(
             priority_straightness: edge.priority_straightness,
             thickness: ELK_DEFAULT_EDGE_THICKNESS,
             original_opposite_port: None,
-            compound_segment,
+            compound_segment: None,
         })
         .expect("ports were created before adding edge");
 
@@ -1741,7 +1727,7 @@ fn transform_cross_hierarchy_edge(
         target_port_key,
         source_path,
         target_path,
-        labels: edge.label.iter().map(label_to_lgraph).collect(),
+        labels: edge.labels.iter().map(label_to_lgraph).collect(),
         minlen: edge.minlen.max(1),
         model_order,
         priority_direction: edge.priority_direction,
@@ -1862,6 +1848,7 @@ fn port_side_from_direction(direction: ElkDirection) -> PortSide {
 
 fn label_to_lgraph(label: &ElkInputLabel) -> LLabel {
     let mut llabel = LLabel::new(label.text.clone(), label.width, label.height);
+    llabel.source_index = label.source_index;
     llabel.placement = label.placement;
     llabel.inline = label.inline;
     llabel.label_side = None;
@@ -2546,7 +2533,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -3165,6 +3152,50 @@ mod tests {
     }
 
     #[test]
+    fn edge_label_materialization_is_charged_after_the_initial_cancellation_check() {
+        let mut labeled_edge = edge("ab", "A", "B");
+        labeled_edge.labels = (0..128)
+            .map(|_| ElkInputLabel::center("terminal", 18.0, 16.5))
+            .collect();
+        let input = graph(vec![node("A"), node("B")], vec![labeled_edge]);
+        let planning = ImportPlanningWorkPlan::new(&input, &[])
+            .unwrap()
+            .total()
+            .unwrap();
+        assert!(planning > 0);
+        for remaining in [0, planning] {
+            let mut control = RecordingWorkControl {
+                remaining,
+                checked: 0,
+                charged: 0,
+                check_calls: 0,
+                first_check: None,
+            };
+            let error = import_graph_at_scope_and_segments_with_work_control(
+                &input,
+                &["root"],
+                &[],
+                &mut control,
+            )
+            .unwrap_err();
+            assert_eq!(error, ImportError::Work(WorkError::Interrupted));
+            assert_eq!(control.first_check, Some(planning));
+            assert_eq!(control.charged, remaining);
+            assert_eq!(control.check_calls, if remaining == 0 { 1 } else { 2 });
+        }
+        let mut unlimited = RecordingWorkControl::unlimited();
+        let imported = import_graph_at_scope_and_segments_with_work_control(
+            &input,
+            &["root"],
+            &[],
+            &mut unlimited,
+        )
+        .unwrap();
+        assert_eq!(unlimited.charged, planning + 128);
+        assert_eq!(imported.edges[0].labels.len(), 128);
+    }
+
+    #[test]
     fn scoped_segment_work_charges_planning_before_output_materialization() {
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
@@ -3273,7 +3304,7 @@ mod tests {
         let mut a = node("A");
         a.label = Some(ElkInputLabel::center("Alpha", 42.0, 18.0));
         let mut ab = edge("A-B", "A", "B");
-        ab.label = Some(ElkInputLabel::center("go", 20.0, 12.0));
+        ab.labels = vec![ElkInputLabel::center("go", 20.0, 12.0)];
 
         let lgraph = import_graph(&graph(vec![a, node("B")], vec![ab])).unwrap();
 
@@ -3823,11 +3854,11 @@ mod tests {
         let mut first = edge("A-B", "A", "B");
         let mut first_label = ElkInputLabel::center("first", 12.0, 6.0);
         first_label.placement = EdgeLabelPlacement::Tail;
-        first.label = Some(first_label);
+        first.labels = vec![first_label];
         let mut second = edge("A-C", "A", "C");
         let mut second_label = ElkInputLabel::center("second", 18.0, 6.0);
         second_label.placement = EdgeLabelPlacement::Tail;
-        second.label = Some(second_label);
+        second.labels = vec![second_label];
         let mut input = graph(
             vec![cluster, child, node("B"), node("C")],
             vec![first, second],
@@ -4159,7 +4190,7 @@ mod tests {
         input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
         let mut segment_edge = edge("child-outer", "child", "outer");
         segment_edge.model_order = Some(7);
-        segment_edge.label = Some(ElkInputLabel::center("identity", 40.0, 12.0));
+        segment_edge.labels = vec![ElkInputLabel::center("identity", 40.0, 12.0)];
         let segment = ElkInputEdgeSegment {
             edge: segment_edge,
             source: ElkInputEdgeSegmentEndpoint::Node {

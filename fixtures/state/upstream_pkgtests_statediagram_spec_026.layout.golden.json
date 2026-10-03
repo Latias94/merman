@@ -21,9 +21,9 @@
         },
         {
           "id": "State1----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 244.5,
-          "width": 216.0,
+          "width": 198.0,
           "height": 291.0,
           "is_cluster": true
         }
@@ -62,15 +62,15 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 244.5,
-          "width": 216.0,
+          "width": 198.0,
           "height": 291.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
           "title_label": {
-            "x": 120.0,
+            "x": 111.0,
             "y": 151.5,
             "width": 32.2,
             "height": 105.0
@@ -85,7 +85,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 228.0,
+        "max_x": 210.0,
         "max_y": 390.0
       }
     }

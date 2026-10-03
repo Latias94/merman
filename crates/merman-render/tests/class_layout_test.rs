@@ -663,3 +663,167 @@ LongClassName <|-- B
     assert!(node_b.width.is_finite() && node_b.width > 0.0);
     assert!(long.width > node_a.width && long.width > node_b.width);
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_lollipop_interfaces_remain_outside_nested_namespace_frames() {
+    for relation in ["A --() ProvidedInterface", "ProvidedInterface ()-- A"] {
+        let source = format!(
+            "---\nconfig:\n  layout: elk\n---\nclassDiagram\nnamespace Outer {{\nnamespace Inner {{\nclass A\n}}\n}}\n{relation}\n"
+        );
+        let (layout, _) = layout_class_text(&source);
+        let class = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let interface = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "interface0")
+            .unwrap();
+        for cluster in &layout.clusters {
+            let frame = rect_from_cluster(cluster);
+            assert!(point_inside(frame, class.x, class.y, 0.01));
+            assert!(!point_inside(frame, interface.x, interface.y, 0.01));
+        }
+        assert_eq!(layout.edges.len(), 1);
+        assert!(layout.edges[0].points.len() >= 2);
+    }
+}
+
+#[test]
+fn class_cardinality_metrics_are_independent_of_class_member_font_size() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            let measured = [14, 30].map(|font_size| {
+                let source = format!("---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA \"one\" --> \"manyLongCardinalityWords\" B\n");
+                let (layout, _) = layout_class_text(&source);
+                let edge = &layout.edges[0];
+                let labels = [edge.start_label_right.as_ref().unwrap(), edge.end_label_left.as_ref().unwrap()];
+                for label in labels {
+                    let bounds = layout.bounds.as_ref().unwrap();
+                    assert!(label.x - label.width / 2.0 >= bounds.min_x - 1e-6);
+                    assert!(label.x + label.width / 2.0 <= bounds.max_x + 1e-6);
+                    assert!(label.y - label.height / 2.0 >= bounds.min_y - 1e-6);
+                    assert!(label.y + label.height / 2.0 <= bounds.max_y + 1e-6);
+                }
+                labels.map(|label| (label.width, label.height))
+            });
+            assert_eq!(
+                measured[0], measured[1],
+                "terminal CSS is fixed at 11px: {layout}/{html}"
+            );
+            assert!(measured[0][1].0 > measured[0][0].0);
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_cardinalities_clear_namespace_frames_and_endpoint_boxes() {
+    // The crossNamespacesDiagram terminalLabels.spec.ts case, also nested one level deeper.
+    for nested in [false, true] {
+        let groups = "namespace Shop {\nclass Order\n}\nnamespace Catalog {\nclass Product\n}\n";
+        let body = if nested {
+            format!("namespace Root {{\n{groups}}}\n")
+        } else {
+            groups.into()
+        };
+        let source = format!(
+            "---\nconfig:\n  layout: elk\n  htmlLabels: true\n---\nclassDiagram\ndirection LR\n{body}Order \"*\" --> \"1..*\" Product\n"
+        );
+        let (layout, _) = layout_class_text(&source);
+        let edge = &layout.edges[0];
+        for label in [
+            edge.start_label_right.as_ref().unwrap(),
+            edge.end_label_left.as_ref().unwrap(),
+        ] {
+            let label_box = (
+                label.x - label.width / 2.0,
+                label.y - label.height / 2.0,
+                label.x + label.width / 2.0,
+                label.y + label.height / 2.0,
+            );
+            let padded = (
+                label_box.0 - 2.0,
+                label_box.1 - 2.0,
+                label_box.2 + 2.0,
+                label_box.3 + 2.0,
+            );
+            for node in &layout.nodes {
+                let rect = rect_from_node(node);
+                let overlaps = |b: (f64, f64, f64, f64)| {
+                    b.0 < rect.2 && rect.0 < b.2 && b.1 < rect.3 && rect.1 < b.3
+                };
+                if node.is_cluster {
+                    assert!(
+                        rect_contains(rect, padded, 1e-6) || !overlaps(padded),
+                        "{nested}: terminal {label:?} crosses frame {} {rect:?}",
+                        node.id
+                    );
+                } else {
+                    assert!(!overlaps(label_box), "terminal overlaps {}", node.id);
+                }
+            }
+        }
+        for (label, start) in [
+            (edge.start_label_right.as_ref().unwrap(), true),
+            (edge.end_label_left.as_ref().unwrap(), false),
+        ] {
+            let points = if start {
+                &edge.points[..2]
+            } else {
+                &edge.points[edge.points.len() - 2..]
+            };
+            let side = (points[1].x - points[0].x) * (label.y - points[0].y)
+                - (points[1].y - points[0].y) * (label.x - points[0].x);
+            assert_eq!(side > 0.0, start, "terminal uses its source-defined side");
+        }
+    }
+}
+
+#[test]
+fn class_dagre_terminal_fallback_uses_centered_end_coordinates() {
+    let source =
+        "---\nconfig:\n  layout: dagre\n---\nclassDiagram\ndirection LR\nA \"1\" --> \"many\" B\n";
+    let (layout, _) = layout_class_text(source);
+    let edge = &layout.edges[0];
+    let first = edge.points.first().unwrap();
+    let last = edge.points.last().unwrap();
+    assert!(
+        edge.points
+            .iter()
+            .all(|point| (point.y - first.y).abs() < 1e-6)
+    );
+    let start = edge.start_label_right.as_ref().unwrap();
+    let end = edge.end_label_left.as_ref().unwrap();
+    // utils.calcTerminalLabelPosition samples 25 + 10px along the route, takes its
+    // midpoint with the endpoint, and offsets 10 + 10/2px normal to the route.
+    assert!((start.x - first.x - 17.5).abs() < 1e-6);
+    assert!((start.y - first.y - 15.0).abs() < 1e-6);
+    assert!(
+        (end.x - last.x + 17.5).abs() < 1e-6,
+        "end no longer has the legacy -5px shift"
+    );
+    assert!(
+        (end.y - last.y + 15.0).abs() < 1e-6,
+        "end no longer has the legacy -5px shift"
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_non_layered_short_terminal_fallback_reports_the_source_error() {
+    let source = "---\nconfig:\n  layout: elk.mrtree\n---\nclassDiagram\ndirection LR\nA \"1\" --> \"many\" B\n";
+    let parsed = parse_class(source);
+    let environment = RenderEnvironment::deterministic();
+    let session = environment.begin_session().unwrap();
+    let error = family::prepare(parsed, &LayoutOptions::default(), session)
+        .err()
+        .expect("Mermaid rejects terminal samples longer than the non-layered route");
+    assert!(
+        error
+            .to_string()
+            .contains("Could not find a suitable point for the given distance")
+    );
+}

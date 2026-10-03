@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Configuring",
-          "x": 171.0,
+          "x": 159.4,
           "y": 581.5,
-          "width": 270.0,
+          "width": 232.0,
           "height": 575.0,
           "is_cluster": true
         },
@@ -45,9 +45,9 @@
         },
         {
           "id": "NotShooting",
-          "x": 171.0,
+          "x": 159.4,
           "y": 479.5,
-          "width": 318.0,
+          "width": 280.0,
           "height": 827.0,
           "is_cluster": true
         },
@@ -391,7 +391,7 @@
             }
           ],
           "label": {
-            "x": 181.57,
+            "x": 178.467,
             "y": 713.5,
             "width": 24.08,
             "height": 21.0
@@ -437,7 +437,7 @@
             }
           ],
           "label": {
-            "x": 136.65,
+            "x": 140.333,
             "y": 713.5,
             "width": 25.76,
             "height": 21.0
@@ -454,15 +454,15 @@
       "clusters": [
         {
           "id": "Configuring",
-          "x": 171.0,
+          "x": 159.4,
           "y": 581.5,
-          "width": 270.0,
+          "width": 232.0,
           "height": 575.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Configuring",
           "title_label": {
-            "x": 171.0,
+            "x": 159.4,
             "y": 304.5,
             "width": 64.4,
             "height": 21.0
@@ -496,15 +496,15 @@
         },
         {
           "id": "NotShooting",
-          "x": 171.0,
+          "x": 159.4,
           "y": 479.5,
-          "width": 318.0,
+          "width": 280.0,
           "height": 827.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "NotShooting",
           "title_label": {
-            "x": 171.0,
+            "x": 159.4,
             "y": 76.5,
             "width": 68.88,
             "height": 21.0
@@ -517,9 +517,9 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 19.4,
         "min_y": 12.0,
-        "max_x": 330.0,
+        "max_x": 299.4,
         "max_y": 893.0
       }
     }

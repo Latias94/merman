@@ -99,8 +99,8 @@ pub(crate) fn layout_eventmodeling_diagram_typed(
         frame_to_box.insert(frame.name.clone(), target_box_idx);
         boxes.push(box_state);
 
-        if frame.frame_kind != "resetframe" && !(index == 0 && frame.source_frames.is_empty()) {
-            if frame.source_frames.is_empty() {
+        if !(index == 0 && frame.source_frames.is_empty()) {
+            if frame.source_frames.is_empty() && frame.frame_kind != "resetframe" {
                 if let Some(source_idx) =
                     find_previous_cross_swimlane_box(&boxes, swimlane_props.index, index)
                 {

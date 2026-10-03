@@ -427,10 +427,10 @@ fn preprocess_single_pass_controlled(
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
-    // Only Agentflow opts into Mermaid's comment-preserving parser input. Keep the existing
+    // These families opt into Mermaid's comment-preserving parser input. Keep the existing
     // edit map with that buffer so editor byte spans and domain lexer positions remain distinct.
     let preserve_comments = match diagram_type {
-        Some(diagram_type) => diagram_type == "agentflow",
+        Some(diagram_type) => matches!(diagram_type, "agentflow" | "eventmodeling"),
         None => {
             let header = source
                 .text()
@@ -439,6 +439,7 @@ fn preprocess_single_pass_controlled(
                 .find(|line| !line.is_empty() && !line.starts_with("%%"))
                 .unwrap_or("");
             crate::detect::detector_agentflow(header, &mut MermaidConfig::empty_object())
+                || crate::detect::detector_eventmodeling(header, &mut MermaidConfig::empty_object())
         }
     };
     let mut with_comments = preserve_comments.then(|| source.clone());
@@ -1266,60 +1267,70 @@ pub fn locate_frontmatter_block_controlled<'a>(
     control: &OperationControl,
 ) -> OperationControlResult<Option<FrontmatterBlockLocation<'a>>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let Some((open_line_end, open_line_next)) =
-        find_physical_line_ending_controlled(input, 0, &mut checkpoints)?
-    else {
-        checkpoints.finish()?;
-        return Ok(None);
-    };
-    let open_line = &input[..open_line_end];
-    let indent_end = frontmatter_indent_end_controlled(open_line, &mut checkpoints)?;
-    let indent = &open_line[..indent_end];
-    let after_indent = &open_line[indent_end..];
-    if !after_indent.starts_with("---")
-        || !frontmatter_is_whitespace_controlled(&after_indent[3..], &mut checkpoints)?
-    {
+    let indent_end = frontmatter_indent_end_controlled(input, &mut checkpoints)?;
+    let indent = &input[..indent_end];
+    if !input[indent_end..].starts_with("---") {
         checkpoints.finish()?;
         return Ok(None);
     }
 
-    let body_start = open_line_next;
-    let mut line_start = body_start;
-    while line_start < input.len() {
-        let line_ending =
-            find_physical_line_ending_controlled(input, line_start, &mut checkpoints)?;
-        let (line_end, line_end_with_newline) = line_ending.unwrap_or((input.len(), input.len()));
-        let line = &input[line_start..line_end];
-        if is_frontmatter_closing_line_controlled(line, indent, &mut checkpoints)? {
-            let body_end = if line_start > body_start
-                && matches!(input.as_bytes().get(line_start - 1), Some(b'\n' | b'\r'))
-            {
-                line_start - 1
-            } else {
-                line_start
-            };
-            let stripped = &input[line_end_with_newline..];
-            let location = FrontmatterBlockLocation {
-                full: FrontmatterByteSpan {
-                    start: 0,
-                    end: line_end_with_newline,
-                },
+    // Match Mermaid's greedy opening whitespace and lazy body without regex backtracking.
+    let mut opening_ends = Vec::new();
+    for (offset, ch) in input[indent_end + 3..].char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !is_frontmatter_whitespace(ch) {
+            break;
+        }
+        if matches!(ch, '\n' | '\r') {
+            opening_ends.push(indent_end + 3 + offset);
+        }
+    }
+    let Some(&first_opening_end) = opening_ends.first() else {
+        checkpoints.finish()?;
+        return Ok(None);
+    };
+    let earliest_body_start = first_opening_end + 1;
+    let mut last_closing_fence = None;
+    for (offset, ch) in input[earliest_body_start..].char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        let position = earliest_body_start + offset;
+        if matches!(ch, '\n' | '\r')
+            && frontmatter_closing_end_controlled(input, position, indent, &mut checkpoints)?
+                .is_some()
+        {
+            last_closing_fence = Some(position);
+        }
+    }
+    let Some(last_closing_fence) = last_closing_fence else {
+        checkpoints.finish()?;
+        return Ok(None);
+    };
+    let body_start = opening_ends
+        .into_iter()
+        .rfind(|&end| end < last_closing_fence)
+        .unwrap_or(first_opening_end)
+        + 1;
+    for (offset, ch) in input[body_start..=last_closing_fence].char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !matches!(ch, '\n' | '\r') {
+            continue;
+        }
+        let body_end = body_start + offset;
+        if let Some(end) =
+            frontmatter_closing_end_controlled(input, body_end, indent, &mut checkpoints)?
+        {
+            checkpoints.finish()?;
+            return Ok(Some(FrontmatterBlockLocation {
+                full: FrontmatterByteSpan { start: 0, end },
                 body: FrontmatterByteSpan {
                     start: body_start,
                     end: body_end,
                 },
                 indent,
-                stripped,
-            };
-            checkpoints.finish()?;
-            return Ok(Some(location));
+                stripped: &input[end..],
+            }));
         }
-        if line_end_with_newline == input.len() {
-            break;
-        }
-        line_start = line_end_with_newline;
     }
-
     checkpoints.finish()?;
     Ok(None)
 }
@@ -1469,7 +1480,7 @@ fn frontmatter_indent_end_controlled(
     let mut end = 0usize;
     for (idx, ch) in line.char_indices() {
         checkpoints.scanned(ch.len_utf8())?;
-        if ch == '\n' || ch == '\r' || !ch.is_whitespace() {
+        if ch == '\n' || ch == '\r' || !is_frontmatter_whitespace(ch) {
             break;
         }
         end = idx + ch.len_utf8();
@@ -1477,17 +1488,36 @@ fn frontmatter_indent_end_controlled(
     Ok(end)
 }
 
-fn is_frontmatter_closing_line_controlled(
-    line: &str,
+fn is_frontmatter_whitespace(ch: char) -> bool {
+    (ch.is_whitespace() && ch != '\u{0085}') || ch == '\u{feff}'
+}
+
+fn frontmatter_closing_end_controlled(
+    input: &str,
+    preceding_line_break: usize,
     indent: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> OperationControlResult<bool> {
-    if !frontmatter_has_prefix_controlled(line, indent, checkpoints)? {
-        return Ok(false);
+) -> OperationControlResult<Option<usize>> {
+    let fence_start = preceding_line_break + 1;
+    if !frontmatter_has_prefix_controlled(&input[fence_start..], indent, checkpoints)? {
+        return Ok(None);
     }
-    let after_indent = &line[indent.len()..];
-    Ok(after_indent.starts_with("---")
-        && frontmatter_is_whitespace_controlled(&after_indent[3..], checkpoints)?)
+    let fence_end = fence_start + indent.len();
+    if !input[fence_end..].starts_with("---") {
+        return Ok(None);
+    }
+    let whitespace_start = fence_end + 3;
+    let mut end = None;
+    for (offset, ch) in input[whitespace_start..].char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !is_frontmatter_whitespace(ch) {
+            break;
+        }
+        if matches!(ch, '\n' | '\r') {
+            end = Some(whitespace_start + offset + 1);
+        }
+    }
+    Ok(end)
 }
 
 fn frontmatter_has_prefix_controlled(
@@ -1504,19 +1534,6 @@ fn frontmatter_has_prefix_controlled(
     {
         checkpoints.scanned(1)?;
         if actual != expected {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn frontmatter_is_whitespace_controlled(
-    text: &str,
-    checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> OperationControlResult<bool> {
-    for ch in text.chars() {
-        checkpoints.scanned(ch.len_utf8())?;
-        if !ch.is_whitespace() {
             return Ok(false);
         }
     }
@@ -2819,7 +2836,7 @@ mod tests {
             ("---\r\r\ntitle: Demo\r\n---\r\r\nflowchart TD", true),
             ("---\rtitle: Demo\r---\rflowchart TD", true),
             ("---\ntitle: Demo\n--- \u{2003}\nflowchart TD", true),
-            ("---\ntitle: Demo\n---", true),
+            ("---\ntitle: Demo\n---", false),
             ("--- trailing\ntitle: Demo\n---\nflowchart TD", false),
             ("---\ntitle: Demo\n \t---\nflowchart TD", false),
             ("---", false),
@@ -2856,6 +2873,77 @@ mod tests {
                 assert_eq!(&source[location.full.end..], controlled.stripped);
             }
         }
+    }
+
+    #[test]
+    fn frontmatter_matches_upstream_greedy_whitespace_and_lazy_fences() {
+        for (source, indent, body, stripped) in [
+            ("---\n\n---\n\nMORE\n---\n", "", "---\n\nMORE", ""),
+            ("---\n\n\n---\ngraph TD\n", "", "", "graph TD\n"),
+            (
+                "---\ntitle: x\n---\n \t\n  graph TD\n",
+                "",
+                "title: x",
+                "  graph TD\n",
+            ),
+            (
+                "---\r\r\ntitle: Demo\r\n---\r\r\nflowchart TD",
+                "",
+                "title: Demo\r",
+                "flowchart TD",
+            ),
+            (
+                "\u{feff}---\n\u{feff}title: x\n\u{feff}---\ngraph TD",
+                "\u{feff}",
+                "\u{feff}title: x",
+                "graph TD",
+            ),
+            (
+                "---\ntitle: |\n  ---\n  still the body\n---\ngraph TD",
+                "",
+                "title: |\n  ---\n  still the body",
+                "graph TD",
+            ),
+        ] {
+            let block = locate_frontmatter_block_controlled(source, &OperationControl::new())
+                .unwrap()
+                .unwrap();
+            assert_eq!(block.indent, indent, "{source:?}");
+            assert_eq!(
+                &source[block.body.start..block.body.end],
+                body,
+                "{source:?}"
+            );
+            assert_eq!(block.stripped, stripped, "{source:?}");
+            assert_eq!(block.full.end, source.len() - stripped.len());
+        }
+        for source in [
+            "---\n---\n",
+            "---\ntitle: x\n---",
+            "---\ntitle: x\n---   ",
+            "\u{0085}---\ntitle: x\n---\ngraph TD",
+            "----\ntitle: x\n----\ngraph TD",
+        ] {
+            assert!(
+                locate_frontmatter_block_controlled(source, &OperationControl::new())
+                    .unwrap()
+                    .is_none(),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn frontmatter_whitespace_only_input_is_scanned_and_cancellable() {
+        let source = format!("---\n{}", " \n".repeat(16_000));
+        assert!(
+            locate_frontmatter_block_controlled(&source, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
     }
 
     #[test]

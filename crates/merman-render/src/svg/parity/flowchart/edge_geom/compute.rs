@@ -15,15 +15,27 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     } = request;
 
     let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let mut label = ctx.uses_elk_adapter_dom.then(|| le.label.clone()).flatten();
+    if let Some(label) = label.as_mut() {
+        label.x += ctx.tx - origin_x;
+        label.y += ctx.ty - origin_y;
+    }
     if ctx.uses_elk_adapter_dom && le.points.is_empty() {
         // Mermaid 12 renders providers without sections as clipped straight lines. Keep the
         // raw layout empty so a real two-point section still follows the routed-edge path.
         let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
+        if let Some(label) = label.as_mut()
+            && let Some(midpoint) = missing_section_label_position(ctx, le, origin_x, origin_y)
+        {
+            label.x = midpoint.x;
+            label.y = midpoint.y;
+        }
         return Some(ClippedEdgeRoute {
             base_points: points.clone(),
             points,
             origin_x,
             origin_y,
+            label,
             elk_endpoint_adapters: super::ElkEndpointAdapterCorners::default(),
         });
     }
@@ -147,6 +159,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         points: std::mem::take(&mut scratch.tmp_points_b),
         origin_x,
         origin_y,
+        label,
         elk_endpoint_adapters,
     })
 }
@@ -168,6 +181,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let ClippedEdgeRoute {
         base_points,
         points,
+        label,
         elk_endpoint_adapters,
         ..
     } = route;
@@ -210,6 +224,11 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         );
         scratch.tmp_points_c.reverse();
     }
+    let original_label_path_points = if is_elk_layout {
+        points_after_intersect.clone()
+    } else {
+        base_points.clone()
+    };
     let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
@@ -361,7 +380,12 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         original_path_length: path_length,
         path_length,
         line_hop_applied: false,
+        original_label_path_points,
         label_path_points,
+        label_anchor: label.map(|label| crate::model::LayoutPoint {
+            x: label.x,
+            y: label.y,
+        }),
         label_path_was_explicitly_updated: is_cluster_edge,
         emitted_d_for_label: None,
         bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,

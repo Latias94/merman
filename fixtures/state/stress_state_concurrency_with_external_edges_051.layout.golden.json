@@ -22,9 +22,9 @@
         {
           "id": "Active",
           "x": 245.0,
-          "y": 221.5,
+          "y": 216.5,
           "width": 466.0,
-          "height": 311.0,
+          "height": 301.0,
           "is_cluster": true
         },
         {
@@ -358,9 +358,9 @@
         {
           "id": "Active",
           "x": 245.0,
-          "y": 221.5,
+          "y": 216.5,
           "width": 466.0,
-          "height": 311.0,
+          "height": 301.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Active",

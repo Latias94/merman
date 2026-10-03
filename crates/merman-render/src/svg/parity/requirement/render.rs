@@ -117,6 +117,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         div_class: Option<&'a str>,
         div_style_prefix: Option<&'a str>,
         max_width_px: i64,
+        text_align: &'static str,
     }
 
     fn mk_label_foreign_object(out: &mut String, spec: LabelForeignObject<'_>) {
@@ -129,6 +130,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             div_class,
             div_style_prefix,
             max_width_px,
+            text_align,
         } = spec;
         let div_class_attr = div_class
             .map(|c| format!(r#" class="{c}""#))
@@ -149,7 +151,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         };
         let _ = write!(
             out,
-            r#"<foreignObject height="{h}" width="{w}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class_attr} style="{div_style_prefix}display: {display}; white-space: {white_space}; line-height: 1.5; max-width: {max_width}px; text-align: center;{width_style}"><span class="{span_class}"{span_style_attr}>"#,
+            r#"<foreignObject height="{h}" width="{w}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class_attr} style="{div_style_prefix}display: {display}; white-space: {white_space}; line-height: 1.5; max-width: {max_width}px; text-align: {text_align};{width_style}"><span class="{span_class}"{span_style_attr}>"#,
             w = fmt(width),
             h = fmt(height),
             div_class_attr = div_class_attr,
@@ -312,6 +314,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let diagram_id = options.diagram_id_or("requirement");
     let render_settings =
         crate::requirement::RequirementConfigView::new(effective_config).render_settings();
+    let node_html_labels = render_settings.html_labels;
+    let edge_html_labels = render_settings.edge_html_labels;
+    // requirementBox.ts applies start alignment only for the registered ELK entry point.
+    let left_align_body = effective_config
+        .get("layout")
+        .and_then(serde_json::Value::as_str)
+        == Some("elk");
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
@@ -396,6 +405,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     x: label.x,
                     y: label.y,
                 },
+                Some(&edge.points),
                 &edge.points,
                 &rendered_d,
                 false,
@@ -403,6 +413,37 @@ pub(crate) fn render_requirement_diagram_svg_model(
             rendered_edge_label_positions.insert(identity, label_position);
         }
     }
+
+    let hop_paths = if prepared.uses_elk()
+        && effective_config
+            .pointer("/elk/lineHops")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false)
+    {
+        options.work_meter().charge(layout.edges.len())?;
+        let hop_edges = layout
+            .edges
+            .iter()
+            .map(|edge| super::super::line_hops::LineHopEdge {
+                id: edge.id.as_str(),
+                points: &edge.points,
+                curve: Some(if edge.points.len() <= 2 {
+                    "linear"
+                } else {
+                    "rounded"
+                }),
+                arrow_type_start: None,
+                arrow_type_end: None,
+            })
+            .collect::<Vec<_>>();
+        super::super::line_hops::elk_line_hop_paths(
+            effective_config,
+            &hop_edges,
+            options.work_meter(),
+        )?
+    } else {
+        std::collections::HashMap::new()
+    };
 
     // Mermaid derives the root viewport from the rendered SVG subtree. Reconstruct those bounds
     // from final paths and post-path label positions instead of stale Dagre label anchors.
@@ -417,6 +458,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
         max_y = max_y.max(node.y + node.height);
     }
     for edge in &layout.edges {
+        if let Some(path) = hop_paths.get(edge.id.as_str()) {
+            options.work_meter().charge(path.len())?;
+            if let Some(bounds) = super::super::svg_path_bounds_from_d(path) {
+                min_x = min_x.min(bounds.min_x);
+                min_y = min_y.min(bounds.min_y);
+                max_x = max_x.max(bounds.max_x);
+                max_y = max_y.max(bounds.max_y);
+            }
+        }
         for point in &edge.points {
             min_x = min_x.min(point.x);
             min_y = min_y.min(point.y);
@@ -630,7 +680,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
             );
         }
         masked_style.push_str(style);
-        let style = masked_style.as_str();
+        let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
+        let style = if let Some(path) = hopped_d {
+            super::super::line_hops::rewrite_style_after_line_hop(
+                &masked_style,
+                path,
+                options.work_meter(),
+            )?
+        } else {
+            std::borrow::Cow::Borrowed(masked_style.as_str())
+        };
         let data_points_b64 =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&e.points));
 
@@ -658,11 +717,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
-            d = escape_xml(d),
+            d = escape_xml(hopped_d.unwrap_or(d)),
             dom_id = escape_xml(&dom_id),
             id = escape_xml(&prepared_label.rendered_id),
             class = escape_xml(&class),
-            style = escape_xml(style),
+            style = escape_xml(&style),
             data_points = escape_xml(&data_points_b64),
             look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
@@ -700,6 +759,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .as_ref()
             .map(|label| (label.width, label.height))
             .unwrap_or((0.0, 0.0));
+        let svg_bbox_y = if edge_html_labels {
+            0.0
+        } else {
+            measurer.measure_svg_create_text_bbox_y_offset_px(label_text, &html_style_regular)
+        };
         if prepared_label.has_label {
             let label_position = rendered_edge_label_positions
                 .get(&identity)
@@ -710,8 +774,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_position.x),
                 y = fmt(label_position.y),
                 id = escape_xml(&prepared_label.rendered_id),
-                lx = fmt(-w / 2.0),
-                ly = fmt(-h / 2.0),
+                lx = fmt(if edge_html_labels { -w / 2.0 } else { 0.0 }),
+                ly = fmt(if edge_html_labels {
+                    -h / 2.0
+                } else {
+                    -svg_bbox_y - (h - 4.0).max(0.0) / 2.0
+                }),
             );
         } else {
             let _ = write!(
@@ -720,20 +788,41 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 id = escape_xml(&prepared_label.rendered_id),
             );
         }
-        let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
-        mk_label_foreign_object(
-            &mut out,
-            LabelForeignObject {
-                html: &label_html,
-                width: w,
-                height: h,
-                span_class: "edgeLabel",
-                span_style: None,
-                div_class: Some("labelBkg"),
-                div_style_prefix: None,
-                max_width_px: 200,
-            },
-        );
+        if edge_html_labels {
+            let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
+            mk_label_foreign_object(
+                &mut out,
+                LabelForeignObject {
+                    html: &label_html,
+                    width: w,
+                    height: h,
+                    span_class: "edgeLabel",
+                    span_style: None,
+                    div_class: Some("labelBkg"),
+                    div_style_prefix: None,
+                    max_width_px: 200,
+                    text_align: "center",
+                },
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                fmt(-w / 2.0),
+                fmt(svg_bbox_y - 2.0),
+                fmt(w),
+                fmt(h)
+            );
+            super::super::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
+                &mut out,
+                label_text,
+                true,
+                measurer,
+                &html_style_regular,
+                Some(200.0),
+            );
+            out.push_str("</g>");
+        }
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
@@ -758,19 +847,26 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 cx = fmt(cx),
                 cy = fmt(cy),
             );
-            mk_label_foreign_object(
-                &mut out,
-                LabelForeignObject {
-                    html: "",
-                    width: 0.0,
-                    height: 0.0,
-                    span_class: "nodeLabel",
-                    span_style: None,
-                    div_class: None,
-                    div_style_prefix: None,
-                    max_width_px: 10,
-                },
-            );
+            if node_html_labels {
+                mk_label_foreign_object(
+                    &mut out,
+                    LabelForeignObject {
+                        html: "",
+                        width: 0.0,
+                        height: 0.0,
+                        span_class: "nodeLabel",
+                        span_style: None,
+                        div_class: None,
+                        div_style_prefix: None,
+                        max_width_px: 10,
+                        text_align: "center",
+                    },
+                );
+            } else {
+                super::super::label::write_svg_text_markdown_from_create_text_source(
+                    &mut out, "", true,
+                );
+            }
             out.push_str("</g></g>");
             continue;
         }
@@ -932,20 +1028,43 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_x),
                 y = fmt(label_y),
             );
-            let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
-            mk_label_foreign_object(
-                &mut out,
-                LabelForeignObject {
-                    html: &display_html,
-                    width: metrics.width,
-                    height: metrics.height,
-                    span_class: "nodeLabel markdown-node-label",
-                    span_style,
-                    div_class: None,
-                    div_style_prefix,
-                    max_width_px: metrics.max_width_px,
-                },
-            );
+            if node_html_labels {
+                let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
+                mk_label_foreign_object(
+                    &mut out,
+                    LabelForeignObject {
+                        html: &display_html,
+                        width: metrics.width,
+                        height: metrics.height,
+                        span_class: "nodeLabel markdown-node-label",
+                        span_style,
+                        div_class: None,
+                        div_style_prefix,
+                        max_width_px: metrics.max_width_px,
+                        text_align: if left_align_body && !line.keep_centered {
+                            "left"
+                        } else {
+                            "center"
+                        },
+                    },
+                );
+            } else {
+                let text_style = TextStyle {
+                    font_weight: line.measurement_bold.then(|| "bold".to_string()),
+                    ..html_style_regular.clone()
+                };
+                let svg_style = style.replace("color:", "fill:");
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                super::super::label::write_svg_text_markdown_wrapped_with_style(
+                    &mut out,
+                    &line.display_text,
+                    &svg_style,
+                    measurer,
+                    &text_style,
+                    Some(metrics.max_width_px as f64),
+                );
+                out.push_str("</g>");
+            }
             out.push_str("</g>");
         }
 
@@ -1457,6 +1576,41 @@ mod tests {
     }
 
     #[test]
+    fn requirement_prepared_measurements_are_not_reused_across_label_modes() {
+        let model = prepared_requirement_model();
+        let prepare_config =
+            merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels":true}));
+        let render_config =
+            merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false}));
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .begin_session()
+            .unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            prepare_config.as_value(),
+            &measurer,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let calls_after_prepare = report_call_count(&session);
+        let svg = render_prepared_requirement_for_test(
+            &prepared,
+            &model,
+            &render_config,
+            None,
+            &measurer,
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+        assert!(report_call_count(&session) > calls_after_prepare);
+        assert!(!svg.contains("foreignObject"));
+    }
+
+    #[test]
     fn requirement_prepared_labels_keep_markdown_and_strict_sanitization_at_render_time() {
         let mut model = prepared_requirement_model();
         model.requirements[0].text = concat!(
@@ -1756,6 +1910,7 @@ mod tests {
                 x: middle_label.x,
                 y: middle_label.y,
             },
+            Some(&middle_edge.points),
             &middle_edge.points,
             &middle_path,
             false,

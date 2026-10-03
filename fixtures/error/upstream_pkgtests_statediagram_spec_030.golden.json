@@ -1,6 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error"
+    "type": "error",
+    "errorMessage": "Diagram parse error (stateDiagram): unexpected string literal; expected node identifier, styled id, edge state"
   }
 }

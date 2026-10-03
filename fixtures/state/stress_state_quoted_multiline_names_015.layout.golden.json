@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Outer",
-          "x": 227.24,
+          "x": 281.64,
           "y": 232.0,
-          "width": 430.48,
+          "width": 321.68,
           "height": 332.0,
           "is_cluster": true
         },
@@ -251,15 +251,15 @@
       "clusters": [
         {
           "id": "Outer",
-          "x": 227.24,
+          "x": 281.64,
           "y": 232.0,
-          "width": 430.48,
+          "width": 321.68,
           "height": 332.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Outer",
           "title_label": {
-            "x": 227.24,
+            "x": 281.64,
             "y": 76.5,
             "width": 32.48,
             "height": 21.0
@@ -272,7 +272,7 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 36.0,
         "min_y": 12.0,
         "max_x": 442.48,
         "max_y": 513.0

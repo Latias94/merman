@@ -251,3 +251,42 @@ Data --> Consumer
             .any(|symbol| symbol.name == "Data" && symbol.kind == EditorSemanticKind::Object)
     );
 }
+
+#[test]
+fn usecase_eof_diagnostics_keep_original_positions_across_public_routes() {
+    let engine = Engine::new();
+    for body in ["actor", "A -->"] {
+        for separator in ["\n", "\r\n"] {
+            let source = format!(
+                "---{separator}title: EOF{separator}---{separator}usecase-beta{separator}%% retained source line{separator}{body}"
+            );
+            let expected = merman_core::SourceSpan::new(source.len(), source.len());
+            for error in [
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .unwrap_err(),
+                engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap_err(),
+            ] {
+                let merman_core::Error::DiagramParse { diagnostic, .. } = error else {
+                    panic!("expected Usecase parse diagnostic");
+                };
+                assert_eq!(diagnostic.span(), Some(expected), "{body}/{separator:?}");
+            }
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("usecase", &source)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(
+                facts
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.span == Some(expected)),
+                "{body}: {:?}",
+                facts.diagnostics
+            );
+        }
+    }
+}

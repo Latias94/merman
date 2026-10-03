@@ -505,7 +505,10 @@ fn construct_eventmodeling_semantic_source_controlled(
         }
     }
 
-    validate_eventmodeling_semantics(&mut syntax, control)?;
+    if let Some(error) = validate_eventmodeling_semantics(&mut syntax, meta, control)? {
+        let span = eventmodeling_error_span(&error, cursor.insertion_span());
+        first_failure.get_or_insert((error, span));
+    }
     if let Some((error, span)) = first_failure {
         return Ok(Err(eventmodeling_failure_controlled(
             error, syntax, span, control,
@@ -1445,12 +1448,27 @@ fn parse_eventmodeling_gwt_cursor(
 
 fn validate_eventmodeling_semantics(
     syntax: &mut EventModelingSyntaxFacts,
+    meta: &ParseMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<()> {
+) -> crate::OperationControlResult<Option<Error>> {
     let mut frame_types = HashMap::with_capacity(syntax.frames.len());
+    let mut duplicate_frame = None;
     for frame in &syntax.frames {
         control.checkpoint()?;
-        frame_types.insert(frame.name.clone(), frame.model_entity_type.clone());
+        match frame_types.entry(frame.name.clone()) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(frame.model_entity_type.clone());
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                duplicate_frame.get_or_insert_with(|| {
+                    Error::diagram_parse_exact(
+                        meta.diagram_type.clone(),
+                        format!(r#"Duplicate event modeling frame ID "{}""#, frame.name),
+                        frame.name_span,
+                    )
+                });
+            }
+        }
     }
     let mut data_names = HashSet::with_capacity(syntax.data_entities.len());
     for data in &syntax.data_entities {
@@ -1533,7 +1551,7 @@ fn validate_eventmodeling_semantics(
         }
     }
     syntax.validation_diagnostics = diagnostics;
-    Ok(())
+    Ok(duplicate_frame)
 }
 
 fn eventmodeling_allowed_source_types(

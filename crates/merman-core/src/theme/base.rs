@@ -788,7 +788,9 @@ mod tests {
         assert_eq!(tv["gitInv0"], "rgb(63.75, 63.75, 63.75)");
         assert_eq!(tv["gradientStart"], "#654321");
         assert_eq!(tv["useGradient"], false);
-        assert_eq!(tv["radar"], json!({ "axisColor": null }));
+        assert_eq!(tv["radar"]["axisColor"], Value::Null);
+        assert_eq!(tv["radar"]["graticuleColor"], "#DEDEDE");
+        assert_eq!(tv["radar"]["axisStrokeWidth"], 2);
     }
 
     #[test]

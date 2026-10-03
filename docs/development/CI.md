@@ -268,3 +268,16 @@ isolation, and npm provenance policy. GitHub Actions use current stable release 
 whose ref is part of their public interface retain readable tool or toolchain refs. The zizmor
 configuration accepts version refs without disabling its other workflow-security audits, and weekly
 Dependabot updates maintain the selected action versions.
+
+## Playground build identity
+
+The Playground keeps the WASM package version separate from its source build identity. Pages builds
+show `Main build` and the checkout's short commit ID; pull-request builds show `Preview build`.
+Tag builds are labeled as such without claiming that the tag has been published. The source link
+opens the full commit in the workflow repository. CI fails if the checkout does not match
+`GITHUB_SHA`, including detached pull-request merge checkouts.
+
+Local builds show `Local build`, with a modified marker for uncommitted files. Source archives
+without Git metadata omit the commit. Each production bundle includes `build-info.json` with the
+same source identity shown in the footer and Merman comparison pane. Package versions used by the
+runtime and benchmark protocols retain their existing meaning.

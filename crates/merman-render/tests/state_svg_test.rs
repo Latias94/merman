@@ -720,31 +720,51 @@ A --> A: again
 }
 
 #[test]
-fn state_svg_composite_self_loop_uses_the_explicitly_updated_cluster_path_for_its_label() {
-    let svg = render_state_svg_from_text(
-        r#"%%{init: {"layout": "dagre"}}%%
+fn state_svg_composite_self_loop_preserves_the_layout_label_offset_after_cluster_clipping() {
+    let source = r#"%%{init: {"layout": "dagre"}}%%
 stateDiagram-v2
 state Active {
   Idle
 }
 Inactive --> Idle: ACT
 Active --> Active: LOG
-"#,
-    );
+"#;
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout: merman_render::model::StateDiagramLayout =
+        serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let svg = rendered.svg();
 
-    let points = state_edge_data_points(&svg, "edge1");
+    let points = state_edge_data_points(svg, "edge1");
     assert_eq!(points.len(), 4, "expected one compact logical self-loop");
     assert!(
         points[0].x > points[1].x && points[3].x < points[2].x,
         "data-points must retain the endpoint-clipped self-loop geometry: {points:?}"
     );
 
-    let (label_x, label_y) = state_edge_label_position(&svg, "edge1");
-    let expected_x = (points[1].x + points[2].x) / 2.0;
-    let expected_y = (points[1].y + points[2].y) / 2.0;
+    let (label_x, label_y) = state_edge_label_position(svg, "edge1");
+    let edge = layout.edges.iter().find(|edge| edge.id == "edge1").unwrap();
+    let anchor = edge.label.as_ref().unwrap();
+    // This symmetric self-loop keeps the same route midpoint after cluster clipping.
+    // Mermaid 12.1 therefore preserves the layout anchor, including its label offset.
+    let expected_x = anchor.x;
+    let expected_y = anchor.y;
+    let midpoint_y = (points[1].y + points[2].y) / 2.0;
+    assert!(
+        expected_y > midpoint_y,
+        "the fixture must retain a nonzero label offset"
+    );
     assert!(
         (label_x - expected_x).abs() <= 1e-5 && (label_y - expected_y).abs() <= 1e-5,
-        "a composite self-loop cluster cut must move the label to the updated path midpoint: label=({label_x}, {label_y}), expected=({expected_x}, {expected_y})"
+        "a symmetric cluster cut must preserve the layout label offset: label=({label_x}, {label_y}), expected=({expected_x}, {expected_y})"
     );
 }
 

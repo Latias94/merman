@@ -1,5 +1,5 @@
 {
-  "baselineVersion": "12.0.0",
+  "baselineVersion": "12.1.0",
   "configKeys": [
     "$ref",
     "THEME_COLOR_LIMIT",
@@ -48,6 +48,7 @@
     "backgroundColor",
     "barGap",
     "barHeight",
+    "bitOrder",
     "bitWidth",
     "bitsPerRow",
     "block",
@@ -454,6 +455,7 @@
     "numIter",
     "numberSectionStyles",
     "optimizeRanksByCrossings",
+    "orientFeedbackEdges",
     "packet",
     "padding",
     "paddingX",

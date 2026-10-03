@@ -101,9 +101,9 @@
         },
         {
           "id": "Session",
-          "x": 441.5,
+          "x": 429.25,
           "y": 498.0,
-          "width": 859.0,
+          "width": 803.5,
           "height": 864.0,
           "is_cluster": true
         },
@@ -828,15 +828,15 @@
         },
         {
           "id": "Session",
-          "x": 441.5,
+          "x": 429.25,
           "y": 498.0,
-          "width": 859.0,
+          "width": 803.5,
           "height": 864.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Session",
           "title_label": {
-            "x": 441.5,
+            "x": 429.25,
             "y": 76.5,
             "width": 42.42,
             "height": 21.0
@@ -870,9 +870,9 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 27.5,
         "min_y": 12.0,
-        "max_x": 871.0,
+        "max_x": 847.0,
         "max_y": 994.0
       }
     }

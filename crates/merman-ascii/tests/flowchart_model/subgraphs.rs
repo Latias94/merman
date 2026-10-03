@@ -53,7 +53,7 @@ fn flowchart_parser_duplicate_subgraph_ids_keep_first_presentation_and_all_membe
 }
 
 #[test]
-fn flowchart_duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_group() {
+fn flowchart_duplicate_subgraph_vertex_css_updates_the_canonical_group() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TB\n",
@@ -67,8 +67,8 @@ fn flowchart_duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_firs
     )
     .expect("duplicate subgraph declarations should render");
 
-    assert!(!rendered.contains("#010203"), "{rendered}");
-    assert!(!rendered.contains("#123456"), "{rendered}");
+    assert!(rendered.contains("background-color:#010203"), "{rendered}");
+    assert!(rendered.contains("color:#123456"), "{rendered}");
 }
 
 #[test]

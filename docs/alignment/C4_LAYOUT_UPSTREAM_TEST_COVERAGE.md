@@ -1,4 +1,4 @@
-# C4 Layout Upstream Test Coverage (Mermaid@12.0.0)
+# C4 Layout Upstream Test Coverage (Mermaid@12.1.0)
 
 This document tracks which **upstream Mermaid C4 layout behaviors** are covered in `merman` via:
 
@@ -11,7 +11,7 @@ This document tracks which **upstream Mermaid C4 layout behaviors** are covered 
 - the semantic edge-label gate activated by the same `--check-dom` flag. This gate is independent
   of canonical DOM normalization and binds each label to its ordered C4 relation.
 
-Scope: pinned Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`.
+Scope: pinned Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`.
 
 ## Upstream sources (layout algorithm)
 
@@ -85,21 +85,28 @@ renderer tests also establish finite SVG geometry for the degenerate relationshi
 
 ## Reviewed Dynamic Canary Residual
 
-Only the five existing local geometry signatures for
-`upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010` were replaced after the routing correction.
-The input and upstream artifact remain bound to their original digests:
+The five existing receipts for
+`upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010` retain the local geometry from the
+center-based routing correction. Their upstream geometry now binds to the 12.1 baseline:
 
 - input SHA-256: `78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284`;
-- upstream SVG SHA-256: `393427fc0b4b21ae51e7816a72a3e452abcb8f3a9f946ceab9cef4c993326d4e`.
+- upstream SVG SHA-256: `056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf`.
+
+The C4 source is unchanged between pinned Mermaid 12.0 and 12.1. Replaying both runtimes with
+the same seeded renderer, Chromium headless shell `151.0.7922.77`, viewport, and fonts produced
+byte-identical SVGs, also byte-identical to the current 12.1 baseline. The former 12.0 baseline's
+taller nodes and different generated text rows reflect its collection environment; they are not a
+12.1 routing change. Its root height was `910.1973419189453`, versus `866.1973419189453` in both
+same-environment replays. No production constant was adjusted to absorb that difference.
 
 The existing `MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES` collector produced five `review_required`
-candidates for this single fixture after verifying relation identities, label text, and presentation.
-The refreshed catalog preserves the upstream signatures, semantic keys, text, hashes, precision,
-comparator revision, and evidence kind. The new reasons explicitly supersede the earlier mixed
-routing/measurement explanation.
+candidates for this fixture after verifying relation identities, label text, presentation, and
+stylesheet semantics. The catalog refresh changes the upstream signatures and artifact provenance;
+local signatures, semantic keys, text, precision, comparator revision, and evidence kind remain
+unchanged.
 
-Remaining differences are the propagation of browser text wrapping and bounding-box heights through
-C4's grid, plus relationship-label width measurement. The source owners are `c4LabelHelper.ts` /
+Remaining differences propagate browser text wrapping and bounding-box heights through C4's grid,
+plus relationship-label width measurement. The source owners are `c4LabelHelper.ts` /
 `createText.ts`, `c4Renderer.ts`'s `calcC4ShapeTextWH`, and `svgDraw.ts`'s unchanged midpoint and named
 offset placement. Given the same node boxes, all three canary edges agree with pinned Mermaid;
 node text measurement accounts for the remaining different boxes. Message and technology labels
@@ -107,13 +114,13 @@ retain their source-defined offsets, text, styles, and line/Q ownership.
 
 | Relation and role | Local minus upstream anchor X | Local minus upstream anchor Y |
 | --- | ---: | ---: |
-| 1, message | -5.998px | -27.922px |
-| 1, technology | -5.998px | -27.922px |
-| 2, message | -7.500px | -42.290px |
-| 3, message | -6.880px | -27.923px |
-| 3, technology | -6.880px | -27.923px |
+| 1, message | -3.000px | -0.422px |
+| 1, technology | -3.000px | -0.422px |
+| 2, message | -5.000px | -3.790px |
+| 3, message | -4.993px | -0.423px |
+| 3, technology | -4.993px | -0.423px |
 
-The larger vertical offsets follow the signed upstream browser's taller wrapped nodes; they do not
-license routing changes. Admission still requires the complete exact local/upstream edge and label
-signatures. No comparator normalization, coordinate tolerance, production fixture branch, or upstream
-SVG was changed for this refresh.
+These exact offsets describe the signed artifacts; they do not license routing changes. Admission
+still requires the complete exact local/upstream edge and label signatures. No comparator
+normalization, coordinate tolerance, production fixture branch, or upstream SVG was changed for
+this receipt migration.

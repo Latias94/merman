@@ -4,15 +4,16 @@ use super::super::*;
 
 pub(crate) fn render_error_diagram_svg_model(
     layout: &ErrorDiagramLayout,
-    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
+    semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_error_diagram_svg_inner(layout, effective_config, options)
+    render_error_diagram_svg_inner(layout, semantic, effective_config, options)
 }
 
 fn render_error_diagram_svg_inner(
     layout: &ErrorDiagramLayout,
+    semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -52,7 +53,73 @@ fn render_error_diagram_svg_inner(
         r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">mermaid version {}</text>"#,
         crate::error::UPSTREAM_MERMAID_VERSION
     );
+    for (index, line) in
+        crate::error::wrap_error_message(semantic.error_message.as_deref().unwrap_or_default())
+            .iter()
+            .enumerate()
+    {
+        let _ = write!(
+            &mut out,
+            r#"<text class="error-text" x="1440" y="{}" font-size="42px" style="text-anchor: middle;">"#,
+            510 + index * 56,
+        );
+        util::escape_xml_serialized_text_into(&mut out, line);
+        out.push_str("</text>");
+    }
     out.push_str("</g></svg>\n");
     options.checkpoint_emit()?;
     root_document.complete(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_core::diagrams::error_diagram::ErrorDiagramRenderModel;
+
+    fn render_message(message: Option<&str>) -> String {
+        let model = ErrorDiagramRenderModel {
+            diagram_type: "error".to_string(),
+            error_message: message.map(str::to_string),
+        };
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+        let config = serde_json::json!({});
+        let layout =
+            crate::error::layout_error_diagram_typed(&model, &config, execution.text_measurer())
+                .unwrap();
+        render_error_diagram_svg_model(&layout, &model, &config, &execution)
+            .unwrap()
+            .into_string_for(crate::family::RenderFamilyKind::Error)
+            .unwrap()
+    }
+
+    #[test]
+    fn error_svg_without_a_message_preserves_the_original_graphic() {
+        let svg = render_message(None);
+        assert!(svg.contains(r#"viewBox="0 0 2412 512""#));
+        assert!(svg.contains("Syntax error in text"));
+        assert_eq!(svg.matches(r#"font-size="42px""#).count(), 0);
+    }
+
+    #[test]
+    fn error_svg_shows_literal_error_text_and_grows_the_viewport() {
+        let svg = render_message(Some("Unexpected <bad>& #abcdef; #60;"));
+        assert!(svg.contains(r#"viewBox="0 0 2412 556""#));
+        assert!(svg.contains(r#"max-width: 556px"#));
+        assert!(svg.contains("Unexpected &lt;bad&gt;&amp; #abcdef; #60;</text>"));
+        assert!(svg.contains(r#"x="1440" y="510" font-size="42px""#));
+    }
+
+    #[test]
+    fn error_svg_emits_at_most_four_message_lines() {
+        let svg = render_message(Some(&"x".repeat(500)));
+        assert!(svg.contains(r#"viewBox="0 0 2412 724""#));
+        assert_eq!(svg.matches(r#"font-size="42px""#).count(), 4);
+        assert!(svg.contains(r#"y="678" font-size="42px""#));
+        assert!(svg.contains(&format!("{}...</text>", "x".repeat(72))));
+    }
 }

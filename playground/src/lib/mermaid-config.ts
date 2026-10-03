@@ -1,4 +1,5 @@
 import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
+import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 import { isMermaidThemeSelection, normalizeMermaidThemeSelection, type ThemeName } from "./mermaid-theme-name.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;
@@ -106,33 +107,9 @@ export function sourceWithMermaidConfig(
 }
 
 function insertDirectiveAfterFrontmatter(source: string, directive: string): string {
-  const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  const firstLineEnd = source.search(/\r?\n/);
-  const firstLine = firstLineEnd < 0 ? source : source.slice(0, firstLineEnd);
-  const opening = frontmatterDelimiter(firstLine);
-  if (opening === null) {
-    return `${directive}${newline}${source}`;
-  }
-  const lines = source.split(/\r?\n/);
-
-  const frontmatterEnd = lines.findIndex(
-    (line, index) =>
-      index > 0 && frontmatterDelimiter(line) === opening
-  );
-  if (frontmatterEnd > 0) {
-    return [
-      ...lines.slice(0, frontmatterEnd + 1),
-      directive,
-      ...lines.slice(frontmatterEnd + 1),
-    ].join(newline);
-  }
-
-  return `${directive}${newline}${source}`;
-}
-
-function frontmatterDelimiter(line: string): string | null {
-  const match = /^([ \t]*)---[ \t]*$/.exec(line);
-  return match?.[1] ?? null;
+  const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
+  const insertion = locateMermaidFrontmatter(source)?.end ?? 0;
+  return `${source.slice(0, insertion)}${directive}${newline}${source.slice(insertion)}`;
 }
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {

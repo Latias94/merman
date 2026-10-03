@@ -1,6 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error"
+    "type": "error",
+    "errorMessage": "Diagram parse error (flowchart-v2): Invalid text label: contains structural characters; quote it to use them"
   }
 }

@@ -467,3 +467,29 @@ fn portable_non_highlight_queries_execute_on_representative_sources() {
             .any(|capture| capture == "injection.content")
     );
 }
+
+#[test]
+fn sequence_menu_keywords_keep_endpoint_and_statement_highlight_ownership() {
+    let source =
+        "sequenceDiagram\nLink->>Properties: message\nDetails-->>Links: reply\nlink Link: Help\n";
+    let query = canonical_highlights_query();
+    let captures = parse_capture_snapshots(
+        &mut parser(),
+        &query,
+        "queries/portable/highlights.scm",
+        source,
+    );
+    for actor in ["Link", "Properties", "Details", "Links"] {
+        assert_exact_capture(&captures, source, "variable", actor);
+        let start = source.find(actor).unwrap();
+        let keywords = captures
+            .iter()
+            .filter(|capture| capture.name == "keyword" && capture.range.start == start)
+            .count();
+        assert_eq!(keywords, 0);
+    }
+    assert_exact_capture(&captures, source, "keyword", "link");
+    assert_exact_capture(&captures, source, "operator", "->>");
+    replace_and_compare_highlights(source, "Link->>", "LinkService->>");
+    replace_and_compare_highlights(source, "link Link:", "Link->>A:");
+}

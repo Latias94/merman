@@ -105,9 +105,12 @@ fn swimlane_edge_label_uses_html(svg: &str) -> bool {
 
 #[test]
 fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
-    // The fixture's stable preflight estimate is 90 units. Probe the precise layout boundary so
-    // this contract remains about operation-wide accounting rather than internal routing passes.
-    let layout_boundary = (90..=256)
+    let without_line_hops =
+        format!("---\nconfig:\n  swimlane:\n    lineHops: false\n---\n{DOCS_BASIC}");
+    // Probe the full SVG operation with line hops disabled: retaining original label paths also
+    // consumes work after layout. The same boundary must reject the additional line-hop work.
+    // Start at the fixture's stable 90-unit layout preflight estimate.
+    let svg_boundary = (90..=256)
         .find(|&max_layout_work_units| {
             let resources = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
@@ -118,27 +121,27 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
             let request = SvgRequest {
                 environment: merman::SvgEnvironment::deterministic()
                     .with_resource_policy(resources),
-                ..svg_request("swimlane-budget-probe")
+                ..Default::default()
             };
-            match Renderer::new().render(RenderRequest::layout_json(
-                DOCS_BASIC,
+            match Renderer::new().render(RenderRequest::svg(
+                &without_line_hops,
                 OperationControl::new(),
                 request,
             )) {
-                Ok(RenderOutput::LayoutJson(Some(_))) => true,
-                Ok(RenderOutput::LayoutJson(None)) => panic!("expected swimlane diagram"),
+                Ok(RenderOutput::Svg(Some(_))) => true,
+                Ok(RenderOutput::Svg(None)) => panic!("expected swimlane diagram"),
                 Ok(_) => panic!("unexpected target output"),
                 Err(error) if error.to_string().contains("max_layout_work_units") => false,
-                Err(error) => panic!("unexpected layout error: {error}"),
+                Err(error) => panic!("unexpected SVG render error: {error}"),
             }
         })
-        .expect("layout must fit within the bounded probe range");
+        .expect("SVG without line hops must fit within the bounded probe range");
     let request = SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
-                    layout_boundary,
+                    svg_boundary,
                 )
                 .unwrap(),
         ),
@@ -156,14 +159,12 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
         "{error}"
     );
 
-    let without_line_hops =
-        format!("---\nconfig:\n  swimlane:\n    lineHops: false\n---\n{DOCS_BASIC}");
     let request = SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
-                    layout_boundary,
+                    svg_boundary,
                 )
                 .unwrap(),
         ),

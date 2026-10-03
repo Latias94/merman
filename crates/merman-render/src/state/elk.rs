@@ -74,6 +74,20 @@ pub(super) fn layout(
         .collect();
     let canonical =
         |id: &str| -> String { canonical_groups.get(id).copied().unwrap_or(id).to_owned() };
+    let resolved_directions = crate::elk_adapter::resolved_node_directions(
+        model.nodes.iter().map(|node| {
+            (
+                node.id.as_str(),
+                node.parent_id
+                    .as_deref()
+                    .map(|id| canonical_groups.get(id).copied().unwrap_or(id)),
+                node.dir.as_deref().map(direction),
+            )
+        }),
+        model.nodes.len(),
+        direction(&model.direction),
+        &mut Some(&mut *work),
+    )?;
     let mut nodes = Vec::with_capacity(model.nodes.len());
     let mut source_nodes = HashMap::new();
     let mut painted_group_labels = HashMap::new();
@@ -92,7 +106,13 @@ pub(super) fn layout(
         } else if matches!(node.shape.as_str(), "fork" | "join") {
             // ELK insertMeasuredNode replaces forkJoin's padded dimensions with the
             // painted element bbox. Dagre retains that shape function's padding.
-            state_fork_join_painted_dimensions(settings.graph.rankdir)
+            let rankdir = match resolved_directions[node.id.as_str()] {
+                elk::Direction::Right => dugong::RankDir::LR,
+                elk::Direction::Left => dugong::RankDir::RL,
+                elk::Direction::Up => dugong::RankDir::BT,
+                elk::Direction::Down => dugong::RankDir::TB,
+            };
+            state_fork_join_painted_dimensions(rankdir)
         } else {
             state_node_dimensions(node, &settings, measurer)?
         };
@@ -161,6 +181,7 @@ pub(super) fn layout(
             target: canonical(&edge.end),
             label: (!edge.label.trim().is_empty()).then_some(elk::Label { width, height }),
             minlen: 1,
+            terminal_labels: Vec::new(),
             inside_self_loops_yo: false,
         });
         source_edges.insert(edge.id.as_str(), edge);
@@ -177,9 +198,41 @@ pub(super) fn layout(
         },
         options: crate::elk_options::layout_options(config),
     };
+    if crate::config::config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        crate::elk_adapter::apply_cyclic_entry_constraints(
+            &mut graph.nodes,
+            graph
+                .edges
+                .iter()
+                .map(|edge| (edge.source.as_str(), edge.target.as_str())),
+            &mut Some(&mut *work),
+        )?;
+    }
     crate::elk_hierarchy::apply_to_graph(&mut graph, work)?;
-    let placed = elk::layout_with_operation_seed_and_work_control(&graph, operation_seed, work)
-        .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
+    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut graph,
+        config,
+        &mut Some(&mut *work),
+    )?;
+    let mut placed =
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+            .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
+    let frames = crate::elk_adapter::drawing_group_frames(
+        &graph,
+        &placed,
+        |node| {
+            if source_nodes
+                .get(node.id.as_str())
+                .is_some_and(|source| source.shape == "noteGroup" || source.shape == "divider")
+            {
+                0.0
+            } else {
+                node.label.map_or(0.0, |label| label.width) + node.container.padding
+            }
+        },
+        &mut Some(&mut *work),
+    )?;
     let graph_nodes: HashMap<_, _> = graph
         .nodes
         .iter()
@@ -198,7 +251,7 @@ pub(super) fn layout(
         uses_elk_adapter_dom: true,
         elk_edge_paths: HashMap::new(),
     };
-    for node in placed.nodes {
+    for mut node in placed.nodes {
         // ELK may materialize helper vertices for native self-loops. Mermaid's public
         // StateDB layout exposes only semantic nodes; retain their route sections in the
         // edge sidecar but never leak helper IDs into compatibility layout JSON.
@@ -210,6 +263,12 @@ pub(super) fn layout(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("ELK returned unknown state node {}", node.id),
             })?;
+        if let Some(frame) = frames.get(node.id.as_str()) {
+            node.x = frame.x;
+            node.y = frame.y;
+            node.width = frame.width;
+            node.height = frame.height;
+        }
         if source.kind == elk::NodeKind::Group {
             let semantic = source_nodes[node.id.as_str()];
             let label = painted_group_labels[node.id.as_str()];
@@ -403,7 +462,15 @@ fn prepare_paint_paths(
         .and_then(Value::as_bool)
         != Some(false)
     {
-        geometry::straighten_routes(&mut paths, work)?;
+        let changes =
+            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut paths, |units| {
+                work.charge_adapter(units)
+            })?;
+        for change in changes {
+            if let Some(label) = layout.edges[change.route_index].label.as_mut() {
+                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
+            }
+        }
     }
     for (edge, points) in layout.edges.iter_mut().zip(paths) {
         if edge.points.is_empty()
@@ -415,6 +482,13 @@ fn prepare_paint_paths(
         }
         layout.elk_edge_paths.insert(edge.id.clone(), points);
     }
+    crate::elk_terminal_jogs::separate_opposite_edge_labels(
+        layout
+            .edges
+            .iter_mut()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str(), edge.label.as_mut())),
+        |units| work.charge_adapter(units),
+    )?;
     layout.bounds = Bounds::from_points(
         layout
             .nodes

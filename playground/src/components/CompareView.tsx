@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { BuildIdentity } from "@/src/components/BuildIdentity";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -184,6 +185,7 @@ function ComparePane({
             <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
               {artifact.version}
             </span>
+            {artifact.key === "merman" && <BuildIdentity />}
             {artifact.stale && (
               <span className="shrink-0 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300">
                 {t("preview.updatingStale")}

@@ -5,7 +5,7 @@ use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
 mod config;
 
-pub(crate) use config::PacketConfigView;
+pub(crate) use config::{PacketBitOrder, PacketConfigView};
 
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,
@@ -39,8 +39,14 @@ pub(crate) fn layout_packet_diagram_typed(
         let word_y = (row_number as f64) * total_row_height + cfg.padding_y;
         let mut blocks: Vec<PacketBlockLayout> = Vec::new();
         for block in word {
-            let block_x = ((block.start % cfg.bits_per_row) as f64) * cfg.bit_width + 1.0;
-            let width = ((block.end - block.start + 1) as f64) * cfg.bit_width - cfg.padding_x;
+            let bits = block.end - block.start + 1;
+            let first_column = block.start % cfg.bits_per_row;
+            let column = match cfg.bit_order {
+                PacketBitOrder::Ascending => first_column,
+                PacketBitOrder::Descending => cfg.bits_per_row - first_column - bits,
+            };
+            let block_x = column as f64 * cfg.bit_width + 1.0;
+            let width = bits as f64 * cfg.bit_width - cfg.padding_x;
             blocks.push(PacketBlockLayout {
                 start: block.start,
                 end: block.end,

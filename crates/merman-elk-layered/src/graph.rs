@@ -670,6 +670,8 @@ pub struct LLabel {
     pub label_side: Option<LabelSide>,
     pub end_label_edge: Option<usize>,
     pub original_label_edge: Option<String>,
+    /// Opaque caller-owned label identity, preserved through layout transformations.
+    pub source_index: Option<usize>,
 }
 
 impl LLabel {
@@ -683,6 +685,7 @@ impl LLabel {
             label_side: None,
             end_label_edge: None,
             original_label_edge: None,
+            source_index: None,
         }
     }
 }

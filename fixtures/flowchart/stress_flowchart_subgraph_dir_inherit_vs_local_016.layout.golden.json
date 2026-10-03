@@ -6,9 +6,9 @@
         {
           "id": "ignored_dir",
           "x": 402.0,
-          "y": 313.0,
+          "y": 302.5,
           "width": 376.0,
-          "height": 150.0,
+          "height": 129.0,
           "is_cluster": true
         },
         {
@@ -30,7 +30,7 @@
         {
           "id": "outside2",
           "x": 88.0,
-          "y": 341.5,
+          "y": 320.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "outside4",
           "x": 706.0,
-          "y": 319.0,
+          "y": 298.0,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -54,7 +54,7 @@
         {
           "id": "t2",
           "x": 314.0,
-          "y": 341.5,
+          "y": 320.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -62,7 +62,7 @@
         {
           "id": "b2",
           "x": 490.0,
-          "y": 341.5,
+          "y": 320.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -119,15 +119,15 @@
           "points": [
             {
               "x": 164.0,
-              "y": 341.5
+              "y": 320.5
             },
             {
               "x": 204.0,
-              "y": 341.5
+              "y": 320.5
             },
             {
               "x": 238.0,
-              "y": 341.5
+              "y": 320.5
             }
           ],
           "label": null,
@@ -173,11 +173,11 @@
           "points": [
             {
               "x": 590.0,
-              "y": 319.0
+              "y": 298.0
             },
             {
               "x": 630.0,
-              "y": 319.0
+              "y": 298.0
             }
           ],
           "label": null,
@@ -198,11 +198,11 @@
           "points": [
             {
               "x": 390.0,
-              "y": 341.5
+              "y": 320.5
             },
             {
               "x": 414.0,
-              "y": 341.5
+              "y": 320.5
             }
           ],
           "label": null,
@@ -244,17 +244,17 @@
         {
           "id": "ignored_dir",
           "x": 402.0,
-          "y": 313.0,
+          "y": 302.5,
           "width": 376.0,
-          "height": 150.0,
+          "height": 129.0,
           "diff": -4.0,
-          "offset_y": 36.0,
+          "offset_y": 15.0,
           "title": "ignored_dir local TB external link",
           "title_label": {
             "x": 402.0,
-            "y": 258.0,
-            "width": 120.0,
-            "height": 40.0
+            "y": 247.5,
+            "width": 189.42,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -288,7 +288,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 782.0,
-        "max_y": 388.0
+        "max_y": 367.0
       }
     }
   }

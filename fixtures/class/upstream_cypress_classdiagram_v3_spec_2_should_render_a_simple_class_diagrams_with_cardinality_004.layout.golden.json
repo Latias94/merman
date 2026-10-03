@@ -14,7 +14,7 @@
         {
           "id": "AveryLongClass",
           "x": 69.5,
-          "y": 444.5,
+          "y": 542.0,
           "width": 115.0,
           "height": 81.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "Class03",
           "x": 201.961,
-          "y": 148.5,
+          "y": 127.5,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "Class04",
           "x": 201.961,
-          "y": 269.5,
+          "y": 334.5,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "Class05",
           "x": 312.024,
-          "y": 148.5,
+          "y": 127.5,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
@@ -46,23 +46,23 @@
         {
           "id": "Class06",
           "x": 312.024,
-          "y": 269.5,
+          "y": 334.5,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Class07",
-          "x": 567.599,
-          "y": 296.5,
+          "x": 569.432,
+          "y": 361.5,
           "width": 170.791,
           "height": 135.0,
           "is_cluster": false
         },
         {
           "id": "Class08",
-          "x": 567.599,
-          "y": 444.5,
+          "x": 569.432,
+          "y": 530.0,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
@@ -70,15 +70,15 @@
         {
           "id": "Class09",
           "x": 422.086,
-          "y": 148.5,
+          "y": 127.5,
           "width": 70.063,
           "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 457.155,
-          "y": 626.5,
+          "x": 458.071,
+          "y": 785.0,
           "width": 40.234,
           "height": 81.0,
           "is_cluster": false
@@ -86,7 +86,7 @@
         {
           "id": "C3",
           "x": 422.086,
-          "y": 269.5,
+          "y": 334.5,
           "width": 40.234,
           "height": 81.0,
           "is_cluster": false
@@ -94,7 +94,7 @@
         {
           "id": "Class10",
           "x": 539.988,
-          "y": 100.5,
+          "y": 116.75,
           "width": 85.74,
           "height": 156.0,
           "is_cluster": false
@@ -114,27 +114,27 @@
             },
             {
               "x": 69.5,
-              "y": 404.0
+              "y": 501.5
             }
           ],
           "label": {
             "x": 69.18,
-            "y": 296.5,
+            "y": 345.25,
             "width": 24.36,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 54.5,
-            "y": 206.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 55.42,
+            "y": 207.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 79.5,
-            "y": 381.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 82.975,
+            "y": 483.25,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -150,26 +150,26 @@
           "points": [
             {
               "x": 201.961,
-              "y": 189.0
+              "y": 168.0
             },
             {
               "x": 201.961,
-              "y": 229.0
+              "y": 294.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 186.961,
-            "y": 206.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 187.881,
+            "y": 186.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 211.961,
-            "y": 206.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 209.436,
+            "y": 281.75,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -185,26 +185,26 @@
           "points": [
             {
               "x": 312.024,
-              "y": 189.0
+              "y": 168.0
             },
             {
               "x": 312.024,
-              "y": 229.0
+              "y": 294.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 297.024,
-            "y": 206.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 297.944,
+            "y": 186.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 322.024,
-            "y": 206.5,
-            "width": 30.66,
-            "height": 21.0
+            "x": 329.069,
+            "y": 281.75,
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -219,27 +219,27 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 567.599,
-              "y": 364.0
+              "x": 569.432,
+              "y": 429.0
             },
             {
-              "x": 567.599,
-              "y": 404.0
+              "x": 569.432,
+              "y": 489.5
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 552.599,
-            "y": 381.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 561.352,
+            "y": 441.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 577.599,
-            "y": 381.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 576.907,
+            "y": 477.25,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -255,55 +255,55 @@
           "points": [
             {
               "x": 409.571,
-              "y": 189.0
+              "y": 168.0
             },
             {
               "x": 409.571,
-              "y": 209.0
+              "y": 241.5
             },
             {
               "x": 374.012,
-              "y": 209.0
+              "y": 241.5
             },
             {
               "x": 374.012,
-              "y": 296.5
+              "y": 345.25
             },
             {
               "x": 374.012,
-              "y": 535.5
+              "y": 633.0
             },
             {
               "x": 374.012,
-              "y": 566.0
+              "y": 663.5
             },
             {
-              "x": 453.782,
-              "y": 566.0
+              "x": 454.699,
+              "y": 663.5
             },
             {
-              "x": 453.782,
-              "y": 586.0
+              "x": 454.699,
+              "y": 744.5
             }
           ],
           "label": {
             "x": 373.752,
-            "y": 444.5,
+            "y": 525.75,
             "width": 74.48,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 390.071,
-            "y": 190.0,
-            "width": 7.84,
-            "height": 21.0
+            "x": 401.491,
+            "y": 180.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 453.282,
-            "y": 562.0,
-            "width": 6.3,
-            "height": 21.0
+            "x": 468.174,
+            "y": 697.75,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -319,26 +319,26 @@
           "points": [
             {
               "x": 422.086,
-              "y": 189.0
+              "y": 168.0
             },
             {
               "x": 422.086,
-              "y": 229.0
+              "y": 294.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 407.086,
-            "y": 206.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 414.611,
+            "y": 196.75,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 432.086,
-            "y": 206.5,
-            "width": 6.3,
-            "height": 21.0
+            "x": 435.561,
+            "y": 275.75,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -354,34 +354,34 @@
           "points": [
             {
               "x": 434.602,
-              "y": 189.0
+              "y": 168.0
             },
             {
               "x": 434.602,
-              "y": 209.0
+              "y": 241.5
             },
             {
-              "x": 567.599,
-              "y": 209.0
+              "x": 569.432,
+              "y": 241.5
             },
             {
-              "x": 567.599,
-              "y": 229.0
+              "x": 569.432,
+              "y": 294.0
             }
           ],
           "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 430.102,
-            "y": 208.0,
-            "width": 7.84,
-            "height": 21.0
+            "x": 426.522,
+            "y": 213.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 567.099,
-            "y": 205.0,
-            "width": 7.84,
-            "height": 21.0
+            "x": 583.512,
+            "y": 275.75,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -396,40 +396,40 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 567.599,
-              "y": 485.0
+              "x": 569.432,
+              "y": 570.5
             },
             {
-              "x": 567.599,
-              "y": 566.0
+              "x": 569.432,
+              "y": 663.5
             },
             {
-              "x": 460.527,
-              "y": 566.0
+              "x": 461.444,
+              "y": 663.5
             },
             {
-              "x": 460.527,
-              "y": 586.0
+              "x": 461.444,
+              "y": 744.5
             }
           ],
           "label": {
-            "x": 567.539,
-            "y": 535.5,
+            "x": 569.372,
+            "y": 633.0,
             "width": 54.88,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 552.599,
-            "y": 502.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 555.352,
+            "y": 588.75,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 475.027,
-            "y": 580.0,
-            "width": 6.3,
-            "height": 21.0
+            "x": 474.919,
+            "y": 726.25,
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -441,8 +441,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 652.995,
-        "max_y": 667.0
+        "max_x": 654.828,
+        "max_y": 825.5
       }
     }
   }

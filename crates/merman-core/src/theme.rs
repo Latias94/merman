@@ -448,7 +448,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
     GENERATED_THEME_RUNTIME.get_or_init(|| {
         let storage: GeneratedThemeRuntimeStorage =
-            serde_json::from_str(include_str!("generated/theme_variables_12_0_0.json"))
+            serde_json::from_str(include_str!("generated/theme_variables_12_1_0.json"))
                 .expect("generated Mermaid theme runtime JSON is valid");
         assert_eq!(storage.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
         assert_generated_theme_provenance(&storage.provenance);
@@ -541,7 +541,7 @@ fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
 fn generated_theme_audit() -> &'static GeneratedThemeAuditArtifact {
     GENERATED_THEME_AUDIT.get_or_init(|| {
         let artifact: GeneratedThemeAuditArtifact = serde_json::from_str(include_str!(
-            "../../../fixtures/_verification/theme_variables_oracle_12_0_0.json"
+            "../../../fixtures/_verification/theme_variables_oracle_12_1_0.json"
         ))
         .expect("generated Mermaid theme audit JSON is valid");
         assert_eq!(artifact.schema_version, THEME_AUDIT_SCHEMA_VERSION);
@@ -630,9 +630,21 @@ impl ThemeStageSnapshot {
         }
     }
 
-    fn overlay(&mut self, values: &Map<String, Value>) {
+    fn overlay(&mut self, values: &Map<String, Value>, preserve_object_keys: bool) {
         for (key, value) in values {
-            self.variables.insert(key.clone(), value.clone());
+            if preserve_object_keys
+                && let Some(Value::Object(generated)) = self.variables.get_mut(key)
+                && let Value::Object(explicit) = value
+            {
+                // Mermaid 12.1 applyOverride uses a shallow object spread after updateColors.
+                generated.extend(
+                    explicit
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone())),
+                );
+            } else {
+                self.variables.insert(key.clone(), value.clone());
+            }
             #[cfg(test)]
             self.origins
                 .insert(key.clone(), ThemeValueOrigin::ExplicitOverride);
@@ -677,7 +689,7 @@ impl ThemeResolution {
         let overrides_applied = {
             let mut snapshot = default_snapshot.clone();
             snapshot.stage = ThemeResolutionStage::OverridesApplied;
-            snapshot.overlay(&explicit);
+            snapshot.overlay(&explicit, false);
             snapshot
         };
 
@@ -747,7 +759,7 @@ impl ThemeResolution {
         if has_user_theme_variables && theme == "default" {
             restore_default_baseline_palette(&mut explicit_replay, default_variables);
         }
-        explicit_replay.overlay(&explicit);
+        explicit_replay.overlay(&explicit, true);
         // Mermaid base.calculate() disables the inferred gradient after replay so an
         // explicitly supplied node stroke paints under the default neo look.
         if program.kind == ThemeProgramKind::Base
@@ -3080,6 +3092,81 @@ mod tests {
     }
 
     #[test]
+    fn all_themes_preserve_generated_object_keys_after_partial_overrides() {
+        let mut covered = std::collections::BTreeSet::new();
+        for theme in crate::supported_themes() {
+            let mut baseline = MermaidConfig::from_value(json!({"theme": theme}));
+            apply_theme_defaults(&mut baseline).unwrap();
+            let generated = theme_variables_map(&baseline);
+            for (variable, value) in &generated {
+                let Some(nested) = value.as_object().filter(|value| value.len() > 1) else {
+                    continue;
+                };
+                let first = nested.keys().next().unwrap();
+                let mut config = MermaidConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": { (variable): { (first): "#123456" } }
+                }));
+                apply_theme_defaults(&mut config).unwrap();
+                let resolved = theme_variables_map(&config);
+                let observed = resolved.get(variable).and_then(Value::as_object).unwrap();
+                assert_eq!(
+                    observed.get(first),
+                    Some(&json!("#123456")),
+                    "{theme}/{variable}"
+                );
+                for (key, expected) in nested {
+                    if key != first {
+                        assert_eq!(
+                            observed.get(key),
+                            Some(expected),
+                            "{theme}/{variable}/{key}"
+                        );
+                    }
+                }
+                covered.insert(variable.clone());
+            }
+        }
+        for variable in ["xyChart", "radar", "cynefin"] {
+            assert!(
+                covered.contains(variable),
+                "missing object-valued theme variable {variable}"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_replay_object_merge_is_shallow_and_retains_scalar_replacement() {
+        let mut snapshot = ThemeStageSnapshot::from_variables(
+            json!({
+                "chart": { "nested": { "keep": 1, "replace": 2 }, "defaultColor": "blue" },
+                "array": [1, 2], "scalar": "old", "nullable": "old"
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+        snapshot.overlay(
+            json!({
+                "chart": { "nested": { "replace": 3 } },
+                "array": [3], "scalar": "new", "nullable": null
+            })
+            .as_object()
+            .unwrap(),
+            true,
+        );
+        assert_eq!(
+            snapshot.variables["chart"],
+            json!({
+                "nested": { "replace": 3 }, "defaultColor": "blue"
+            })
+        );
+        assert_eq!(snapshot.variables["array"], json!([3]));
+        assert_eq!(snapshot.variables["scalar"], json!("new"));
+        assert_eq!(snapshot.variables["nullable"], Value::Null);
+    }
+
+    #[test]
     fn generated_theme_overrides_preserve_null_replacement_and_removal() {
         let base = serde_json::json!({"unchanged": false, "deleted": 1, "nullable": "old", "object": {"old": 1}});
         let restored = restore_theme_overrides(
@@ -4130,7 +4217,9 @@ flowchart TD
 
         let xy = tv.get("xyChart").and_then(|v| v.as_object()).unwrap();
         assert_eq!(xy.get("titleColor").and_then(|v| v.as_str()), Some("red"));
-        assert_eq!(xy.get("dataLabelColor"), None);
+        // applyOverride keeps updateColors' generated keys when the user supplies only a title.
+        assert_eq!(xy.get("dataLabelColor"), tv.get("primaryTextColor"));
+        assert!(xy.get("plotColorPalette").is_some_and(Value::is_string));
     }
 
     #[test]

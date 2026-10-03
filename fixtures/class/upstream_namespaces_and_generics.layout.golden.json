@@ -95,8 +95,8 @@
           "y": 289.0,
           "width": 715.987,
           "height": 554.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Company",
           "title_label": {
             "x": 369.994,
@@ -106,7 +106,7 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -116,8 +116,8 @@
           "y": 302.0,
           "width": 667.987,
           "height": 480.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Project",
           "title_label": {
             "x": 369.994,
@@ -127,7 +127,7 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
@@ -137,8 +137,8 @@
           "y": 315.0,
           "width": 231.741,
           "height": 406.0,
-          "diff": -15.0,
-          "offset_y": 13.5,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Module",
           "title_label": {
             "x": 175.87,
@@ -148,7 +148,7 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }

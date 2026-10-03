@@ -30,6 +30,7 @@ fn graph(algorithm: Algorithm) -> Graph {
                     width: 10.0,
                     height: 6.0,
                 }),
+                terminal_labels: Vec::new(),
                 minlen: 1,
                 inside_self_loops_yo: false,
             })
@@ -383,6 +384,7 @@ fn cross_provider_graph(algorithm: Algorithm, directional_child: bool) -> Graph 
         source: "a".into(),
         target: "b".into(),
         label: None,
+        terminal_labels: Vec::new(),
         minlen: 1,
         inside_self_loops_yo: false,
     };
@@ -394,6 +396,7 @@ fn cross_provider_graph(algorithm: Algorithm, directional_child: bool) -> Graph 
             width: 20.0,
             height: 10.0,
         }),
+        terminal_labels: Vec::new(),
         minlen: 1,
         inside_self_loops_yo: false,
     };
@@ -438,6 +441,7 @@ fn cross_provider_peer_edges_preserve_provider_layout_and_missing_sections() {
                 assert_eq!(
                     cross.labels,
                     [EdgeLabelLayout {
+                        terminal: None,
                         x: 0.0,
                         y: 0.0,
                         width: 20.0,
@@ -586,6 +590,7 @@ fn source_failure_does_not_fall_back_to_layered() {
         source: "n2".into(),
         target: "n0".into(),
         label: None,
+        terminal_labels: Vec::new(),
         minlen: 1,
         inside_self_loops_yo: false,
     });

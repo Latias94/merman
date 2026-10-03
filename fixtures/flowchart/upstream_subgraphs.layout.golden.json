@@ -24,7 +24,7 @@
           "x": 816.0,
           "y": 141.0,
           "width": 200.0,
-          "height": 207.0,
+          "height": 186.0,
           "is_cluster": true
         },
         {
@@ -46,7 +46,7 @@
         {
           "id": "c",
           "x": 816.0,
-          "y": 129.0,
+          "y": 118.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -54,7 +54,7 @@
         {
           "id": "d",
           "x": 816.0,
-          "y": 198.0,
+          "y": 187.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -118,11 +118,11 @@
           "points": [
             {
               "x": 816.0,
-              "y": 151.5
+              "y": 141.0
             },
             {
               "x": 816.0,
-              "y": 175.5
+              "y": 165.0
             }
           ],
           "label": null,
@@ -258,15 +258,15 @@
           "x": 816.0,
           "y": 141.0,
           "width": 200.0,
-          "height": 207.0,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 36.0,
+          "offset_y": 15.0,
           "title": "Title with dashes - ok",
           "title_label": {
             "x": 816.0,
             "y": 57.5,
-            "width": 120.0,
-            "height": 40.0
+            "width": 128.1,
+            "height": 19.0
           },
           "requested_dir": null,
           "effective_dir": "TB",

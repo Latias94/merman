@@ -191,6 +191,7 @@
     "layeringLayerBound": 4,
     "lineHops": true,
     "mergeEdges": false,
+    "orientFeedbackEdges": true,
     "preset": "default",
     "straightenEdges": true
   },
@@ -340,6 +341,7 @@
     "useMaxWidth": true
   },
   "packet": {
+    "bitOrder": "ascending",
     "bitWidth": 32,
     "bitsPerRow": 32,
     "paddingX": 5,

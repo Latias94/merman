@@ -95,8 +95,10 @@ pub(super) fn is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> 
     sanitized.contains(&rounded_x) || sanitized.contains(&rounded_y)
 }
 
+/// Mermaid 12.1 keeps layout label offsets when paint-time clipping moves the route.
 pub(super) fn position_edge_label(
     dagre_anchor: LayoutPoint,
+    original_path_points: Option<&[LayoutPoint]>,
     label_path_points: &[LayoutPoint],
     rendered_d: &str,
     points_were_explicitly_updated: bool,
@@ -105,18 +107,23 @@ pub(super) fn position_edge_label(
         || label_path_points
             .get(label_path_points.len() / 2)
             .is_some_and(|midpoint| !is_label_coordinate_in_path(midpoint, rendered_d));
-    position_edge_label_for_path(dagre_anchor, label_path_points, path_was_updated)
-}
+    if !path_was_updated {
+        return dagre_anchor;
+    }
 
-fn position_edge_label_for_path(
-    dagre_anchor: LayoutPoint,
-    label_path_points: &[LayoutPoint],
-    path_was_updated: bool,
-) -> LayoutPoint {
-    path_was_updated
-        .then(|| calc_label_position(label_path_points))
-        .flatten()
-        .unwrap_or(dagre_anchor)
+    let Some(updated_midpoint) = calc_label_position(label_path_points) else {
+        return dagre_anchor;
+    };
+    let Some(original_path_points) = original_path_points else {
+        return updated_midpoint;
+    };
+    let Some(original_midpoint) = calc_label_position(original_path_points) else {
+        return dagre_anchor;
+    };
+    LayoutPoint {
+        x: dagre_anchor.x + (updated_midpoint.x - original_midpoint.x),
+        y: dagre_anchor.y + (updated_midpoint.y - original_midpoint.y),
+    }
 }
 
 fn js_rounded_number_string(value: f64) -> Option<String> {
@@ -211,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn position_keeps_dagre_anchor_until_insert_edge_marks_the_path_updated() {
+    fn updated_path_keeps_layout_anchor_when_the_route_midpoint_is_unchanged() {
         let points = [
             LayoutPoint { x: 0.0, y: 0.0 },
             LayoutPoint { x: 10.0, y: 0.0 },
@@ -219,10 +226,62 @@ mod tests {
         ];
         let anchor = LayoutPoint { x: 4.0, y: 5.0 };
 
-        let unchanged = position_edge_label(anchor.clone(), &points, "M0,0 L10,0 L20,0", false);
+        let unchanged = position_edge_label(
+            anchor.clone(),
+            Some(&points),
+            &points,
+            "M0,0 L10,0 L20,0",
+            false,
+        );
         assert_eq!((unchanged.x, unchanged.y), (anchor.x, anchor.y));
-        let updated = position_edge_label(anchor, &points, "M0,0 L10,0 L20,0", true);
-        assert_eq!((updated.x, updated.y), (10.0, 0.0));
+        let updated = position_edge_label(anchor, Some(&points), &points, "M0,0 L10,0 L20,0", true);
+        assert_eq!((updated.x, updated.y), (4.0, 5.0));
+    }
+
+    #[test]
+    fn updated_path_translates_the_anchor_by_the_actual_midpoint_delta() {
+        let original = [
+            LayoutPoint { x: -20.0, y: 0.0 },
+            LayoutPoint { x: 100.0, y: 0.0 },
+        ];
+        let updated = [
+            LayoutPoint { x: 0.0, y: 10.0 },
+            LayoutPoint { x: 100.0, y: 10.0 },
+        ];
+        let position = position_edge_label(
+            LayoutPoint { x: 12.0, y: 8.0 },
+            Some(&original),
+            &updated,
+            "M0,10L100,10",
+            true,
+        );
+        assert_eq!((position.x, position.y), (22.0, 18.0));
+        let without_original = position_edge_label(
+            LayoutPoint { x: 12.0, y: 8.0 },
+            None,
+            &updated,
+            "M0,10L100,10",
+            true,
+        );
+        assert_eq!((without_original.x, without_original.y), (50.0, 10.0));
+    }
+
+    #[test]
+    fn diagonal_marker_shortening_preserves_the_separated_label_anchor() {
+        let points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 100.0, y: 100.0 },
+        ];
+        let rendered_d = "M0,0L96.111,96.111";
+        assert!(!is_label_coordinate_in_path(&points[1], rendered_d));
+        let position = position_edge_label(
+            LayoutPoint { x: 60.0, y: 50.0 },
+            Some(&points),
+            &points,
+            rendered_d,
+            false,
+        );
+        assert_eq!((position.x, position.y), (60.0, 50.0));
     }
 
     #[test]
@@ -338,7 +397,8 @@ mod tests {
             &LayoutPoint { x: 9.0, y: 8.0 },
             &overflowing_decimal
         ));
-        let position = position_edge_label(anchor.clone(), &points, "M0 0L1 1", true);
+        let position =
+            position_edge_label(anchor.clone(), Some(&points), &points, "M0 0L1 1", true);
         assert_eq!((position.x, position.y), (anchor.x, anchor.y));
     }
 }

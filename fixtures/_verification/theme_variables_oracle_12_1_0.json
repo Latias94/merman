@@ -2855,10 +2855,10 @@
   ],
   "provenance": {
     "generator": "cargo run -p xtask -- gen-theme-snapshot",
-    "mermaidPackageSha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
-    "mermaidSourceCommit": "98a0945418c76238f15df2afaddbba4272656c3b",
-    "mermaidSourceTag": "mermaid@12.0.0",
-    "mermaidVersion": "12.0.0"
+    "mermaidPackageSha256": "2000f7182c400392b380043fc28079831302cff6a0bf8722762351185178b4e2",
+    "mermaidSourceCommit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
+    "mermaidSourceTag": "mermaid@12.1.0",
+    "mermaidVersion": "12.1.0"
   },
   "schemaVersion": 1
 }

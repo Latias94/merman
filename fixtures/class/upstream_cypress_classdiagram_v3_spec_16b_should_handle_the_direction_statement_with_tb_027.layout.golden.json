@@ -14,7 +14,7 @@
         {
           "id": "IdCard",
           "x": 73.562,
-          "y": 294.5,
+          "y": 364.0,
           "width": 123.124,
           "height": 135.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "Bike",
           "x": 234.025,
-          "y": 294.5,
+          "y": 364.0,
           "width": 117.803,
           "height": 135.0,
           "is_cluster": false
@@ -42,35 +42,35 @@
             },
             {
               "x": 134.274,
-              "y": 146.0
+              "y": 183.0
             },
             {
               "x": 73.562,
-              "y": 146.0
+              "y": 183.0
             },
             {
               "x": 73.562,
-              "y": 227.0
+              "y": 296.5
             }
           ],
           "label": {
             "x": 73.082,
-            "y": 176.5,
+            "y": 213.5,
             "width": 40.04,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 114.774,
-            "y": 127.0,
-            "width": 7.84,
-            "height": 21.0
+            "x": 126.194,
+            "y": 138.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 83.562,
-            "y": 204.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 87.642,
+            "y": 278.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -90,35 +90,35 @@
             },
             {
               "x": 173.313,
-              "y": 146.0
+              "y": 183.0
             },
             {
               "x": 234.025,
-              "y": 146.0
+              "y": 183.0
             },
             {
               "x": 234.025,
-              "y": 227.0
+              "y": 296.5
             }
           ],
           "label": {
             "x": 234.025,
-            "y": 176.5,
+            "y": 213.5,
             "width": 28.0,
             "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 168.813,
-            "y": 145.0,
-            "width": 7.84,
-            "height": 21.0
+            "x": 165.233,
+            "y": 154.75,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
-            "x": 244.025,
-            "y": 204.5,
-            "width": 7.84,
-            "height": 21.0
+            "x": 248.105,
+            "y": 278.25,
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -131,7 +131,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 292.927,
-        "max_y": 362.0
+        "max_y": 431.5
       }
     }
   }

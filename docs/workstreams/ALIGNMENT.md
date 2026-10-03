@@ -4,7 +4,10 @@ This folder tracks the **ongoing alignment workstream**: what to align next, how
 a real gap, and how we decide between source-backed changes, generalized measurement facts, and
 accepted browser residuals.
 
-Baseline target (pinned upstream): Mermaid `@12.0.0` at commit `98a0945418c76238f15df2afaddbba4272656c3b`.
+Admitted baseline evidence: Mermaid `@12.0.0` at commit `98a0945418c76238f15df2afaddbba4272656c3b`.
+
+Current unreleased target: Mermaid `@12.1.0` at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`;
+the 12.1 reference refresh and release gates remain in progress. See the [upgrade guide](../release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
 
 Related documentation:
 

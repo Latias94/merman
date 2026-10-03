@@ -22,9 +22,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 239.23,
+          "y": 223.5,
           "width": 198.0,
-          "height": 238.46,
+          "height": 207.0,
           "is_cluster": true
         }
       ],
@@ -63,9 +63,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 239.23,
+          "y": 223.5,
           "width": 198.0,
-          "height": 238.46,
+          "height": 207.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write\nnotes.",
@@ -86,7 +86,7 @@
         "min_x": 24.23,
         "min_y": 12.0,
         "max_x": 222.23,
-        "max_y": 358.46
+        "max_y": 327.0
       }
     }
   }
