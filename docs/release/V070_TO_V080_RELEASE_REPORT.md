@@ -37,10 +37,10 @@ The GitHub Release Windows x86_64 archives were downloaded on 2026-10-04. Their 
 
 The full historical product is larger. New functionality and dependency/default changes are plausible contributors, but this checkpoint does not quantify their individual costs or establish a same-capability regression. Archive bytes also include packaging/compression effects. Attribute the growth using the controlled candidate lanes before choosing a release size verdict.
 
-| Archive | Verified SHA-256 |
-| --- | --- |
-| `merman-cli-x86_64-pc-windows-msvc.zip` | `51f4898058d7bae48255a15663cafc14fcee3e352f271a916b2c057587070977` |
-| `merman-cli-x86_64-pc-windows-msvc.zip` | `7a24ff729ff75409361a5d8c538d74e2a227c75213db67eee1a6a726b206acd7` |
+| Release | Archive | Verified SHA-256 |
+| --- | --- | --- |
+| `v0.7.0` | `merman-cli-x86_64-pc-windows-msvc.zip` | `51f4898058d7bae48255a15663cafc14fcee3e352f271a916b2c057587070977` |
+| `v0.8.0-alpha.7` | `merman-cli-x86_64-pc-windows-msvc.zip` | `7a24ff729ff75409361a5d8c538d74e2a227c75213db67eee1a6a726b206acd7` |
 
 The ignored raw receipt is `target/bench/experiments/stable-080/published-cli-sizes.json`; each tag directory contains the release API metadata, checksum sidecar, downloaded ZIP, and extracted executable. The experiment registration is `target/bench/experiments/stable-080/experiment.yaml`. Keep this historical receipt separate from later candidate builds.
 
@@ -57,7 +57,36 @@ At the clean `c45ef5392d8d7447b29197cc133a485c269792f8` code checkpoint, both bi
 
 The removed packages are `merman-doc`, `toml`, `toml_datetime`, `toml_parser`, `toml_writer`, `serde_spanned`, and `winnow`. For the same Flowchart, Sequence, Gantt, and Class inputs, SVG output bytes and hashes matched across both binaries. The compiled command catalog includes Rustdoc only in the first binary; the second rejects the missing command. `.text` accounts for 901,936 bytes of the controlled PE section difference. Raw recipes, executable checksums, package closures, output controls, and binary copies are in `target/bench/experiments/cli-rustdoc-default/`. Their build times came from different cache states and are not comparable.
 
-The authoring-only Rustdoc workflow can be explicitly selected with `--features rustdoc`; standard CLI defaults and the official `cli-release` archive omit it. For an installed prebuilt archive, the command cannot be enabled retroactively. Keep the renderer, all diagram families, analysis, ASCII, exports, ELK, math, and local icons available in the standard CLI while attribution for the other choices is still in progress; `network-icons` requires explicit runtime `--allow-network` even when compiled. Retain exact slim source recipes for embedders and lint-only applications. Do not decide to remove a Mermaid-default backend or an advertised CLI output format based on executable bytes alone.
+The authoring-only Rustdoc workflow can be explicitly selected with `--features rustdoc`; standard CLI defaults and the official `cli-release` archive omit it. For an installed prebuilt archive, the command cannot be enabled retroactively.
+
+### Controlled stable-candidate CLI feature attribution
+
+At the clean code commit `c1643c7377eddaa7c2ae7e803f3b87cd8294bea1`, five sequential Windows x86_64 builds used Rust 1.95.0, locked Cargo dependencies, the same `dist` profile, and the descriptor-owned 19-feature `cli-release` recipe. Each alternative removes only the named capability from that standard recipe, except the Zed-style row, which selects 13 explicit families in place of `all-diagrams`. The target, compiler, sources, and remaining feature flags are identical within this table. Normal dependency packages come from `cargo tree --edges normal,no-proc-macro` for each recipe; package counts are not compiled byte counts.
+
+| CLI recipe | Executable bytes | Change from standard | Normal packages | User-visible tradeoff |
+| --- | ---: | ---: | ---: | --- |
+| Standard `cli-release` | 48,630,784 | Baseline | 296 | All 34 families, ASCII/SVG/PNG/JPEG/PDF, both layout backends, local and authorized remote icons. |
+| Without `network-icons` | 43,000,320 | -5,630,464 (-11.58%) | 233 | Local icon packs remain; no HTTP(S) icon-pack acquisition or `--allow-network` option. |
+| Without `layout-elk` | 45,995,520 | -2,635,264 (-5.42%) | 294 | Removes an upstream-default graphical backend and changes Flowchart/Class SVG outputs in the selected controls. |
+| Without `png,jpeg,pdf` | 42,999,808 | -5,630,976 (-11.58%) | 245 | Drops all three advertised binary output formats and their `mmdc` compatibility modes. |
+| Thirteen Zed-style diagram families | 42,434,048 | -6,196,736 (-12.74%) | 295 | Removes 21 less-common diagram families from the CLI; appropriate for a known host allowlist, not arbitrary CLI inputs. |
+
+All four selected Flowchart, Sequence, Gantt, and Class inputs rendered successfully in every recipe. Their SVG bytes matched the standard recipe for the network, binary-export, and 13-family alternatives; removing ELK changed the Flowchart and Class SVG hashes. These controls do not prove that every family or non-SVG operation behaves identically. Each ablation starts from the full recipe: dependency closure, dead-code elimination, and feature interactions overlap, so **do not add these savings**. Build durations came from different cache states and provide no compile-time claim. Raw recipes, SHA-256 digests, executable copies, section sizes, closure inventories, and selected-output controls are under `target/bench/experiments/cli-defaults/`, with the registration in its `experiment.yaml`. These values attribute the *current* candidate's weight, not the historical 0.7.0-to-0.8.0 increase: the 0.7.0 CLI already linked `reqwest`, for example.
+
+The stable CLI default and the official archive will keep all diagram families, SVG/ASCII and PNG/JPEG/PDF, ELK/Cytoscape, math, local icons, and `network-icons`. The general CLI must accept arbitrary diagrams, ELK changes default rendering, and dropping binary formats would remove documented output workflows. Remote icon packs also worked in the 0.7.0 CLI; an installed archive cannot later turn on a missing feature. The 5.63 MB cost of shipping remote-icon support is explicit, while actual network access still requires `--allow-network` (and private destinations require a second permission). An offline source build can omit `network-icons` without losing local packs. Rustdoc remains the only CLI workflow removed from the standard default: it targets document authors and can be installed from an explicitly enabled build. Smaller family allowlists belong in embedding products whose inputs are known, as illustrated in [Features](../FEATURES.md) and the [Rust embedding guide](../rendering/RUST_EMBEDDING.md). Reconsider an offline CLI archive if user demand justifies a separately documented and tested distribution; this checkpoint does not create an extra SKU.
+
+### Diagnostic cold CLI latency; native regression still unconfirmed
+
+A separate Windows diagnostic ran the verified published `v0.7.0` CLI and the code-frozen 0.8.0 candidate on the **same input bytes and host**, spawning a new process for each SVG render and capturing stdout. Each operation had three warmups, 24 alternating base/candidate pairs, and eight candidate/candidate A/A control pairs. All four commands succeeded and returned well-formed, deterministic SVG, but their output bytes differ across versions: Flowchart SVG grew from 9,869 to 29,109 bytes in this small sample, for example. Both the Mermaid baseline and published-vs-local compiler/build context also changed. These are descriptive *full-product cold process* measurements, **not** matched-output renderer latency or an admitted 0.7.0-to-0.8.0 performance regression.
+
+| Tracked fixture | 0.7.0 median | Candidate median | Paired candidate/base median | Candidate A/A median ratio |
+| --- | ---: | ---: | ---: | ---: |
+| Flowchart tiny | 24.10 ms | 34.05 ms | 1.42× | 1.04× |
+| Sequence tiny | 24.25 ms | 34.20 ms | 1.40× | 1.01× |
+| Gantt medium | 25.26 ms | 33.73 ms | 1.33× | 1.02× |
+| Class tiny | 25.39 ms | 35.91 ms | 1.39× | 1.04× |
+
+A non-rendering `--version` control also differed across the published 0.7.0 binary and this candidate (20.05 versus 27.80 ms median); thus the cold-render gap cannot all be assigned to layout or SVG emission. To isolate one candidate feature within a controlled source/profile, 48 alternating pairs compared the standard build with the otherwise identical build without `network-icons`; both produced exactly the same bytes for `--version` and the selected Flowchart SVG. Standard versus no-network median times were 27.35 versus 23.65 ms for `--version` (paired ratio 1.16×, standard A/A 1.01×) and 33.48 versus 29.55 ms for the SVG operation (paired ratio 1.12×, standard A/A 1.04×). The network-capable executable also imports more Windows system DLLs and includes the larger HTTP/TLS/DNS closure; this is feature-cost attribution for *cold CLI process use on this host*, not proof that an individual library accounts for the full delay. The official CLI retains network icons as described above. Raw samples, input/output hashes, commands, and registration are in `target/bench/experiments/stable-080/cli-cold-render-diagnostic.*`, `cli-startup-control.*`, and `target/bench/experiments/cli-defaults/startup-*`.
 
 The release campaign has two distinct lanes: **distributed product defaults**, which include each version's declared capabilities, and **equivalent capabilities**, which control the host workload, languages, output, optional backends, runtime policy, and profile. Full-product growth can include newly delivered capabilities; it is not automatically an implementation regression. A parser-only 0.7.0 facade and a default complete-SVG 0.8.0 facade are different workloads.
 
@@ -65,6 +94,7 @@ The release campaign has two distinct lanes: **distributed product defaults**, w
 | --- | --- | --- |
 | Published 0.7.0 versus alpha.7 CLI archives | Verified Windows checkpoint above | Historical product checkpoint only; retain archive hashes, compressed bytes, extracted executable bytes, target, and release provenance. It does not measure the final 0.8.0 candidate. |
 | Final candidate native CLI size | Pending final source freeze | Same host/compiler/target/profile; record raw/stripped/package units separately and the complete recipe. Compare the full product and a controlled capability lane independently. |
+| Published-CLI cold render diagnostic | Four source-identical inputs and a `--version` startup control measured above | Product observation across different compilers, SVG outputs, and Mermaid baselines; not a renderer regression gate. |
 | Native Criterion regression confirmation against 0.7.0 | Blocked by historical harness contract | 0.7.0's schema-1 corpus/harness has no current pre/postflight output identity receipts. The current comparator cannot certify comparable rows; do not convert missing evidence into a speedup or a pass. |
 | Browser/WASM, Node, mobile, RSS, and installed footprint | Not measured in this checkpoint | Run each owning surface separately with its actual artifact recipe. Native numbers do not certify these targets. |
 
