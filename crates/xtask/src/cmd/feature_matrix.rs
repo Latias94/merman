@@ -1312,6 +1312,48 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
     })?;
     for (name, features, families, render, ascii) in [
         ("none", "", "", "", ""),
+        ("facade-empty", "facade,merman/svg", "", "", ""),
+        (
+            "facade-layout-only",
+            "facade,merman/layout-cytoscape",
+            "",
+            "",
+            "",
+        ),
+        (
+            "facade-layout-elk-only",
+            "facade,merman/layout-elk",
+            "",
+            "",
+            "",
+        ),
+        (
+            "facade-flowchart",
+            "facade,merman/svg,merman/diagram-flowchart",
+            "flowchart",
+            "",
+            "",
+        ),
+        (
+            "facade-embedding-subset",
+            concat!(
+                "facade,merman/layout-cytoscape,merman/diagram-flowchart,",
+                "merman/diagram-sequence,merman/diagram-class,merman/diagram-state,",
+                "merman/diagram-er,merman/diagram-gantt,merman/diagram-pie,",
+                "merman/diagram-git-graph,merman/diagram-mindmap,merman/diagram-timeline,",
+                "merman/diagram-quadrant-chart,merman/diagram-xychart,merman/diagram-journey"
+            ),
+            "flowchart,sequence,class,state,er,gantt,pie,gitGraph,mindmap,timeline,quadrantChart,xychart,journey",
+            "",
+            "",
+        ),
+        (
+            "facade-embedding-all",
+            "facade,merman/all-diagrams,merman/layout-cytoscape",
+            all.as_str(),
+            "",
+            "",
+        ),
         ("gantt", "merman-core/diagram-gantt", "gantt", "", ""),
         (
             "agentflow",

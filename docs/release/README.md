@@ -6,16 +6,17 @@ Use this index to choose an upgrade path by the version you have installed. Merm
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.7.0` | `0.8.0` source candidate | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
 | `0.8.0-alpha.3` | `0.8.0-alpha.5` | [Upgrade guide](ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md): capability selection, Rust APIs, browser packages, and native transports |
 | `0.8.0-alpha.4` | `0.8.0-alpha.5` | Runtime contracts are unchanged; alpha.5 follows up the incomplete alpha.4 distribution. See the [alpha.5 changelog](../../CHANGELOG.md#080-alpha5---2026-08-09). |
 | `0.8.0-alpha.5` | `0.8.0-alpha.6` | [Upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md) and [detailed symbol mapping](UNRELEASED_UPGRADE_GUIDE.md): operation-scoped rendering, analysis/editor, and binding changes |
 | `0.8.0-alpha.6` | `0.8.0-alpha.7` | [Upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md): Mermaid 12 defaults, explicit family features, Agentflow/Usecase, and ASCII/native contract changes |
 
-Apply the intervening guides in order when skipping prereleases. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. These are historical release contracts: examples in an older guide target that version, not the current branch. For an earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
+Apply the intervening guides in order when skipping prereleases. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. These are historical release contracts: examples in an older guide target that version, not the current branch. The stable upgrade guide consolidates the consumer actions across the 0.8 prereleases. For another earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
 
 Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts on one release. Package channels publish independently; a workspace tag alone does not prove that every channel has published. The [dated publication snapshots](PUBLISH_ORDER.md#alpha7-publication-snapshot) record the verified alpha.7 channels and earlier recovery history. Inspect the installed artifact's runtime catalog when its capabilities matter.
 
-`UNRELEASED_UPGRADE_GUIDE.md` is the fixed alpha.6 detailed reference. Its historical filename remains for existing links; it is not a rolling guide to unshipped changes. Development changes belong in the root changelog's `Unreleased` section until a release is selected.
+`UNRELEASED_UPGRADE_GUIDE.md` is the fixed alpha.6 detailed reference. Its historical filename remains for existing links; it is not a rolling guide to unshipped changes. Development changes belong in the root changelog's unshipped section; a selected `0.8.0` entry remains `Unreleased` until its release date is frozen.
 
 ## Independent versions and native protocols
 

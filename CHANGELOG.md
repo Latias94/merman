@@ -4,10 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0] - Unreleased
+
+The next release is stable. When upgrading from `0.7.0` (2026-06-09), read the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md), and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated API, feature, presentation, package, and measurement changes. The entries below describe stabilization since alpha.7; the published prerelease sections retain the intervening release history.
+
+### Added
+
+- Added a consolidated Rust embedding guide with operation-scoped rendering, explicit diagram/backend selection, font integration, and a Zed-style migration recipe. Independent consumers verify the 13-family embedding subset and the all-family SVG/Cytoscape recipe.
 
 ### Fixed
 
+- Made unsupported-parser diagnostics suggest the owning `diagram-*` or `all-diagrams` Cargo feature when a known built-in parser is not compiled, while preserving structured diagnostic codes and unknown/custom failures.
 - Updated the Playground and reference renderer to DOMPurify 3.4.16 for GHSA-p98j-92pf-mc4p. Reference tools now build and verify the selected dependency graph instead of executing older dependencies embedded in Mermaid's published bundle; sanitizer-default generation rejects unsupported input instead of silently producing empty allowlists.
 - Corrected C4 relationship endpoints for people, components, databases, queues, and nested boundaries, including self-relations and near-overlapping centers.
 - Kept Class relationships and arrowheads visible above ELK namespace backgrounds, and aligned relationship marker strokes with Mermaid 12.

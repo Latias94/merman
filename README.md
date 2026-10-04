@@ -14,14 +14,14 @@ Chromium, or another JavaScript runtime.
 Hosts provide explicit output, theme, viewport, and resource policy; Merman returns an artifact,
 metadata, or a typed error. Terminal detection, pager interaction, scheduling, caches, and save/open
 or clipboard actions belong to the host. Start with the
+[Rust embedding guide](docs/rendering/RUST_EMBEDDING.md) for migration and family/backend selection, or the
 [host integration recipes](crates/merman/examples/README.md#host-integration-recipes) for terminal
 text, agent/log output, browser SVG, and raster export using the existing request types.
 
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This guide covers `0.8.0-alpha.7`, which follows `mermaid@12.0.0`. Alpha.6 follows `mermaid@11.17.2`. Parser, layout, configuration, theming, sanitization,
-and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor, or the [versioned upgrade index](docs/release/README.md) when upgrading from an earlier release.
+This checkout prepares the `0.8.0` stable candidate. The latest published workspace release at this checkpoint is `0.8.0-alpha.7`, which follows `mermaid@12.0.0`; the inspected source retains that pinned baseline. Parser, layout, configuration, theming, sanitization, and SVG structure are checked against the selected upstream source and fixtures. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) when upgrading from the previous stable release, or the [versioned upgrade index](docs/release/README.md) for prereleases. The broader theme refactor remains deferred.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -121,7 +121,7 @@ terminal output, binary export, and ambient system adapters remain opt-in.
 
 In the current source, positive `diagram-*` features select built-in families independently of
 outputs and engines. Low-level crates and facade consumers disabling defaults must select
-`all-diagrams` or their required families explicitly. Published alpha.6 packages predate this
+`all-diagrams` or their required families explicitly. Packages at alpha.6 and earlier predate this
 feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |

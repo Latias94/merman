@@ -157,6 +157,8 @@ fn main() {
             ));
         }
     }
+    #[cfg(feature = "facade")]
+    verify_embedding(&selected);
     #[cfg(feature = "editor")]
     verify_editor_shape_completion();
     #[cfg(feature = "ascii")]
@@ -203,5 +205,61 @@ fn verify_editor_shape_completion() {
         assert_eq!(edit.range.start, Position::new(1, expected_start));
         assert_eq!(edit.range.end, Position::new(1, line.len()));
         assert_eq!(edit.new_text, replacement);
+    }
+}
+
+#[cfg(feature = "facade")]
+fn verify_embedding(selected: &BTreeSet<String>) {
+    use merman::svg::{CssOverridePostprocessor, SvgPipeline};
+    use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+    let renderer = Renderer::new();
+    for (family, source) in [
+        ("flowchart", "flowchart TD\nA[Start]-->B[Finish]\n"),
+        ("sequence", "sequenceDiagram\nAlice->>Bob: Hello\n"),
+        ("class", "classDiagram\nAnimal <|-- Duck\n"),
+        ("state", "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n"),
+        ("er", "erDiagram\nCUSTOMER ||--o{ ORDER : places\n"),
+        (
+            "gantt",
+            "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n",
+        ),
+        ("pie", "pie\n\"One\" : 1\n"),
+        ("gitGraph", "gitGraph\ncommit\n"),
+        ("mindmap", "mindmap\n  root((Root))\n    Child\n"),
+        ("timeline", "timeline\n2026 : Work\n"),
+        ("quadrantChart", "quadrantChart\nA: [0.3, 0.6]\n"),
+        (
+            "xychart",
+            "xychart-beta\nx-axis [a, b]\ny-axis 0 --> 10\nbar [3, 7]\n",
+        ),
+        ("journey", "journey\nsection Work\nTask: 5: Alice\n"),
+    ] {
+        let mut request = SvgRequest::default();
+        request.options.diagram_id = Some(format!("embedding-{family}"));
+        request.pipeline = Some(
+            SvgPipeline::resvg_safe()
+                .with_postprocessor(CssOverridePostprocessor::strip_existing_important()),
+        );
+        let output = renderer.render(RenderRequest::svg(source, OperationControl::new(), request));
+        if selected.contains(family) {
+            let RenderOutput::Svg(Some(svg)) = output.unwrap() else {
+                panic!("{family}: expected an SVG artifact");
+            };
+            assert!(svg.svg().contains("<svg"), "{family}");
+            assert!(!svg.svg().contains("<foreignObject"), "{family}");
+        } else {
+            let merman::RenderError::Parse(error) = output.unwrap_err() else {
+                panic!("{family}: expected an unsupported parser diagnostic");
+            };
+            let details = error.terminal_diagnostic_details();
+            assert_eq!(details.code, "merman.parse.unsupported_diagram");
+            let selector = merman_core::diagram_family_selectors()
+                .iter()
+                .find(|selector| selector.logical_family_kind == family)
+                .unwrap();
+            assert!(error.to_string().contains(selector.feature), "{error}");
+            assert!(error.to_string().contains("all-diagrams"), "{error}");
+        }
     }
 }
