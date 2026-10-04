@@ -1,9 +1,6 @@
 # Choosing Merman capabilities
 
-This page documents the development source for `0.8.0-alpha.7`. The published workspace release is
-`0.8.0-alpha.6`; the ELK product defaults below apply to this checkout and the planned alpha.7
-release. Registry channels publish independently, so verify the exact package version and provenance
-before copying an install command; workspace path snippets are for source-tree development.
+This page documents the `0.8.0` source candidate. The latest published workspace release at this checkpoint is `0.8.0-alpha.7` (2026-09-30); its explicit family selections and ELK product defaults also apply here. Registry channels publish independently, so verify the exact package version and provenance before copying an install command; workspace path snippets are for source-tree development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host migration and the [stable upgrade guide](release/V070_TO_V080_UPGRADE_GUIDE.md) when starting from `0.7.0`.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
@@ -79,9 +76,9 @@ select their own direct leaf set instead.
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features all-diagrams,stdio` |
-| Complete CLI | `merman-cli` | Default direct leaves including all families and ELK, or the exact `cli-release` recipe |
+| Complete diagram CLI | `merman-cli` | Defaults or `cli-release`: all families, ELK, math, exports, editor tooling, Markdown, and `rustdoc` authoring |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
-| Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
+| Checked Rustdoc fragments | `merman-cli rustdoc` | Included in the default and release CLI; documented crates consume committed files through native `include_str!` |
 | One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` or `complete-svg` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
@@ -98,9 +95,7 @@ a supported Node transport or fallback.
 
 ## Select diagram families
 
-This is a source and typed-API migration for the current checkout and the next release. Published
-`0.8.0-alpha.6` packages predate these selectors; use a checkout containing this change for the
-following path dependencies. Default facade, CLI, and Rustdoc users retain all built-in families.
+These selectors were published in `0.8.0-alpha.7` and remain part of the `0.8.0` source candidate. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
 Low-level crates keep empty defaults. Existing `default-features = false` consumers must add
 `all-diagrams` to retain the previous language surface, or list the families they require.
 `complete-svg` alone selects outputs and engines, not languages.
@@ -153,8 +148,7 @@ Strict parsing of a known disabled family returns `UnsupportedDiagram`. Suppress
 render parsing produces the existing Error diagram; suppressed unknown input returns `None`.
 Cancellation is never suppressed, and custom registry overlays keep their existing precedence.
 Rendering rejects a missing local handler after cancellation, provenance, and semantic/layout
-pair validation, before optional backend planning. A selected family with an unavailable requested
-backend still returns the existing missing-capability result.
+pair validation, before optional backend planning. Optional graph backends retain their registered fallback when absent from the build; denying a compiled requested backend returns a typed runtime-policy error. Architecture requires its Cytoscape render backend. See the [embedding guide](rendering/RUST_EMBEDDING.md#handle-unavailable-languages-and-backends) for family-specific behavior.
 
 Existing distributed products retain their all-family recipes; this change adds no family-specific
 prebuilt package. Artifact profile schema 2 records the exact compiled parser set in
@@ -291,11 +285,9 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
 SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
-Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
-Markdown, and shell completions.
-The `cli-release` artifact selects the same capabilities explicitly. Both closures include the
-EPL-2.0 ELK implementation and its notices. The published alpha.6 source default excludes ELK;
-its release archives already include it.
+Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is included in source defaults and the standard archive.
+The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
+EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7 and the stable candidate include ELK in both recipes.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
@@ -332,18 +324,17 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The CLI `rustdoc` tool leaf
-enables deterministic SVG rendering with Cytoscape and math for an explicit `build/check` authoring
-workflow; it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are committed,
-packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
+Rustdoc has two independently distributed static-SVG workflows. The `0.8.0` source default
+and release archive retain the deterministic CLI `build/check` authoring workflow, as in
+alpha.7. It enables SVG rendering with Cytoscape and math;
+it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
+committed, packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 `#![doc = include_str!(...)]`. This gives the documented crate zero attributable Merman packages
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
 features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
-optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults
-apply to the current source and planned `0.8.0-alpha.7`; the published alpha.6 macro enables math
-and excludes ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
+optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply to the published alpha.7 macro and the stable candidate. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
 and continues to include math.
 
 The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
@@ -413,7 +404,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter's current published baseline uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. The workspace source candidate is `0.8.0-alpha.6`; do not present that candidate as a pub.dev installation until its registry evidence exists. Android consumes the
+Flutter's verified alpha.7 publication uses `flutter pub add 'merman:^0.8.0-alpha.7'` and `Merman.open()`; see the [dated publication snapshot](release/PUBLISH_ORDER.md#alpha7-publication-snapshot). The `0.8.0` source candidate is not yet a pub.dev release. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`

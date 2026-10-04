@@ -14,19 +14,14 @@ Chromium, or another JavaScript runtime.
 Hosts provide explicit output, theme, viewport, and resource policy; Merman returns an artifact,
 metadata, or a typed error. Terminal detection, pager interaction, scheduling, caches, and save/open
 or clipboard actions belong to the host. Start with the
+[Rust embedding guide](docs/rendering/RUST_EMBEDDING.md) for migration and family/backend selection, or the
 [host integration recipes](crates/merman/examples/README.md#host-integration-recipes) for terminal
 text, agent/log output, browser SVG, and raster export using the existing request types.
 
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This README covers development toward **`0.8.0` (unreleased)**, with Mermaid `12.1.0` selected at
-commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid
-`12.0.0`; alpha.6 follows `11.17.2`. Parser, layout, configuration, theming, sanitization, and SVG
-structure follow the pinned source and fixtures. The current transition is still under validation;
-see the [alpha.7 to 0.8.0 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for semantic,
-ELK, and low-level Rust changes, or the [versioned upgrade index](docs/release/README.md) for an
-earlier release.
+This checkout prepares **`0.8.0` (unreleased)** with Mermaid `12.1.0` selected at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid `12.0.0`. Parser, layout, configuration, theming, sanitization, and SVG structure follow the pinned source and fixtures; transition validation remains in progress. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the previous stable release, the [alpha.7-to-0.8.0 guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for Mermaid 12.1 and low-level Rust changes, or the [versioned index](docs/release/README.md) for earlier prereleases. The broader theme refactor remains deferred.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -129,7 +124,7 @@ terminal output, binary export, and ambient system adapters remain opt-in.
 
 In the current source, positive `diagram-*` features select built-in families independently of
 outputs and engines. Low-level crates and facade consumers disabling defaults must select
-`all-diagrams` or their required families explicitly. Published alpha.6 packages predate this
+`all-diagrams` or their required families explicitly. Packages at alpha.6 and earlier predate this
 feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |

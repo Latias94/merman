@@ -154,7 +154,27 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
         merman_core::Error::RuntimePolicy(error) => safe_runtime_policy_error(error),
         merman_core::Error::DetectType(_) => "No Mermaid diagram type detected".to_string(),
         merman_core::Error::UnsupportedDiagram { diagram_type } => {
-            bounded_message("Unsupported diagram type: ", diagram_type, "")
+            let selector = merman_core::diagram_family_capabilities()
+                .iter()
+                .find(|family| {
+                    family.diagram_type == diagram_type
+                        && !family.has_semantic_parser
+                        && !family.has_render_parser
+                })
+                .and_then(|family| {
+                    merman_core::diagram_family_selectors()
+                        .iter()
+                        .find(|selector| {
+                            selector.logical_family_kind == family.logical_family_kind
+                        })
+                });
+            let suffix = selector.map_or_else(String::new, |selector| {
+                format!(
+                    "; enable the `{}` or `all-diagrams` Cargo feature",
+                    selector.feature
+                )
+            });
+            bounded_message("Unsupported diagram type: ", diagram_type, &suffix)
         }
         merman_core::Error::DiagramParse {
             diagram_type,
@@ -323,6 +343,50 @@ mod tests {
             },
         ));
         assert_eq!(detect_error.to_string(), "No Mermaid diagram type detected");
+    }
+
+    #[test]
+    fn unsupported_builtin_hint_follows_compiled_parser_availability() {
+        for family in merman_core::diagram_family_capabilities() {
+            let Some(selector) = merman_core::diagram_family_selectors()
+                .iter()
+                .find(|selector| selector.logical_family_kind == family.logical_family_kind)
+            else {
+                continue;
+            };
+            let error = TerminalDiagnostic::from(merman_core::Error::UnsupportedDiagram {
+                diagram_type: family.diagram_type.to_string(),
+            });
+            let message = error.to_string();
+            if family.has_semantic_parser || family.has_render_parser {
+                assert_eq!(
+                    message,
+                    format!("Unsupported diagram type: {}", family.diagram_type)
+                );
+            } else {
+                assert!(message.contains(selector.feature), "{message}");
+                assert!(message.contains("all-diagrams"), "{message}");
+            }
+            let details = error.terminal_diagnostic_details();
+            assert_eq!(details.code, "merman.parse.unsupported_diagram");
+            assert_eq!(details.diagram_type.as_deref(), Some(family.diagram_type));
+        }
+    }
+
+    #[test]
+    fn unknown_diagram_has_no_builtin_feature_hint() {
+        let error = TerminalDiagnostic::from(merman_core::Error::UnsupportedDiagram {
+            diagram_type: "custom\u{1b}family".to_string(),
+        });
+        assert_eq!(
+            error.to_string(),
+            "Unsupported diagram type: custom\\u{1B}family"
+        );
+        assert!(!format!("{error:?}").contains('\u{1b}'));
+        assert_eq!(
+            error.terminal_diagnostic_details().code,
+            "merman.parse.unsupported_diagram"
+        );
     }
 
     #[test]

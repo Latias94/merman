@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 import signal
@@ -17,6 +18,19 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_process_matrix as matrix
+
+
+CLI_RELEASE_FEATURES = tuple(
+    next(
+        profile["cargo"]["features"]
+        for profile in json.loads(
+            (matrix.REPO_ROOT / "capabilities/artifact-profiles-v2.json").read_text(
+                encoding="utf-8"
+            )
+        )["profiles"]
+        if profile["id"] == "cli-release"
+    )
+)
 
 
 EXPECTED_SELECTIONS = (
@@ -43,7 +57,7 @@ EXPECTED_SELECTIONS = (
     ("system-random", ("all-diagrams", "system-random"), "exact"),
     ("system-timing", ("all-diagrams", "system-timing"), "exact"),
     ("default", (), "default"),
-    ("release", (), "all"),
+    ("release", CLI_RELEASE_FEATURES, "exact"),
 )
 
 
@@ -51,13 +65,7 @@ def selection_projection(profile: matrix.ProfileCase) -> tuple[object, ...]:
     return (
         profile.case_id,
         profile.features,
-        (
-            "all"
-            if profile.use_all_features
-            else "default"
-            if profile.use_default_features
-            else "exact"
-        ),
+        "default" if profile.use_default_features else "exact",
     )
 
 
@@ -66,9 +74,7 @@ def expected_command(selection: tuple[object, ...]) -> list[str]:
     del case_id
     features = tuple(raw_features)
     command = ["cargo", "nextest", "run", "-p", "merman-cli"]
-    if mode == "all":
-        command.append("--all-features")
-    elif mode == "exact":
+    if mode == "exact":
         command.append("--no-default-features")
         if features:
             command.extend(["--features", ",".join(features)])
@@ -91,7 +97,7 @@ class CliProcessMatrixTests(unittest.TestCase):
                 self.assertTrue(profile.name)
                 self.assertTrue(profile.workflow)
 
-    def test_cli_defaults_include_all_public_leaves(self) -> None:
+    def test_cli_defaults_select_standard_diagram_workflows(self) -> None:
         cargo_toml = tomllib.loads(
             (matrix.REPO_ROOT / "crates/merman-cli/Cargo.toml").read_text(
                 encoding="utf-8"
@@ -106,9 +112,11 @@ class CliProcessMatrixTests(unittest.TestCase):
         self.assertSetEqual(
             set(features["default"]),
             expected_defaults,
-            "workspace defaults include all-diagrams and the complete CLI capability set",
+            "workspace defaults select all-diagrams and the standard CLI workflows",
         )
         self.assertIn("layout-elk", features["default"])
+        self.assertIn("rustdoc", public_features)
+        self.assertIn("rustdoc", features["default"])
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

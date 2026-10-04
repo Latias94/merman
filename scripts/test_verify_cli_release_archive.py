@@ -236,7 +236,10 @@ def valid_capabilities_payload(
             "schema_version": surface["schema_version"],
             "digest": semantic_surface_digest(surface),
         },
-        "commands": CLI_RELEASE_COMMANDS,
+        "commands": sorted(
+            command for command in CLI_RELEASE_COMMANDS
+            if command != "rustdoc" or "rustdoc" in runtime_ids
+        ),
         "diagram_families": profile["expected"]["diagram_families"],
         "capabilities": capabilities,
         "outputs": outputs,
@@ -376,6 +379,22 @@ def write_repo_assets(
         cwd=root,
         check=True,
     )
+
+
+def disable_rustdoc_profile(repo_root: Path) -> None:
+    path = repo_root / "capabilities/artifact-profiles-v2.json"
+    descriptor = json.loads(path.read_text(encoding="utf-8"))
+    profile = next(
+        profile for profile in descriptor["profiles"] if profile["id"] == "cli-release"
+    )
+    for values in (
+        profile["cargo"]["features"],
+        profile["expected"]["capabilities"],
+        profile["expected"]["runtime_ids"],
+    ):
+        values.remove("rustdoc")
+        values.sort()
+    path.write_text(json.dumps(descriptor) + "\n", encoding="utf-8")
 
 
 def verify_archive(
@@ -1271,6 +1290,7 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
     def test_runtime_contract_can_be_verified_with_an_injected_runner(self) -> None:
+        repo_root = PROJECT_ROOT
         calls: list[tuple[list[str], bytes]] = []
 
         def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -1280,7 +1300,7 @@ class RuntimeContractTests(unittest.TestCase):
             if command[-1] == "--version":
                 stdout = f"merman-cli {VERSION}\n".encode()
             elif command[-2:] == ["capabilities", "--json"]:
-                stdout = json.dumps(valid_capabilities_payload()).encode()
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
             elif command[-2:] == ["completion", "bash"]:
                 stdout = required_files(LINUX_TARGET)[
                     "completions/merman-cli.bash"
@@ -1311,11 +1331,14 @@ class RuntimeContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive, checksum = write_tar(root)
+            repo_root = root / "repo"
+            write_repo_assets(repo_root, required_files(LINUX_TARGET))
             verify_archive(
                 archive,
                 checksum,
                 target=LINUX_TARGET,
                 version=VERSION,
+                repo_root=repo_root,
                 execute=True,
                 runner=runner,
                 host_target_checker=lambda _target: True,
@@ -1354,7 +1377,45 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(calls[8][1], b"")
         self.assertEqual(calls[7][0][4], calls[8][0][4])
 
+    def test_runtime_skips_rustdoc_when_an_explicit_profile_omits_it(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            calls.append(command)
+            if command[-1] == "--version":
+                stdout = f"merman-cli {VERSION}\n".encode()
+            elif command[-2:] == ["capabilities", "--json"]:
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
+            elif command[-2:] == ["completion", "bash"]:
+                stdout = (repo_root / "crates/merman-cli/assets/completions/merman-cli.bash").read_bytes()
+            elif "png" in command:
+                stdout = VALID_PNG
+            elif "jpg" in command:
+                stdout = VALID_JPEG
+            elif "pdf" in command:
+                stdout = VALID_PDF
+            else:
+                stdout = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
+            return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            write_repo_assets(repo_root, required_files(LINUX_TARGET))
+            disable_rustdoc_profile(repo_root)
+            verifier.verify_runtime_contract(
+                Path("/synthetic/merman-cli"),
+                target=LINUX_TARGET,
+                version=VERSION,
+                repo_root=repo_root,
+                runner=runner,
+                host_target_checker=lambda _target: True,
+            )
+        self.assertEqual(len(calls), 7)
+        self.assertTrue(all("rustdoc" not in command for command in calls))
+
     def test_runtime_rejects_rustdoc_build_without_managed_outputs(self) -> None:
+        repo_root = PROJECT_ROOT
+
         def runner(
             command: list[str],
             **kwargs: object,
@@ -1362,7 +1423,7 @@ class RuntimeContractTests(unittest.TestCase):
             if command[-1] == "--version":
                 stdout = f"merman-cli {VERSION}\n".encode()
             elif command[-2:] == ["capabilities", "--json"]:
-                stdout = json.dumps(valid_capabilities_payload()).encode()
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
             elif command[-2:] == ["completion", "bash"]:
                 stdout = required_files(LINUX_TARGET)[
                     "completions/merman-cli.bash"

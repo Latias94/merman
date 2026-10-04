@@ -162,14 +162,14 @@
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
-          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "runtime_ids": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
-          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]

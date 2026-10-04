@@ -8,12 +8,14 @@ publish = false
 
 [features]
 default = []
+facade = ["dep:merman"]
 renderer = ["dep:merman-render"]
 ascii = ["dep:merman-ascii"]
 editor = ["dep:merman-editor-core", "dep:merman-analysis"]
 omitted-sequence = []
 
 [dependencies]
+merman = { path = "../../../../merman", default-features = false, optional = true }
 merman-core = { path = "../../../../merman-core", default-features = false }
 merman-render = { path = "../../../../merman-render", default-features = false, optional = true }
 merman-ascii = { path = "../../../../merman-ascii", default-features = false, optional = true }

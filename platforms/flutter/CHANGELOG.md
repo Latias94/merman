@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.0] - Unreleased
+
+### Fixed
+
+- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+
+### Upgrade
+
+- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+
 ## [0.8.0-alpha.7] - 2026-09-30
 
 ### Added

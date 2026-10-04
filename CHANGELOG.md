@@ -4,19 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0] - Unreleased
+
+The next release is stable. When upgrading from `0.7.0` (2026-06-09), read the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md), and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated API, feature, presentation, package, and measurement changes. The entries below describe stabilization since alpha.7; the published prerelease sections retain the intervening release history.
+
+### Added
+
+- Added a consolidated Rust embedding guide with operation-scoped rendering, explicit diagram/backend selection, font integration, and a Zed-style migration recipe. Independent consumers verify the 13-family embedding subset and the all-family SVG/Cytoscape recipe.
 
 Development target: `0.8.0`, not yet released. Mermaid 12.1 alignment and validation are in progress;
 see the [alpha.7 to 0.8.0 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
 
 ### Changed
 
+- Kept the CLI `rustdoc` authoring command in source defaults and official archives after measuring its cost: a controlled Windows `dist` build saves 1,093,120 executable bytes (2.20% of the full binary) and seven normal dependencies when removed, with no resolved cold-start difference in the selected controls. Kept network-icon support by default; its separate size and startup costs and the reference `mermaid-cli` installation footprint are documented in the [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md).
 - Prepared the unreleased `0.8.0` compatibility update for Mermaid 12.1; the [upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) records the selected components and migration details.
 - Expanded the low-level ELK edge-label contract to retain terminal identity and multiple labels; direct consumers should follow the upgrade guide before updating struct initializers.
 - Raised the general `interactive` layout-work allowance from 800,000 to 14,100,000 units for ordinary diagrams under Mermaid 12's ELK default. CLI and rustdoc use finite `trusted-native` defaults with 15,000,000 units. Per-profile source/model/output values are unchanged; work units are not a deadline or memory guarantee. Preview hosts should cancel obsolete operations and bound their own concurrency. The CLI interactive scheduling pool is now 1 GiB so its default graphical requests remain admissible. #158
 
 ### Fixed
 
+- Made unsupported-parser diagnostics suggest the owning `diagram-*` or `all-diagrams` Cargo feature when a known built-in parser is not compiled, while preserving structured diagnostic codes and unknown/custom failures.
 - Rust graphical requests now inherit source/model limits from their SVG environment when neither the request nor renderer explicitly sets an input policy. Existing explicit input overrides retain precedence, allowing one complete policy to configure a normal operation without duplicating it across two builders.
 - Added rustdoc `resource_profile` and positive `max_layout_work_units` options, with per-diagram/per-theme budgets, inheritance, and actionable limit errors. PNG/JPEG/PDF scheduling reserves the larger layout or encoding phase instead of adding non-overlapping workspaces. See the [host integration guide](docs/integration/RESOURCE_POLICY.md) for editor, document, and constrained-service recipes. #158
 - Updated the Playground and reference renderer to DOMPurify 3.4.16 for GHSA-p98j-92pf-mc4p. Reference tools now build and verify the selected dependency graph instead of executing older dependencies embedded in Mermaid's published bundle; sanitizer-default generation rejects unsupported input instead of silently producing empty allowlists.

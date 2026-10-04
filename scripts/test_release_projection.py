@@ -259,7 +259,7 @@ class ReleaseProjectionTests(unittest.TestCase):
                 Path("Cargo.toml"),
                 lambda text: replace_once(
                     text,
-                    f'merman-core = {{ path = "crates/merman-core", version = "={canonical}"',
+                    f'merman-core = {{ path = "crates/merman-core", version = "{release_projection.workspace_dependency_requirement(version)}"',
                     'merman-core = { path = "crates/merman-core", version = "9.9.9"',
                 ),
             ),

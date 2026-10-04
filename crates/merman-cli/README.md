@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, Cytoscape layout, math, icons, completions, and native runtime adapters. The current source for `0.8.0-alpha.7` also includes ELK layout by default, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.8.0` source candidate, planned release archives, and published `0.8.0-alpha.7` default all include the Rustdoc fragment command. ELK remains in both the alpha.7 and stable-candidate defaults, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
 The command line has four explicit workflows:
 
@@ -10,7 +10,7 @@ The command line has four explicit workflows:
 | --- | --- | --- |
 | One native render | `merman-cli render` | You want concise Rust-native defaults and strict option validation |
 | Native Markdown batch | `merman-cli batch` | You want a recoverable, tool-owned multi-file generation |
-| Static Rustdoc fragments | `merman-cli rustdoc` | You want Mermaid in crate or item docs without adding a renderer to the crate's Cargo graph |
+| Static Rustdoc fragments | `merman-cli rustdoc` (included by default) | You want Mermaid in crate or item docs without adding a renderer to the crate's Cargo graph |
 | Pinned compatibility | `merman-cli mmdc` | You are migrating an `mmdc@11.16.0` command or need its naming and scanner rules |
 
 ## Install
@@ -331,9 +331,12 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The default feature set is the complete local product. It includes `all-diagrams`. For a slim current-source binary, disable defaults and select the
-required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language
-surface. The alpha.7 recipes below select families explicitly:
+The `0.8.0` source candidate defaults to the standard diagram CLI with `all-diagrams`.
+The Rustdoc authoring command remains available in the default and release builds, as in the
+published alpha.7 archives. The commands below for alpha.7 remain version-pinned to that release.
+For a slim current-source binary, disable defaults and select the required `diagram-*` families
+plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
+explicitly:
 
 | Build | Capabilities |
 | --- | --- |

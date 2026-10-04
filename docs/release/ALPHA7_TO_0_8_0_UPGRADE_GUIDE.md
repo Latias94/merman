@@ -24,6 +24,18 @@ change. Coupled Rust crates, generated wrappers, and native/WASM artifacts must 
 one matching Merman build. The independent Tree-sitter package keeps its own baseline and release
 process; the parent Mermaid upgrade does not promote its grammar or query contract.
 
+## CLI Rustdoc remains available
+
+The `0.8.0` source default and official CLI archives retain `merman-cli rustdoc build/check`,
+as in alpha.7. No feature flag or source reinstall is required to keep generating checked
+fragments. The independent `merman-rustdoc` proc-macro workflow remains separate.
+Query `merman-cli capabilities --json` to confirm the installed binary's commands;
+custom `--no-default-features` builds must still select `rustdoc` explicitly.
+
+```console
+cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+```
+
 ## Review ELK output changes
 
 The Mermaid 12.0 defaults introduced in alpha.7 remain: ELK is the default for its supported

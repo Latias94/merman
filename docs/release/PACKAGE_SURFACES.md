@@ -24,7 +24,7 @@ its own selected baseline.
 | A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
 | Raw Mermaid CST, incremental parsing, and syntax queries | `tree-sitter-mermaid` on crates.io or `@mermanjs/tree-sitter-mermaid` on npm | Independent grammar release |
-| Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
+| Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | Default source CLI and standard release archive |
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
 | Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
@@ -74,10 +74,10 @@ the alpha.7 Mermaid 12 alignment adds ELK to the product default.
 | Distribution property | `merman-cli rustdoc` | `merman-rustdoc` |
 | --- | --- | --- |
 | Consumer Cargo graph | No attributable Merman renderer, layout, math, or proc-macro package | Selected proc-macro and renderer closure |
-| Release recipe | `cli-release` includes the `rustdoc` tool leaf | Independent `rustdoc-static-svg` artifact profile |
+| Release recipe | Included in CLI defaults and the `cli-release` artifact recipe | Independent `rustdoc-static-svg` artifact profile |
 | Published inputs | Config, source, generated fragments, and `receipt.json` | Annotated Rust source and optional included `.mmd` files |
 | Hosted documentation | Packaged fragments work offline without executing the CLI | docs.rs must enable the optional documentation feature |
-| Freshness/rollback | CI runs `rustdoc check`; Git owns successful-state rollback | `cargo doc` fails during expansion; Git owns source rollback |
+| Freshness/rollback | CI runs the default CLI `rustdoc check`; Git owns successful-state rollback | `cargo doc` fails during expansion; Git owns source rollback |
 
 Generated fragments must be included at most once on a rendered page to avoid duplicate static DOM
 IDs. Package preflight must prove every referenced fragment and the receipt are present. The
