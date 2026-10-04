@@ -4,11 +4,18 @@ This source distribution derives syntax behavior or compatibility evidence from 
 MIT-licensed projects. The corresponding license texts are included below
 `THIRD_PARTY_LICENSES/`.
 
-## Tree-sitter 0.26.12
+## Tree-sitter 0.27.0 (generator and support headers)
+
+- Source: https://github.com/tree-sitter/tree-sitter.git
+- Commit: `6070dbfefd326bd735e5683eb128cc1b57dad0c0`
+- Use: pinned generator and copied generated support headers
+- License: `THIRD_PARTY_LICENSES/tree-sitter/LICENSE`
+
+## Tree-sitter 0.26.12 (retained implementation templates)
 
 - Source: https://github.com/tree-sitter/tree-sitter.git
 - Commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
-- Use: pinned generator, copied generated support headers, and modified C, Rust, and Node binding templates
+- Use: modified C, Rust, and Node binding templates and WASM build helper retained from the original implementation
 - License: `THIRD_PARTY_LICENSES/tree-sitter/LICENSE`
 
 ## Mermaid 11.16.1

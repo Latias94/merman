@@ -56825,6 +56825,10 @@
           "name": "_sequence_keyword_prefixed_actor_identifier"
         },
         {
+          "type": "SYMBOL",
+          "name": "_sequence_actor_menu_keyword"
+        },
+        {
           "type": "TOKEN",
           "content": {
             "type": "PREC",
@@ -56852,8 +56856,35 @@
         "type": "PREC",
         "value": 50,
         "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "PATTERN",
+              "value": "(?:loop|rect|opt|alt|else|par_over|par|and|critical|option|break|box|end)(?:[A-Za-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])+",
+              "flags": "i"
+            },
+            {
+              "type": "PATTERN",
+              "value": "(?:links|properties|details)(?:[A-Za-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])+",
+              "flags": "i"
+            },
+            {
+              "type": "PATTERN",
+              "value": "link(?:[A-RT-Za-rt-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])(?:[A-Za-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])*",
+              "flags": "i"
+            }
+          ]
+        }
+      }
+    },
+    "_sequence_actor_menu_keyword": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 40,
+        "content": {
           "type": "PATTERN",
-          "value": "(?:loop|rect|opt|alt|else|par_over|par|and|critical|option|break|box|end)(?:[A-Za-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])(?:[A-Za-z0-9_=.\\u00c0-\\uffff]|-[A-WYZa-wyz0-9_=.\\u00c0-\\uffff])*",
+          "value": "(?:links|link|properties|details)",
           "flags": "i"
         }
       }
@@ -58917,95 +58948,15 @@
       "members": [
         {
           "type": "FIELD",
-          "name": "kind",
+          "name": "keyword",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "FIELD",
-                "name": "keyword",
-                "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 40,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "links",
-                        "flags": "i"
-                      }
-                    }
-                  },
-                  "named": true,
-                  "value": "sequence_statement_keyword"
-                }
-              },
-              {
-                "type": "FIELD",
-                "name": "keyword",
-                "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 40,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "link",
-                        "flags": "i"
-                      }
-                    }
-                  },
-                  "named": true,
-                  "value": "sequence_statement_keyword"
-                }
-              },
-              {
-                "type": "FIELD",
-                "name": "keyword",
-                "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 40,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "properties",
-                        "flags": "i"
-                      }
-                    }
-                  },
-                  "named": true,
-                  "value": "sequence_statement_keyword"
-                }
-              },
-              {
-                "type": "FIELD",
-                "name": "keyword",
-                "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 40,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "details",
-                        "flags": "i"
-                      }
-                    }
-                  },
-                  "named": true,
-                  "value": "sequence_statement_keyword"
-                }
-              }
-            ]
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_sequence_actor_menu_keyword"
+            },
+            "named": true,
+            "value": "sequence_statement_keyword"
           }
         },
         {

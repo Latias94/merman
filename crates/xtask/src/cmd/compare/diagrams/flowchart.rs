@@ -1342,7 +1342,7 @@ mod tests {
         .expect("ELK parity admission should match the pinned HTML demo fixture");
 
         let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
-        assert!(report.contains("All fixtures matched."));
+        assert!(report.contains("All blocking checks passed."));
     }
 
     #[test]

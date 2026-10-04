@@ -3,8 +3,8 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, escape_attr, flowchart_label_html,
-    flowchart_label_plain_text,
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, escape_attr,
+    flowchart_label_html,
 };
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -21,12 +21,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     // Port of Mermaid `iconCircle.ts` (`icon-shape default`). A populated nested icon SVG has an
     // explicit square viewport, while an empty icon group has a zero-sized browser `getBBox()`.
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
-    let label_text_plain =
-        flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-    let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    );
+    let has_label = !label.text.is_empty();
     let label_padding = if has_label { 8.0 } else { 0.0 };
     let top_label = common.node_pos == Some("t");
 
@@ -34,38 +29,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     let asset_w = common.node_asset_width.unwrap_or(48.0);
     let icon_size = asset_h.max(asset_w);
 
-    let label_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-        &ctx.html_label_text_style
-    } else {
-        &ctx.text_style
-    };
-    let mut metrics = super::super::helpers::prepared_node_label_metrics(
+    let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
-        common.node_id,
+        Some(common.layout_node),
         label.text,
-        label_style,
-    )
-    .unwrap_or_else(|| {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label.text,
-                label_type: label.label_type,
-                style: label_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        )
-    });
-    if !has_label {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let span_style_attr = OptionalStyleXmlAttr(common.label_style);
 
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
     let icon_bbox_size = if icon_name.is_some() { icon_size } else { 0.0 };
     let diameter = icon_bbox_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0;
     let outer_w = diameter.max(label_bbox_w);
@@ -131,14 +107,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     };
     let _ = write!(
         out,
-        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
+        r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
+        escape_attr(common.label_style),
         fmt(-label_bbox_w / 2.0),
         fmt(label_y),
         fmt(label_bbox_w),
         fmt(label_bbox_h),
         HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-        fmt(ctx.wrapping_width),
+        escape_attr(&label_div_style),
         super::super::helpers::flowchart_node_label_span_class(label.label_type),
+        span_style_attr,
         label_html,
     );
 

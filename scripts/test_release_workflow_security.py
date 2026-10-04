@@ -295,6 +295,25 @@ jobs:
         self.assertIn("npm run test:wasm --prefix distribution/tree-sitter-mermaid", workflow)
         self.assertIn("npm run test:package-smoke --prefix distribution/tree-sitter-mermaid", workflow)
 
+    def test_grammar_wasm_jobs_install_the_provenance_pinned_wasi_sdk(self) -> None:
+        for workflow, job in (
+            ("tree-sitter-mermaid.yml", "wasm"),
+            ("release-tree-sitter-mermaid.yml", "verify"),
+        ):
+            with self.subTest(workflow=workflow):
+                text = workflow_job(read(WORKFLOW_ROOT / workflow), job)
+                self.assertIn("metadata/provenance.json", text)
+                self.assertIn('provenance["toolchain"]["wasiSdk"]', text)
+                self.assertRegex(
+                    text,
+                    r"uses: bytecodealliance/setup-wasi-sdk-action@[0-9a-f]{40}",
+                )
+                self.assertIn("version: ${{ steps.wasi-version.outputs.version }}", text)
+                self.assertIn(
+                    "TREE_SITTER_WASI_SDK_PATH: ${{ steps.wasi-sdk.outputs.wasi-sdk-path }}",
+                    text,
+                )
+
     def test_workspace_release_accepts_only_canonical_workspace_tags(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
         self.assertIn("      - 'v*'\n", text)

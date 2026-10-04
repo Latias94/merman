@@ -454,6 +454,43 @@ pub(crate) fn render_usecase_diagram_svg_model(
         );
         out.push_str("</g>");
     }
+    let elk = crate::layout_backend::resolve_graph_layout(cfg).backend
+        == crate::layout_backend::GraphLayoutBackend::Elk;
+    let hop_points = if elk && config_bool(cfg, &["elk", "lineHops"]) != Some(false) {
+        let clone_work = prepared.edges.iter().fold(0usize, |total, plan| {
+            total.saturating_add(
+                edge_geometry[plan.id.as_str()]
+                    .points
+                    .len()
+                    .saturating_add(3),
+            )
+        });
+        options.work_meter().charge(clone_work)?;
+        prepared
+            .edges
+            .iter()
+            .map(|plan| prepared.edge_points(edge_geometry[plan.id.as_str()]))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let hop_edges = prepared
+        .edges
+        .iter()
+        .zip(&hop_points)
+        .map(|(plan, points)| line_hops::LineHopEdge {
+            id: plan.id.as_str(),
+            points,
+            curve: Some(if edge_geometry[plan.id.as_str()].points.is_empty() {
+                "linear"
+            } else {
+                "rounded"
+            }),
+            arrow_type_start: plan.start_marker.as_deref(),
+            arrow_type_end: plan.end_marker.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let hopped_paths = line_hops::elk_line_hop_paths(cfg, &hop_edges, options.work_meter())?;
     out.push_str("</g><g class=\"edgePaths edges\">");
     for plan in &prepared.edges {
         options.checkpoint_emit()?;
@@ -463,8 +500,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
             .encode(crate::svg::parity::util::json_stringify_points(&points));
         let data_look = config_string(cfg, &["look"]).unwrap_or_else(|| "neo".to_owned());
         let mut points = points;
-        let elk = crate::layout_backend::resolve_graph_layout(cfg).backend
-            == crate::layout_backend::GraphLayoutBackend::Elk;
         let curve = if elk {
             if edge.points.is_empty() {
                 "linear"
@@ -482,6 +517,9 @@ pub(crate) fn render_usecase_diagram_svg_model(
             plan.start_marker.as_deref(),
             plan.end_marker.as_deref(),
         );
+        let path = hopped_paths
+            .get(plan.id.as_str())
+            .map_or(path.as_str(), String::as_str);
         let relation = relationships
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
             .copied();
@@ -564,6 +602,11 @@ pub(crate) fn render_usecase_diagram_svg_model(
         if plan.dotted {
             edge_style.push_str("stroke-dasharray:3;");
         }
+        let edge_style = if let Some(hopped_d) = hopped_paths.get(plan.id.as_str()) {
+            line_hops::rewrite_style_after_line_hop(&edge_style, hopped_d, options.work_meter())?
+        } else {
+            std::borrow::Cow::Borrowed(edge_style.as_str())
+        };
         let _ = write!(out, r#" style="{}""#, escape_attr(&edge_style));
         for (end, marker) in [("start", &plan.start_marker), ("end", &plan.end_marker)] {
             if let Some(marker) = marker {

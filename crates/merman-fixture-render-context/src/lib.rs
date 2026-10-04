@@ -775,7 +775,14 @@ fn path_matches(actual: &[String], expected: &[&str]) -> bool {
 }
 
 fn sha256_hex(source: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(source))
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(source);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn validate_sha256(fixture: &str, value: &str) -> Result<(), CatalogError> {

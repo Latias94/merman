@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the decision-grade interactive layout-work calibration process matrix."""
+"""Run a decision-grade layout-work calibration process matrix."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Sequence
@@ -73,7 +74,9 @@ def timing_command(binary: Path, arguments: Sequence[str]) -> tuple[list[str], s
         return ["/usr/bin/time", "-l", str(binary), *arguments], "darwin-time-l"
     if system == "Linux":
         return ["/usr/bin/time", "-v", str(binary), *arguments], "gnu-time-v"
-    raise RuntimeError(f"peak-RSS calibration is unsupported on {system}")
+    if system == "Windows":
+        return [str(binary), *arguments], "windows-peak-working-set"
+    raise RuntimeError(f"peak-memory calibration is unsupported on {system}")
 
 
 def parse_peak_rss_bytes(stderr: str, timing_format: str) -> int:
@@ -100,7 +103,7 @@ def host_report() -> dict[str, Any]:
         "system": platform.system(),
         "machine": platform.machine(),
         "processor": platform.processor(),
-        "uname": command_output(["uname", "-srm"]),
+        "uname": " ".join((platform.system(), platform.release(), platform.machine())),
     }
     if platform.system() == "Darwin":
         report["chip"] = command_output(["sysctl", "-n", "machdep.cpu.brand_string"])
@@ -153,6 +156,167 @@ def terminate_process_group(
         ) from error
 
 
+def windows_peak_working_set(process: subprocess.Popen[str]) -> int:
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            *[(name, ctypes.c_size_t) for name in (
+                "PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage",
+                "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage",
+                "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage",
+            )],
+        ]
+
+    get_memory = ctypes.WinDLL("psapi", use_last_error=True).GetProcessMemoryInfo
+    get_memory.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD
+    ]
+    get_memory.restype = wintypes.BOOL
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    if not get_memory(int(process._handle), ctypes.byref(counters), counters.cb):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(counters.PeakWorkingSetSize)
+
+
+def run_windows_child(peak_path: Path, command: Sequence[str]) -> int:
+    # The parent assigns this helper to its job before releasing the launch gate.
+    if sys.stdin.buffer.read(1) != b"1":
+        raise RuntimeError("Windows calibration launch gate was not released")
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
+    returncode = process.wait()
+    # PeakWorkingSetSize remains available after exit while this handle is open.
+    peak_path.write_text(str(windows_peak_working_set(process)), encoding="ascii")
+    return returncode
+
+
+class WindowsJob:
+    """Keep one calibration process tree contained, including exited leaders."""
+
+    def __init__(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_ulonglong) for name in (
+                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
+            )]
+
+        class ExtendedLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BasicLimitInformation),
+                ("IoInfo", IoCounters),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        self.kernel.CreateJobObjectW.restype = wintypes.HANDLE
+        self.kernel.SetInformationJobObject.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD
+        ]
+        self.kernel.SetInformationJobObject.restype = wintypes.BOOL
+        self.kernel.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        self.kernel.AssignProcessToJobObject.restype = wintypes.BOOL
+        self.kernel.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        self.kernel.TerminateJobObject.restype = wintypes.BOOL
+        self.kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        self.kernel.CloseHandle.restype = wintypes.BOOL
+        self.handle = self.kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        limits = ExtendedLimitInformation()
+        limits.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
+        if not self.kernel.SetInformationJobObject(
+            self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)
+        ):
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.close()
+            raise error
+
+    def assign(self, process: subprocess.Popen[str]) -> None:
+        import ctypes
+
+        if not self.kernel.AssignProcessToJobObject(self.handle, int(process._handle)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def terminate(self) -> None:
+        import ctypes
+
+        if not self.kernel.TerminateJobObject(self.handle, 1):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def close(self) -> None:
+        self.kernel.CloseHandle(self.handle)
+
+
+def run_windows_managed_process(
+    command: Sequence[str], *, cwd: Path, timeout_seconds: float,
+    termination_grace_seconds: float,
+) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="merman-calibration-") as directory:
+        peak_path = Path(directory) / "peak-working-set.txt"
+        job = WindowsJob()
+        process = None
+        try:
+            process = subprocess.Popen(
+                [sys.executable, str(SCRIPT_PATH), "--windows-child", str(peak_path), *command],
+                cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            )
+            job.assign(process)
+            timed_out = False
+            try:
+                stdout, stderr = process.communicate(input="1", timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                job.terminate()
+                try:
+                    stdout, stderr = process.communicate(timeout=termination_grace_seconds)
+                except subprocess.TimeoutExpired as error:
+                    if process.stdout is not None:
+                        process.stdout.close()
+                    if process.stderr is not None:
+                        process.stderr.close()
+                    raise RuntimeError(
+                        "managed Windows job terminated but inherited output pipes remained open"
+                    ) from error
+            return {
+                "returncode": process.returncode, "timed_out": timed_out,
+                "stdout": stdout, "stderr": stderr,
+                "maximum_resident_set_size_bytes": (
+                    int(peak_path.read_text(encoding="ascii")) if peak_path.is_file() else None
+                ),
+            }
+        finally:
+            job.close()
+            if process is not None and process.poll() is None:
+                # Assignment failure must also clean up the still-gated helper.
+                process.kill()
+                process.communicate(timeout=termination_grace_seconds)
+
+
 def run_managed_process(
     command: Sequence[str],
     *,
@@ -160,6 +324,11 @@ def run_managed_process(
     timeout_seconds: float,
     termination_grace_seconds: float = TERMINATION_GRACE_SECONDS,
 ) -> dict[str, Any]:
+    if sys.platform == "win32":
+        return run_windows_managed_process(
+            command, cwd=cwd, timeout_seconds=timeout_seconds,
+            termination_grace_seconds=termination_grace_seconds,
+        )
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -222,6 +391,13 @@ def run_one(
         raise RuntimeError(f"{name} did not create {report_path}")
 
     payload = report_path.read_bytes()
+    peak_memory = (
+        completed["maximum_resident_set_size_bytes"]
+        if timing_format == "windows-peak-working-set"
+        else parse_peak_rss_bytes(completed["stderr"], timing_format)
+    )
+    if not isinstance(peak_memory, int) or peak_memory <= 0:
+        raise RuntimeError(f"{name} did not report a positive peak memory measurement")
     return {
         "name": name,
         "command": command,
@@ -229,9 +405,7 @@ def run_one(
         "timed_out": completed["timed_out"],
         "timeout_seconds": timeout_seconds,
         "elapsed_seconds": elapsed,
-        "maximum_resident_set_size_bytes": parse_peak_rss_bytes(
-            completed["stderr"], timing_format
-        ),
+        "maximum_resident_set_size_bytes": peak_memory,
         "timing_format": timing_format,
         "report_path": str(report_path.relative_to(ROOT)),
         "report_bytes": len(payload),
@@ -282,7 +456,18 @@ def require_sha256(value: Any, label: str) -> None:
         raise RuntimeError(f"{label}: expected a lowercase SHA-256 digest")
 
 
-def validate_full_report_contract(report: dict[str, Any]) -> None:
+def validate_full_report_contract(
+    report: dict[str, Any], *, resource_profile: str, theme: str,
+    layout_work_limit: int | None,
+) -> None:
+    require_fields(report, {"schema_version": 2, "theme": theme}, "full report")
+    require_fields(report["policy"], {"profile": resource_profile}, "full report policy")
+    if layout_work_limit is not None:
+        require_fields(
+            report["policy"], {"max_layout_work_units": layout_work_limit}, "full report policy"
+        )
+    for fixture in report["fixture_corpus"]["fixtures"]:
+        require_fields(fixture, {"profile_accepted": True}, fixture["name"])
     boundary = report["cardinality_boundary"]
     accepted = boundary["accepted"]
     rejected = boundary["rejected"]
@@ -345,6 +530,14 @@ def validate_single_probe_contract(
 ) -> None:
     if report.get("report_kind") != "single_probe":
         raise RuntimeError(f"{name}: expected a single-probe report")
+    require_fields(
+        report,
+        {"schema_version": 2, "theme": full_report["theme"]},
+        name,
+    )
+    require_fields(report["policy"], {"profile": full_report["policy"]["profile"]}, name)
+    if name != "max-w-minus-one":
+        require_fields(report["policy"], full_report["policy"], name)
     corpus = full_report["fixture_corpus"]
     boundary = full_report["cardinality_boundary"]
     maximum_fixture = next(
@@ -367,8 +560,8 @@ def validate_single_probe_contract(
             outcome,
             {
                 "status": "accepted_semantic",
-                "semantic_kind": "flowchart",
-                "diagram_type": "flowchart-v2",
+                "semantic_kind": corpus["maximum_semantic_kind"],
+                "diagram_type": corpus["maximum_diagram_type"],
             },
             name,
         )
@@ -460,9 +653,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--binary",
         type=Path,
-        default=ROOT / "target/release/examples/layout_work_calibration",
+        default=ROOT / ("target/release/examples/layout_work_calibration.exe"
+                        if sys.platform == "win32"
+                        else "target/release/examples/layout_work_calibration"),
     )
     parser.add_argument("--corpus", default="tools/bench/corpus.json")
+    parser.add_argument("--resource-profile", choices=("interactive", "trusted-native"), default="interactive")
+    parser.add_argument("--theme", choices=("default", "dark"), default="default")
+    parser.add_argument("--layout-work-limit", type=int)
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -477,8 +675,10 @@ def main() -> int:
     args = parse_arguments()
     if args.timeout_seconds <= 0:
         raise RuntimeError("--timeout-seconds must be positive")
-    if args.full_repeats < 2:
-        raise RuntimeError("--full-repeats must be at least two")
+    if args.full_repeats < 5:
+        raise RuntimeError("--full-repeats must be at least five")
+    if args.layout_work_limit is not None and args.layout_work_limit <= 0:
+        raise RuntimeError("--layout-work-limit must be positive")
 
     source = require_clean_tracked_worktree()
     runner_sha256 = sha256_file(SCRIPT_PATH)
@@ -493,7 +693,13 @@ def main() -> int:
         args.authoritative_date,
         "--corpus",
         args.corpus,
+        "--resource-profile",
+        args.resource_profile,
+        "--theme",
+        args.theme,
     ]
+    if args.layout_work_limit is not None:
+        common_arguments.extend(["--layout-work-limit", str(args.layout_work_limit)])
 
     runs: list[dict[str, Any]] = []
     for index in range(1, args.full_repeats + 1):
@@ -503,8 +709,6 @@ def main() -> int:
                 binary=binary,
                 common_arguments=common_arguments,
                 arguments=[
-                    "--expected-max-fixture",
-                    "flowchart_large",
                     "--boundary-max-nodes",
                     "16384",
                     "--boundary-max-iterations",
@@ -524,7 +728,10 @@ def main() -> int:
         git_revision=source["git_revision"],
         executable_sha256=executable_sha256,
     )
-    validate_full_report_contract(full_report)
+    validate_full_report_contract(
+        full_report, resource_profile=args.resource_profile, theme=args.theme,
+        layout_work_limit=args.layout_work_limit,
+    )
     expected_provenance = full_report["provenance"]
     for run in runs[1:]:
         validate_report_provenance(
@@ -610,8 +817,11 @@ def main() -> int:
         f"{run['name']}\0{run['stderr_sha256']}" for run in runs
     ).encode("utf-8")
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "authoritative_date": args.authoritative_date,
+        "resource_profile": args.resource_profile,
+        "theme": args.theme,
+        "layout_work_limit": args.layout_work_limit,
         "source": source,
         "runner": {
             "path": str(SCRIPT_PATH.relative_to(ROOT)),
@@ -636,4 +846,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32" and sys.argv[1:2] == ["--windows-child"]:
+        raise SystemExit(run_windows_child(Path(sys.argv[2]), sys.argv[3:]))
     raise SystemExit(main())

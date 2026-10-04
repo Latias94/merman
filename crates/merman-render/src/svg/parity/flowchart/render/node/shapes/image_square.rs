@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, flowchart_label_html, flowchart_label_plain_text,
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_label_html,
 };
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
@@ -19,95 +19,37 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 ) -> bool {
     // Port of Mermaid `imageSquare.ts` (`image-shape default`).
     if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
-        let label_text_plain =
-            flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-        let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
-            &label_text_plain,
-            ctx.node_html_labels,
-        );
+        let has_label = !label.text.is_empty();
         let label_padding = if has_label { 8.0 } else { 0.0 };
         let top_label = common.node_pos == Some("t");
 
-        let assumed_aspect_ratio = 1.0f64;
-        let asset_h = common.node_asset_height.unwrap_or(60.0).max(1.0);
-        let asset_w = common.node_asset_width.unwrap_or(asset_h).max(1.0);
-        let aspect_ratio = if asset_h > 0.0 {
-            asset_w / asset_h
-        } else {
-            assumed_aspect_ratio
-        };
-
-        let default_width = ctx.wrapping_width.max(0.0);
-        let image_raw_width = asset_w.max(if has_label { default_width } else { 0.0 });
-
-        let constraint_on = common.node_constraint == Some("on");
-        let image_width = if constraint_on && common.node_asset_height.is_some() {
-            asset_h * aspect_ratio
-        } else {
-            image_raw_width
-        };
-        let image_height = if constraint_on {
-            if aspect_ratio != 0.0 {
-                image_width / aspect_ratio
-            } else {
-                asset_h
-            }
-        } else {
-            asset_h
-        };
-        let label_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-            &ctx.html_label_text_style
-        } else {
-            &ctx.text_style
-        };
-        let mut metrics = super::super::helpers::prepared_node_label_metrics(
+        let metrics = super::super::helpers::compute_node_label_metrics(
             ctx,
-            common.node_id,
+            Some(common.layout_node),
             label.text,
-            label_style,
-        )
-        .unwrap_or_else(|| {
-            crate::flowchart::flowchart_label_metrics_for_layout(
-                crate::flowchart::FlowchartLabelMetricsRequest {
-                    measurer: ctx.measurer,
-                    raw_label: label.text,
-                    label_type: label.label_type,
-                    style: label_style,
-                    max_width_px: Some(ctx.wrapping_width),
-                    wrap_mode: ctx.node_wrap_mode,
-                    config: ctx.config,
-                    math_renderer: ctx.math_renderer,
-                },
-            )
-        });
-        if !has_label {
-            metrics.width = 0.0;
-            metrics.height = 0.0;
-        }
+            label.label_type,
+            common.node_classes,
+            common.node_styles,
+        );
+        let span_style_attr = OptionalStyleXmlAttr(common.label_style);
 
         // Mermaid's `labelHelper(...)` wraps image labels in `.labelBkg`; the flowchart
         // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
         let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
         let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-        // createText switches the max-width-constrained HTML cell to a wrapping
-        // table when its measured box reaches that width. The background padding
-        // participates in this decision; nowrap would paint outside the measured box.
-        let wraps_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
-            && label_bbox_w >= ctx.wrapping_width;
-        let label_div_style = if wraps_label {
-            format!(
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;",
-                width = fmt_display(ctx.wrapping_width),
-            )
-        } else {
-            format!(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
-                fmt_display(ctx.wrapping_width),
-            )
-        };
-
-        let outer_w = image_width.max(label_bbox_w);
-        let outer_h = image_height + label_bbox_h + label_padding;
+        let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
+        let geometry = crate::flowchart::ImageSquareGeometry::from_label(
+            metrics,
+            has_label,
+            common.node_asset_width,
+            common.node_asset_height,
+            common.node_constraint == Some("on"),
+            ctx.wrapping_width,
+        );
+        let image_width = geometry.image_width;
+        let image_height = geometry.image_height;
+        let outer_w = geometry.width;
+        let outer_h = geometry.height;
 
         let x0 = -image_width / 2.0;
         let y0 = -image_height / 2.0;
@@ -188,13 +130,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         let _ = write!(
             out,
             concat!(
-                r#"<g class="label" style="" transform="translate({},{})">"#,
+                r#"<g class="label" style="{}" transform="translate({},{})">"#,
                 r#"<rect/>"#,
                 r#"<foreignObject width="{}" height="{}"{}>"#,
                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
-                r#"style="{}"><span class="{}">{}</span></div>"#,
+                r#"style="{}"><span class="{}"{}>{}</span></div>"#,
                 r#"</foreignObject></g>"#
             ),
+            escape_xml_display(common.label_style),
             fmt_display(-label_bbox_w / 2.0),
             fmt_display(label_dy),
             fmt_display(label_bbox_w),
@@ -202,6 +145,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
             escape_xml_display(&label_div_style),
             super::super::helpers::flowchart_node_label_span_class(label.label_type),
+            span_style_attr,
             label_html
         );
 

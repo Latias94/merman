@@ -509,7 +509,7 @@ fn collect_tree_captures(
     let mut captures =
         cursor.captures_with_options(&query.query, tree.root_node(), source.as_bytes(), options);
     while let Some((query_match, capture_index)) = captures.next() {
-        let capture = query_match.captures[*capture_index];
+        let capture = query_match.captures()[*capture_index];
         let capture_index = usize::try_from(capture.index).expect("capture index fits usize");
         let Some(metadata) = query.captures.get(capture_index).copied().flatten() else {
             continue;

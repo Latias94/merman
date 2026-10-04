@@ -628,10 +628,8 @@ impl FlowchartSvgLabelSidecar {
                     insert_last_owner(&mut sidecar.edge_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SubgraphTitle(_) => {
-                    // Mermaid's FlowDB emits duplicate subgraph ids in reverse semantic order;
-                    // Graphlib then updates the existing node, leaving the earliest definition's
-                    // presentation value as the winner. Keep the same canonical owner here so a
-                    // prepared title cannot be bound to the later definition by accident.
+                    // Parsed models have unique group ids. Preserve the canonical first title
+                    // owner for public typed models that explicitly contain duplicate groups.
                     insert_first_owner(&mut sidecar.subgraph_title_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SwimlaneNode(_) => {

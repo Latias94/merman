@@ -17,8 +17,8 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `12.0.0`
-- Source: https://github.com/mermaid-js/mermaid.git @ `98a0945418c76238f15df2afaddbba4272656c3b`
+- Version: `12.1.0`
+- Source: https://github.com/mermaid-js/mermaid.git @ `21f72f07ea22c0af48a3149c550654e80d8e40cb`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`

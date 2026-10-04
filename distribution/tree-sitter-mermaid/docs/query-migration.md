@@ -10,7 +10,7 @@ Version 0.2.0 adds Mermaid 12 Agentflow and Usecase syntax, increasing the publi
 
 The new named family roots are `agentflow_diagram` and `usecase_diagram`; their structured child nodes and portable captures are part of the same parser/query package. No named node from 0.1.0 is removed. Recompile custom queries against the new `src/node-types.json`, update any exhaustive family-root dispatch, and install the parser and query files from the same version.
 
-The verified Web runtime advances to `web-tree-sitter` 0.27.0; the generator and Rust runtime stay on 0.26.12 and the native Node runtime contract stays on 0.25.x. The independent grammar version, language ABI, and runtime package versions are distinct contracts.
+The verified generator, Rust runtime, and Web runtime advance to 0.27.0; the native Node runtime contract stays on 0.25.x. The independent grammar version, language ABI, and runtime package versions are distinct contracts.
 
 ## Query ownership
 

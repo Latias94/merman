@@ -15,7 +15,7 @@ mod rect_clip;
 mod terminal_jogs;
 mod trace;
 pub(super) use compute::{finish_edge_route, prepare_edge_route};
-pub(super) use terminal_jogs::straighten_edge_terminals;
+pub(super) use terminal_jogs::{separate_edge_labels, straighten_edge_terminals};
 
 pub(super) use crate::svg::parity::edge_path::maybe_fix_corners;
 pub(super) use basis::maybe_remove_redundant_cluster_run_point;
@@ -40,6 +40,7 @@ pub(super) struct ClippedEdgeRoute {
     points: Vec<crate::model::LayoutPoint>,
     origin_x: f64,
     origin_y: f64,
+    label: Option<crate::model::LayoutLabel>,
     elk_endpoint_adapters: ElkEndpointAdapterCorners,
 }
 

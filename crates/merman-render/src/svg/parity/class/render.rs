@@ -133,15 +133,10 @@ fn render_class_diagram_svg_model_inner(
     };
     let mut paint_edges = std::borrow::Cow::Borrowed(layout.edges.as_slice());
     if layout.uses_elk_adapter_dom {
-        let mut edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
+        let edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
             .into_iter()
             .cloned()
             .collect::<Vec<_>>();
-        super::edge::prepare_class_elk_edge_paths(
-            &mut edges,
-            effective_config,
-            options.work_meter(),
-        )?;
         paint_edges = std::borrow::Cow::Owned(edges);
     }
     let mut missing_section_points = rustc_hash::FxHashMap::default();
@@ -165,9 +160,43 @@ fn render_class_diagram_svg_model_inner(
             }
         }
     }
+    let line_hop_edges = if layout.uses_elk_adapter_dom {
+        options.work_meter().charge(paint_edges.len())?;
+        paint_edges
+            .iter()
+            .map(|edge| {
+                let relation = relations_by_id.get(edge.id.as_str()).copied();
+                let missing = missing_section_points.get(edge.id.as_str());
+                super::super::line_hops::LineHopEdge {
+                    id: edge.id.as_str(),
+                    points: missing.map(Vec::as_slice).unwrap_or(&edge.points),
+                    curve: Some(if missing.is_some() {
+                        "linear"
+                    } else {
+                        "rounded"
+                    }),
+                    arrow_type_start: relation.and_then(|rel| {
+                        super::edge::class_arrow_type_for_relation_end(rel.relation.type1)
+                    }),
+                    arrow_type_end: relation.and_then(|rel| {
+                        super::edge::class_arrow_type_for_relation_end(rel.relation.type2)
+                    }),
+                }
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let line_hop_paths = super::super::line_hops::elk_line_hop_paths(
+        effective_config,
+        &line_hop_edges,
+        options.work_meter(),
+    )?;
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &paint_edges,
         missing_section_points: &missing_section_points,
+        work_meter: options.work_meter(),
+        line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
         diagram_marker_class: aria_roledescription,

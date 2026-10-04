@@ -727,6 +727,45 @@ pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
     use kurbo::Shape;
 
     let path = kurbo::BezPath::from_svg(d).ok()?;
-    let length = path.perimeter(1.0e-6);
+    // SVGGeometryElement.getTotalLength() exposes a Web IDL `float`, promoted to a JS Number
+    // before Mermaid applies marker offsets. Preserve that boundary instead of exposing the
+    // platform-dependent low bits of Kurbo's f64 arc-length calculation in SVG styles.
+    // https://www.w3.org/TR/SVG/types.html#InterfaceSVGGeometryElement
+    let length = f64::from(path.perimeter(1.0e-6) as f32);
     length.is_finite().then_some(length)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::svg_path_length_from_d;
+
+    #[test]
+    fn total_length_uses_svg_dom_float_precision() {
+        assert_eq!(
+            svg_path_length_from_d("M0,0L0.1,0"),
+            Some(0.10000000149011612)
+        );
+        assert_eq!(svg_path_length_from_d("M0,0L1,1"), Some(1.4142135381698608));
+    }
+
+    #[test]
+    fn neo_marker_mask_length_is_stable_across_platforms() {
+        // The 12.1 new-shapes fixture's n11 -> n22 edge differs by one f64 ULP on Linux/Windows.
+        let d = "M214.9,268.158L214.9,287.23L214.9,300.159Q214.9,307.23 221.971,307.23L293.662,307.23Q300.733,307.23 300.733,314.301L300.733,343.162Q300.733,347.23 304.801,347.23L308.87,347.23";
+        let length = svg_path_length_from_d(d).unwrap();
+        assert_eq!(length, 166.18093872070312);
+        let mut style = String::new();
+        super::super::edge_path::write_neo_edge_mask(
+            &mut style,
+            length,
+            None,
+            Some("arrow_point"),
+            false,
+            false,
+        );
+        assert_eq!(
+            style,
+            "stroke-dasharray: 0 0 162.18093872070313 4; stroke-dashoffset: 0;"
+        );
+    }
 }

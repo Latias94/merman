@@ -5,7 +5,7 @@ use crate::svg::pipeline::{
 };
 use crate::text::TextStyle;
 use cssparser::{
-    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserInput, ParserState,
+    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token,
 };
 use merman_core::theme_color::ThemeColor;
@@ -1425,7 +1425,7 @@ struct ParsedQualifiedRule {
 
 struct FallbackStylesheetParser;
 
-fn consume_css_parser_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'i, ()>> {
+fn consume_css_parser_tokens(input: &mut Parser<'_>) -> Result<(), ParseError<()>> {
     loop {
         match input.next_including_whitespace_and_comments() {
             Ok(_) => {}
@@ -1441,21 +1441,21 @@ impl<'i> QualifiedRuleParser<'i> for FallbackStylesheetParser {
     type QualifiedRule = Option<ParsedQualifiedRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::Prelude, ParseError<Self::Error>> {
         let start = input.position();
         consume_css_parser_tokens(input)?;
         Ok(input.slice_from(start).trim().to_string())
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::QualifiedRule, ParseError<Self::Error>> {
         let start = input.position();
         consume_css_parser_tokens(input)?;
         Ok(Some(ParsedQualifiedRule {
@@ -1470,11 +1470,11 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
     type AtRule = Option<ParsedQualifiedRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         _name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::Prelude, ParseError<Self::Error>> {
         consume_css_parser_tokens(input)?;
         Ok(String::new())
     }
@@ -1487,12 +1487,12 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
         Ok(None)
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         _prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::AtRule, ParseError<Self::Error>> {
         consume_css_parser_tokens(input)?;
         Ok(None)
     }
@@ -1510,8 +1510,7 @@ fn parse_stylesheet<E>(
     let css = css.strip_prefix("<![CDATA[").unwrap_or(css);
     let css = css.strip_suffix("]]>").unwrap_or(css);
     let css = strip_css_comments(css, checkpoint)?;
-    let mut input = ParserInput::new(&css);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(&css);
     let mut rule_parser = FallbackStylesheetParser;
     let mut rule_index = 0usize;
     for parsed in StyleSheetParser::new(&mut parser, &mut rule_parser) {
@@ -2293,8 +2292,7 @@ fn parse_attribute_selector<E>(
     source: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<AttributeParse, E> {
-    let mut input = ParserInput::new(source);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(source);
     let parsed = parser.parse_entirely(|input| {
         let name = input.expect_ident_cloned()?.to_ascii_lowercase();
         if input.is_exhausted() {
@@ -2311,7 +2309,7 @@ fn parse_attribute_selector<E>(
         } else {
             let modifier = input.expect_ident_cloned()?;
             if !matches!(modifier.as_ref(), "i" | "I" | "s" | "S") {
-                return Err(input.new_custom_error::<(), ()>(()));
+                return Err(ParseError::<()>::custom(()));
             }
             Some(modifier)
         };
@@ -2335,7 +2333,7 @@ fn parse_attribute_selector<E>(
             | Token::PrefixMatch
             | Token::SuffixMatch
             | Token::SubstringMatch => AttributeParse::ValidButUnadmitted,
-            _ => return Err(input.new_custom_error::<(), ()>(())),
+            _ => return Err(ParseError::<()>::custom(())),
         };
         Ok(parsed)
     });

@@ -1146,8 +1146,13 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     let engine = Engine::new();
     let input = "flowchart TD\nA -->";
     let options = ParseOptions::lenient();
+    let message = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap_err()
+        .to_string();
 
     let parsed = engine.parse_diagram_sync(input, options).unwrap().unwrap();
+    assert_eq!(parsed.model["errorMessage"], message);
     assert_suppressed_error_diagram(&parsed);
 
     let parsed = engine
@@ -1167,6 +1172,20 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
         .unwrap()
         .unwrap();
     assert_suppressed_error_render_diagram(&parsed);
+    let RenderSemanticModel::Error(model) = parsed.model() else {
+        unreachable!()
+    };
+    assert_eq!(model.error_message.as_deref(), Some(message.as_str()));
+
+    let parsed = engine
+        .parse_diagram_for_render_model_controlled_sync(input, options, &OperationControl::new())
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Error(model) = parsed.model() else {
+        unreachable!()
+    };
+    assert_eq!(model.error_message.as_deref(), Some(message.as_str()));
 }
 
 #[test]
@@ -1236,6 +1255,13 @@ fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
         .unwrap();
 
     assert_suppressed_error_render_diagram(&parsed);
+    assert_eq!(
+        parsed
+            .model()
+            .compatibility_json(parsed.metadata())
+            .unwrap(),
+        json!({ "type": "error" })
+    );
     assert!(parsed.model().supports_diagram_type("error"));
     assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
 }
@@ -1254,7 +1280,10 @@ fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
             assert_eq!(model.diagram_type, "error");
             assert_eq!(
                 serde_json::to_value(model).unwrap(),
-                json!({ "type": "error" })
+                parsed
+                    .model()
+                    .compatibility_json(parsed.metadata())
+                    .unwrap()
             );
         }
         other => panic!("suppressed parse failures must use the typed error model, got {other:?}"),

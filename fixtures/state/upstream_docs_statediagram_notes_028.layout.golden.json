@@ -22,9 +22,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 367.39,
+          "y": 351.66,
           "width": 198.0,
-          "height": 238.46,
+          "height": 207.0,
           "is_cluster": true
         },
         {
@@ -46,9 +46,9 @@
         {
           "id": "State2----parent",
           "x": 361.793,
-          "y": 100.08,
+          "y": 84.0,
           "width": 198.0,
-          "height": 176.16,
+          "height": 144.0,
           "is_cluster": true
         }
       ],
@@ -149,9 +149,9 @@
         {
           "id": "State1----parent",
           "x": 123.23,
-          "y": 367.39,
+          "y": 351.66,
           "width": 198.0,
-          "height": 238.46,
+          "height": 207.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write\nnotes.",
@@ -170,9 +170,9 @@
         {
           "id": "State2----parent",
           "x": 361.793,
-          "y": 100.08,
+          "y": 84.0,
           "width": 198.0,
-          "height": 176.16,
+          "height": 144.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is the note to the left.",
@@ -193,7 +193,7 @@
         "min_x": 24.23,
         "min_y": 12.0,
         "max_x": 460.793,
-        "max_y": 486.62
+        "max_y": 455.16
       }
     }
   }

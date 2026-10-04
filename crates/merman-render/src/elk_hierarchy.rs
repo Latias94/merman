@@ -6,7 +6,7 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::resources::OperationWorkMeter;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
-fn charge_adapter_work(
+pub(crate) fn charge_adapter_work(
     work_control: &mut Option<&mut OperationLayoutWorkControl>,
     units: usize,
 ) -> Result<()> {
@@ -16,7 +16,7 @@ fn charge_adapter_work(
     }
 }
 
-fn checked_adapter_add(
+pub(crate) fn checked_adapter_add(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
@@ -35,7 +35,7 @@ fn checked_adapter_add(
     })
 }
 
-fn checked_adapter_mul(
+pub(crate) fn checked_adapter_mul(
     work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
@@ -63,6 +63,8 @@ pub(crate) struct HierarchyIndex<'a> {
     depth: Vec<usize>,
     root: Vec<usize>,
     chain_head: Vec<usize>,
+    heavy_child: Vec<Option<usize>>,
+    preorder: Vec<usize>,
 }
 
 impl<'a> HierarchyIndex<'a> {
@@ -119,6 +121,12 @@ impl<'a> HierarchyIndex<'a> {
             }
         }
 
+        if preorder.len() != ids.len() {
+            return Err(crate::Error::InvalidModel {
+                message: "ELK node parent hierarchy contains a cycle".to_owned(),
+            });
+        }
+
         charge_adapter_work(work_control, hierarchy_stage_work)?;
         let mut subtree_size = vec![1usize; ids.len()];
         let mut heavy_child = vec![None; ids.len()];
@@ -162,14 +170,64 @@ impl<'a> HierarchyIndex<'a> {
             depth,
             root,
             chain_head,
+            heavy_child,
+            preorder,
         })
     }
 
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.ids.len()
     }
 
-    fn common_ancestor_index(
+    pub(crate) fn index_of(&self, id: &str) -> Option<usize> {
+        self.index_by_id.get(id).copied()
+    }
+
+    pub(crate) fn parent_index(&self, index: usize) -> Option<usize> {
+        self.parent[index]
+    }
+
+    pub(crate) fn parent_first_indices(&self) -> &[usize] {
+        &self.preorder
+    }
+
+    pub(crate) fn depth(&self, index: usize) -> usize {
+        self.depth[index]
+    }
+
+    pub(crate) fn id(&self, index: usize) -> &'a str {
+        self.ids[index]
+    }
+
+    /// Resolve the direct child on a descendant-to-ancestor path. None is the synthetic root.
+    /// The caller obtains the ancestor from this index, so each branch stays in the same tree.
+    pub(crate) fn child_on_path(
+        &self,
+        mut descendant: usize,
+        ancestor: Option<usize>,
+        work: &mut Option<&mut OperationLayoutWorkControl>,
+    ) -> Result<usize> {
+        charge_adapter_work(work, 1)?;
+        let Some(ancestor) = ancestor else {
+            return Ok(self.root[descendant]);
+        };
+        if descendant == ancestor {
+            return Ok(descendant);
+        }
+        while self.chain_head[descendant] != self.chain_head[ancestor] {
+            charge_adapter_work(work, 1)?;
+            let head = self.chain_head[descendant];
+            if self.parent[head] == Some(ancestor) {
+                return Ok(head);
+            }
+            descendant = self.parent[head]
+                .expect("a strict descendant has a parent above its deeper heavy chain");
+        }
+        Ok(self.heavy_child[ancestor]
+            .expect("a same-chain strict descendant follows its ancestor's heavy child"))
+    }
+
+    pub(crate) fn common_ancestor_index(
         &self,
         left: &str,
         right: &str,
@@ -482,6 +540,7 @@ mod tests {
                 target: "b".into(),
                 label: None,
                 minlen: 1,
+                terminal_labels: Vec::new(),
                 inside_self_loops_yo: false,
             }],
             ..Graph::default()

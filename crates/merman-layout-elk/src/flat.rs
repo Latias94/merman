@@ -124,6 +124,7 @@ pub(super) fn layout(
                     .label
                     .into_iter()
                     .map(|label| EdgeLabelLayout {
+                        terminal: None,
                         x: 0.0,
                         y: 0.0,
                         width: label.width,

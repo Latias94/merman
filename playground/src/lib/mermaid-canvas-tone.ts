@@ -1,4 +1,5 @@
 import { JSON_SCHEMA, load as parseYaml } from "js-yaml";
+import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 
 import { buildMermaidConfig, buildMermaidOperationInput, type MermaidConfigObject } from "./mermaid-config.ts";
 import {
@@ -55,19 +56,13 @@ export function resolveMermaidCanvasTone(
 }
 
 function frontmatterConfig(source: string): MermaidConfigObject | null {
-  const match = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/s.exec(
-    source,
-  );
-  if (!match) return null;
+  const frontmatter = locateMermaidFrontmatter(source);
+  if (!frontmatter) return null;
 
-  const openingIndent = match[1] ?? "";
-  const body = (match[2] ?? "")
-    .split(/\r?\n/)
-    .map((line) =>
-      openingIndent && line.startsWith(openingIndent)
-        ? line.slice(openingIndent.length)
-        : line,
-    )
+  const { indent, bodyStart, bodyEnd } = frontmatter;
+  const body = source.slice(bodyStart, bodyEnd)
+    .split(/\r\n|[\r\n]/)
+    .map((line) => indent && line.startsWith(indent) ? line.slice(indent.length) : line)
     .join("\n");
 
   try {

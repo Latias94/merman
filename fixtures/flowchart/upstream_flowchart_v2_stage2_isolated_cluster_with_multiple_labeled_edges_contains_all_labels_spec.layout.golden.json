@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "S",
-          "x": 151.0,
+          "x": 155.0,
           "y": 220.5,
-          "width": 278.0,
+          "width": 270.0,
           "height": 417.0,
           "is_cluster": true
         },
@@ -163,15 +163,15 @@
       "clusters": [
         {
           "id": "S",
-          "x": 151.0,
+          "x": 155.0,
           "y": 220.5,
-          "width": 278.0,
+          "width": 270.0,
           "height": 417.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "Cluster",
           "title_label": {
-            "x": 151.0,
+            "x": 155.0,
             "y": 21.5,
             "width": 42.42,
             "height": 19.0
@@ -184,7 +184,7 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 20.0,
         "min_y": 12.0,
         "max_x": 290.0,
         "max_y": 429.0

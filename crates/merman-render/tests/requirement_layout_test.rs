@@ -59,7 +59,12 @@ fn requirement_registered_layout_keeps_direction_nodes_and_relationship_labels()
     assert!(selected["edges"][0]["label"]["width"].as_f64().unwrap() > 0.0);
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
     for text in ["Stop safely", "hardware", "satisfies"] {
-        assert!(document.descendants().any(|node| node.is_text() && node.text().is_some_and(|value| value.contains(text))), "missing {text}");
+        let visible = document
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect::<String>();
+        assert!(visible.contains(text), "missing {text}: {visible}");
     }
     #[cfg(feature = "layout-elk")]
     assert_ne!(selected, dagre, "ELK must execute its own provider");
@@ -202,4 +207,230 @@ fn requirement_prototype_ids_keep_nodes_and_edges_in_default_and_dagre_layouts()
             }
         }
     }
+}
+
+#[test]
+fn requirement_label_mode_controls_nodes_edges_and_self_loop_anchors() {
+    let source = format!("{SOURCE}safety - refines -> safety\n");
+    for algorithm in ["elk", "dagre"] {
+        for html_labels in [true, false] {
+            let (_, svg) = render_with_config(
+                &source,
+                json!({"layout": algorithm, "htmlLabels": html_labels}),
+                &SvgRenderOptions::default(),
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let foreign_objects = doc
+                .descendants()
+                .filter(|node| node.has_tag_name("foreignObject"))
+                .count();
+            if html_labels {
+                assert!(foreign_objects > 0);
+            } else {
+                assert_eq!(foreign_objects, 0, "{algorithm}");
+                assert!(doc.descendants().any(|node| node.has_tag_name("text")));
+                let visible = doc
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                for expected in [
+                    "<<Requirement>>",
+                    "safety",
+                    "Stop safely",
+                    "hardware",
+                    "satisfies",
+                    "refines",
+                ] {
+                    assert!(
+                        visible.contains(expected),
+                        "{algorithm}: missing {expected}: {visible}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn requirement_elk_body_aligns_left_and_keeps_headings_centered() {
+    let source = "requirementDiagram\nrequirement R {\ntext: \"short<br/>a much longer body line\"\n}\nelement E {\ntype: \"small<br/>a longer type\"\n}\n";
+    for algorithm in ["elk", "dagre"] {
+        let (_, svg) = render_with_config(
+            source,
+            json!({"layout": algorithm, "htmlLabels": true}),
+            &SvgRenderOptions::default(),
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let mut bodies = 0;
+        let mut headings = 0;
+        for div in doc.descendants().filter(|node| node.has_tag_name("div")) {
+            let visible = div
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            let body = visible.starts_with("Text:") || visible.starts_with("Type:");
+            let alignment = if body && algorithm == "elk" {
+                "text-align: left"
+            } else {
+                "text-align: center"
+            };
+            assert!(
+                div.attribute("style").unwrap_or("").contains(alignment),
+                "{visible}: {svg}"
+            );
+            if body {
+                bodies += 1;
+            } else {
+                headings += 1;
+            }
+        }
+        assert_eq!(bodies, 2);
+        assert_eq!(headings, 4);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn requirement_elk_cyclic_entry_respects_relationship_order() {
+    let source = "requirementDiagram\nelement B {\ntype: part\n}\nelement A {\ntype: part\n}\nelement C {\ntype: part\n}\nA - refines -> B\nB - refines -> C\nC - refines -> A\n";
+    let (layout, _) = render_with_config(
+        source,
+        json!({"layout":"elk", "elk":{"keepEntryNodeOnTop":true,"cycleBreakingStrategy":"GREEDY_MODEL_ORDER"}}),
+        &SvgRenderOptions::default(),
+    );
+    let nodes = layout["nodes"].as_array().unwrap();
+    let y = |id| {
+        nodes.iter().find(|node| node["id"] == id).unwrap()["y"]
+            .as_f64()
+            .unwrap()
+    };
+    assert!(y("A") < y("B") && y("A") < y("C"), "{layout}");
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn requirement_elk_line_hops_change_only_crossing_paths() {
+    for relationship in ["contains", "satisfies"] {
+        let mut source = String::from("requirementDiagram\n");
+        for id in ["A", "B", "C", "X", "Y", "Z"] {
+            source.push_str(&format!("element {id} {{\ntype: part\n}}\n"));
+        }
+        for from in ["A", "B", "C"] {
+            for to in ["X", "Y", "Z"] {
+                source.push_str(&format!("{from} - {relationship} -> {to}\n"));
+            }
+        }
+        let paths = |value: Value| {
+            let (_, svg) = render_with_config(
+                &source,
+                json!({"layout":"elk", "look":"neo", "elk":{"lineHops":value}}),
+                &SvgRenderOptions::default(),
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            doc.descendants()
+                .filter(|node| node.attribute("data-edge") == Some("true"))
+                .map(|node| {
+                    (
+                        node.attribute("data-id").unwrap().to_owned(),
+                        (
+                            node.attribute("d").unwrap().to_owned(),
+                            node.attribute("data-points").unwrap().to_owned(),
+                            node.attribute("marker-start").map(str::to_owned),
+                            node.attribute("marker-end").map(str::to_owned),
+                            node.attribute("style").unwrap().to_owned(),
+                        ),
+                    )
+                })
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let disabled = paths(json!(false));
+        for enabled in [json!(true), json!("gap")] {
+            let enabled = paths(enabled);
+            let changed = disabled
+                .iter()
+                .filter(|(id, values)| enabled[*id].0 != values.0)
+                .count();
+            assert!(
+                changed > 0 && changed < disabled.len(),
+                "expected only crossed edges to change: {relationship}"
+            );
+            for (id, (path, points, start, end, style)) in &disabled {
+                let actual = &enabled[id];
+                assert_eq!(&actual.1, points);
+                assert_eq!(&actual.2, start);
+                assert_eq!(&actual.3, end);
+                if actual.0 == *path {
+                    assert_eq!(&actual.4, style);
+                    continue;
+                }
+                let masks: Vec<_> = actual
+                    .4
+                    .split(';')
+                    .filter_map(|declaration| {
+                        declaration
+                            .trim()
+                            .strip_prefix("stroke-dasharray:")
+                            .map(str::trim)
+                    })
+                    .collect();
+                assert_eq!(masks.len(), if relationship == "contains" { 1 } else { 3 });
+                assert!(
+                    masks.iter().all(|mask| *mask == masks[0]),
+                    "{id}: {}",
+                    actual.4
+                );
+                let values: Vec<f64> = masks[0]
+                    .split_whitespace()
+                    .map(|value| value.parse().unwrap())
+                    .collect();
+                assert_eq!(values.len(), 4, "{id}: {}", actual.4);
+                assert_eq!(values[0], 0.0);
+                assert_eq!(values[1], 0.0);
+                assert!(values[2] > 0.0);
+                // afterPaint preserves the fourth number of the original style, even
+                // for a repeated dashed pattern, and replaces every dash declaration.
+                assert_eq!(
+                    values[3],
+                    if relationship == "contains" { 0.0 } else { 2.0 }
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_svg_labels_preserve_wrapped_markdown_and_bold_names() {
+    let source = "requirementDiagram\nrequirement Safety {\ntext: \"**strong** and *emphasis*<br/>second row &amp; value\"\n}\n";
+    let (_, svg) = render_with_config(
+        source,
+        json!({"htmlLabels":false, "layout":"elk"}),
+        &SvgRenderOptions::default(),
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    assert!(
+        !doc.descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    for (word, attribute, value) in [
+        ("Safety", "font-weight", "bold"),
+        ("strong", "font-weight", "bold"),
+        ("emphasis", "font-style", "italic"),
+    ] {
+        assert!(
+            doc.descendants().any(|node| node.has_tag_name("tspan")
+                && node.attribute(attribute) == Some(value)
+                && node.text().is_some_and(|text| text.trim() == word)),
+            "missing {attribute}={value} for {word}: {svg}"
+        );
+    }
+    let text = doc
+        .descendants()
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(text.contains("second row & value"), "{text}");
+    assert!(!text.contains("<br") && !text.contains("**"), "{text}");
 }

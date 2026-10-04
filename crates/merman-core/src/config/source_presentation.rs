@@ -5,7 +5,7 @@
 //! policies have separate owners; this is deliberately not a stylesheet sanitizer.
 
 use crate::{OperationControl, OperationControlResult};
-use cssparser::{BasicParseErrorKind, ParseError, Parser, ParserInput, Token};
+use cssparser::{BasicParseErrorKind, ParseError, Parser, Token};
 use serde_json::Value;
 
 pub(super) fn filter(value: &mut Value, control: &OperationControl) -> OperationControlResult<()> {
@@ -73,16 +73,15 @@ fn is_css_value(value: &str) -> bool {
     // CSS tokenizers recover EOF by closing strings and functions. A real delimiter following
     // the value must remain at the top level, or the original value could consume renderer CSS.
     let terminated = format!("{value}\n;");
-    let mut input = ParserInput::new(&terminated);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(&terminated);
     components(&mut parser, 0, value.len() + 1).is_ok()
 }
 
-fn components<'i>(
-    parser: &mut Parser<'i, '_>,
+fn components(
+    parser: &mut Parser<'_>,
     depth: usize,
     boundary: usize,
-) -> Result<(), ParseError<'i, ()>> {
+) -> Result<(), ParseError<()>> {
     loop {
         let start = parser.position().byte_index();
         let token = match parser.next_including_whitespace_and_comments() {
@@ -112,7 +111,7 @@ fn components<'i>(
             Token::ParenthesisBlock if depth > 0 && depth < 32 => {
                 parser.parse_nested_block(|nested| components(nested, depth + 1, boundary))?;
             }
-            _ => return Err(parser.new_custom_error(())),
+            _ => return Err(ParseError::custom(())),
         }
     }
 }

@@ -120,3 +120,22 @@ fixtures.
   measurement rather than browser `getBBox()` dimensions.
 - Browser `foreignObject`, HTML sanitization, and `getBBox()` float parity are audited as bounded
   residuals for Phase 2; strict parity remains deferred.
+
+## Mermaid 12.1.0 Semantic Delta
+
+Pinned source `21f72f07ea22c0af48a3149c550654e80d8e40cb` changes
+`packages/mermaid/src/diagrams/eventmodeling/db.ts` in three related areas:
+
+- `setAst` rejects a repeated frame ID across both timeframe and resetframe declarations before
+  publishing render state. The local semantic source rejects the same input before typed-model
+  projection and retains parser-owned recovery facts, including later valid declarations.
+- A reset frame retains explicitly named `->>` sources. Only a reset frame without explicit
+  sources suppresses the inferred relation from the preceding frame.
+- Parser input preserves comments. Eventmodeling joins the existing comment-preserving preprocess
+  path, retaining source maps and the existing input-size guard so diagnostics identify the
+  original frame declaration even after comments or frontmatter.
+
+Evidence is held in `merman-core/tests/eventmodeling_contract.rs` (strict, typed and editor routes,
+all timeframe/resetframe duplicate combinations and original source spans) and
+`merman-render/tests/eventmodeling_svg_test.rs` (exact relation endpoints and actual SVG paths).
+No grammar, editor schema, public ABI, renderer family, or Cargo feature boundary changes.

@@ -148,8 +148,9 @@ pub(crate) use label::{
 };
 pub(crate) use node::{
     CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, DoubleCircleGeometry, HexagonGeometry,
-    LeanGeometry, LeanKind, OddGeometry, StadiumGeometry, flowchart_brace_content_dimensions,
-    flowchart_node_render_dimensions, flowchart_stacked_document_geometry,
+    ImageSquareGeometry, LeanGeometry, LeanKind, OddGeometry, StadiumGeometry,
+    flowchart_brace_content_dimensions, flowchart_node_render_dimensions,
+    flowchart_stacked_document_geometry,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::{NodeLayoutDimensionsRequest, node_layout_dimensions};

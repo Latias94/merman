@@ -13,6 +13,9 @@ const SOURCE_ALLOCATION_MULTIPLIER: u64 = 2;
 const MODEL_TEXT_ALLOCATION_MULTIPLIER: u64 = 2;
 const MODEL_ITEM_WEIGHT_BYTES: u64 = 256;
 #[cfg(feature = "svg")]
+// Work includes materialized geometry as well as repeated computation. Retain this conservative
+// allowance until a separate derived-storage limit exists: input item counts alone miss long-edge
+// dummy nodes, including allocations on rejected layouts. This is not a measured RSS bound.
 const LAYOUT_WORK_UNIT_WEIGHT_BYTES: u64 = 64;
 #[cfg(feature = "ascii")]
 const ASCII_GRID_CELL_WEIGHT_BYTES: u64 = 64;
@@ -95,10 +98,16 @@ impl BackendAdmission {
             return Self::unbounded(resources);
         };
         let svg = required_svg_limit(resources)?;
-        let mermaid = if raw_svg {
-            0
+        let (mermaid, layout) = if raw_svg {
+            (0, 0)
         } else {
-            svg_mermaid_phase_weight(resources)?
+            (
+                semantic_phase_weight(resources)?,
+                checked_sum(&[
+                    layout_phase_weight(resources)?,
+                    BASIC_BACKEND_OVERHEAD_BYTES,
+                ])?,
+            )
         };
         let svg_multiplier = if raw_svg {
             RAW_SVG_ALLOCATION_MULTIPLIER
@@ -115,7 +124,7 @@ impl BackendAdmission {
         let (Some(output_pixels), Some(embedded_pixels), Some(embedded_bytes)) =
             (output_pixels, embedded_pixels, embedded_bytes)
         else {
-            return Self::exclusive(resources, prefix, embedded_bytes.unwrap_or(svg));
+            return Self::exclusive(resources, prefix, layout, embedded_bytes.unwrap_or(svg));
         };
         let encoding = checked_sum(&[
             embedded_bytes,
@@ -123,7 +132,7 @@ impl BackendAdmission {
             checked_mul(embedded_pixels, EMBEDDED_PIXEL_BYTES)?,
             ENCODER_AND_STACK_OVERHEAD_BYTES,
         ])?;
-        Self::bounded_encoding(resources, prefix, encoding)
+        Self::bounded_encoding(resources, prefix, layout, encoding)
     }
 
     #[cfg(feature = "pdf")]
@@ -136,10 +145,16 @@ impl BackendAdmission {
             return Self::unbounded(resources);
         };
         let svg = required_svg_limit(resources)?;
-        let mermaid = if raw_svg {
-            0
+        let (mermaid, layout) = if raw_svg {
+            (0, 0)
         } else {
-            svg_mermaid_phase_weight(resources)?
+            (
+                semantic_phase_weight(resources)?,
+                checked_sum(&[
+                    layout_phase_weight(resources)?,
+                    BASIC_BACKEND_OVERHEAD_BYTES,
+                ])?,
+            )
         };
         let svg_multiplier = if raw_svg {
             RAW_SVG_ALLOCATION_MULTIPLIER
@@ -156,7 +171,7 @@ impl BackendAdmission {
         let (Some(filter_pixels), Some(embedded_pixels), Some(embedded_bytes)) =
             (filter_pixels, embedded_pixels, embedded_bytes)
         else {
-            return Self::exclusive(resources, prefix, embedded_bytes.unwrap_or(svg));
+            return Self::exclusive(resources, prefix, layout, embedded_bytes.unwrap_or(svg));
         };
         let encoding = checked_sum(&[
             embedded_bytes,
@@ -164,7 +179,7 @@ impl BackendAdmission {
             checked_mul(embedded_pixels, EMBEDDED_PIXEL_BYTES)?,
             ENCODER_AND_STACK_OVERHEAD_BYTES,
         ])?;
-        Self::bounded_encoding(resources, prefix, encoding)
+        Self::bounded_encoding(resources, prefix, layout, encoding)
     }
 
     fn bounded(resources: &ResolvedResourcePolicy, weight: u64) -> Result<Self, CliError> {
@@ -183,9 +198,13 @@ impl BackendAdmission {
     fn bounded_encoding(
         resources: &ResolvedResourcePolicy,
         prefix: u64,
+        layout: u64,
         encoding: u64,
     ) -> Result<Self, CliError> {
-        let mut admission = Self::bounded(resources, checked_sum(&[prefix, encoding])?)?;
+        // The typed operation consumes the semantic/layout artifact before encoding its SVG.
+        // Keep the shared prefix conservative, but reserve only the larger transient phase.
+        let mut admission =
+            Self::bounded(resources, checked_sum(&[prefix, layout.max(encoding)])?)?;
         admission.actual_prefix_weight = prefix;
         Ok(admission)
     }
@@ -217,6 +236,7 @@ impl BackendAdmission {
     fn exclusive(
         resources: &ResolvedResourcePolicy,
         prefix: u64,
+        layout: u64,
         preparation_bytes: u64,
     ) -> Result<Self, CliError> {
         let ledger = resources.checked_scheduling_weight();
@@ -225,11 +245,8 @@ impl BackendAdmission {
                 "exclusive backend admission requires a finite scheduling budget".to_string(),
             )
         })?;
-        ledger.check_single(checked_sum(&[
-            prefix,
-            preparation_bytes,
-            ENCODER_AND_STACK_OVERHEAD_BYTES,
-        ])?)?;
+        let encoding_floor = checked_sum(&[preparation_bytes, ENCODER_AND_STACK_OVERHEAD_BYTES])?;
+        ledger.check_single(checked_sum(&[prefix, layout.max(encoding_floor)])?)?;
         ledger.check_single(weight)?;
         Ok(Self {
             budget: Arc::new(BackendAdmissionBudget::new(ledger)),
@@ -431,15 +448,20 @@ fn semantic_phase_weight(resources: &ResolvedResourcePolicy) -> Result<u64, CliE
 fn svg_mermaid_phase_weight(resources: &ResolvedResourcePolicy) -> Result<u64, CliError> {
     checked_sum(&[
         semantic_phase_weight(resources)?,
-        checked_mul(
-            required_render_limit(
-                resources,
-                merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
-                "max_layout_work_units",
-            )?,
-            LAYOUT_WORK_UNIT_WEIGHT_BYTES,
-        )?,
+        layout_phase_weight(resources)?,
     ])
+}
+
+#[cfg(feature = "svg")]
+fn layout_phase_weight(resources: &ResolvedResourcePolicy) -> Result<u64, CliError> {
+    checked_mul(
+        required_render_limit(
+            resources,
+            merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
+            "max_layout_work_units",
+        )?,
+        LAYOUT_WORK_UNIT_WEIGHT_BYTES,
+    )
 }
 
 fn required_input_limit(
@@ -555,13 +577,195 @@ mod tests {
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
+    fn encoded_admission_reserves_the_larger_transient_phase_at_the_exact_boundary() {
+        for (layout, encoding) in [(20, 60), (60, 20), (60, 60)] {
+            let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+            policy
+                .apply_override("max_scheduling_weight_bytes", 100)
+                .unwrap();
+            let admission = BackendAdmission::bounded_encoding(&policy, 40, layout, encoding)
+                .expect("the fixed prefix and larger phase exactly fit");
+            assert_eq!(admission.weight, 100);
+            admission
+                .ensure_actual_weight(60)
+                .expect("actual encoding uses the shared prefix without retired layout state");
+            let error = admission.ensure_actual_weight(61).unwrap_err();
+            assert!(error.to_string().contains("max_scheduling_weight_bytes"));
+
+            policy
+                .apply_override("max_scheduling_weight_bytes", 99)
+                .unwrap();
+            let error = match BackendAdmission::bounded_encoding(&policy, 40, layout, encoding) {
+                Ok(_) => panic!("one byte over the scheduling limit must be rejected"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("max_scheduling_weight_bytes"));
+        }
+
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+        policy
+            .apply_override("max_scheduling_weight_bytes", 200)
+            .unwrap();
+        let admission = BackendAdmission::bounded_encoding(&policy, 40, 60, 20).unwrap();
+        let error = admission.ensure_actual_weight(61).unwrap_err();
+        assert!(matches!(error, CliError::InvalidOutput(_)));
+        assert!(error.to_string().contains("estimate was too small"));
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn encoded_admission_checks_only_live_phase_arithmetic_for_overflow() {
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+        policy
+            .apply_override("max_scheduling_weight_bytes", u64::MAX)
+            .unwrap();
+        let admission = BackendAdmission::bounded_encoding(&policy, 0, u64::MAX, u64::MAX)
+            .expect("disjoint phases must not overflow by being added together");
+        assert_eq!(admission.weight, u64::MAX);
+        admission.ensure_actual_weight(u64::MAX).unwrap();
+
+        for (layout, encoding) in [(u64::MAX, 1), (1, u64::MAX)] {
+            let error = match BackendAdmission::bounded_encoding(&policy, 1, layout, encoding) {
+                Ok(_) => panic!("overflow in a live phase must be rejected"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("arithmetic overflow"));
+        }
+        let admission = BackendAdmission::bounded_encoding(&policy, 1, 1, 1).unwrap();
+        let error = admission.ensure_actual_weight(u64::MAX).unwrap_err();
+        assert!(error.to_string().contains("arithmetic overflow"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn bounded_profiles_admit_default_graphical_backends() {
+        for profile in [
+            ResourceProfile::Constrained,
+            ResourceProfile::Interactive,
+            ResourceProfile::TrustedNative,
+        ] {
+            let policy = ResolvedResourcePolicy::for_profile(profile);
+            BackendAdmission::for_svg(&policy).expect("default SVG must fit its profile");
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            for bytes_per_pixel in [8, 10] {
+                for raw_svg in [false, true] {
+                    BackendAdmission::for_raster(
+                        &policy,
+                        &merman::svg::export::RasterOptions::default(),
+                        bytes_per_pixel,
+                        raw_svg,
+                    )
+                    .expect("default raster output must fit its profile");
+                }
+            }
+            #[cfg(feature = "pdf")]
+            for raw_svg in [false, true] {
+                BackendAdmission::for_pdf(
+                    &policy,
+                    &merman::svg::export::PdfOptions::default(),
+                    raw_svg,
+                )
+                .expect("default PDF must fit its profile");
+            }
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn raising_layout_budget_does_not_add_retired_layout_to_pdf_encoding() {
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::TrustedNative);
+        policy
+            .apply_override("max_layout_work_units", 1_000_000)
+            .unwrap();
+        let options = merman::svg::export::PdfOptions::default();
+        let raw_before = BackendAdmission::for_pdf(&policy, &options, true).unwrap();
+        let svg_before = BackendAdmission::for_svg(&policy).unwrap();
+        policy
+            .apply_override("max_layout_work_units", 20_000_000)
+            .unwrap();
+        let mermaid = BackendAdmission::for_pdf(&policy, &options, false)
+            .expect("layout and encoding separately fit the native scheduling pool");
+        let raw_after = BackendAdmission::for_pdf(&policy, &options, true).unwrap();
+        let svg_after = BackendAdmission::for_svg(&policy).unwrap();
+        assert_eq!(raw_before.weight, raw_after.weight);
+        assert_eq!(
+            svg_after.weight - svg_before.weight,
+            19_000_000 * LAYOUT_WORK_UNIT_WEIGHT_BYTES,
+            "SVG-only admission must keep its existing layout accounting"
+        );
+        assert_eq!(mermaid.weight, svg_after.weight);
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn encoded_permit_is_released_after_an_actual_weight_rejection() {
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+        policy
+            .apply_override("max_scheduling_weight_bytes", 100)
+            .unwrap();
+        let admission = BackendAdmission::bounded_encoding(&policy, 40, 60, 20).unwrap();
+        let permit = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
+        assert_eq!(admission.budget.in_flight.lock().unwrap().used(), 100);
+        assert!(admission.ensure_actual_weight(61).is_err());
+        drop(permit);
+        assert_eq!(admission.budget.in_flight.lock().unwrap().used(), 0);
+        admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .expect("a subsequent operation must be admitted after failure");
+    }
+
+    #[test]
+    fn cancelled_admission_wait_does_not_consume_capacity() {
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+        policy
+            .apply_override("max_scheduling_weight_bytes", 10)
+            .unwrap();
+        let admission = BackendAdmission::bounded(&policy, 6).unwrap();
+        let permit = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
+        let control = merman::OperationControl::new();
+        let worker_control = control.clone();
+        let worker_admission = admission.clone();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            ready_tx.send(()).unwrap();
+            let result = worker_admission.acquire_controlled(&worker_control);
+            let error = match result {
+                Ok(_) => panic!("the occupied pool must not admit the cancelled operation"),
+                Err(error) => error,
+            };
+            finished_tx.send(error.to_string()).unwrap();
+        });
+        ready_rx.recv().unwrap();
+        assert!(matches!(
+            finished_rx.recv_timeout(Duration::from_millis(50)),
+            Err(RecvTimeoutError::Timeout)
+        ));
+        control.cancel();
+        let error = finished_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(
+            error.contains("operation cancelled during admission"),
+            "{error}"
+        );
+        worker.join().unwrap();
+        assert_eq!(admission.budget.in_flight.lock().unwrap().used(), 6);
+        drop(permit);
+        assert_eq!(admission.budget.in_flight.lock().unwrap().used(), 0);
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
     fn exclusive_admission_checks_fixed_and_actual_working_sets_together() {
         let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
         let maximum = ENCODER_AND_STACK_OVERHEAD_BYTES + 100;
         policy
             .apply_override("max_scheduling_weight_bytes", maximum)
             .unwrap();
-        let admission = BackendAdmission::exclusive(&policy, 40, 0).unwrap();
+        let admission = BackendAdmission::exclusive(&policy, 40, 0, 0).unwrap();
 
         admission
             .ensure_actual_weight(ENCODER_AND_STACK_OVERHEAD_BYTES + 60)
@@ -570,6 +774,37 @@ mod tests {
             .ensure_actual_weight(ENCODER_AND_STACK_OVERHEAD_BYTES + 61)
             .expect_err("the combined working set exceeds the finite budget");
         assert!(error.to_string().contains("max_scheduling_weight_bytes"));
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn exclusive_admission_checks_both_phase_floors_at_the_exact_boundary() {
+        let mut policy = ResolvedResourcePolicy::for_profile(ResourceProfile::Constrained);
+        let phase = ENCODER_AND_STACK_OVERHEAD_BYTES + 60;
+        policy
+            .apply_override("max_scheduling_weight_bytes", phase + 40)
+            .unwrap();
+        let admission = BackendAdmission::exclusive(&policy, 40, phase, 60)
+            .expect("sequential phase floors each exactly fit the pool");
+        assert_eq!(admission.weight, phase + 40);
+        admission.ensure_actual_weight(phase).unwrap();
+        assert!(admission.ensure_actual_weight(phase + 1).is_err());
+
+        for (layout, preparation_bytes) in [(phase + 1, 60), (phase, 61)] {
+            let error = match BackendAdmission::exclusive(&policy, 40, layout, preparation_bytes) {
+                Ok(_) => panic!("either phase exceeding the pool must be rejected"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("max_scheduling_weight_bytes"));
+        }
+        for (prefix, layout, preparation_bytes) in [(1, u64::MAX, 0), (0, 0, u64::MAX)] {
+            let error =
+                match BackendAdmission::exclusive(&policy, prefix, layout, preparation_bytes) {
+                    Ok(_) => panic!("exclusive phase arithmetic must not saturate"),
+                    Err(error) => error,
+                };
+            assert!(error.to_string().contains("arithmetic overflow"));
+        }
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -583,7 +818,7 @@ mod tests {
             )
             .unwrap();
 
-        let error = match BackendAdmission::exclusive(&policy, 1, 0) {
+        let error = match BackendAdmission::exclusive(&policy, 1, 0, 0) {
             Ok(_) => panic!("the fixed prefix plus backend floor exceeds the budget"),
             Err(error) => error,
         };
@@ -599,7 +834,7 @@ mod tests {
             .apply_override("max_scheduling_weight_bytes", maximum)
             .unwrap();
 
-        let error = match BackendAdmission::exclusive(&policy, 40, 61) {
+        let error = match BackendAdmission::exclusive(&policy, 40, 0, 61) {
             Ok(_) => panic!("bounded embedded bytes must be part of the preparation floor"),
             Err(error) => error,
         };

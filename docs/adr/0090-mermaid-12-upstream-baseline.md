@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted for `0.8.0-alpha.7`. Supersedes ADR-0001 for active compatibility, fixture admission,
-and release-facing documentation. Mermaid 11 references retained by older ADRs and progress records
-are historical evidence.
+Accepted for `0.8.0-alpha.7`; this ADR records the admitted alpha.7 baseline. Supersedes ADR-0001
+for that release line. Mermaid 11 references retained by older ADRs and progress records are
+historical evidence. Current unreleased `0.8.0` development is tracked by
+[ADR-0092](0092-mermaid-12-1-upstream-transition.md).
 
 ## Date
 
@@ -20,7 +21,7 @@ provenance disagree.
 
 ## Decision
 
-- Active Mermaid source: `mermaid@12.0.0` at commit
+- Alpha.7 Mermaid source: `mermaid@12.0.0` at commit
   `98a0945418c76238f15df2afaddbba4272656c3b`.
 - Reference CLI: `@mermaid-js/mermaid-cli@11.17.0`.
 - Sanitizer companion: `dompurify@3.4.16` after the GHSA-p98j-92pf-mc4p security patch.

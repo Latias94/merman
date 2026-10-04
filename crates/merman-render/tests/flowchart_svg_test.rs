@@ -1809,6 +1809,61 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
 }
 
 #[test]
+fn flowchart_stadium_path_uses_html_label_font_size_for_fractional_theme_size() {
+    // Mermaid `stadium.ts` sizes its path from the `labelHelper(...)` bbox, i.e. the HTML label
+    // measured with the CSS `font-size: 12.5px`, not the integer `parseFontSize` number.
+    for look in ["neo", "classic"] {
+        let source = format!(
+            "%%{{init: {{\"look\": \"{look}\", \"themeVariables\": {{\"fontSize\": \"12.5px\"}}}}}}%%\nflowchart LR\nA([Client]) --> B[Rect]\n"
+        );
+        let parse = || {
+            block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected")
+        };
+        let layout = layout_flowchart_render_model(
+            parse(),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .expect("layout ok");
+        let svg = render_flowchart_artifact(
+            parse(),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg");
+
+        let node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+        let path = document
+            .descendants()
+            .find(|n| {
+                n.has_tag_name("g")
+                    && n.attribute("id")
+                        .is_some_and(|id| id.ends_with("flowchart-A-0"))
+            })
+            .and_then(|group| group.descendants().find(|n| n.has_tag_name("path")))
+            .and_then(|path| path.attribute("d"))
+            .expect("stadium path");
+        let numbers: Vec<f64> = path
+            .split(|c: char| c.is_ascii_alphabetic() || c == ',' || c.is_whitespace())
+            .filter(|token| !token.is_empty())
+            .map(|token| token.parse().expect("path number"))
+            .collect();
+        let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+        let painted_height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+
+        assert!(
+            (painted_height - node.height).abs() < 1e-6,
+            "{look}: stadium path height {painted_height} must match layout height {}",
+            node.height
+        );
+    }
+}
+
+#[test]
 fn flowchart_folder_shape_renders_aliases_and_clips_edges_to_the_tab_polygon() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -2151,30 +2206,48 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
 
 #[test]
 fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
-    let _session = merman_render::environment::RenderEnvironment::deterministic()
-        .begin_session()
-        .unwrap();
-    let text = r#"flowchart TB
-A@{ shape: hourglass, label: "Hourglass label" }
-"#;
-    let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let svg = render_flowchart_artifact(
-        parsed,
-        &layout_options,
-        _session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    assert!(
-        svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
-        "expected Mermaid 11.15 hourglass to keep markdown label class on the empty label: {svg}"
-    );
+    for html_labels in [true, false] {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let text = "flowchart TB\nA@{ shape: hourglass, label: \"Hourglass label\" }\n";
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": html_labels,
+            "flowchart": { "htmlLabels": html_labels },
+        })));
+        let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+        let svg = render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg");
+        if html_labels {
+            assert!(
+                svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
+                "hourglass must keep the markdown class on its cleared label: {svg}"
+            );
+        }
+        let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+            .expect("hourglass label group");
+        assert_eq!(
+            label.attribute("transform"),
+            Some("translate(0,0)"),
+            "clearing the label must also clear its measured offset (HTML={html_labels})"
+        );
+        if html_labels {
+            let bbox = label
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(bbox.attribute("width"), Some("0"));
+            assert_eq!(bbox.attribute("height"), Some("0"));
+        }
+    }
 }
 
 #[test]
@@ -2319,6 +2392,165 @@ end
     );
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
+    let title = "**alpha** beta *gamma* delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega";
+    let expected_text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega";
+    for html_labels in [false, true] {
+        for wrapping_width in [60, 240] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "layout": "elk", "look": "classic", "htmlLabels": html_labels,
+                "flowchart": { "htmlLabels": html_labels, "wrappingWidth": wrapping_width, "minNodeWidth": 0 }
+            })));
+            let source =
+                format!("flowchart TB\nsubgraph G[\"`{title}`\"]\nA[x]\nend\nG --> Outside[out]\n");
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let layout: FlowchartLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+            )
+            .unwrap();
+            let frame = layout
+                .clusters
+                .iter()
+                .find(|cluster| cluster.id == "G")
+                .unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let cluster = doc
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("cluster"))
+                .unwrap();
+            let rect = cluster
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            let rect_left = rect.attribute("x").unwrap().parse::<f64>().unwrap();
+            let rect_width = rect.attribute("width").unwrap().parse::<f64>().unwrap();
+            let label = cluster
+                .descendants()
+                .find(|node| node.attribute("class") == Some("cluster-label"))
+                .unwrap();
+            let label_left = svg_translate_values(label.attribute("transform").unwrap())[0];
+            let context = format!("htmlLabels={html_labels}, wrappingWidth={wrapping_width}");
+            assert!((rect_width - frame.width).abs() < 1e-3, "{context}");
+            assert!(
+                (rect_width - 200.0).abs() > 1.0,
+                "{context}: exercise a non-default paint width"
+            );
+            if html_labels {
+                let foreign_object = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                let width = foreign_object
+                    .attribute("width")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                let height = foreign_object
+                    .attribute("height")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                let div = foreign_object
+                    .descendants()
+                    .find(|node| node.has_tag_name("div"))
+                    .unwrap();
+                let style = div.attribute("style").unwrap();
+                let max_width = style
+                    .split(';')
+                    .find_map(|declaration| {
+                        declaration.trim().strip_prefix("max-width:").map(|value| {
+                            value.trim().trim_end_matches("px").parse::<f64>().unwrap()
+                        })
+                    })
+                    .unwrap();
+                assert!((max_width - rect_width).abs() < 1e-3, "{context}: {style}");
+                assert!(
+                    (width - rect_width).abs() < 1e-3,
+                    "{context}: wrapped HTML width"
+                );
+                assert!(height > 24.0, "{context}: long title must remain wrapped");
+                assert!(
+                    (label_left + width / 2.0 - rect_left - rect_width / 2.0).abs() < 1e-3,
+                    "{context}: painted HTML label must remain centered"
+                );
+                let text = div
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert_eq!(text.trim(), expected_text, "{context}: preserve title text");
+                assert!(
+                    div.descendants().any(|node| node.has_tag_name("strong")),
+                    "{context}"
+                );
+                assert!(
+                    div.descendants().any(|node| node.has_tag_name("em")),
+                    "{context}"
+                );
+            } else {
+                assert!(
+                    !label
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    "{context}"
+                );
+                let rows = label
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("tspan")
+                            && node.attribute("class").is_some_and(|value| {
+                                value
+                                    .split_whitespace()
+                                    .any(|class| class == "text-outer-tspan")
+                            })
+                    })
+                    .map(|row| {
+                        row.descendants()
+                            .filter(|node| node.is_text())
+                            .filter_map(|node| node.text())
+                            .collect::<String>()
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    rows.len() > 1,
+                    "{context}: final frame must wrap SVG Markdown"
+                );
+                assert_eq!(
+                    rows.join(" "),
+                    expected_text,
+                    "{context}: preserve wrapped title words"
+                );
+                assert!(
+                    label_left >= rect_left - 1e-3 && label_left < rect_left + rect_width / 2.0,
+                    "{context}: wrapped SVG label must fit inside the frame"
+                );
+                assert!(
+                    label
+                        .descendants()
+                        .any(|node| node.attribute("font-weight") == Some("bold")),
+                    "{context}"
+                );
+                assert!(
+                    label
+                        .descendants()
+                        .any(|node| node.attribute("font-style") == Some("italic")),
+                    "{context}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
     for source in [
@@ -2354,7 +2586,7 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
 }
 
 #[test]
-fn duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_cluster() {
+fn duplicate_subgraph_vertex_css_updates_the_canonical_cluster() {
     let svg = render_flowchart_svg_from_text(concat!(
         "flowchart TD\n",
         "classDef hot stroke:#123456\n",
@@ -2385,9 +2617,60 @@ fn duplicate_subgraph_vertex_css_does_not_leak_into_the_canonical_first_cluster(
         .and_then(|node| node.attribute("style"))
         .unwrap_or_default();
 
-    assert!(!classes.contains(&"hot"), "{svg}");
-    assert!(!shape_style.contains("#010203"), "{svg}");
-    assert!(!shape_style.contains("#123456"), "{svg}");
+    assert!(classes.contains(&"hot"), "{svg}");
+    assert!(shape_style.contains("#010203"), "{svg}");
+    assert!(shape_style.contains("#123456"), "{svg}");
+}
+
+#[test]
+fn duplicate_subgraphs_share_collapsed_metadata_before_and_after_redeclaration() {
+    for backend in ["dagre", "elk"] {
+        if backend == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for between in [false, true] {
+            let collapsed = "X@{ view: collapsed }\n";
+            let source = format!(
+                "---\nconfig:\n  layout: {backend}\n---\nflowchart TB\nsubgraph X[First]\nA\nend\n{}subgraph X[Second]\nB\nend\n{}C --> A\nC --> B\n",
+                if between { collapsed } else { "" },
+                if between { "" } else { collapsed },
+            );
+            let svg = render_flowchart_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let groups: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-X"))
+                .collect();
+            assert_eq!(groups.len(), 1, "{backend}, between={between}: {svg}");
+            assert!(
+                groups[0]
+                    .children()
+                    .any(|node| node.attribute("class")
+                        == Some("basic label-container collapsed-group")),
+                "{svg}"
+            );
+            for member in ["A", "B"] {
+                assert!(
+                    !document.descendants().any(|node| {
+                        node.has_tag_name("g")
+                            && node
+                                .attribute("id")
+                                .is_some_and(|id| id.contains(&format!("-flowchart-{member}-")))
+                    }),
+                    "{backend}, between={between}: hidden member {member}: {svg}"
+                );
+            }
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path")
+                        && node.attribute("data-edge") == Some("true"))
+                    .count(),
+                2,
+                "{svg}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -3918,83 +4201,104 @@ fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
     assert_ne!(render_paths(serde_json::json!("0"), source), square);
 }
 
-#[test]
-fn flowchart_fork_join_bars_are_perpendicular_to_flow_across_backends() {
+fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &str) {
     use kurbo::Shape as _;
 
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "layout": backend,
+        "look": "classic",
+        "state": { "padding": 8 }
+    })));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let layout: FlowchartLayout =
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
+            .unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+
+    // forkJoin.ts adds state.padding / 2 to layout dimensions only. Check the actual
+    // filled SVG path independently so measurement and painting cannot diverge.
+    let (width, height) = match direction {
+        "LR" | "RL" => (10.0, 70.0),
+        _ => (70.0, 10.0),
+    };
+    for id in ["F", "J"] {
+        let context = format!("{backend}/{direction}/{id}: {source}");
+        let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+        assert_eq!(node.width, width + 4.0, "{context}: layout width");
+        assert_eq!(node.height, height + 4.0, "{context}: layout height");
+
+        let id_fragment = format!("-flowchart-{id}-");
+        let group = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&id_fragment))
+            })
+            .unwrap();
+        let path = group
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("none"))
+            .unwrap();
+        let bounds = kurbo::BezPath::from_svg(path.attribute("d").unwrap())
+            .unwrap()
+            .bounding_box();
+        assert!(
+            (bounds.width() - width).abs() < 1e-6,
+            "{context}: painted width {} instead of {width}",
+            bounds.width()
+        );
+        assert!(
+            (bounds.height() - height).abs() < 1e-6,
+            "{context}: painted height {} instead of {height}",
+            bounds.height()
+        );
+    }
+}
+
+#[test]
+fn flowchart_fork_join_bars_are_perpendicular_to_flow_across_backends() {
     for backend in [
         "dagre",
         #[cfg(feature = "layout-elk")]
         "elk",
     ] {
         for direction in ["TB", "BT", "LR", "RL"] {
-            let engine =
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                    "layout": backend,
-                    "look": "classic",
-                    "state": { "padding": 8 }
-                })));
             let source = format!(
                 "flowchart {direction}\nA --> F@{{shape: fork}} --> J@{{shape: join}} --> B\n"
             );
-            let parsed = engine
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
-                .unwrap()
-                .unwrap();
-            let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
-            let layout: FlowchartLayout = serde_json::from_value(
-                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
-            )
-            .unwrap();
-            let rendered = artifact
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap();
-            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
-
-            // Mermaid forkJoin.ts draws a 10 x 70 bar for horizontal flow and adds
-            // state.padding / 2 only to the layout dimensions, not the painted path.
-            let (width, height) = match direction {
-                "LR" | "RL" => (10.0, 70.0),
-                _ => (70.0, 10.0),
-            };
-            for id in ["F", "J"] {
-                let context = format!("{backend}/{direction}/{id}");
-                let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
-                assert_eq!(node.width, width + 4.0, "{context}: layout width");
-                assert_eq!(node.height, height + 4.0, "{context}: layout height");
-
-                let id_fragment = format!("-flowchart-{id}-");
-                let group = doc
-                    .descendants()
-                    .find(|node| {
-                        node.has_tag_name("g")
-                            && node
-                                .attribute("id")
-                                .is_some_and(|value| value.contains(&id_fragment))
-                    })
-                    .unwrap();
-                let path = group
-                    .descendants()
-                    .find(|node| {
-                        node.has_tag_name("path") && node.attribute("stroke") == Some("none")
-                    })
-                    .unwrap();
-                let bounds = kurbo::BezPath::from_svg(path.attribute("d").unwrap())
-                    .unwrap()
-                    .bounding_box();
-                assert!(
-                    (bounds.width() - width).abs() < 1e-6,
-                    "{context}: painted width {} instead of {width}",
-                    bounds.width()
-                );
-                assert!(
-                    (bounds.height() - height).abs() < 1e-6,
-                    "{context}: painted height {} instead of {height}",
-                    bounds.height()
-                );
-            }
+            assert_flowchart_fork_join_geometry(backend, &source, direction);
         }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_fork_join_use_the_nearest_enclosing_direction() {
+    for (root, outer, inner, expected) in [
+        ("TB", "LR", None, "LR"),
+        ("BT", "RL", None, "RL"),
+        ("LR", "TB", None, "TB"),
+        ("RL", "BT", None, "BT"),
+        ("TB", "LR", Some("TB"), "TB"),
+        ("LR", "TB", Some("RL"), "RL"),
+    ] {
+        let inner_direction = inner
+            .map(|dir| format!("direction {dir}"))
+            .unwrap_or_default();
+        let source = format!(
+            "flowchart {root}\nsubgraph Outer\ndirection {outer}\nsubgraph Middle\nsubgraph Inner\n{inner_direction}\nA --> F@{{shape: fork}} --> J@{{shape: join}} --> B\nend\nend\nend\n"
+        );
+        assert_flowchart_fork_join_geometry("elk", &source, expected);
     }
 }
 
@@ -4040,6 +4344,194 @@ A@{{ img: "https://mermaid.js.org/favicon.svg", label: "{label}", pos: "t", h: 6
                 );
                 assert!(!div_style.contains("; width:"), "{backend}: {div_style}");
             }
+        }
+    }
+}
+
+#[test]
+fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
+    for look in ["neo", "classic"] {
+        for label in ["<br/><br/>", "<i class='fa fa-car'></i>", ""] {
+            let source = format!(
+                "%%{{init: {{\"look\": \"{look}\"}}}}%%\nflowchart LR\nA([\"{label}\"]) --> B[Rect]\n"
+            );
+            let parsed = block_on(
+                Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .expect("prepare diagram");
+            let layout: FlowchartLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+            )
+            .expect("flowchart layout");
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("render svg");
+            let node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                })
+                .and_then(|group| group.descendants().find(|node| node.has_tag_name("path")))
+                .and_then(|path| path.attribute("d"))
+                .expect("stadium path");
+            let numbers: Vec<f64> = path
+                .split(|ch: char| ch.is_ascii_alphabetic() || ch == ',' || ch.is_whitespace())
+                .filter(|token| !token.is_empty())
+                .map(|token| token.parse().expect("path number"))
+                .collect();
+            let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+            let height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+            assert!(
+                (height - node.height).abs() < 1e-6,
+                "{look}, {label:?}: painted height {height}, layout height {}",
+                node.height
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_line_hops_rewrite_original_dashed_and_authored_masks() {
+    use kurbo::Shape as _;
+
+    struct PaintedEdge {
+        id: String,
+        d: String,
+        style: String,
+        points: String,
+        marker: String,
+    }
+    let render = |look: &str, line_hops: serde_json::Value| {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": "elk", "look": look, "elk": { "lineHops": line_hops }
+        })));
+        let mut source = "flowchart TD\nA & B -.-> C & D\n".to_owned();
+        if look == "classic" {
+            source.push_str("linkStyle default stroke-dasharray:0 7 50 9,stroke:#123456\n");
+        }
+        let svg = render_flowchart_svg_from_text_with_engine(engine, &source);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        doc.descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .map(|node| PaintedEdge {
+                id: node.attribute("data-id").unwrap().to_owned(),
+                d: node.attribute("d").unwrap().to_owned(),
+                style: node.attribute("style").unwrap().to_owned(),
+                points: node.attribute("data-points").unwrap().to_owned(),
+                marker: node.attribute("marker-end").unwrap().to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
+    let masks = |style: &str| {
+        style
+            .split(';')
+            .filter_map(|declaration| declaration.trim().strip_prefix("stroke-dasharray:"))
+            .map(|value| {
+                value
+                    .split_whitespace()
+                    .map(|value| value.parse::<f64>().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+    for look in ["neo", "classic"] {
+        let original = render(look, serde_json::json!(false));
+        assert_eq!(original.len(), 4);
+        for mode in [serde_json::json!(true), serde_json::json!("gap")] {
+            let hopped = render(look, mode.clone());
+            let mut crossing_count = 0;
+            let mut unchanged_count = 0;
+            assert_eq!(hopped.len(), original.len());
+            for (before, after) in original.iter().zip(&hopped) {
+                let context = format!("look={look}, lineHops={mode}, edge={}", before.id);
+                assert_eq!(after.id, before.id, "{context}");
+                assert_eq!(after.points, before.points, "{context}: provider route");
+                assert_eq!(after.marker, before.marker, "{context}: marker attachment");
+                if look == "classic" {
+                    assert!(
+                        before.style.contains("stroke:#123456"),
+                        "{context}: original color"
+                    );
+                    assert!(
+                        after.style.contains("stroke:#123456"),
+                        "{context}: after-paint color"
+                    );
+                }
+                if before.d == after.d {
+                    unchanged_count += 1;
+                    assert_eq!(
+                        after.style, before.style,
+                        "{context}: noncrossing edge style"
+                    );
+                    continue;
+                }
+                crossing_count += 1;
+                let original_masks = masks(&before.style);
+                let rewritten = masks(&after.style);
+                assert!(!original_masks.is_empty(), "{context}");
+                assert_eq!(
+                    rewritten.len(),
+                    original_masks.len(),
+                    "{context}: every declaration survives"
+                );
+                if look == "neo" {
+                    assert!(
+                        original_masks[0].len() > 4,
+                        "{context}: start from the repeated 2/2 pattern"
+                    );
+                    assert_eq!(
+                        original_masks[0][3], 2.0,
+                        "{context}: upstream takes the fourth number, not marker clearance"
+                    );
+                }
+                // getTotalLength() returns an SVG DOM float before marker-offset arithmetic.
+                let length = f64::from(
+                    kurbo::BezPath::from_svg(&after.d)
+                        .unwrap()
+                        .perimeter(1.0e-6) as f32,
+                );
+                for mask in rewritten {
+                    assert_eq!(
+                        mask.len(),
+                        4,
+                        "{context}: after-paint rewrite collapses the original dash pattern"
+                    );
+                    assert_eq!(mask[0], 0.0, "{context}");
+                    assert_eq!(
+                        mask[1], original_masks[0][1],
+                        "{context}: retain original start offset"
+                    );
+                    assert_eq!(
+                        mask[3], original_masks[0][3],
+                        "{context}: retain original fourth number"
+                    );
+                    assert!(
+                        (mask[2] - (length - mask[1] - mask[3]).max(0.0)).abs() < 1e-6,
+                        "{context}: mask follows the actual hopped path length"
+                    );
+                }
+            }
+            assert!(
+                crossing_count > 0,
+                "{look}/{mode}: exercise a real crossing"
+            );
+            assert!(
+                unchanged_count > 0,
+                "{look}/{mode}: preserve noncrossing edges"
+            );
         }
     }
 }

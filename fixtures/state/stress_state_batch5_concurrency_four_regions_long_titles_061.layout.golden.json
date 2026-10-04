@@ -13,9 +13,9 @@
         },
         {
           "id": "divider-id-1",
-          "x": 314.0,
+          "x": 310.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "is_cluster": true
         },
@@ -29,9 +29,9 @@
         },
         {
           "id": "divider-id-2",
-          "x": 128.0,
+          "x": 124.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "is_cluster": true
         },
@@ -45,9 +45,9 @@
         },
         {
           "id": "divider-id-3",
-          "x": 500.0,
+          "x": 496.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "is_cluster": true
         },
@@ -324,15 +324,15 @@
         },
         {
           "id": "divider-id-1",
-          "x": 314.0,
+          "x": 310.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 314.0,
+            "x": 310.2,
             "y": 114.0,
             "width": 0.0,
             "height": 0.0
@@ -345,15 +345,15 @@
         },
         {
           "id": "divider-id-2",
-          "x": 128.0,
+          "x": 124.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 128.0,
+            "x": 124.2,
             "y": 114.0,
             "width": 0.0,
             "height": 0.0
@@ -366,15 +366,15 @@
         },
         {
           "id": "divider-id-3",
-          "x": 500.0,
+          "x": 496.2,
           "y": 145.0,
-          "width": 72.0,
+          "width": 62.0,
           "height": 62.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "",
           "title_label": {
-            "x": 500.0,
+            "x": 496.2,
             "y": 114.0,
             "width": 0.0,
             "height": 0.0

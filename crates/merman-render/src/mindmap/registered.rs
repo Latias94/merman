@@ -133,7 +133,7 @@ pub(super) fn elk(
     operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
     use merman_layout_elk as elk;
-    let graph = elk::Graph {
+    let mut graph = elk::Graph {
         id: "mindmap".into(),
         direction: elk::Direction::Down,
         nodes: nodes
@@ -162,14 +162,22 @@ pub(super) fn elk(
                 target: edge.end.clone(),
                 label: None,
                 minlen: 1,
+                terminal_labels: Vec::new(),
                 inside_self_loops_yo: false,
             })
             .collect(),
         spacing: elk::Spacing::default(),
         options: crate::elk_options::layout_options(config),
     };
-    let placed = elk::layout_with_operation_seed_and_work_control(&graph, operation_seed, work)
-        .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
+    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut graph,
+        config,
+        &mut Some(&mut *work),
+    )?;
+    let mut placed =
+        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
+            .map_err(|error| work.map_elk_error_with_context(error, "Mindmap ELK"))?;
+    oriented.restore(&mut placed, &mut Some(&mut *work))?;
     let indices: rustc_hash::FxHashMap<_, _> = nodes
         .iter()
         .enumerate()

@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub(super) const THEME_RUNTIME_OUTPUT: &str =
-    "crates/merman-core/src/generated/theme_variables_12_0_0.json";
+    "crates/merman-core/src/generated/theme_variables_12_1_0.json";
 pub(super) const THEME_AUDIT_OUTPUT: &str =
-    "fixtures/_verification/theme_variables_oracle_12_0_0.json";
+    "fixtures/_verification/theme_variables_oracle_12_1_0.json";
 const THEME_RUNTIME_SCHEMA_VERSION: u32 = 2;
 const THEME_AUDIT_SCHEMA_VERSION: u32 = 1;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";

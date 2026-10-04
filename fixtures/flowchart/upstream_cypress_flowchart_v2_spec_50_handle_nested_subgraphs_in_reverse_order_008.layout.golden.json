@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "A",
-          "x": 343.0,
+          "x": 348.0,
           "y": 106.5,
-          "width": 258.0,
+          "width": 248.0,
           "height": 189.0,
           "is_cluster": true
         },
@@ -74,15 +74,15 @@
       "clusters": [
         {
           "id": "A",
-          "x": 343.0,
+          "x": 348.0,
           "y": 106.5,
-          "width": 258.0,
+          "width": 248.0,
           "height": 189.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "A",
           "title_label": {
-            "x": 343.0,
+            "x": 348.0,
             "y": 21.5,
             "width": 8.4,
             "height": 19.0

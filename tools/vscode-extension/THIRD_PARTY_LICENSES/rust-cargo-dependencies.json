@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "d6f4a4d87ddb5edbf4599ba1ffe0ba3f1bade3edd5a32103bb4f93a1a7957198",
+    "cargo_lock_sha256": "0045a97dd4f7616132b417a7ccf3a64b31d583c954eeaebc25acd15b1cf46194",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -54,7 +54,7 @@
       "packages": [
         {
           "name": "moka",
-          "version": "0.12.15",
+          "version": "0.12.16",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "(MIT OR Apache-2.0) AND Apache-2.0",
           "authors": [],
@@ -140,7 +140,7 @@
         },
         {
           "name": "async-trait",
-          "version": "0.1.91",
+          "version": "0.1.92",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -168,6 +168,17 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/basic-toml"
+        },
+        {
+          "name": "dispatch2",
+          "version": "0.3.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Zlib OR Apache-2.0 OR MIT",
+          "authors": [
+            "Mads Marquart <mads@marquart.dk>",
+            "Mary <mary@mary.zone>"
+          ],
+          "repository": "https://github.com/madsmtm/objc2"
         },
         {
           "name": "dtoa",
@@ -299,6 +310,18 @@
           "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide"
         },
         {
+          "name": "miniz_oxide",
+          "version": "0.9.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Zlib OR Apache-2.0",
+          "authors": [
+            "Frommi <daniil.liferenko@gmail.com>",
+            "Rich Geldreich richgel99@gmail.com",
+            "oyvindln <oyvindln@users.noreply.github.com>"
+          ],
+          "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide"
+        },
+        {
           "name": "ndk-context",
           "version": "0.1.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -350,7 +373,7 @@
         },
         {
           "name": "portable-atomic",
-          "version": "1.14.0",
+          "version": "1.15.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -358,7 +381,7 @@
         },
         {
           "name": "portable-atomic-util",
-          "version": "0.2.7",
+          "version": "0.2.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -387,14 +410,6 @@
         },
         {
           "name": "r-efi",
-          "version": "5.3.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
-          "authors": [],
-          "repository": "https://github.com/r-efi/r-efi"
-        },
-        {
-          "name": "r-efi",
           "version": "6.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
@@ -403,7 +418,7 @@
         },
         {
           "name": "rand",
-          "version": "0.10.2",
+          "version": "0.10.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -414,33 +429,10 @@
         },
         {
           "name": "rand",
-          "version": "0.8.7",
+          "version": "0.8.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
-            "The Rand Project Developers",
-            "The Rust Project Developers"
-          ],
-          "repository": "https://github.com/rust-random/rand"
-        },
-        {
-          "name": "rand",
-          "version": "0.9.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The Rand Project Developers",
-            "The Rust Project Developers"
-          ],
-          "repository": "https://github.com/rust-random/rand"
-        },
-        {
-          "name": "rand_chacha",
-          "version": "0.9.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The CryptoCorrosion Contributors",
             "The Rand Project Developers",
             "The Rust Project Developers"
           ],
@@ -448,7 +440,7 @@
         },
         {
           "name": "ref-cast",
-          "version": "1.0.26",
+          "version": "1.0.27",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -458,7 +450,7 @@
         },
         {
           "name": "ref-cast-impl",
-          "version": "1.0.26",
+          "version": "1.0.27",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -486,7 +478,7 @@
         },
         {
           "name": "rustls-platform-verifier-android",
-          "version": "0.1.1",
+          "version": "0.2.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -596,16 +588,6 @@
           "repository": "https://github.com/jedisct1/rust-siphash"
         },
         {
-          "name": "siphasher",
-          "version": "1.0.3",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Frank Denis <github@pureftpd.org>"
-          ],
-          "repository": "https://github.com/jedisct1/rust-siphash"
-        },
-        {
           "name": "subsetter",
           "version": "0.2.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -628,7 +610,7 @@
         },
         {
           "name": "syn",
-          "version": "3.0.3",
+          "version": "3.0.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -668,7 +650,7 @@
         },
         {
           "name": "thiserror",
-          "version": "2.0.19",
+          "version": "2.0.21",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -688,7 +670,7 @@
         },
         {
           "name": "thiserror-impl",
-          "version": "2.0.19",
+          "version": "2.0.21",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -698,7 +680,7 @@
         },
         {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.26",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
           "authors": [
@@ -852,12 +834,60 @@
     {
       "id": "Apache-2.0",
       "name": "Apache License 2.0",
+      "text_sha256": "249fdb6694467dd615b259f7ddde07be3f8ae5a72cecebb0e24f6629af4215fe",
+      "text": "                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"{}\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright Individual contributors\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\n",
+      "packages": [
+        {
+          "name": "clap",
+          "version": "4.6.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/clap-rs/clap"
+        },
+        {
+          "name": "clap_builder",
+          "version": "4.6.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/clap-rs/clap"
+        },
+        {
+          "name": "clap_complete",
+          "version": "4.6.11",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/clap-rs/clap"
+        },
+        {
+          "name": "clap_derive",
+          "version": "4.6.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/clap-rs/clap"
+        },
+        {
+          "name": "clap_lex",
+          "version": "1.1.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/clap-rs/clap"
+        }
+      ]
+    },
+    {
+      "id": "Apache-2.0",
+      "name": "Apache License 2.0",
       "text_sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
       "text": "                              Apache License\n                        Version 2.0, January 2004\n                     http://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n1. Definitions.\n\n   \"License\" shall mean the terms and conditions for use, reproduction,\n   and distribution as defined by Sections 1 through 9 of this document.\n\n   \"Licensor\" shall mean the copyright owner or entity authorized by\n   the copyright owner that is granting the License.\n\n   \"Legal Entity\" shall mean the union of the acting entity and all\n   other entities that control, are controlled by, or are under common\n   control with that entity. For the purposes of this definition,\n   \"control\" means (i) the power, direct or indirect, to cause the\n   direction or management of such entity, whether by contract or\n   otherwise, or (ii) ownership of fifty percent (50%) or more of the\n   outstanding shares, or (iii) beneficial ownership of such entity.\n\n   \"You\" (or \"Your\") shall mean an individual or Legal Entity\n   exercising permissions granted by this License.\n\n   \"Source\" form shall mean the preferred form for making modifications,\n   including but not limited to software source code, documentation\n   source, and configuration files.\n\n   \"Object\" form shall mean any form resulting from mechanical\n   transformation or translation of a Source form, including but\n   not limited to compiled object code, generated documentation,\n   and conversions to other media types.\n\n   \"Work\" shall mean the work of authorship, whether in Source or\n   Object form, made available under the License, as indicated by a\n   copyright notice that is included in or attached to the work\n   (an example is provided in the Appendix below).\n\n   \"Derivative Works\" shall mean any work, whether in Source or Object\n   form, that is based on (or derived from) the Work and for which the\n   editorial revisions, annotations, elaborations, or other modifications\n   represent, as a whole, an original work of authorship. For the purposes\n   of this License, Derivative Works shall not include works that remain\n   separable from, or merely link (or bind by name) to the interfaces of,\n   the Work and Derivative Works thereof.\n\n   \"Contribution\" shall mean any work of authorship, including\n   the original version of the Work and any modifications or additions\n   to that Work or Derivative Works thereof, that is intentionally\n   submitted to Licensor for inclusion in the Work by the copyright owner\n   or by an individual or Legal Entity authorized to submit on behalf of\n   the copyright owner. For the purposes of this definition, \"submitted\"\n   means any form of electronic, verbal, or written communication sent\n   to the Licensor or its representatives, including but not limited to\n   communication on electronic mailing lists, source code control systems,\n   and issue tracking systems that are managed by, or on behalf of, the\n   Licensor for the purpose of discussing and improving the Work, but\n   excluding communication that is conspicuously marked or otherwise\n   designated in writing by the copyright owner as \"Not a Contribution.\"\n\n   \"Contributor\" shall mean Licensor and any individual or Legal Entity\n   on behalf of whom a Contribution has been received by Licensor and\n   subsequently incorporated within the Work.\n\n2. Grant of Copyright License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   copyright license to reproduce, prepare Derivative Works of,\n   publicly display, publicly perform, sublicense, and distribute the\n   Work and such Derivative Works in Source or Object form.\n\n3. Grant of Patent License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   (except as stated in this section) patent license to make, have made,\n   use, offer to sell, sell, import, and otherwise transfer the Work,\n   where such license applies only to those patent claims licensable\n   by such Contributor that are necessarily infringed by their\n   Contribution(s) alone or by combination of their Contribution(s)\n   with the Work to which such Contribution(s) was submitted. If You\n   institute patent litigation against any entity (including a\n   cross-claim or counterclaim in a lawsuit) alleging that the Work\n   or a Contribution incorporated within the Work constitutes direct\n   or contributory patent infringement, then any patent licenses\n   granted to You under this License for that Work shall terminate\n   as of the date such litigation is filed.\n\n4. Redistribution. You may reproduce and distribute copies of the\n   Work or Derivative Works thereof in any medium, with or without\n   modifications, and in Source or Object form, provided that You\n   meet the following conditions:\n\n   (a) You must give any other recipients of the Work or\n       Derivative Works a copy of this License; and\n\n   (b) You must cause any modified files to carry prominent notices\n       stating that You changed the files; and\n\n   (c) You must retain, in the Source form of any Derivative Works\n       that You distribute, all copyright, patent, trademark, and\n       attribution notices from the Source form of the Work,\n       excluding those notices that do not pertain to any part of\n       the Derivative Works; and\n\n   (d) If the Work includes a \"NOTICE\" text file as part of its\n       distribution, then any Derivative Works that You distribute must\n       include a readable copy of the attribution notices contained\n       within such NOTICE file, excluding those notices that do not\n       pertain to any part of the Derivative Works, in at least one\n       of the following places: within a NOTICE text file distributed\n       as part of the Derivative Works; within the Source form or\n       documentation, if provided along with the Derivative Works; or,\n       within a display generated by the Derivative Works, if and\n       wherever such third-party notices normally appear. The contents\n       of the NOTICE file are for informational purposes only and\n       do not modify the License. You may add Your own attribution\n       notices within Derivative Works that You distribute, alongside\n       or as an addendum to the NOTICE text from the Work, provided\n       that such additional attribution notices cannot be construed\n       as modifying the License.\n\n   You may add Your own copyright statement to Your modifications and\n   may provide additional or different license terms and conditions\n   for use, reproduction, or distribution of Your modifications, or\n   for any such Derivative Works as a whole, provided Your use,\n   reproduction, and distribution of the Work otherwise complies with\n   the conditions stated in this License.\n\n5. Submission of Contributions. Unless You explicitly state otherwise,\n   any Contribution intentionally submitted for inclusion in the Work\n   by You to the Licensor shall be under the terms and conditions of\n   this License, without any additional terms or conditions.\n   Notwithstanding the above, nothing herein shall supersede or modify\n   the terms of any separate license agreement you may have executed\n   with Licensor regarding such Contributions.\n\n6. Trademarks. This License does not grant permission to use the trade\n   names, trademarks, service marks, or product names of the Licensor,\n   except as required for reasonable and customary use in describing the\n   origin of the Work and reproducing the content of the NOTICE file.\n\n7. Disclaimer of Warranty. Unless required by applicable law or\n   agreed to in writing, Licensor provides the Work (and each\n   Contributor provides its Contributions) on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n   implied, including, without limitation, any warranties or conditions\n   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n   PARTICULAR PURPOSE. You are solely responsible for determining the\n   appropriateness of using or redistributing the Work and assume any\n   risks associated with Your exercise of permissions under this License.\n\n8. Limitation of Liability. In no event and under no legal theory,\n   whether in tort (including negligence), contract, or otherwise,\n   unless required by applicable law (such as deliberate and grossly\n   negligent acts) or agreed to in writing, shall any Contributor be\n   liable to You for damages, including any direct, indirect, special,\n   incidental, or consequential damages of any character arising as a\n   result of this License or out of the use or inability to use the\n   Work (including but not limited to damages for loss of goodwill,\n   work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses), even if such Contributor\n   has been advised of the possibility of such damages.\n\n9. Accepting Warranty or Additional Liability. While redistributing\n   the Work or Derivative Works thereof, You may choose to offer,\n   and charge a fee for, acceptance of support, warranty, indemnity,\n   or other liability obligations and/or rights consistent with this\n   License. However, in accepting such obligations, You may act only\n   on Your own behalf and on Your sole responsibility, not on behalf\n   of any other Contributor, and only if You agree to indemnify,\n   defend, and hold each Contributor harmless for any liability\n   incurred by, or claims asserted against, such Contributor by reason\n   of your accepting any such warranty or additional liability.\n\nEND OF TERMS AND CONDITIONS\n\nAPPENDIX: How to apply the Apache License to your work.\n\n   To apply the Apache License to your work, attach the following\n   boilerplate notice, with the fields enclosed by brackets \"[]\"\n   replaced with your own identifying information. (Don't include\n   the brackets!)  The text should be enclosed in the appropriate\n   comment syntax for the file format. We also recommend that a\n   file or class name and description of purpose be included on the\n   same \"printed page\" as the copyright notice for easier\n   identification within third-party archives.\n\nCopyright (c) 2016 Alex Crichton\nCopyright (c) 2017 The Tokio Authors\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n\thttp://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
       "packages": [
         {
           "name": "futures",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -865,7 +895,7 @@
         },
         {
           "name": "futures-channel",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -873,7 +903,7 @@
         },
         {
           "name": "futures-core",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -881,7 +911,7 @@
         },
         {
           "name": "futures-executor",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -889,7 +919,7 @@
         },
         {
           "name": "futures-io",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -897,7 +927,7 @@
         },
         {
           "name": "futures-macro",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -905,7 +935,7 @@
         },
         {
           "name": "futures-sink",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -913,7 +943,7 @@
         },
         {
           "name": "futures-task",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -921,7 +951,7 @@
         },
         {
           "name": "futures-util",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -937,7 +967,7 @@
       "packages": [
         {
           "name": "ctrlc",
-          "version": "3.5.0",
+          "version": "3.5.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1002,24 +1032,6 @@
     {
       "id": "Apache-2.0",
       "name": "Apache License 2.0",
-      "text_sha256": "4f44572785f35152c1fd2eadf565b7e079c0f300b4324f0af653419f9d76b735",
-      "text": "                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright 2020 Tomasz \"Soveu\" Marx\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\n",
-      "packages": [
-        {
-          "name": "tinyvec_macros",
-          "version": "0.1.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0 OR Zlib",
-          "authors": [
-            "Soveu <marx.tomasz@gmail.com>"
-          ],
-          "repository": "https://github.com/Soveu/tinyvec_macros"
-        }
-      ]
-    },
-    {
-      "id": "Apache-2.0",
-      "name": "Apache License 2.0",
       "text_sha256": "516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406",
       "text": "                              Apache License\n                        Version 2.0, January 2004\n                     http://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n1. Definitions.\n\n   \"License\" shall mean the terms and conditions for use, reproduction,\n   and distribution as defined by Sections 1 through 9 of this document.\n\n   \"Licensor\" shall mean the copyright owner or entity authorized by\n   the copyright owner that is granting the License.\n\n   \"Legal Entity\" shall mean the union of the acting entity and all\n   other entities that control, are controlled by, or are under common\n   control with that entity. For the purposes of this definition,\n   \"control\" means (i) the power, direct or indirect, to cause the\n   direction or management of such entity, whether by contract or\n   otherwise, or (ii) ownership of fifty percent (50%) or more of the\n   outstanding shares, or (iii) beneficial ownership of such entity.\n\n   \"You\" (or \"Your\") shall mean an individual or Legal Entity\n   exercising permissions granted by this License.\n\n   \"Source\" form shall mean the preferred form for making modifications,\n   including but not limited to software source code, documentation\n   source, and configuration files.\n\n   \"Object\" form shall mean any form resulting from mechanical\n   transformation or translation of a Source form, including but\n   not limited to compiled object code, generated documentation,\n   and conversions to other media types.\n\n   \"Work\" shall mean the work of authorship, whether in Source or\n   Object form, made available under the License, as indicated by a\n   copyright notice that is included in or attached to the work\n   (an example is provided in the Appendix below).\n\n   \"Derivative Works\" shall mean any work, whether in Source or Object\n   form, that is based on (or derived from) the Work and for which the\n   editorial revisions, annotations, elaborations, or other modifications\n   represent, as a whole, an original work of authorship. For the purposes\n   of this License, Derivative Works shall not include works that remain\n   separable from, or merely link (or bind by name) to the interfaces of,\n   the Work and Derivative Works thereof.\n\n   \"Contribution\" shall mean any work of authorship, including\n   the original version of the Work and any modifications or additions\n   to that Work or Derivative Works thereof, that is intentionally\n   submitted to Licensor for inclusion in the Work by the copyright owner\n   or by an individual or Legal Entity authorized to submit on behalf of\n   the copyright owner. For the purposes of this definition, \"submitted\"\n   means any form of electronic, verbal, or written communication sent\n   to the Licensor or its representatives, including but not limited to\n   communication on electronic mailing lists, source code control systems,\n   and issue tracking systems that are managed by, or on behalf of, the\n   Licensor for the purpose of discussing and improving the Work, but\n   excluding communication that is conspicuously marked or otherwise\n   designated in writing by the copyright owner as \"Not a Contribution.\"\n\n   \"Contributor\" shall mean Licensor and any individual or Legal Entity\n   on behalf of whom a Contribution has been received by Licensor and\n   subsequently incorporated within the Work.\n\n2. Grant of Copyright License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   copyright license to reproduce, prepare Derivative Works of,\n   publicly display, publicly perform, sublicense, and distribute the\n   Work and such Derivative Works in Source or Object form.\n\n3. Grant of Patent License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   (except as stated in this section) patent license to make, have made,\n   use, offer to sell, sell, import, and otherwise transfer the Work,\n   where such license applies only to those patent claims licensable\n   by such Contributor that are necessarily infringed by their\n   Contribution(s) alone or by combination of their Contribution(s)\n   with the Work to which such Contribution(s) was submitted. If You\n   institute patent litigation against any entity (including a\n   cross-claim or counterclaim in a lawsuit) alleging that the Work\n   or a Contribution incorporated within the Work constitutes direct\n   or contributory patent infringement, then any patent licenses\n   granted to You under this License for that Work shall terminate\n   as of the date such litigation is filed.\n\n4. Redistribution. You may reproduce and distribute copies of the\n   Work or Derivative Works thereof in any medium, with or without\n   modifications, and in Source or Object form, provided that You\n   meet the following conditions:\n\n   (a) You must give any other recipients of the Work or\n       Derivative Works a copy of this License; and\n\n   (b) You must cause any modified files to carry prominent notices\n       stating that You changed the files; and\n\n   (c) You must retain, in the Source form of any Derivative Works\n       that You distribute, all copyright, patent, trademark, and\n       attribution notices from the Source form of the Work,\n       excluding those notices that do not pertain to any part of\n       the Derivative Works; and\n\n   (d) If the Work includes a \"NOTICE\" text file as part of its\n       distribution, then any Derivative Works that You distribute must\n       include a readable copy of the attribution notices contained\n       within such NOTICE file, excluding those notices that do not\n       pertain to any part of the Derivative Works, in at least one\n       of the following places: within a NOTICE text file distributed\n       as part of the Derivative Works; within the Source form or\n       documentation, if provided along with the Derivative Works; or,\n       within a display generated by the Derivative Works, if and\n       wherever such third-party notices normally appear. The contents\n       of the NOTICE file are for informational purposes only and\n       do not modify the License. You may add Your own attribution\n       notices within Derivative Works that You distribute, alongside\n       or as an addendum to the NOTICE text from the Work, provided\n       that such additional attribution notices cannot be construed\n       as modifying the License.\n\n   You may add Your own copyright statement to Your modifications and\n   may provide additional or different license terms and conditions\n   for use, reproduction, or distribution of Your modifications, or\n   for any such Derivative Works as a whole, provided Your use,\n   reproduction, and distribution of the Work otherwise complies with\n   the conditions stated in this License.\n\n5. Submission of Contributions. Unless You explicitly state otherwise,\n   any Contribution intentionally submitted for inclusion in the Work\n   by You to the Licensor shall be under the terms and conditions of\n   this License, without any additional terms or conditions.\n   Notwithstanding the above, nothing herein shall supersede or modify\n   the terms of any separate license agreement you may have executed\n   with Licensor regarding such Contributions.\n\n6. Trademarks. This License does not grant permission to use the trade\n   names, trademarks, service marks, or product names of the Licensor,\n   except as required for reasonable and customary use in describing the\n   origin of the Work and reproducing the content of the NOTICE file.\n\n7. Disclaimer of Warranty. Unless required by applicable law or\n   agreed to in writing, Licensor provides the Work (and each\n   Contributor provides its Contributions) on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n   implied, including, without limitation, any warranties or conditions\n   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n   PARTICULAR PURPOSE. You are solely responsible for determining the\n   appropriateness of using or redistributing the Work and assume any\n   risks associated with Your exercise of permissions under this License.\n\n8. Limitation of Liability. In no event and under no legal theory,\n   whether in tort (including negligence), contract, or otherwise,\n   unless required by applicable law (such as deliberate and grossly\n   negligent acts) or agreed to in writing, shall any Contributor be\n   liable to You for damages, including any direct, indirect, special,\n   incidental, or consequential damages of any character arising as a\n   result of this License or out of the use or inability to use the\n   Work (including but not limited to damages for loss of goodwill,\n   work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses), even if such Contributor\n   has been advised of the possibility of such damages.\n\n9. Accepting Warranty or Additional Liability. While redistributing\n   the Work or Derivative Works thereof, You may choose to offer,\n   and charge a fee for, acceptance of support, warranty, indemnity,\n   or other liability obligations and/or rights consistent with this\n   License. However, in accepting such obligations, You may act only\n   on Your own behalf and on Your sole responsibility, not on behalf\n   of any other Contributor, and only if You agree to indemnify,\n   defend, and hold each Contributor harmless for any liability\n   incurred by, or claims asserted against, such Contributor by reason\n   of your accepting any such warranty or additional liability.\n\nEND OF TERMS AND CONDITIONS\n\nAPPENDIX: How to apply the Apache License to your work.\n\n   To apply the Apache License to your work, attach the following\n   boilerplate notice, with the fields enclosed by brackets \"[]\"\n   replaced with your own identifying information. (Don't include\n   the brackets!)  The text should be enclosed in the appropriate\n   comment syntax for the file format. We also recommend that a\n   file or class name and description of purpose be included on the\n   same \"printed page\" as the copyright notice for easier\n   identification within third-party archives.\n\nCopyright 2014 Paho Lurie-Gregg\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n\thttp://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.",
       "packages": [
@@ -1057,7 +1069,7 @@
       "packages": [
         {
           "name": "hickory-net",
-          "version": "0.26.1",
+          "version": "0.26.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1067,7 +1079,7 @@
         },
         {
           "name": "hickory-proto",
-          "version": "0.26.1",
+          "version": "0.26.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1077,7 +1089,7 @@
         },
         {
           "name": "hickory-resolver",
-          "version": "0.26.1",
+          "version": "0.26.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1113,17 +1125,6 @@
             "The Rust Project Developers"
           ],
           "repository": "https://github.com/rust-random/rand"
-        },
-        {
-          "name": "rand_core",
-          "version": "0.9.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The Rand Project Developers",
-            "The Rust Project Developers"
-          ],
-          "repository": "https://github.com/rust-random/rand"
         }
       ]
     },
@@ -1135,7 +1136,7 @@
       "packages": [
         {
           "name": "reqwest",
-          "version": "0.13.4",
+          "version": "0.13.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1151,6 +1152,16 @@
       "text_sha256": "769f80b5bcb42ed0af4e4d2fd74e1ac9bf843cb80c5a29219d1ef3544428a6bb",
       "text": "                              Apache License\n                        Version 2.0, January 2004\n                     http://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n1. Definitions.\n\n   \"License\" shall mean the terms and conditions for use, reproduction,\n   and distribution as defined by Sections 1 through 9 of this document.\n\n   \"Licensor\" shall mean the copyright owner or entity authorized by\n   the copyright owner that is granting the License.\n\n   \"Legal Entity\" shall mean the union of the acting entity and all\n   other entities that control, are controlled by, or are under common\n   control with that entity. For the purposes of this definition,\n   \"control\" means (i) the power, direct or indirect, to cause the\n   direction or management of such entity, whether by contract or\n   otherwise, or (ii) ownership of fifty percent (50%) or more of the\n   outstanding shares, or (iii) beneficial ownership of such entity.\n\n   \"You\" (or \"Your\") shall mean an individual or Legal Entity\n   exercising permissions granted by this License.\n\n   \"Source\" form shall mean the preferred form for making modifications,\n   including but not limited to software source code, documentation\n   source, and configuration files.\n\n   \"Object\" form shall mean any form resulting from mechanical\n   transformation or translation of a Source form, including but\n   not limited to compiled object code, generated documentation,\n   and conversions to other media types.\n\n   \"Work\" shall mean the work of authorship, whether in Source or\n   Object form, made available under the License, as indicated by a\n   copyright notice that is included in or attached to the work\n   (an example is provided in the Appendix below).\n\n   \"Derivative Works\" shall mean any work, whether in Source or Object\n   form, that is based on (or derived from) the Work and for which the\n   editorial revisions, annotations, elaborations, or other modifications\n   represent, as a whole, an original work of authorship. For the purposes\n   of this License, Derivative Works shall not include works that remain\n   separable from, or merely link (or bind by name) to the interfaces of,\n   the Work and Derivative Works thereof.\n\n   \"Contribution\" shall mean any work of authorship, including\n   the original version of the Work and any modifications or additions\n   to that Work or Derivative Works thereof, that is intentionally\n   submitted to Licensor for inclusion in the Work by the copyright owner\n   or by an individual or Legal Entity authorized to submit on behalf of\n   the copyright owner. For the purposes of this definition, \"submitted\"\n   means any form of electronic, verbal, or written communication sent\n   to the Licensor or its representatives, including but not limited to\n   communication on electronic mailing lists, source code control systems,\n   and issue tracking systems that are managed by, or on behalf of, the\n   Licensor for the purpose of discussing and improving the Work, but\n   excluding communication that is conspicuously marked or otherwise\n   designated in writing by the copyright owner as \"Not a Contribution.\"\n\n   \"Contributor\" shall mean Licensor and any individual or Legal Entity\n   on behalf of whom a Contribution has been received by Licensor and\n   subsequently incorporated within the Work.\n\n2. Grant of Copyright License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   copyright license to reproduce, prepare Derivative Works of,\n   publicly display, publicly perform, sublicense, and distribute the\n   Work and such Derivative Works in Source or Object form.\n\n3. Grant of Patent License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   (except as stated in this section) patent license to make, have made,\n   use, offer to sell, sell, import, and otherwise transfer the Work,\n   where such license applies only to those patent claims licensable\n   by such Contributor that are necessarily infringed by their\n   Contribution(s) alone or by combination of their Contribution(s)\n   with the Work to which such Contribution(s) was submitted. If You\n   institute patent litigation against any entity (including a\n   cross-claim or counterclaim in a lawsuit) alleging that the Work\n   or a Contribution incorporated within the Work constitutes direct\n   or contributory patent infringement, then any patent licenses\n   granted to You under this License for that Work shall terminate\n   as of the date such litigation is filed.\n\n4. Redistribution. You may reproduce and distribute copies of the\n   Work or Derivative Works thereof in any medium, with or without\n   modifications, and in Source or Object form, provided that You\n   meet the following conditions:\n\n   (a) You must give any other recipients of the Work or\n       Derivative Works a copy of this License; and\n\n   (b) You must cause any modified files to carry prominent notices\n       stating that You changed the files; and\n\n   (c) You must retain, in the Source form of any Derivative Works\n       that You distribute, all copyright, patent, trademark, and\n       attribution notices from the Source form of the Work,\n       excluding those notices that do not pertain to any part of\n       the Derivative Works; and\n\n   (d) If the Work includes a \"NOTICE\" text file as part of its\n       distribution, then any Derivative Works that You distribute must\n       include a readable copy of the attribution notices contained\n       within such NOTICE file, excluding those notices that do not\n       pertain to any part of the Derivative Works, in at least one\n       of the following places: within a NOTICE text file distributed\n       as part of the Derivative Works; within the Source form or\n       documentation, if provided along with the Derivative Works; or,\n       within a display generated by the Derivative Works, if and\n       wherever such third-party notices normally appear. The contents\n       of the NOTICE file are for informational purposes only and\n       do not modify the License. You may add Your own attribution\n       notices within Derivative Works that You distribute, alongside\n       or as an addendum to the NOTICE text from the Work, provided\n       that such additional attribution notices cannot be construed\n       as modifying the License.\n\n   You may add Your own copyright statement to Your modifications and\n   may provide additional or different license terms and conditions\n   for use, reproduction, or distribution of Your modifications, or\n   for any such Derivative Works as a whole, provided Your use,\n   reproduction, and distribution of the Work otherwise complies with\n   the conditions stated in this License.\n\n5. Submission of Contributions. Unless You explicitly state otherwise,\n   any Contribution intentionally submitted for inclusion in the Work\n   by You to the Licensor shall be under the terms and conditions of\n   this License, without any additional terms or conditions.\n   Notwithstanding the above, nothing herein shall supersede or modify\n   the terms of any separate license agreement you may have executed\n   with Licensor regarding such Contributions.\n\n6. Trademarks. This License does not grant permission to use the trade\n   names, trademarks, service marks, or product names of the Licensor,\n   except as required for reasonable and customary use in describing the\n   origin of the Work and reproducing the content of the NOTICE file.\n\n7. Disclaimer of Warranty. Unless required by applicable law or\n   agreed to in writing, Licensor provides the Work (and each\n   Contributor provides its Contributions) on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n   implied, including, without limitation, any warranties or conditions\n   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n   PARTICULAR PURPOSE. You are solely responsible for determining the\n   appropriateness of using or redistributing the Work and assume any\n   risks associated with Your exercise of permissions under this License.\n\n8. Limitation of Liability. In no event and under no legal theory,\n   whether in tort (including negligence), contract, or otherwise,\n   unless required by applicable law (such as deliberate and grossly\n   negligent acts) or agreed to in writing, shall any Contributor be\n   liable to You for damages, including any direct, indirect, special,\n   incidental, or consequential damages of any character arising as a\n   result of this License or out of the use or inability to use the\n   Work (including but not limited to damages for loss of goodwill,\n   work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses), even if such Contributor\n   has been advised of the possibility of such damages.\n\n9. Accepting Warranty or Additional Liability. While redistributing\n   the Work or Derivative Works thereof, You may choose to offer,\n   and charge a fee for, acceptance of support, warranty, indemnity,\n   or other liability obligations and/or rights consistent with this\n   License. However, in accepting such obligations, You may act only\n   on Your own behalf and on Your sole responsibility, not on behalf\n   of any other Contributor, and only if You agree to indemnify,\n   defend, and hold each Contributor harmless for any liability\n   incurred by, or claims asserted against, such Contributor by reason\n   of your accepting any such warranty or additional liability.\n\nEND OF TERMS AND CONDITIONS\n\nAPPENDIX: How to apply the Apache License to your work.\n\n   To apply the Apache License to your work, attach the following\n   boilerplate notice, with the fields enclosed by brackets \"[]\"\n   replaced with your own identifying information. (Don't include\n   the brackets!)  The text should be enclosed in the appropriate\n   comment syntax for the file format. We also recommend that a\n   file or class name and description of purpose be included on the\n   same \"printed page\" as the copyright notice for easier\n   identification within third-party archives.\n\nCopyright [yyyy] [name of copyright owner]\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n\thttp://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.",
       "packages": [
+        {
+          "name": "core_detect",
+          "version": "1.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Thom Chiovoloni <chiovolonit@gmail.com>"
+          ],
+          "repository": "https://github.com/thomcc/core_detect"
+        },
         {
           "name": "gif",
           "version": "0.14.2",
@@ -1275,7 +1286,7 @@
       "packages": [
         {
           "name": "askama",
-          "version": "0.16.0",
+          "version": "0.16.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1283,7 +1294,7 @@
         },
         {
           "name": "askama_derive",
-          "version": "0.16.0",
+          "version": "0.16.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1291,7 +1302,7 @@
         },
         {
           "name": "askama_macros",
-          "version": "0.16.0",
+          "version": "0.16.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1299,7 +1310,7 @@
         },
         {
           "name": "askama_parser",
-          "version": "0.16.0",
+          "version": "0.16.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1315,7 +1326,7 @@
       "packages": [
         {
           "name": "ipnet",
-          "version": "2.12.0",
+          "version": "2.12.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1433,13 +1444,10 @@
       "packages": [
         {
           "name": "zerocopy",
-          "version": "0.8.55",
+          "version": "0.8.59",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-2-Clause OR Apache-2.0 OR MIT",
-          "authors": [
-            "Jack Wrenn <jswrenn@amazon.com>",
-            "Joshua Liebow-Feeser <joshlf@google.com>"
-          ],
+          "authors": [],
           "repository": "https://github.com/google/zerocopy"
         }
       ]
@@ -1533,7 +1541,7 @@
         },
         {
           "name": "base64",
-          "version": "0.23.0",
+          "version": "0.23.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1543,7 +1551,7 @@
         },
         {
           "name": "bitflags",
-          "version": "2.13.1",
+          "version": "2.13.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1573,7 +1581,7 @@
         },
         {
           "name": "camino",
-          "version": "1.2.5",
+          "version": "1.2.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1586,7 +1594,7 @@
         },
         {
           "name": "cfg-if",
-          "version": "1.0.4",
+          "version": "1.0.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1634,7 +1642,7 @@
         },
         {
           "name": "crossbeam-channel",
-          "version": "0.5.16",
+          "version": "0.5.17",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1642,7 +1650,7 @@
         },
         {
           "name": "crossbeam-deque",
-          "version": "0.8.7",
+          "version": "0.8.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1650,7 +1658,7 @@
         },
         {
           "name": "crossbeam-epoch",
-          "version": "0.9.20",
+          "version": "0.9.21",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1658,7 +1666,7 @@
         },
         {
           "name": "crossbeam-utils",
-          "version": "0.8.22",
+          "version": "0.8.23",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1686,7 +1694,7 @@
         },
         {
           "name": "either",
-          "version": "1.17.0",
+          "version": "1.18.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -1704,7 +1712,7 @@
         },
         {
           "name": "encoding_rs_io",
-          "version": "0.1.7",
+          "version": "0.1.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1763,7 +1771,7 @@
         },
         {
           "name": "flate2",
-          "version": "1.1.9",
+          "version": "1.1.10",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1850,7 +1858,7 @@
         },
         {
           "name": "hyper-rustls",
-          "version": "0.27.9",
+          "version": "0.27.10",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR ISC OR MIT",
           "authors": [],
@@ -1878,7 +1886,7 @@
         },
         {
           "name": "indexmap",
-          "version": "2.14.0",
+          "version": "2.14.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -1906,7 +1914,7 @@
         },
         {
           "name": "js-sys",
-          "version": "0.3.103",
+          "version": "0.3.106",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1936,7 +1944,7 @@
         },
         {
           "name": "lazy_static",
-          "version": "1.5.0",
+          "version": "1.5.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1966,7 +1974,7 @@
         },
         {
           "name": "log",
-          "version": "0.4.33",
+          "version": "0.4.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2016,7 +2024,7 @@
         },
         {
           "name": "palette",
-          "version": "0.7.6",
+          "version": "0.7.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2026,7 +2034,17 @@
         },
         {
           "name": "palette_derive",
-          "version": "0.7.6",
+          "version": "0.7.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Erik Hedvall <hello@erikhedvall.nu>"
+          ],
+          "repository": "https://github.com/Ogeon/palette"
+        },
+        {
+          "name": "palette_math",
+          "version": "0.7.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2124,7 +2142,7 @@
         },
         {
           "name": "regex-automata",
-          "version": "0.4.16",
+          "version": "0.4.18",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2177,7 +2195,7 @@
         },
         {
           "name": "rustix",
-          "version": "1.1.4",
+          "version": "1.1.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
           "authors": [
@@ -2256,7 +2274,7 @@
         },
         {
           "name": "similar",
-          "version": "3.1.1",
+          "version": "3.2.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0",
           "authors": [
@@ -2276,7 +2294,7 @@
         },
         {
           "name": "smallvec",
-          "version": "1.15.2",
+          "version": "1.16.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2528,7 +2546,7 @@
         },
         {
           "name": "uuid",
-          "version": "1.24.0",
+          "version": "1.26.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -2549,16 +2567,8 @@
           "repository": "https://github.com/bytecodealliance/wasi"
         },
         {
-          "name": "wasip2",
-          "version": "1.0.4+wasi-0.2.12",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/bytecodealliance/wasi-rs"
-        },
-        {
           "name": "wasm-bindgen",
-          "version": "0.2.126",
+          "version": "0.2.129",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2568,7 +2578,7 @@
         },
         {
           "name": "wasm-bindgen-futures",
-          "version": "0.4.76",
+          "version": "0.4.79",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2578,7 +2588,7 @@
         },
         {
           "name": "wasm-bindgen-macro",
-          "version": "0.2.126",
+          "version": "0.2.129",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2588,17 +2598,17 @@
         },
         {
           "name": "wasm-bindgen-macro-support",
-          "version": "0.2.126",
+          "version": "0.2.129",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
             "The wasm-bindgen Developers"
           ],
-          "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support"
+          "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support"
         },
         {
           "name": "wasm-bindgen-shared",
-          "version": "0.2.126",
+          "version": "0.2.129",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2608,41 +2618,13 @@
         },
         {
           "name": "web-sys",
-          "version": "0.3.103",
+          "version": "0.3.106",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
             "The wasm-bindgen Developers"
           ],
           "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys"
-        },
-        {
-          "name": "wit-bindgen",
-          "version": "0.57.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
-          "authors": [
-            "Alex Crichton <alex@alexcrichton.com>"
-          ],
-          "repository": "https://github.com/bytecodealliance/wit-bindgen"
-        }
-      ]
-    },
-    {
-      "id": "Apache-2.0",
-      "name": "Apache License 2.0",
-      "text_sha256": "a8a76b5fd1f1e53246d8d12dac4e6bed981f93b1f94d63f4edbf9a367b83cfc4",
-      "text": "                              Apache License\n                        Version 2.0, January 2004\n                     http://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n1. Definitions.\n\n   \"License\" shall mean the terms and conditions for use, reproduction,\n   and distribution as defined by Sections 1 through 9 of this document.\n\n   \"Licensor\" shall mean the copyright owner or entity authorized by\n   the copyright owner that is granting the License.\n\n   \"Legal Entity\" shall mean the union of the acting entity and all\n   other entities that control, are controlled by, or are under common\n   control with that entity. For the purposes of this definition,\n   \"control\" means (i) the power, direct or indirect, to cause the\n   direction or management of such entity, whether by contract or\n   otherwise, or (ii) ownership of fifty percent (50%) or more of the\n   outstanding shares, or (iii) beneficial ownership of such entity.\n\n   \"You\" (or \"Your\") shall mean an individual or Legal Entity\n   exercising permissions granted by this License.\n\n   \"Source\" form shall mean the preferred form for making modifications,\n   including but not limited to software source code, documentation\n   source, and configuration files.\n\n   \"Object\" form shall mean any form resulting from mechanical\n   transformation or translation of a Source form, including but\n   not limited to compiled object code, generated documentation,\n   and conversions to other media types.\n\n   \"Work\" shall mean the work of authorship, whether in Source or\n   Object form, made available under the License, as indicated by a\n   copyright notice that is included in or attached to the work\n   (an example is provided in the Appendix below).\n\n   \"Derivative Works\" shall mean any work, whether in Source or Object\n   form, that is based on (or derived from) the Work and for which the\n   editorial revisions, annotations, elaborations, or other modifications\n   represent, as a whole, an original work of authorship. For the purposes\n   of this License, Derivative Works shall not include works that remain\n   separable from, or merely link (or bind by name) to the interfaces of,\n   the Work and Derivative Works thereof.\n\n   \"Contribution\" shall mean any work of authorship, including\n   the original version of the Work and any modifications or additions\n   to that Work or Derivative Works thereof, that is intentionally\n   submitted to Licensor for inclusion in the Work by the copyright owner\n   or by an individual or Legal Entity authorized to submit on behalf of\n   the copyright owner. For the purposes of this definition, \"submitted\"\n   means any form of electronic, verbal, or written communication sent\n   to the Licensor or its representatives, including but not limited to\n   communication on electronic mailing lists, source code control systems,\n   and issue tracking systems that are managed by, or on behalf of, the\n   Licensor for the purpose of discussing and improving the Work, but\n   excluding communication that is conspicuously marked or otherwise\n   designated in writing by the copyright owner as \"Not a Contribution.\"\n\n   \"Contributor\" shall mean Licensor and any individual or Legal Entity\n   on behalf of whom a Contribution has been received by Licensor and\n   subsequently incorporated within the Work.\n\n2. Grant of Copyright License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   copyright license to reproduce, prepare Derivative Works of,\n   publicly display, publicly perform, sublicense, and distribute the\n   Work and such Derivative Works in Source or Object form.\n\n3. Grant of Patent License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   (except as stated in this section) patent license to make, have made,\n   use, offer to sell, sell, import, and otherwise transfer the Work,\n   where such license applies only to those patent claims licensable\n   by such Contributor that are necessarily infringed by their\n   Contribution(s) alone or by combination of their Contribution(s)\n   with the Work to which such Contribution(s) was submitted. If You\n   institute patent litigation against any entity (including a\n   cross-claim or counterclaim in a lawsuit) alleging that the Work\n   or a Contribution incorporated within the Work constitutes direct\n   or contributory patent infringement, then any patent licenses\n   granted to You under this License for that Work shall terminate\n   as of the date such litigation is filed.\n\n4. Redistribution. You may reproduce and distribute copies of the\n   Work or Derivative Works thereof in any medium, with or without\n   modifications, and in Source or Object form, provided that You\n   meet the following conditions:\n\n   (a) You must give any other recipients of the Work or\n       Derivative Works a copy of this License; and\n\n   (b) You must cause any modified files to carry prominent notices\n       stating that You changed the files; and\n\n   (c) You must retain, in the Source form of any Derivative Works\n       that You distribute, all copyright, patent, trademark, and\n       attribution notices from the Source form of the Work,\n       excluding those notices that do not pertain to any part of\n       the Derivative Works; and\n\n   (d) If the Work includes a \"NOTICE\" text file as part of its\n       distribution, then any Derivative Works that You distribute must\n       include a readable copy of the attribution notices contained\n       within such NOTICE file, excluding those notices that do not\n       pertain to any part of the Derivative Works, in at least one\n       of the following places: within a NOTICE text file distributed\n       as part of the Derivative Works; within the Source form or\n       documentation, if provided along with the Derivative Works; or,\n       within a display generated by the Derivative Works, if and\n       wherever such third-party notices normally appear. The contents\n       of the NOTICE file are for informational purposes only and\n       do not modify the License. You may add Your own attribution\n       notices within Derivative Works that You distribute, alongside\n       or as an addendum to the NOTICE text from the Work, provided\n       that such additional attribution notices cannot be construed\n       as modifying the License.\n\n   You may add Your own copyright statement to Your modifications and\n   may provide additional or different license terms and conditions\n   for use, reproduction, or distribution of Your modifications, or\n   for any such Derivative Works as a whole, provided Your use,\n   reproduction, and distribution of the Work otherwise complies with\n   the conditions stated in this License.\n\n5. Submission of Contributions. Unless You explicitly state otherwise,\n   any Contribution intentionally submitted for inclusion in the Work\n   by You to the Licensor shall be under the terms and conditions of\n   this License, without any additional terms or conditions.\n   Notwithstanding the above, nothing herein shall supersede or modify\n   the terms of any separate license agreement you may have executed\n   with Licensor regarding such Contributions.\n\n6. Trademarks. This License does not grant permission to use the trade\n   names, trademarks, service marks, or product names of the Licensor,\n   except as required for reasonable and customary use in describing the\n   origin of the Work and reproducing the content of the NOTICE file.\n\n7. Disclaimer of Warranty. Unless required by applicable law or\n   agreed to in writing, Licensor provides the Work (and each\n   Contributor provides its Contributions) on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n   implied, including, without limitation, any warranties or conditions\n   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n   PARTICULAR PURPOSE. You are solely responsible for determining the\n   appropriateness of using or redistributing the Work and assume any\n   risks associated with Your exercise of permissions under this License.\n\n8. Limitation of Liability. In no event and under no legal theory,\n   whether in tort (including negligence), contract, or otherwise,\n   unless required by applicable law (such as deliberate and grossly\n   negligent acts) or agreed to in writing, shall any Contributor be\n   liable to You for damages, including any direct, indirect, special,\n   incidental, or consequential damages of any character arising as a\n   result of this License or out of the use or inability to use the\n   Work (including but not limited to damages for loss of goodwill,\n   work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses), even if such Contributor\n   has been advised of the possibility of such damages.\n\n9. Accepting Warranty or Additional Liability. While redistributing\n   the Work or Derivative Works thereof, You may choose to offer,\n   and charge a fee for, acceptance of support, warranty, indemnity,\n   or other liability obligations and/or rights consistent with this\n   License. However, in accepting such obligations, You may act only\n   on Your own behalf and on Your sole responsibility, not on behalf\n   of any other Contributor, and only if You agree to indemnify,\n   defend, and hold each Contributor harmless for any liability\n   incurred by, or claims asserted against, such Contributor by reason\n   of your accepting any such warranty or additional liability.\n\nEND OF TERMS AND CONDITIONS\n\nAPPENDIX: How to apply the Apache License to your work.\n\n   To apply the Apache License to your work, attach the following\n   boilerplate notice, with the fields enclosed by brackets \"[]\"\n   replaced with your own identifying information. (Don't include\n   the brackets!)  The text should be enclosed in the appropriate\n   comment syntax for the file format. We also recommend that a\n   file or class name and description of purpose be included on the\n   same \"printed page\" as the copyright notice for easier\n   identification within third-party archives.\n\nCopyright 2016 The Miri Developers\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n",
-      "packages": [
-        {
-          "name": "fast-srgb8",
-          "version": "1.0.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0 OR CC0-1.0",
-          "authors": [
-            "Thom Chiovoloni <chiovolonit@gmail.com>"
-          ],
-          "repository": "https://github.com/thomcc/fast-srgb8"
         }
       ]
     },
@@ -2674,7 +2656,7 @@
         },
         {
           "name": "chacha20",
-          "version": "0.10.1",
+          "version": "0.10.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2704,7 +2686,7 @@
         },
         {
           "name": "cpufeatures",
-          "version": "0.3.0",
+          "version": "0.3.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2754,7 +2736,7 @@
         },
         {
           "name": "hybrid-array",
-          "version": "0.4.14",
+          "version": "0.4.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2771,16 +2753,6 @@
             "RustCrypto Developers"
           ],
           "repository": "https://github.com/RustCrypto/sponges/tree/master/keccak"
-        },
-        {
-          "name": "sha2",
-          "version": "0.10.9",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "RustCrypto Developers"
-          ],
-          "repository": "https://github.com/RustCrypto/hashes"
         },
         {
           "name": "sha2",
@@ -2813,16 +2785,6 @@
         {
           "name": "getrandom",
           "version": "0.2.17",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "The Rand Project Developers"
-          ],
-          "repository": "https://github.com/rust-random/getrandom"
-        },
-        {
-          "name": "getrandom",
-          "version": "0.3.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -2922,10 +2884,110 @@
         },
         {
           "name": "windows-sys",
+          "version": "0.52.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows-sys",
           "version": "0.61.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_aarch64_gnullvm",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_aarch64_msvc",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_i686_gnu",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_i686_gnullvm",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_i686_msvc",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_x86_64_gnu",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_x86_64_gnullvm",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
+          "repository": "https://github.com/microsoft/windows-rs"
+        },
+        {
+          "name": "windows_x86_64_msvc",
+          "version": "0.52.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Microsoft"
+          ],
           "repository": "https://github.com/microsoft/windows-rs"
         }
       ]
@@ -2985,46 +3047,6 @@
           "repository": "https://github.com/rust-cli/anstyle.git"
         },
         {
-          "name": "clap",
-          "version": "4.6.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [],
-          "repository": "https://github.com/clap-rs/clap"
-        },
-        {
-          "name": "clap_builder",
-          "version": "4.6.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [],
-          "repository": "https://github.com/clap-rs/clap"
-        },
-        {
-          "name": "clap_complete",
-          "version": "4.6.8",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [],
-          "repository": "https://github.com/clap-rs/clap"
-        },
-        {
-          "name": "clap_derive",
-          "version": "4.6.4",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [],
-          "repository": "https://github.com/clap-rs/clap"
-        },
-        {
-          "name": "clap_lex",
-          "version": "1.1.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [],
-          "repository": "https://github.com/clap-rs/clap"
-        },
-        {
           "name": "colorchoice",
           "version": "1.0.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -3034,7 +3056,7 @@
         },
         {
           "name": "crc32fast",
-          "version": "1.5.0",
+          "version": "1.5.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -3109,7 +3131,7 @@
         },
         {
           "name": "toml",
-          "version": "1.1.4+spec-1.1.0",
+          "version": "1.1.6+spec-1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -3125,7 +3147,7 @@
         },
         {
           "name": "toml_edit",
-          "version": "0.25.13+spec-1.1.0",
+          "version": "0.25.15+spec-1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -3157,7 +3179,7 @@
       "packages": [
         {
           "name": "rustls-platform-verifier",
-          "version": "0.7.0",
+          "version": "0.7.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -3185,7 +3207,7 @@
         },
         {
           "name": "zune-core",
-          "version": "0.5.1",
+          "version": "0.5.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0 OR Zlib",
           "authors": [],
@@ -3211,7 +3233,7 @@
       "packages": [
         {
           "name": "tokio-rustls",
-          "version": "0.26.4",
+          "version": "0.26.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -3227,7 +3249,7 @@
       "packages": [
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
           "authors": [
@@ -3254,6 +3276,16 @@
           "repository": "https://github.com/linebender/kurbo"
         },
         {
+          "name": "multiversion_no_op",
+          "version": "1.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Henri Sivonen <hsivonen@hsivonen.fi>"
+          ],
+          "repository": "https://github.com/hsivonen/multiversion_no_op"
+        },
+        {
           "name": "nohash-hasher",
           "version": "0.2.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -3272,6 +3304,16 @@
           "repository": "https://github.com/linebender/kurbo"
         },
         {
+          "name": "siphasher",
+          "version": "1.0.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Frank Denis <github@pureftpd.org>"
+          ],
+          "repository": "https://github.com/jedisct1/rust-siphash"
+        },
+        {
           "name": "static_assertions",
           "version": "1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -3283,7 +3325,7 @@
         },
         {
           "name": "tinyvec",
-          "version": "1.12.0",
+          "version": "1.13.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Zlib OR Apache-2.0 OR MIT",
           "authors": [
@@ -3331,7 +3373,7 @@
         },
         {
           "name": "bytemuck_derive",
-          "version": "1.11.0",
+          "version": "1.12.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Zlib OR Apache-2.0 OR MIT",
           "authors": [
@@ -3367,7 +3409,7 @@
       "packages": [
         {
           "name": "atomic-write-file",
-          "version": "0.3.0",
+          "version": "0.3.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause",
           "authors": [
@@ -3385,7 +3427,7 @@
       "packages": [
         {
           "name": "alloc-stdlib",
-          "version": "0.2.4",
+          "version": "0.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause",
           "authors": [
@@ -3441,7 +3483,7 @@
       "packages": [
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
           "authors": [
@@ -3459,7 +3501,7 @@
       "packages": [
         {
           "name": "alloc-no-stdlib",
-          "version": "2.0.4",
+          "version": "3.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause",
           "authors": [
@@ -3469,7 +3511,7 @@
         },
         {
           "name": "brotli",
-          "version": "8.0.4",
+          "version": "9.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause AND MIT",
           "authors": [
@@ -3480,7 +3522,7 @@
         },
         {
           "name": "brotli-decompressor",
-          "version": "5.0.3",
+          "version": "6.0.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause OR MIT",
           "authors": [
@@ -3632,7 +3674,7 @@
       "packages": [
         {
           "name": "mio",
-          "version": "1.2.2",
+          "version": "1.2.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -3671,6 +3713,16 @@
           "repository": "https://github.com/rust-phf/rust-phf"
         },
         {
+          "name": "phf",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Steven Fackler <sfackler@gmail.com>"
+          ],
+          "repository": "https://github.com/rust-phf/rust-phf"
+        },
+        {
           "name": "phf_generator",
           "version": "0.11.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -3683,6 +3735,16 @@
         {
           "name": "phf_generator",
           "version": "0.13.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Steven Fackler <sfackler@gmail.com>"
+          ],
+          "repository": "https://github.com/rust-phf/rust-phf"
+        },
+        {
+          "name": "phf_generator",
+          "version": "0.14.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -3711,6 +3773,16 @@
           "repository": "https://github.com/rust-phf/rust-phf"
         },
         {
+          "name": "phf_macros",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Steven Fackler <sfackler@gmail.com>"
+          ],
+          "repository": "https://github.com/rust-phf/rust-phf"
+        },
+        {
           "name": "phf_shared",
           "version": "0.11.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -3723,6 +3795,16 @@
         {
           "name": "phf_shared",
           "version": "0.13.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Steven Fackler <sfackler@gmail.com>"
+          ],
+          "repository": "https://github.com/rust-phf/rust-phf"
+        },
+        {
+          "name": "phf_shared",
+          "version": "0.14.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -3758,7 +3840,7 @@
       "packages": [
         {
           "name": "aho-corasick",
-          "version": "1.1.4",
+          "version": "1.1.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unlicense OR MIT",
           "authors": [
@@ -3776,7 +3858,7 @@
         },
         {
           "name": "jiff",
-          "version": "0.2.35",
+          "version": "0.2.37",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unlicense OR MIT",
           "authors": [
@@ -3786,7 +3868,7 @@
         },
         {
           "name": "jiff-core",
-          "version": "0.1.0",
+          "version": "0.1.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unlicense OR MIT",
           "authors": [
@@ -3898,7 +3980,7 @@
       "packages": [
         {
           "name": "synstructure",
-          "version": "0.13.2",
+          "version": "0.14.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -3956,7 +4038,7 @@
         },
         {
           "name": "http-body-util",
-          "version": "0.1.4",
+          "version": "0.1.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -4022,7 +4104,7 @@
       "packages": [
         {
           "name": "hyper",
-          "version": "1.11.0",
+          "version": "1.11.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -4095,7 +4177,7 @@
       "packages": [
         {
           "name": "brotli",
-          "version": "8.0.4",
+          "version": "9.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause AND MIT",
           "authors": [
@@ -4348,22 +4430,6 @@
     {
       "id": "MIT",
       "name": "MIT License",
-      "text_sha256": "5b2c207dcf571267ebe0bbdd5bf321f561ddc22ff597e7b363e96f4539507a29",
-      "text": "The MIT License (MIT)\r\n\r\nCopyright (c) 2016 Johann Tuffe\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\n\r\nThe above copyright notice and this permission notice shall be included in\r\nall copies or substantial portions of the Software.\r\n\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\r\nTHE SOFTWARE.\r\n",
-      "packages": [
-        {
-          "name": "quick-xml",
-          "version": "0.41.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/tafia/quick-xml"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
       "text_sha256": "62a81c033fcf173693b50f068939cd903d8a414d915776ff1fef5d5869aabcb7",
       "text": "MIT License\r\n\r\nCopyright (c) 2019 Cloudflare, Inc.\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
       "packages": [
@@ -4409,12 +4475,10 @@
       "packages": [
         {
           "name": "nix",
-          "version": "0.30.1",
+          "version": "0.31.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
-          "authors": [
-            "The nix-rust Project Developers"
-          ],
+          "authors": [],
           "repository": "https://github.com/nix-rust/nix"
         }
       ]
@@ -4601,7 +4665,7 @@
       "packages": [
         {
           "name": "combine",
-          "version": "4.6.7",
+          "version": "4.6.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -4619,7 +4683,7 @@
       "packages": [
         {
           "name": "hyper-util",
-          "version": "0.1.20",
+          "version": "0.1.21",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -4729,14 +4793,14 @@
       "text": "MIT License\n\nCopyright (c) <year> <copyright holders>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and\nassociated documentation files (the \"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the\nfollowing conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial\nportions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\nLIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO\nEVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE\nUSE OR OTHER DEALINGS IN THE SOFTWARE.\n",
       "packages": [
         {
-          "name": "dispatch",
-          "version": "0.2.0",
+          "name": "block2",
+          "version": "0.6.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
-            "Steven Sheldon"
+            "Mads Marquart <mads@marquart.dk>"
           ],
-          "repository": "http://github.com/SSheldon/rust-dispatch"
+          "repository": "https://github.com/madsmtm/objc2"
         },
         {
           "name": "libm",
@@ -4750,6 +4814,26 @@
             "Trevor Gross <tg@trevorgross.com>"
           ],
           "repository": "https://github.com/rust-lang/compiler-builtins"
+        },
+        {
+          "name": "objc2",
+          "version": "0.6.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Mads Marquart <mads@marquart.dk>"
+          ],
+          "repository": "https://github.com/madsmtm/objc2"
+        },
+        {
+          "name": "objc2-encode",
+          "version": "4.1.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Mads Marquart <mads@marquart.dk>"
+          ],
+          "repository": "https://github.com/madsmtm/objc2"
         },
         {
           "name": "ratex-font",
@@ -4833,12 +4917,10 @@
       "packages": [
         {
           "name": "data-encoding",
-          "version": "2.11.0",
+          "version": "2.11.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
-          "authors": [
-            "Julien Cretin <git@ia0.eu>"
-          ],
+          "authors": [],
           "repository": "https://github.com/ia0/data-encoding"
         }
       ]
@@ -4928,7 +5010,7 @@
       "packages": [
         {
           "name": "tree-sitter",
-          "version": "0.26.12",
+          "version": "0.27.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -4939,7 +5021,7 @@
         },
         {
           "name": "tree-sitter-language",
-          "version": "0.1.7",
+          "version": "0.1.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -5038,12 +5120,10 @@
       "packages": [
         {
           "name": "textwrap",
-          "version": "0.16.2",
+          "version": "0.16.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
-          "authors": [
-            "Martin Geisler <martin@geisler.net>"
-          ],
+          "authors": [],
           "repository": "https://github.com/mgeisler/textwrap"
         }
       ]
@@ -5119,6 +5199,22 @@
             "Jeremy Soller <jackpot51@gmail.com>"
           ],
           "repository": "https://gitlab.redox-os.org/redox-os/syscall"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc",
+      "text": "The MIT License (MIT)\n\nCopyright (c) 2016 Johann Tuffe\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "packages": [
+        {
+          "name": "quick-xml",
+          "version": "0.42.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [],
+          "repository": "https://github.com/tafia/quick-xml"
         }
       ]
     },
@@ -5233,7 +5329,7 @@
         },
         {
           "name": "uniffi",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5241,7 +5337,7 @@
         },
         {
           "name": "uniffi_bindgen",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5249,7 +5345,7 @@
         },
         {
           "name": "uniffi_core",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5257,7 +5353,7 @@
         },
         {
           "name": "uniffi_internal_macros",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5265,7 +5361,7 @@
         },
         {
           "name": "uniffi_macros",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5273,7 +5369,7 @@
         },
         {
           "name": "uniffi_meta",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5281,7 +5377,7 @@
         },
         {
           "name": "uniffi_pipeline",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5289,7 +5385,7 @@
         },
         {
           "name": "uniffi_udl",
-          "version": "0.32.0",
+          "version": "0.32.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [],
@@ -5314,8 +5410,28 @@
           "repository": "https://github.com/servo/rust-cssparser"
         },
         {
+          "name": "cssparser",
+          "version": "0.38.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MPL-2.0",
+          "authors": [
+            "Simon Sapin <simon.sapin@exyr.org>"
+          ],
+          "repository": "https://github.com/servo/rust-cssparser"
+        },
+        {
           "name": "cssparser-macros",
           "version": "0.6.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MPL-2.0",
+          "authors": [
+            "Simon Sapin <simon.sapin@exyr.org>"
+          ],
+          "repository": "https://github.com/servo/rust-cssparser"
+        },
+        {
+          "name": "cssparser-macros",
+          "version": "0.7.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MPL-2.0",
           "authors": [
@@ -5333,7 +5449,7 @@
       "packages": [
         {
           "name": "icu_collections",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5343,7 +5459,7 @@
         },
         {
           "name": "icu_locale_core",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5353,7 +5469,7 @@
         },
         {
           "name": "icu_normalizer",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5363,7 +5479,7 @@
         },
         {
           "name": "icu_normalizer_data",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5373,7 +5489,7 @@
         },
         {
           "name": "icu_properties",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5383,7 +5499,7 @@
         },
         {
           "name": "icu_properties_data",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5393,7 +5509,7 @@
         },
         {
           "name": "icu_provider",
-          "version": "2.2.0",
+          "version": "2.3.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5403,26 +5519,6 @@
         },
         {
           "name": "litemap",
-          "version": "0.8.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Unicode-3.0",
-          "authors": [
-            "The ICU4X Project Developers"
-          ],
-          "repository": "https://github.com/unicode-org/icu4x"
-        },
-        {
-          "name": "potential_utf",
-          "version": "0.1.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Unicode-3.0",
-          "authors": [
-            "The ICU4X Project Developers"
-          ],
-          "repository": "https://github.com/unicode-org/icu4x"
-        },
-        {
-          "name": "tinystr",
           "version": "0.8.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
@@ -5432,8 +5528,28 @@
           "repository": "https://github.com/unicode-org/icu4x"
         },
         {
+          "name": "potential_utf",
+          "version": "0.1.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Unicode-3.0",
+          "authors": [
+            "The ICU4X Project Developers"
+          ],
+          "repository": "https://github.com/unicode-org/icu4x"
+        },
+        {
+          "name": "tinystr",
+          "version": "0.8.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Unicode-3.0",
+          "authors": [
+            "The ICU4X Project Developers"
+          ],
+          "repository": "https://github.com/unicode-org/icu4x"
+        },
+        {
           "name": "writeable",
-          "version": "0.6.3",
+          "version": "0.6.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5453,7 +5569,7 @@
         },
         {
           "name": "yoke-derive",
-          "version": "0.8.2",
+          "version": "0.8.4",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5473,7 +5589,7 @@
         },
         {
           "name": "zerofrom-derive",
-          "version": "0.1.7",
+          "version": "0.1.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5483,7 +5599,7 @@
         },
         {
           "name": "zerotrie",
-          "version": "0.2.4",
+          "version": "0.2.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5493,7 +5609,7 @@
         },
         {
           "name": "zerovec",
-          "version": "0.11.6",
+          "version": "0.11.8",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5503,7 +5619,7 @@
         },
         {
           "name": "zerovec-derive",
-          "version": "0.11.3",
+          "version": "0.11.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unicode-3.0",
           "authors": [
@@ -5521,7 +5637,7 @@
       "packages": [
         {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.26",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
           "authors": [
@@ -5539,7 +5655,7 @@
       "packages": [
         {
           "name": "wasm-minimal-protocol",
-          "version": "0.2.0",
+          "version": "0.2.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": null,
           "authors": [

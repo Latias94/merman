@@ -1,4 +1,4 @@
-# Alignment Milestones (Mermaid@12.0.0)
+# Alignment Milestones
 
 This document tracks high-level alignment milestones for the pinned Mermaid baseline.
 
@@ -7,7 +7,11 @@ It defines release-oriented exit criteria, not the current gate result. Use
 and verification output for the exact revision under review. The superseded
 [`PARITY_HARDENING_PLAN.md`](PARITY_HARDENING_PLAN.md) is retained as historical evidence.
 
-## Baseline
+## Current transition
+
+The active unreleased target is Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`; milestone evidence below remains historical `12.0.0` admission evidence until refresh.
+
+## Previous baseline evidence
 
 - Mermaid baseline: `repo-ref/mermaid` at `mermaid@12.0.0`, commit `98a0945418c76238f15df2afaddbba4272656c3b` (see `tools/upstreams/REPOS.lock.json`).
 - DOM gate: `parity-root` (root `<svg>` viewport + DOM structure, decimals = 3).

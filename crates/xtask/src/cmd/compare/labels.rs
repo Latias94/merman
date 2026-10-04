@@ -271,7 +271,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "c4",
         fixture: C4_DYNAMIC_LABEL_FIXTURE,
         input_sha256: "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-        upstream_svg_sha256: "393427fc0b4b21ae51e7816a72a3e452abcb8f3a9f946ceab9cef4c993326d4e",
+        upstream_svg_sha256: "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
         adapter: SemanticLabelAdapter::C4,
     },
     SemanticLabelFixtureContract {
@@ -292,21 +292,21 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "requirement",
         fixture: REQUIREMENT_TRACES_LABEL_FIXTURE,
         input_sha256: "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-        upstream_svg_sha256: "fbc5b71dd689ffc43b4f51889ac0ae44e0007a5e01d1d622fe68cfc771b809dd",
+        upstream_svg_sha256: "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
         diagram: "state",
         fixture: STATE_PARALLEL_LABEL_FIXTURE,
         input_sha256: "1e7eace9ccbdbcdc6fdad8e905cefc62cbeb96dfa47ea84bed79af20c53d251d",
-        upstream_svg_sha256: "22d0d1f65734ecb063f7188e130a3d2fd8e8d05467269da0ab494bf823a00b1e",
+        upstream_svg_sha256: "5d5c402f306d82f7983af8737ab6de60666dd667951824a0b6022d608079239a",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
         diagram: "class",
         fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
         input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-        upstream_svg_sha256: "da3329e3ffb63f6f18d30bad9f999018328712cb2b47e08a3549d9bc0171717e",
+        upstream_svg_sha256: "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
@@ -2625,8 +2625,7 @@ fn parse_inline_style_declarations(
         )]);
     }
 
-    let mut input = cssparser::ParserInput::new(style);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(style);
     let mut declarations = Vec::new();
 
     loop {
@@ -2646,9 +2645,9 @@ fn parse_inline_style_declarations(
             while declaration.next_including_whitespace_and_comments().is_ok() {}
             let value = declaration.slice_from(value_start).trim().to_string();
             if value.is_empty() {
-                return Err(declaration.new_custom_error(()));
+                return Err(cssparser::ParseError::custom(()));
             }
-            Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
+            Ok::<_, cssparser::ParseError<()>>((property, value))
         });
         match parsed {
             Ok(declaration) => declarations.push(declaration),
@@ -2686,28 +2685,28 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for SemanticStylesheetParser {
     type QualifiedRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
         let selector = input.slice_from(start).trim().to_string();
         if selector.is_empty() {
-            Err(input.new_custom_error(()))
+            Err(cssparser::ParseError::custom(()))
         } else {
             Ok(selector)
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::QualifiedRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2725,11 +2724,11 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
     type AtRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: cssparser::CowRcStr<'i>,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2754,12 +2753,12 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
         }))
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::AtRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::AtRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2817,13 +2816,17 @@ fn extract_stylesheet_signature(
         .trim();
     let mut signature = Vec::new();
     for stylesheet in stylesheets {
-        let mut input = cssparser::ParserInput::new(&stylesheet);
-        let mut input = cssparser::Parser::new(&mut input);
+        let mut input = cssparser::Parser::new(&stylesheet);
         let mut rule_parser = SemanticStylesheetParser;
         for parsed in cssparser::StyleSheetParser::new(&mut input, &mut rule_parser) {
-            let rule = parsed.map_err(|(error, rule)| SemanticLabelError::InvalidStylesheet {
-                rule: rule.trim().to_string(),
-                message: format!("{error:?}"),
+            let rule = parsed.map_err(|(error, rule, location)| {
+                SemanticLabelError::InvalidStylesheet {
+                    rule: rule.trim().to_string(),
+                    message: format!(
+                        "{error:?} at rule line {}, column {}",
+                        location.line, location.column
+                    ),
+                }
             })?;
             let Some(rule) = rule else {
                 continue;
@@ -3754,8 +3757,8 @@ mod tests {
 
         assert_eq!(labels.len(), 5);
         assert_eq!(message.text, "2: Calls isAuthenticated() on");
-        assert_eq!(message.geometry.anchor_x, 503.5);
-        assert_eq!(message.geometry.anchor_y, 688.7998428344727);
+        assert_eq!(message.geometry.anchor_x, 501.0);
+        assert_eq!(message.geometry.anchor_y, 650.2998428344727);
     }
 
     #[test]

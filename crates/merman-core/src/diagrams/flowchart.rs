@@ -448,6 +448,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             node_index: &mut node_index,
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
+            subgraph_declaration_owners: &builder.declaration_owners,
             subgraph_vertex_styles: &mut subgraph_vertex_styles,
             collapsed_subgraphs: &mut collapsed_subgraphs,
             vertex_calls: &mut vertex_calls,
@@ -2120,7 +2121,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_subgraph_metadata_stays_with_its_declaration() {
+    fn flowchart_subgraph_metadata_updates_the_canonical_group() {
         let meta = flowchart_test_meta("flowchart-v2");
         let model = parse_flowchart_model_for_render(
             concat!(
@@ -2133,11 +2134,108 @@ mod tests {
             &meta,
         )
         .expect("duplicate subgraph declarations should parse");
-        assert_eq!(model.subgraphs.len(), 2);
-        for (title, algorithm) in [("First", "elk.box"), ("Second", "elk.radial")] {
-            let group = model.subgraphs.iter().find(|sg| sg.title == title).unwrap();
-            assert_eq!(group.metadata.as_ref().unwrap()["algorithm"], algorithm);
+        assert_eq!(model.subgraphs.len(), 1);
+        let group = &model.subgraphs[0];
+        assert_eq!(group.title, "First");
+        assert_eq!(group.nodes, ["A", "B"]);
+        assert_eq!(group.metadata.as_ref().unwrap()["algorithm"], "elk.radial");
+    }
+
+    #[test]
+    fn duplicate_subgraph_metadata_and_classes_follow_the_canonical_owner() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        for metadata_between in [false, true] {
+            let update = "class G hot\nG@{ view: collapsed, algorithm: elk.box }\n";
+            let source = format!(
+                "flowchart TB\nsubgraph G[First]\ndirection LR\nA\nend\n{}subgraph G[Second]\ndirection RL\nB\nA\nend\n{}",
+                if metadata_between { update } else { "" },
+                if metadata_between { "" } else { update },
+            );
+            let (model, context) = parse_flowchart_model_with_render_context(&source, &meta)
+                .expect("repeated groups share their metadata target");
+            assert_eq!(model.subgraphs.len(), 1, "{source}");
+            let group = &model.subgraphs[0];
+            assert_eq!(group.title, "First");
+            assert_eq!(group.dir.as_deref(), Some("LR"));
+            assert_eq!(group.nodes, ["A", "B"]);
+            assert_eq!(group.classes, ["hot"]);
+            assert_eq!(group.metadata.as_ref().unwrap()["algorithm"], "elk.box");
+            assert!(context.is_subgraph_collapsed("G"));
+            for member in ["A", "B"] {
+                assert_eq!(context.collapsed_replacement(member), Some("G"));
+            }
+            let json = render_model_to_compat_json(&model, &meta).unwrap();
+            assert_eq!(json["subgraphs"].as_array().unwrap().len(), 1);
+            assert_eq!(json["subgraphs"][0]["nodes"], json!(["A", "B"]));
         }
+    }
+
+    #[test]
+    fn duplicate_subgraph_membership_excludes_self_and_preserves_nested_groups() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let cases = [
+            (
+                "flowchart TB\nsubgraph S[Outer]\nx\nsubgraph S[Inner]\ny\nend\nend\n",
+                vec![("S", "Inner", vec!["y", "x"])],
+            ),
+            (
+                "flowchart TB\nsubgraph S[First]\nend\nsubgraph S[Second]\nsubgraph T\ny\nend\nend\n",
+                vec![("S", "First", vec!["T"]), ("T", "T", vec!["y"])],
+            ),
+            (
+                "flowchart TB\nsubgraph S\nx\nend\nsubgraph S\ny\nend\nsubgraph Anonymous group\na\nend\nsubgraph Anonymous group\nb\nend\n",
+                vec![
+                    ("S", "S", vec!["x", "y"]),
+                    ("subGraph2", "Anonymous group", vec!["a"]),
+                    ("subGraph3", "Anonymous group", vec!["b"]),
+                ],
+            ),
+        ];
+        for (source, expected) in cases {
+            let model = parse_flowchart_model_for_render(source, &meta).unwrap();
+            assert_eq!(model.subgraphs.len(), expected.len(), "{source}");
+            for (group, (id, title, nodes)) in model.subgraphs.iter().zip(expected) {
+                assert_eq!(group.id, id, "{source}");
+                assert_eq!(group.title, title, "{source}");
+                assert_eq!(group.nodes, nodes, "{source}");
+                assert!(!group.nodes.contains(&group.id), "{source}");
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_subgraph_editor_facts_keep_each_declaration_span() {
+        let source = "flowchart TB\nsubgraph S[First]\nx\nend\nsubgraph S[Second]\ny\nend\nclass S hot\nS --> z\n";
+        let control = OperationControl::new();
+        let (model, facts, _) = parse_flowchart_json_and_editor_facts(
+            source,
+            &flowchart_test_meta("flowchart-v2"),
+            &control,
+        )
+        .unwrap()
+        .into_parts();
+        let model = model.unwrap();
+        let symbols: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "S")
+            .collect();
+        let declarations: Vec<_> = symbols
+            .iter()
+            .filter(|symbol| symbol.kind == EditorSemanticKind::Namespace)
+            .collect();
+        assert_eq!(declarations.len(), 2);
+        assert_ne!(declarations[0].selection, declarations[1].selection);
+        assert!(
+            symbols.len() >= 4,
+            "declarations, class target and edge endpoint stay linked"
+        );
+        for symbol in symbols {
+            assert_eq!(symbol.rename_policy, EditorRenamePolicy::FlowchartNodeId);
+            assert_eq!(&source[symbol.selection.start..symbol.selection.end], "S");
+        }
+        assert_eq!(model["subgraphs"].as_array().unwrap().len(), 1);
+        assert_eq!(model["subgraphs"][0]["nodes"], json!(["x", "y"]));
     }
 
     #[test]
@@ -2311,7 +2409,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_subgraph_vertex_css_is_owned_by_the_last_declaration() {
+    fn duplicate_subgraph_vertex_css_is_owned_by_the_canonical_group() {
         let meta = flowchart_test_meta("flowchart-v2");
         let cases = [
             concat!(
@@ -2338,7 +2436,7 @@ mod tests {
             let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
                 .expect("duplicate subgraph declarations should parse");
 
-            assert_eq!(model.subgraphs.len(), 2, "{source}");
+            assert_eq!(model.subgraphs.len(), 1, "{source}");
             assert!(
                 model
                     .subgraphs
@@ -2346,14 +2444,8 @@ mod tests {
                     .all(|subgraph| subgraph.styles.is_empty()),
                 "style statements belong to FlowDB's vertex record, not FlowSubgraph: {source}"
             );
-            let (_, first_styles) = context.effective_subgraph_css(0, &model.subgraphs[0]);
-            let (_, second_styles) = context.effective_subgraph_css(1, &model.subgraphs[1]);
-
-            assert!(
-                first_styles.is_empty(),
-                "Graphlib's later setNode replaces the styled later declaration: {source}"
-            );
-            assert_eq!(second_styles, ["fill:#f00"], "{source}");
+            let (_, styles) = context.effective_subgraph_css(0, &model.subgraphs[0]);
+            assert_eq!(styles, ["fill:#f00"], "{source}");
         }
     }
 
@@ -2531,15 +2623,12 @@ F -- "&nbsp;" --> G
         let (duplicate_model, duplicate_sources) =
             parse_flowchart_model_with_render_context(duplicate_subgraph_source, &meta)
                 .expect("duplicate subgraph model");
-        assert_eq!(duplicate_model.subgraphs.len(), 2);
+        assert_eq!(duplicate_model.subgraphs.len(), 1);
         assert_eq!(
             duplicate_sources.subgraph_title_for_render(0, &duplicate_model.subgraphs[0]),
             "&nbsp;First"
         );
-        assert_eq!(
-            duplicate_sources.subgraph_title_for_render(1, &duplicate_model.subgraphs[1]),
-            "Second"
-        );
+        assert_eq!(duplicate_model.subgraphs[0].nodes, ["A", "B"]);
 
         let later_entity_source =
             "flowchart LR\nsubgraph X[First]\n  A\nend\nsubgraph X[\"&nbsp;Second\"]\n  B\nend\n";
@@ -2550,10 +2639,8 @@ F -- "&nbsp;" --> G
             later_entity_sources.subgraph_title_for_render(0, &later_entity_model.subgraphs[0]),
             "First"
         );
-        assert_eq!(
-            later_entity_sources.subgraph_title_for_render(1, &later_entity_model.subgraphs[1]),
-            "&nbsp;Second"
-        );
+        assert_eq!(later_entity_model.subgraphs.len(), 1);
+        assert_eq!(later_entity_model.subgraphs[0].nodes, ["A", "B"]);
 
         let punctuation_source = "flowchart LR\nsubgraph \"A;B\"\n  Bare\nend\nsubgraph \"`M;D`\"\n  Markdown\nend\nsubgraph SG[\"A]B\"]\n  Bracket\nend\n";
         let punctuation_model = parse_flowchart_model_for_render(punctuation_source, &meta)

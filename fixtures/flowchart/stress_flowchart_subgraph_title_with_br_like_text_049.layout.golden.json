@@ -6,15 +6,15 @@
         {
           "id": "sg",
           "x": 112.0,
-          "y": 126.0,
+          "y": 115.5,
           "width": 200.0,
-          "height": 228.0,
+          "height": 207.0,
           "is_cluster": true
         },
         {
           "id": "a",
           "x": 112.0,
-          "y": 124.5,
+          "y": 103.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "b",
           "x": 112.0,
-          "y": 193.5,
+          "y": 172.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -38,11 +38,11 @@
           "points": [
             {
               "x": 112.0,
-              "y": 147.0
+              "y": 126.0
             },
             {
               "x": 112.0,
-              "y": 171.0
+              "y": 150.0
             }
           ],
           "label": null,
@@ -59,17 +59,17 @@
         {
           "id": "sg",
           "x": 112.0,
-          "y": 126.0,
+          "y": 115.5,
           "width": 200.0,
-          "height": 228.0,
+          "height": 207.0,
           "diff": -4.0,
-          "offset_y": 57.0,
+          "offset_y": 36.0,
           "title": "title contains literal <br/> sequence",
           "title_label": {
             "x": 112.0,
-            "y": 42.5,
-            "width": 120.0,
-            "height": 61.0
+            "y": 32.0,
+            "width": 121.656,
+            "height": 40.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -82,7 +82,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 212.0,
-        "max_y": 240.0
+        "max_y": 219.0
       }
     }
   }

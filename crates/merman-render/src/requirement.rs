@@ -79,6 +79,8 @@ struct RequirementLabelMeasurementBinding {
     font_size_bits: u64,
     calculation_font_family: String,
     calculation_font_size_bits: u64,
+    html_labels: bool,
+    edge_html_labels: bool,
     dimensions_carrier: BuiltinTextMeasurementOperationCarrier,
     wrapped_carrier: BuiltinTextMeasurementOperationCarrier,
 }
@@ -95,6 +97,8 @@ impl RequirementLabelMeasurementBinding {
             font_size_bits: settings.font_size.to_bits(),
             calculation_font_family: settings.calculation_font_family.clone(),
             calculation_font_size_bits: settings.calculation_font_size.to_bits(),
+            html_labels: settings.html_labels,
+            edge_html_labels: settings.edge_html_labels,
             dimensions_carrier: measurer.builtin_operation_carrier(
                 TextMeasurementOperation::MermaidCalculateTextDimensions,
             )?,
@@ -112,6 +116,8 @@ impl RequirementLabelMeasurementBinding {
             && self.font_size_bits == settings.font_size.to_bits()
             && self.calculation_font_family == settings.calculation_font_family
             && self.calculation_font_size_bits == settings.calculation_font_size.to_bits()
+            && self.html_labels == settings.html_labels
+            && self.edge_html_labels == settings.edge_html_labels
             && measurer
                 .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
                 == Some(self.dimensions_carrier)
@@ -230,12 +236,11 @@ impl RequirementRenderLabelMeasurements<'_> {
         // observable whenever the private built-in binding cannot prove safe reuse.
         measure_requirement_label_metrics(
             self.measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            styles,
             display_text,
             display_text,
             measurement_bold,
+            true,
         )
     }
 
@@ -284,11 +289,10 @@ impl RequirementRenderLabelMeasurements<'_> {
 
         measure_requirement_label_metrics(
             self.measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            styles,
             &edge.display_text,
             &edge.display_text,
+            false,
             false,
         )
         .map(drop)
@@ -335,37 +339,63 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     crate::text::measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
-pub(crate) fn measure_requirement_label_metrics(
+fn measure_requirement_label_metrics(
     measurer: &dyn TextMeasurer,
-    html_style_regular: &TextStyle,
-    html_style_bold: &TextStyle,
-    calculation_style: &TextStyle,
+    styles: &RequirementMeasurementStyles,
     display_text: &str,
     calculation_text: &str,
     bold: bool,
+    is_node: bool,
 ) -> Option<RequirementLabelMetrics> {
     if display_text.trim().is_empty() {
         return None;
     }
 
-    let html_style = if bold {
-        html_style_bold
+    let text_style = if bold {
+        &styles.html_bold
     } else {
-        html_style_regular
+        &styles.html_regular
     };
-    let max_width_px =
-        (calculate_text_width_like_mermaid_px(measurer, calculation_style, calculation_text) + 50)
-            .max(0);
+    let html_labels = if is_node {
+        styles.html_labels
+    } else {
+        styles.edge_html_labels
+    };
+    let max_width_px = if is_node {
+        (calculate_text_width_like_mermaid_px(measurer, &styles.calculation, calculation_text) + 50)
+            .max(0)
+    } else {
+        200
+    };
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
-    let measured = crate::text::measure_markdown_with_inline_styles(
-        measurer,
-        calculation_text,
-        html_style,
-        max_width,
-        WrapMode::HtmlLike,
-    );
-    let height = measured.height.max(1.0);
-    let width = measured.width.max(1.0);
+    let measured = if html_labels {
+        crate::text::measure_markdown_with_inline_styles(
+            measurer,
+            calculation_text,
+            text_style,
+            max_width,
+            WrapMode::HtmlLike,
+        )
+    } else {
+        crate::text::measure_wrapped_markdown_with_inline_styles(
+            measurer,
+            calculation_text,
+            text_style,
+            max_width,
+            WrapMode::SvgLike,
+        )
+    };
+    // requirementBox.addText adds six pixels to SVG node-label bounds after getBBox.
+    // Relationship labels use the shared edge label path and do not receive this padding.
+    let extra_height = if html_labels {
+        0.0
+    } else if is_node {
+        6.0
+    } else {
+        4.0
+    };
+    let height = (measured.height + extra_height).max(1.0);
+    let width = (measured.width + if !is_node && !html_labels { 4.0 } else { 0.0 }).max(1.0);
 
     Some(RequirementLabelMetrics {
         width,
@@ -397,9 +427,7 @@ impl RequirementBoxLayout {
 
 fn requirement_box_layout(
     measurer: &dyn TextMeasurer,
-    html_style_regular: &TextStyle,
-    html_style_bold: &TextStyle,
-    calculation_style: &TextStyle,
+    styles: &RequirementMeasurementStyles,
     lines: Vec<RequirementLabelSpec>,
     gap: f64,
     padding: f64,
@@ -411,12 +439,11 @@ fn requirement_box_layout(
         .filter_map(|(idx, line)| {
             let metrics = measure_requirement_label_metrics(
                 measurer,
-                html_style_regular,
-                html_style_bold,
-                calculation_style,
+                styles,
                 &line.display_text,
                 &line.display_text,
                 line.measurement_bold,
+                true,
             )?;
             Some((idx, line, metrics))
         })
@@ -611,6 +638,8 @@ struct RequirementMeasurementStyles {
     html_regular: TextStyle,
     html_bold: TextStyle,
     calculation: TextStyle,
+    html_labels: bool,
+    edge_html_labels: bool,
 }
 
 fn requirement_measurement_styles(
@@ -618,6 +647,8 @@ fn requirement_measurement_styles(
 ) -> RequirementMeasurementStyles {
     let font_family = Some(settings.font_family.clone());
     RequirementMeasurementStyles {
+        html_labels: settings.html_labels,
+        edge_html_labels: settings.edge_html_labels,
         html_regular: TextStyle {
             font_family: font_family.clone(),
             font_size: settings.font_size,
@@ -714,9 +745,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            &styles,
             requirement_node_label_specs(r),
             gap,
             padding,
@@ -742,9 +771,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            &styles,
             element_node_label_specs(e),
             gap,
             padding,
@@ -779,11 +806,10 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         let label_calculation = label_display.clone();
         let metrics = measure_requirement_label_metrics(
             text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            &styles,
             &label_display,
             &label_calculation,
+            false,
             false,
         )
         .ok_or_else(|| Error::InvalidModel {
@@ -1219,18 +1245,16 @@ mod tests {
             node_label_spec("Verification: Test".to_string(), false, false, false),
         ];
 
-        let text = measure_requirement_label_metrics(
-            &measurer,
-            &regular,
-            &bold,
-            &calculation,
-            body,
-            body,
-            false,
-        )
-        .expect("text line should be measured");
-        let layout =
-            requirement_box_layout(&measurer, &regular, &bold, &calculation, lines, 20.0, 20.0);
+        let styles = RequirementMeasurementStyles {
+            html_regular: regular.clone(),
+            html_bold: bold,
+            calculation: calculation.clone(),
+            html_labels: true,
+            edge_html_labels: true,
+        };
+        let text = measure_requirement_label_metrics(&measurer, &styles, body, body, false, true)
+            .expect("text line should be measured");
+        let layout = requirement_box_layout(&measurer, &styles, lines, 20.0, 20.0);
 
         let expected_max_width =
             calculate_text_width_like_mermaid_px(&measurer, &calculation, body) + 50;
@@ -1258,12 +1282,12 @@ mod tests {
                 ..TextStyle::default()
             },
             calculation: TextStyle::default(),
+            html_labels: true,
+            edge_html_labels: true,
         };
         let prepared = requirement_box_layout(
             &measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
+            &styles,
             vec![
                 node_label_spec(
                     "&lt;&lt;Requirement&gt;&gt;".to_string(),
@@ -1299,5 +1323,28 @@ mod tests {
             rendered.divider_y_offset,
             Some(rendered.lines[0].metrics.height + rendered.lines[1].metrics.height + 20.0)
         );
+    }
+    #[test]
+    fn requirement_svg_label_measurements_keep_node_and_edge_padding_distinct() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let config = serde_json::json!({"htmlLabels":false});
+        let styles =
+            requirement_measurement_styles(&RequirementConfigView::new(&config).layout_settings());
+        let text = "two words";
+        let node =
+            measure_requirement_label_metrics(&measurer, &styles, text, text, false, true).unwrap();
+        let edge = measure_requirement_label_metrics(&measurer, &styles, text, text, false, false)
+            .unwrap();
+        let raw = crate::text::measure_wrapped_markdown_with_inline_styles(
+            &measurer,
+            text,
+            &styles.html_regular,
+            Some(200.0),
+            WrapMode::SvgLike,
+        );
+        assert_eq!(node.width, raw.width);
+        assert_eq!(node.height, raw.height + 6.0);
+        assert_eq!(edge.width, raw.width + 4.0);
+        assert_eq!(edge.height, raw.height + 4.0);
     }
 }

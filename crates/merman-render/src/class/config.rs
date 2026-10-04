@@ -77,10 +77,7 @@ impl<'a> ClassConfigView<'a> {
         let ranksep = self.layout_spacing("rankSpacing");
 
         let node_html_labels = self.root_bool("htmlLabels").unwrap_or(true);
-        let edge_html_labels = self
-            .flowchart_bool("htmlLabels")
-            .or_else(|| self.root_bool("htmlLabels"))
-            .unwrap_or(true);
+        let edge_html_labels = self.render_edge_html_labels();
         let wrap_mode_node = class_wrap_mode(node_html_labels);
         let wrap_mode_label = class_wrap_mode(edge_html_labels);
         let text_style = self.render_text_style(self.render_font_size());
@@ -137,6 +134,12 @@ impl<'a> ClassConfigView<'a> {
             font_weight: None,
             font_style: None,
         }
+    }
+
+    pub(crate) fn interface_wrapping_width(&self) -> f64 {
+        self.flowchart_compat_f64("wrappingWidth")
+            .filter(|width| width.is_finite() && *width > 0.0)
+            .unwrap_or(crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX)
     }
 
     pub(crate) fn render_diagram_html_labels(&self) -> bool {
@@ -277,7 +280,7 @@ mod tests {
         assert_eq!(settings.nodesep, 70.0);
         assert_eq!(settings.ranksep, 80.0);
         assert_eq!(settings.wrap_mode_node, WrapMode::SvgLike);
-        assert_eq!(settings.wrap_mode_label, WrapMode::HtmlLike);
+        assert_eq!(settings.wrap_mode_label, WrapMode::SvgLike);
         assert_eq!(settings.wrap_mode_note, WrapMode::SvgLike);
         assert_eq!(settings.class_padding, 30.0);
         assert_eq!(settings.namespace_padding, 17.0);

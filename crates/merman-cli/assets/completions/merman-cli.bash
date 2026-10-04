@@ -1,4 +1,4 @@
-_merman-cli() {
+_merman__cli() {
     local i cur prev opts cmd
     COMPREPLY=()
     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
@@ -1543,7 +1543,7 @@ _merman-cli() {
 }
 
 if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then
-    complete -F _merman-cli -o nosort -o bashdefault -o default merman-cli
+    complete -F _merman__cli -o nosort -o bashdefault -o default merman-cli
 else
-    complete -F _merman-cli -o bashdefault -o default merman-cli
+    complete -F _merman__cli -o bashdefault -o default merman-cli
 fi

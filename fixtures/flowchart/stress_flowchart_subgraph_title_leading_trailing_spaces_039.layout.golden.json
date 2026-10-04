@@ -5,16 +5,16 @@
       "nodes": [
         {
           "id": "sg_spaces",
-          "x": 112.0,
-          "y": 115.5,
-          "width": 200.0,
-          "height": 207.0,
+          "x": 124.43,
+          "y": 105.0,
+          "width": 224.86,
+          "height": 186.0,
           "is_cluster": true
         },
         {
           "id": "a",
           "x": 112.0,
-          "y": 103.5,
+          "y": 82.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "b",
           "x": 112.0,
-          "y": 172.5,
+          "y": 151.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -38,11 +38,11 @@
           "points": [
             {
               "x": 112.0,
-              "y": 126.0
+              "y": 105.0
             },
             {
               "x": 112.0,
-              "y": 150.0
+              "y": 129.0
             }
           ],
           "label": null,
@@ -58,18 +58,18 @@
       "clusters": [
         {
           "id": "sg_spaces",
-          "x": 112.0,
-          "y": 115.5,
-          "width": 200.0,
-          "height": 207.0,
+          "x": 124.43,
+          "y": 105.0,
+          "width": 224.86,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 36.0,
+          "offset_y": 15.0,
           "title": "title with leading and trailing spaces",
           "title_label": {
-            "x": 112.0,
-            "y": 32.0,
-            "width": 120.0,
-            "height": 40.0
+            "x": 124.43,
+            "y": 21.5,
+            "width": 209.86,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -81,8 +81,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 212.0,
-        "max_y": 219.0
+        "max_x": 236.86,
+        "max_y": 198.0
       }
     }
   }

@@ -1,5 +1,5 @@
 use crate::{
-    ParseMetadata, Result, common_db,
+    Error, ParseMetadata, Result, common_db,
     diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel},
 };
 use serde::{Deserialize, Serialize};
@@ -10,19 +10,28 @@ use serde_json::{Value, json};
 pub struct ErrorDiagramRenderModel {
     #[serde(rename = "type")]
     pub diagram_type: String,
+    #[serde(
+        default,
+        rename = "errorMessage",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub error_message: Option<String>,
 }
 
 impl ErrorDiagramRenderModel {
     fn new(meta: &ParseMetadata) -> Self {
         Self {
             diagram_type: meta.diagram_type.clone(),
+            error_message: None,
         }
     }
 
     fn compatibility_json(&self) -> Value {
-        json!({
-            "type": self.diagram_type,
-        })
+        let mut model = json!({ "type": self.diagram_type });
+        if let Some(message) = &self.error_message {
+            model["errorMessage"] = json!(message);
+        }
+        model
     }
 }
 
@@ -44,17 +53,26 @@ pub(crate) fn parse_error_model_for_render(
     Ok(ErrorDiagramRenderModel::new(meta))
 }
 
-pub(crate) fn suppressed_error_diagram(source_meta: &ParseMetadata) -> ParsedDiagram {
+pub(crate) fn suppressed_error_diagram(
+    source_meta: &ParseMetadata,
+    error: &Error,
+) -> ParsedDiagram {
     let meta = suppressed_error_metadata(source_meta);
-    let mut model = render_model_to_compat_json(&ErrorDiagramRenderModel::new(&meta), &meta)
+    let mut typed = ErrorDiagramRenderModel::new(&meta);
+    typed.error_message = Some(error.to_string());
+    let mut model = render_model_to_compat_json(&typed, &meta)
         .expect("Error typed model must remain JSON-serializable");
     common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
     ParsedDiagram { meta, model }
 }
 
-pub(crate) fn suppressed_error_render_diagram(source_meta: &ParseMetadata) -> ParsedDiagramRender {
+pub(crate) fn suppressed_error_render_diagram(
+    source_meta: &ParseMetadata,
+    error: &Error,
+) -> ParsedDiagramRender {
     let meta = suppressed_error_metadata(source_meta);
-    let model = ErrorDiagramRenderModel::new(&meta);
+    let mut model = ErrorDiagramRenderModel::new(&meta);
+    model.error_message = Some(error.to_string());
     ParsedDiagramRender::new(meta, RenderSemanticModel::Error(model))
 }
 

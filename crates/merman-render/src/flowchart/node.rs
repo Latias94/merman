@@ -1366,10 +1366,60 @@ pub(crate) fn flowchart_node_render_dimensions(
     node_render_dimensions(layout_shape, metrics, padding, look_is_neo)
 }
 
+/// Shared image geometry for layout and SVG painting. Asset dimensions retain the headless
+/// fallback used by the renderer; width constraints follow Mermaid's `imageSquare.ts`.
+pub(crate) struct ImageSquareGeometry {
+    pub(crate) image_width: f64,
+    pub(crate) image_height: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+}
+
+impl ImageSquareGeometry {
+    pub(crate) fn from_label(
+        metrics: crate::text::TextMetrics,
+        has_label: bool,
+        asset_width: Option<f64>,
+        asset_height: Option<f64>,
+        constraint_on: bool,
+        wrapping_width: f64,
+    ) -> Self {
+        let asset_h = asset_height.unwrap_or(60.0).max(1.0);
+        let asset_w = asset_width.unwrap_or(asset_h).max(1.0);
+        let aspect_ratio = asset_w / asset_h;
+        let image_raw_width = asset_w.max(if has_label {
+            wrapping_width.max(0.0)
+        } else {
+            0.0
+        });
+        let image_width = if constraint_on && asset_height.is_some() {
+            asset_h * aspect_ratio
+        } else {
+            image_raw_width
+        };
+        let image_height = if constraint_on {
+            image_width / aspect_ratio
+        } else {
+            asset_h
+        };
+        let background_padding = if has_label { 4.0 } else { 0.0 };
+        let label_padding = if has_label { 8.0 } else { 0.0 };
+        Self {
+            image_width,
+            image_height,
+            width: image_width.max(metrics.width + background_padding),
+            height: image_height + metrics.height + background_padding + label_padding,
+        }
+    }
+}
+
 pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) layout_shape: Option<&'a str>,
     pub(crate) layout_direction: &'a str,
     pub(crate) metrics: crate::text::TextMetrics,
+    pub(crate) has_label: bool,
+    pub(crate) wrapping_width: f64,
+    pub(crate) node_constraint: Option<&'a str>,
     pub(crate) padding: f64,
     pub(crate) look_is_neo: bool,
     pub(crate) state_padding: f64,
@@ -1385,6 +1435,9 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         layout_shape,
         layout_direction,
         metrics,
+        has_label,
+        wrapping_width,
+        node_constraint,
         padding,
         look_is_neo,
         state_padding,
@@ -1402,31 +1455,15 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare
         && node_img.is_some_and(|s| !s.trim().is_empty())
     {
-        let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
-        let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
-        let aspect_ratio = if asset_h > 0.0 {
-            asset_w / asset_h
-        } else {
-            1.0
-        };
-        let image_width = if node_asset_height.is_some() {
-            asset_h * aspect_ratio
-        } else {
-            asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
-        };
-        let image_height = if aspect_ratio != 0.0 {
-            image_width / aspect_ratio
-        } else {
-            asset_h
-        };
-        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
-        let label_padding = if has_label { 8.0 } else { 0.0 };
-        let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
-        let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
-        return (
-            image_width.max(label_bbox_w),
-            image_height + label_padding + label_bbox_h,
+        let geometry = ImageSquareGeometry::from_label(
+            metrics,
+            has_label,
+            node_asset_width,
+            node_asset_height,
+            node_constraint == Some("on"),
+            wrapping_width,
         );
+        return (geometry.width, geometry.height);
     }
 
     if matches!(
@@ -1436,7 +1473,6 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
             | crate::flowchart::FlowchartShape::IconRounded
             | crate::flowchart::FlowchartShape::IconSquare
     ) {
-        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
         let label_padding = if has_label { 8.0 } else { 0.0 };
         let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
         let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };

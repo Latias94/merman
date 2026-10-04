@@ -65,3 +65,23 @@ Upstream references:
 
 This is an incremental slice. The ultimate goal is full Mermaid `xychart` grammar and DB behavior
 compatibility at the pinned baseline tag.
+
+## Mermaid 12.1 chart title layout
+
+Source: Mermaid `12.1.0`, commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`,
+`packages/mermaid/src/diagrams/xychart/chartBuilder/components/chartTitle.ts`,
+`orchestrator.ts`, and `textDimensionCalculator.ts`.
+
+- A chart title must fit, including both `titlePadding` margins, in the height left after the
+  plot's reserved-height allocation. If it does not fit, no title drawable or SVG group is emitted.
+- In both orientations the title centers on the final plot area, excluding axis and legend width.
+  It has a separate row above the plot and legend, so a wide title may span their columns.
+- The center is constrained by the measured title width and the full chart width. A title wider
+  than the chart is centered on the chart; the renderer does not invent truncation or wrapping.
+- Merman consumes text metrics directly in SVG user units. Mermaid's browser implementation
+  divides screen-space measurements by the SVG CTM's separate horizontal and vertical scales;
+  headless layout has no screen transform to apply or reverse. Host measurement providers must
+  return layout-space metrics. Font-specific metric differences remain an artifact boundary.
+
+These are existing XYChart layout behaviors, with no syntax, semantic model, feature, or dependency
+addition.

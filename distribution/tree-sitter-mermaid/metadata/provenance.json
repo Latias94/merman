@@ -12,8 +12,8 @@
     "querySchemaVersion": 1
   },
   "toolchain": {
-    "treeSitterCli": "0.26.12",
-    "rustRuntime": "0.26.12",
+    "treeSitterCli": "0.27.0",
+    "rustRuntime": "0.27.0",
     "nodeRuntime": "0.25.1",
     "webRuntime": "0.27.0",
     "wasiSdk": "29.0",
@@ -30,14 +30,25 @@
     },
     {
       "id": "tree-sitter",
-      "kind": "generator-and-template-source",
+      "kind": "generator-source",
+      "version": "0.27.0",
+      "repository": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.27.0",
+      "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0",
+      "usage": "Pinned generator and generated support headers",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-generator"
+    },
+    {
+      "id": "tree-sitter-templates",
+      "kind": "implementation-template-source",
       "version": "0.26.12",
       "repository": "https://github.com/tree-sitter/tree-sitter.git",
       "ref": "v0.26.12",
       "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
-      "usage": "Pinned generator, generated support headers, and modified C, Rust, and Node binding templates",
+      "usage": "Modified C, Rust, and Node binding templates and WASM build helper retained from the original implementation",
       "license": "MIT",
-      "legalComponentId": "tree-sitter-generator"
+      "legalComponentId": "tree-sitter-templates"
     },
     {
       "id": "mermaid",

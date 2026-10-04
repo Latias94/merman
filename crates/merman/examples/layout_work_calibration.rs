@@ -1,8 +1,9 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
 use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
-    OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer,
-    SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    Engine, MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest,
+    RenderTarget, Renderer, SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput,
+    SvgRequest,
 };
 use merman_core::ParseOptions;
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,8 @@ const DEFAULT_BOUNDARY_MAX_ITERATIONS: usize = 65_536;
 const ARCHITECTURE_BOUNDARY_NODES: usize = 32;
 const MINIMUM_HEADROOM_UNITS: usize = 100_000;
 const MINIMUM_HEADROOM_PERCENT: f64 = 10.0;
-const CEILING_ROUNDING_QUANTUM: usize = 100_000;
+const INTERACTIVE_CEILING_QUANTUM: usize = 100_000;
+const TRUSTED_NATIVE_CEILING_QUANTUM: usize = 1_000_000;
 const EXPECTED_CALIBRATION_FEATURES: [&str; 6] = [
     "svg",
     "layout-cytoscape",
@@ -38,6 +40,9 @@ struct Arguments {
     corpus_path: PathBuf,
     json_out: PathBuf,
     expected_max_fixture: Option<String>,
+    resource_profile: RenderResourceProfile,
+    theme: &'static str,
+    layout_work_limit: Option<usize>,
     boundary_max_nodes: usize,
     boundary_max_iterations: usize,
     probe: Option<ProbeRequest>,
@@ -47,6 +52,7 @@ struct Arguments {
 struct CalibrationReport {
     schema_version: u32,
     authoritative_date: String,
+    theme: &'static str,
     provenance: Provenance,
     policy: PolicyReport,
     fixture_corpus: FixtureCorpusReport,
@@ -81,6 +87,7 @@ struct SingleProbeReport {
     schema_version: u32,
     report_kind: &'static str,
     authoritative_date: String,
+    theme: &'static str,
     provenance: Provenance,
     policy: PolicyReport,
     input: SingleProbeInputReport,
@@ -94,6 +101,7 @@ struct SingleProbeContext<'a> {
     owned_paths: &'a [PathBuf],
     snapshot: &'a SourceSnapshot,
     base_policy: RenderResourcePolicy,
+    theme: &'static str,
     authoritative_date: String,
 }
 
@@ -184,6 +192,8 @@ struct FixtureCorpusReport {
     fixture_members_sha256: String,
     fixture_count: usize,
     maximum_layout_work_fixture: String,
+    maximum_semantic_kind: String,
+    maximum_diagram_type: String,
     maximum_layout_work_units: usize,
     headroom_units: usize,
     headroom_percent: f64,
@@ -210,7 +220,7 @@ struct FixtureReport {
     svg_sha256: String,
     svg_bytes: usize,
     svg_elements: usize,
-    interactive_accepted: bool,
+    profile_accepted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -363,9 +373,12 @@ struct CalibrationRenderer {
 }
 
 impl CalibrationRenderer {
-    fn new(policy: RenderResourcePolicy) -> Self {
+    fn new(policy: RenderResourcePolicy, theme: &str) -> Self {
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("theme", serde_json::Value::String(theme.to_string()));
         Self {
             renderer: Renderer::new()
+                .with_engine(Engine::new().with_site_config(config))
                 .with_parse_options(ParseOptions::strict())
                 .with_resource_policy(*policy.input_policy()),
             policy,
@@ -435,10 +448,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let corpus = load_corpus(&workspace_root, &args.corpus_path)?;
     let owned_paths = owned_input_paths(&workspace_root, &corpus);
     let preflight = capture_source_snapshot(&workspace_root, &corpus, &owned_paths)?;
-    let policy = RenderResourcePolicy::interactive();
+    let mut policy = RenderResourcePolicy::for_profile(args.resource_profile);
+    if let Some(limit) = args.layout_work_limit {
+        policy = policy.with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)?;
+    }
     let max_layout_work_units = policy
         .value(ResourceLimitId::MaxLayoutWorkUnits)
-        .ok_or("interactive profile must bound layout work")?;
+        .ok_or("calibration profile must bound layout work")?;
 
     if let Some(probe) = args.probe {
         let report = run_single_probe(
@@ -448,6 +464,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 owned_paths: &owned_paths,
                 snapshot: &preflight,
                 base_policy: policy,
+                theme: args.theme,
                 authoritative_date: args.authoritative_date,
             },
             probe,
@@ -459,23 +476,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     let fixture_corpus = calibrate_fixture_corpus(
         &corpus,
         &workspace_root,
-        max_layout_work_units,
+        policy,
+        args.theme,
         args.expected_max_fixture.as_deref(),
     )?;
-    let cardinality_boundary = find_flowchart_cardinality_boundary(args.boundary_max_nodes)?;
+    let cardinality_boundary =
+        find_flowchart_cardinality_boundary(args.boundary_max_nodes, policy, args.theme)?;
     let configuration_boundary =
-        find_architecture_iteration_boundary(args.boundary_max_iterations)?;
+        find_architecture_iteration_boundary(args.boundary_max_iterations, policy, args.theme)?;
     let postflight = capture_source_snapshot(&workspace_root, &corpus, &owned_paths)?;
     if preflight != postflight {
         return Err("calibration inputs or executable changed during the run".into());
     }
 
     let report = CalibrationReport {
-        schema_version: 1,
+        schema_version: 2,
         authoritative_date: args.authoritative_date,
+        theme: args.theme,
         provenance: provenance(&workspace_root, preflight)?,
         policy: PolicyReport {
-            profile: RenderResourceProfile::Interactive.id(),
+            profile: policy.profile().id(),
             explicit_overrides: policy
                 .explicit_overrides()
                 .map(|(id, value)| PolicyOverride {
@@ -514,7 +534,7 @@ fn run_single_probe(
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)?,
         None => context.base_policy,
     };
-    let renderer = CalibrationRenderer::new(policy);
+    let renderer = CalibrationRenderer::new(policy, context.theme);
     let outcome = match request.stage {
         ProbeStage::Semantic => {
             let started = Instant::now();
@@ -614,9 +634,10 @@ fn run_single_probe(
     }
 
     Ok(SingleProbeReport {
-        schema_version: 1,
+        schema_version: 2,
         report_kind: "single_probe",
         authoritative_date: context.authoritative_date,
+        theme: context.theme,
         provenance: provenance(context.workspace_root, context.snapshot.clone())?,
         policy: policy_report(&policy)?,
         input,
@@ -674,7 +695,7 @@ fn elapsed_ns(started: Instant) -> u64 {
 
 fn policy_report(policy: &RenderResourcePolicy) -> Result<PolicyReport, Box<dyn Error>> {
     Ok(PolicyReport {
-        profile: RenderResourceProfile::Interactive.id(),
+        profile: policy.profile().id(),
         explicit_overrides: policy
             .explicit_overrides()
             .map(|(id, value)| PolicyOverride {
@@ -684,11 +705,17 @@ fn policy_report(policy: &RenderResourcePolicy) -> Result<PolicyReport, Box<dyn 
             .collect(),
         max_layout_work_units: policy
             .value(ResourceLimitId::MaxLayoutWorkUnits)
-            .ok_or("interactive probe policy must bound layout work")?,
+            .ok_or("calibration probe policy must bound layout work")?,
     })
 }
 
 fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
+    parse_arguments_from(env::args().skip(1))
+}
+
+fn parse_arguments_from(
+    mut args: impl Iterator<Item = String>,
+) -> Result<Arguments, Box<dyn Error>> {
     let mut authoritative_date = None;
     let mut corpus_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -697,12 +724,14 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
         .join("corpus.json");
     let mut json_out = None;
     let mut expected_max_fixture = None;
+    let mut resource_profile = RenderResourceProfile::Interactive;
+    let mut theme = "default";
+    let mut layout_work_limit = None;
     let mut boundary_max_nodes = DEFAULT_BOUNDARY_MAX_NODES;
     let mut boundary_max_iterations = DEFAULT_BOUNDARY_MAX_ITERATIONS;
     let mut probe_input = None;
     let mut probe_stage = None;
     let mut probe_limit = None;
-    let mut args = env::args().skip(1);
 
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -711,6 +740,13 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
             "--json-out" => json_out = Some(PathBuf::from(next_value(&mut args, &argument)?)),
             "--expected-max-fixture" => {
                 expected_max_fixture = Some(next_value(&mut args, &argument)?)
+            }
+            "--resource-profile" => {
+                resource_profile = parse_resource_profile(&next_value(&mut args, &argument)?)?;
+            }
+            "--theme" => theme = parse_theme(&next_value(&mut args, &argument)?)?,
+            "--layout-work-limit" => {
+                layout_work_limit = Some(parse_positive_usize(&mut args, &argument)?);
             }
             "--boundary-max-nodes" => {
                 boundary_max_nodes = parse_positive_usize(&mut args, &argument)?
@@ -742,7 +778,8 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
                 println!(
                     "usage: layout_work_calibration --authoritative-date YYYY-MM-DD \\
                      --json-out PATH [--corpus PATH] [--expected-max-fixture NAME] \\
-                     [--boundary-max-nodes N] [--boundary-max-iterations N] \\
+                     [--resource-profile interactive|trusted-native] [--theme default|dark] \\
+                     [--layout-work-limit N] [--boundary-max-nodes N] [--boundary-max-iterations N] \\
                      [--probe-fixture NAME | --probe-flowchart-nodes N] \\
                      [--probe-stage semantic|layout|svg|end-to-end] [--probe-limit N]"
                 );
@@ -782,6 +819,9 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
         corpus_path,
         json_out,
         expected_max_fixture,
+        resource_profile,
+        theme,
+        layout_work_limit,
         boundary_max_nodes,
         boundary_max_iterations,
         probe,
@@ -808,6 +848,22 @@ fn parse_positive_usize(
         return Err(format!("{flag} must be positive").into());
     }
     Ok(parsed)
+}
+
+fn parse_resource_profile(value: &str) -> Result<RenderResourceProfile, Box<dyn Error>> {
+    match value {
+        "interactive" => Ok(RenderResourceProfile::Interactive),
+        "trusted-native" => Ok(RenderResourceProfile::TrustedNative),
+        _ => Err(format!("unsupported calibration --resource-profile `{value}`").into()),
+    }
+}
+
+fn parse_theme(value: &str) -> Result<&'static str, Box<dyn Error>> {
+    match value {
+        "default" => Ok("default"),
+        "dark" => Ok("dark"),
+        _ => Err(format!("unsupported calibration --theme `{value}`").into()),
+    }
 }
 
 fn parse_probe_stage(value: &str) -> Result<ProbeStage, Box<dyn Error>> {
@@ -963,11 +1019,16 @@ fn capture_source_snapshot(
 fn calibrate_fixture_corpus(
     corpus: &CorpusSelection,
     workspace_root: &Path,
-    max_layout_work_units: usize,
+    policy: RenderResourcePolicy,
+    theme: &str,
     expected_max_fixture: Option<&str>,
 ) -> Result<FixtureCorpusReport, Box<dyn Error>> {
-    let interactive = CalibrationRenderer::new(RenderResourcePolicy::interactive());
-    let unbounded = CalibrationRenderer::new(RenderResourcePolicy::unbounded_for_trusted_input());
+    let max_layout_work_units = policy
+        .value(ResourceLimitId::MaxLayoutWorkUnits)
+        .ok_or("calibration profile must bound layout work")?;
+    let bounded = CalibrationRenderer::new(policy, theme);
+    let unbounded =
+        CalibrationRenderer::new(RenderResourcePolicy::unbounded_for_trusted_input(), theme);
     let mut fixtures = Vec::with_capacity(corpus.fixtures.len());
     let mut member_hasher = Sha256::new();
 
@@ -983,10 +1044,10 @@ fn calibrate_fixture_corpus(
         let unbounded_render = unbounded
             .render_svg(&source)?
             .ok_or_else(|| format!("{}: unsupported fixture", input.name))?;
-        let interactive_render = interactive
+        let bounded_render = bounded
             .render_svg(&source)?
-            .ok_or_else(|| format!("{}: unsupported interactive fixture", input.name))?;
-        if unbounded_render.svg() != interactive_render.svg() {
+            .ok_or_else(|| format!("{}: unsupported bounded fixture", input.name))?;
+        if unbounded_render.svg() != bounded_render.svg() {
             return Err(format!(
                 "{}: resource profile changed successful SVG output",
                 input.name
@@ -994,7 +1055,7 @@ fn calibrate_fixture_corpus(
             .into());
         }
         if unbounded_render.evidence().layout_work_units()
-            != interactive_render.evidence().layout_work_units()
+            != bounded_render.evidence().layout_work_units()
         {
             return Err(format!(
                 "{}: resource profile changed successful work accounting",
@@ -1003,21 +1064,21 @@ fn calibrate_fixture_corpus(
             .into());
         }
 
-        let svg = interactive_render.svg();
+        let svg = bounded_render.svg();
         let document = roxmltree::Document::parse(svg)?;
         fixtures.push(FixtureReport {
             name: input.name.clone(),
             source_path: input.source_path.clone(),
             source_sha256,
             source_bytes: source.len(),
-            layout_work_units: interactive_render.evidence().layout_work_units(),
+            layout_work_units: bounded_render.evidence().layout_work_units(),
             svg_sha256: sha256_hex(svg.as_bytes()),
             svg_bytes: svg.len(),
             svg_elements: document
                 .descendants()
                 .filter(|node| node.is_element())
                 .count(),
-            interactive_accepted: true,
+            profile_accepted: true,
         });
     }
 
@@ -1036,25 +1097,25 @@ fn calibrate_fixture_corpus(
     }
     if maximum.layout_work_units > max_layout_work_units {
         return Err(format!(
-            "interactive layout-work limit {max_layout_work_units} rejects maximum fixture {} at {} units",
-            maximum.name, maximum.layout_work_units
+            "{} layout-work limit {max_layout_work_units} rejects maximum fixture {} at {} units",
+            policy.profile().id(),
+            maximum.name,
+            maximum.layout_work_units
         )
         .into());
     }
     let headroom_units = max_layout_work_units - maximum.layout_work_units;
     let headroom_percent = headroom_units as f64 * 100.0 / maximum.layout_work_units as f64;
-    let required_with_minimum = maximum
-        .layout_work_units
-        .checked_add(MINIMUM_HEADROOM_UNITS)
-        .ok_or("headroom policy overflow")?;
+    let ceiling_rounding_quantum = ceiling_rounding_quantum(policy.profile())?;
     let calculated_minimum_ceiling =
-        round_up_to_quantum(required_with_minimum, CEILING_ROUNDING_QUANTUM)?;
+        minimum_layout_work_ceiling(maximum.layout_work_units, ceiling_rounding_quantum)?;
     if max_layout_work_units != calculated_minimum_ceiling
         || headroom_units < MINIMUM_HEADROOM_UNITS
         || headroom_percent < MINIMUM_HEADROOM_PERCENT
     {
         return Err(format!(
-            "interactive ceiling {max_layout_work_units} does not satisfy the registered headroom policy: minimum_units={MINIMUM_HEADROOM_UNITS}, minimum_percent={MINIMUM_HEADROOM_PERCENT}, calculated_minimum_ceiling={calculated_minimum_ceiling}, observed_headroom_units={headroom_units}, observed_headroom_percent={headroom_percent:.6}"
+            "{} ceiling {max_layout_work_units} does not satisfy the registered headroom policy: minimum_units={MINIMUM_HEADROOM_UNITS}, minimum_percent={MINIMUM_HEADROOM_PERCENT}, calculated_minimum_ceiling={calculated_minimum_ceiling}, observed_headroom_units={headroom_units}, observed_headroom_percent={headroom_percent:.6}",
+            policy.profile().id()
         )
         .into());
     }
@@ -1064,26 +1125,48 @@ fn calibrate_fixture_corpus(
         .find(|input| input.name == maximum.name)
         .ok_or("maximum corpus fixture disappeared")?;
     let maximum_source = fs::read_to_string(&maximum_input.path)?;
-    let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum)?;
+    let maximum_semantic = bounded
+        .prepare_semantic(&maximum_source)?
+        .ok_or("maximum fixture was not recognized during semantic inspection")?;
+    let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum, policy, theme)?;
 
     Ok(FixtureCorpusReport {
         corpus_manifest: display_relative_path(&corpus.path, workspace_root),
         corpus_schema_version: corpus.schema_version,
-        fixture_members_sha256: format!("{:x}", member_hasher.finalize()),
+        fixture_members_sha256: encode_lower_hex(&member_hasher.finalize()),
         fixture_count: fixtures.len(),
         maximum_layout_work_fixture: maximum.name.clone(),
+        maximum_semantic_kind: maximum_semantic.semantic_kind().to_string(),
+        maximum_diagram_type: maximum_semantic.diagram_type().to_string(),
         maximum_layout_work_units: maximum.layout_work_units,
         headroom_units,
         headroom_percent,
         headroom_policy: HeadroomPolicyReport {
             minimum_headroom_units: MINIMUM_HEADROOM_UNITS,
             minimum_headroom_percent: MINIMUM_HEADROOM_PERCENT,
-            ceiling_rounding_quantum: CEILING_ROUNDING_QUANTUM,
+            ceiling_rounding_quantum,
             calculated_minimum_ceiling,
         },
         exact_limit_check,
         fixtures,
     })
+}
+
+fn ceiling_rounding_quantum(profile: RenderResourceProfile) -> Result<usize, Box<dyn Error>> {
+    match profile {
+        RenderResourceProfile::Interactive => Ok(INTERACTIVE_CEILING_QUANTUM),
+        RenderResourceProfile::TrustedNative => Ok(TRUSTED_NATIVE_CEILING_QUANTUM),
+        _ => Err("profile has no registered calibration headroom rule".into()),
+    }
+}
+
+fn minimum_layout_work_ceiling(work: usize, quantum: usize) -> Result<usize, Box<dyn Error>> {
+    // Integer ceiling division preserves the registered 10% margin without float rounding.
+    let relative_headroom = work.div_ceil(10);
+    let required = work
+        .checked_add(MINIMUM_HEADROOM_UNITS.max(relative_headroom))
+        .ok_or("headroom policy overflow")?;
+    round_up_to_quantum(required, quantum)
 }
 
 fn round_up_to_quantum(value: usize, quantum: usize) -> Result<usize, Box<dyn Error>> {
@@ -1102,6 +1185,8 @@ fn round_up_to_quantum(value: usize, quantum: usize) -> Result<usize, Box<dyn Er
 fn verify_exact_work_limit(
     source: &str,
     expected: &FixtureReport,
+    policy: RenderResourcePolicy,
+    theme: &str,
 ) -> Result<ExactLimitCheck, Box<dyn Error>> {
     let observed_layout_work_units = expected.layout_work_units;
     let rejected_limit = observed_layout_work_units
@@ -1109,11 +1194,11 @@ fn verify_exact_work_limit(
         .filter(|limit| *limit > 0)
         .ok_or("maximum fixture must consume at least two layout-work units")?;
 
-    let accepted_policy = RenderResourcePolicy::interactive().with_limit(
+    let accepted_policy = policy.with_limit(
         ResourceLimitId::MaxLayoutWorkUnits,
         observed_layout_work_units,
     )?;
-    let accepted = CalibrationRenderer::new(accepted_policy)
+    let accepted = CalibrationRenderer::new(accepted_policy, theme)
         .render_svg(source)?
         .ok_or("maximum fixture was not recognized at its exact work limit")?;
     if accepted.evidence().layout_work_units() != observed_layout_work_units {
@@ -1128,9 +1213,8 @@ fn verify_exact_work_limit(
         return Err("maximum fixture SVG changed at its exact work limit".into());
     }
 
-    let rejected_policy = RenderResourcePolicy::interactive()
-        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, rejected_limit)?;
-    let rejection = match CalibrationRenderer::new(rejected_policy).render_svg(source) {
+    let rejected_policy = policy.with_limit(ResourceLimitId::MaxLayoutWorkUnits, rejected_limit)?;
+    let rejection = match CalibrationRenderer::new(rejected_policy, theme).render_svg(source) {
         Err(RenderError::ResourceLimitExceeded(limit)) => {
             validate_layout_rejection(limit, rejected_policy)?
         }
@@ -1170,7 +1254,6 @@ fn validate_layout_rejection(
     if limit.cause != ResourceLimitCause::Ceiling
         || limit.phase != "layout_model"
         || limit.id != LAYOUT_WORK_LIMIT_ID
-        || policy.profile() != RenderResourceProfile::Interactive
         || maximum != expected_maximum
         || actual <= maximum
     {
@@ -1205,8 +1288,10 @@ fn validate_layout_rejection(
 
 fn find_flowchart_cardinality_boundary(
     boundary_max_nodes: usize,
+    policy: RenderResourcePolicy,
+    theme: &str,
 ) -> Result<CardinalityBoundaryReport, Box<dyn Error>> {
-    let renderer = CalibrationRenderer::new(RenderResourcePolicy::interactive());
+    let renderer = CalibrationRenderer::new(policy, theme);
     let mut accepted_nodes = 0usize;
     let mut accepted_prefix_count = 0usize;
     let mut accepted_prefix_digest = Sha256::new();
@@ -1275,7 +1360,7 @@ fn find_flowchart_cardinality_boundary(
         scanned_through_nodes: rejected_nodes,
         accepted_prefix_count,
         accepted_prefix_digest_encoding: "repeated u64-le(nodes) || u64-le(layout_work_units)",
-        accepted_prefix_observations_sha256: format!("{:x}", accepted_prefix_digest.finalize()),
+        accepted_prefix_observations_sha256: encode_lower_hex(&accepted_prefix_digest.finalize()),
         accepted_prefix_work_units_non_decreasing,
         first_rejected_nodes: rejected_nodes,
         accepted,
@@ -1366,8 +1451,10 @@ fn linear_flowchart_source(nodes: usize) -> String {
 
 fn find_architecture_iteration_boundary(
     boundary_max_iterations: usize,
+    policy: RenderResourcePolicy,
+    theme: &str,
 ) -> Result<ConfigurationBoundaryReport, Box<dyn Error>> {
-    let renderer = CalibrationRenderer::new(RenderResourcePolicy::interactive());
+    let renderer = CalibrationRenderer::new(policy, theme);
     let minimum_effective_iterations = ARCHITECTURE_BOUNDARY_NODES * 5;
     let mut accepted_iterations = minimum_effective_iterations;
     match probe_architecture_iterations(&renderer, accepted_iterations)? {
@@ -1627,8 +1714,18 @@ fn display_relative_path(path: &Path, workspace_root: &Path) -> String {
         .replace('\\', "/")
 }
 
+fn encode_lower_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    encode_lower_hex(&Sha256::digest(bytes))
 }
 
 fn sha256_file(path: &Path) -> Result<String, Box<dyn Error>> {
@@ -1670,6 +1767,127 @@ mod tests {
         assert_eq!(round_up_to_quantum(800_000, 100_000).unwrap(), 800_000);
         assert_eq!(round_up_to_quantum(800_001, 100_000).unwrap(), 900_000);
         assert!(round_up_to_quantum(usize::MAX, 100_000).is_err());
+    }
+
+    #[test]
+    fn headroom_uses_both_absolute_and_relative_margins() {
+        assert_eq!(
+            minimum_layout_work_ceiling(697_752, 100_000).unwrap(),
+            800_000
+        );
+        assert_eq!(
+            minimum_layout_work_ceiling(1_000_001, 1).unwrap(),
+            1_100_002
+        );
+        assert_eq!(
+            minimum_layout_work_ceiling(12_759_734, 1_000_000).unwrap(),
+            15_000_000
+        );
+        assert!(minimum_layout_work_ceiling(usize::MAX, 100_000).is_err());
+        assert!(minimum_layout_work_ceiling(100, 0).is_err());
+    }
+
+    #[test]
+    fn calibration_selectors_require_registered_policy_and_theme() {
+        for (name, profile, quantum) in [
+            ("interactive", RenderResourceProfile::Interactive, 100_000),
+            (
+                "trusted-native",
+                RenderResourceProfile::TrustedNative,
+                1_000_000,
+            ),
+        ] {
+            assert_eq!(parse_resource_profile(name).unwrap(), profile);
+            assert_eq!(ceiling_rounding_quantum(profile).unwrap(), quantum);
+        }
+        assert!(parse_resource_profile("unbounded-for-trusted-input").is_err());
+        assert!(parse_resource_profile("constrained").is_err());
+        assert!(ceiling_rounding_quantum(RenderResourceProfile::UnboundedForTrustedInput).is_err());
+        assert_eq!(parse_theme("default").unwrap(), "default");
+        assert_eq!(parse_theme("dark").unwrap(), "dark");
+        assert!(parse_theme("forest").is_err());
+    }
+
+    #[test]
+    fn arguments_preserve_defaults_and_scope_candidate_and_probe_limits() {
+        let required = [
+            "--authoritative-date",
+            "2026-10-01",
+            "--json-out",
+            "report.json",
+        ];
+        let defaults = parse_arguments_from(required.into_iter().map(str::to_owned)).unwrap();
+        assert_eq!(
+            defaults.resource_profile,
+            RenderResourceProfile::Interactive
+        );
+        assert_eq!(defaults.theme, "default");
+        assert_eq!(defaults.layout_work_limit, None);
+        assert!(defaults.probe.is_none());
+
+        let args = parse_arguments_from(
+            required
+                .into_iter()
+                .chain([
+                    "--resource-profile",
+                    "trusted-native",
+                    "--theme",
+                    "dark",
+                    "--layout-work-limit",
+                    "15000000",
+                    "--probe-limit",
+                    "1193771",
+                    "--probe-fixture",
+                    "class_nested_namespaces",
+                    "--probe-stage",
+                    "end-to-end",
+                ])
+                .map(str::to_owned),
+        )
+        .unwrap();
+        assert_eq!(args.resource_profile, RenderResourceProfile::TrustedNative);
+        assert_eq!(args.theme, "dark");
+        assert_eq!(args.layout_work_limit, Some(15_000_000));
+        assert_eq!(args.probe.unwrap().limit, Some(1_193_771));
+    }
+
+    #[test]
+    fn renderer_theme_matches_site_configuration_precedence() {
+        let policy = RenderResourcePolicy::trusted_native();
+        let light = CalibrationRenderer::new(policy, "default");
+        let dark = CalibrationRenderer::new(policy, "dark");
+        let source = "flowchart LR\nA[Start] --> B[Done]\n";
+        let light_svg = light.render_svg(source).unwrap().unwrap();
+        let dark_svg = dark.render_svg(source).unwrap().unwrap();
+        assert_ne!(light_svg.svg(), dark_svg.svg());
+        let source_override = format!("%%{{init: {{\"theme\": \"default\"}}}}%%\n{source}");
+        assert_eq!(
+            light.render_svg(&source_override).unwrap().unwrap().svg(),
+            dark.render_svg(&source_override).unwrap().unwrap().svg(),
+        );
+    }
+
+    #[test]
+    fn rejection_and_policy_reports_preserve_selected_profile_and_override() {
+        let policy = RenderResourcePolicy::trusted_native()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let report = policy_report(&policy).unwrap();
+        assert_eq!(report.profile, "trusted-native");
+        assert_eq!(report.max_layout_work_units, 1);
+        assert_eq!(report.explicit_overrides.len(), 1);
+        assert_eq!(report.explicit_overrides[0].id, LAYOUT_WORK_LIMIT_ID);
+        assert_eq!(report.explicit_overrides[0].value, 1);
+        let error = CalibrationRenderer::new(policy, "dark")
+            .render_svg("flowchart LR\nA --> B\n")
+            .unwrap_err();
+        let RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected structured layout-work rejection");
+        };
+        let rejection = validate_layout_rejection(limit, policy).unwrap();
+        assert_eq!(rejection.profile, "trusted-native");
+        assert_eq!(rejection.max, 1);
+        assert_eq!(rejection.explicit_overrides[0].value, 1);
     }
 
     #[test]

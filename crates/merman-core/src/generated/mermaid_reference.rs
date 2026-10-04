@@ -2,13 +2,13 @@
 // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.
 
 /// Upstream Mermaid tag pinned by this repository.
-pub const PINNED_MERMAID_BASELINE_TAG: &str = "mermaid@12.0.0";
+pub const PINNED_MERMAID_BASELINE_TAG: &str = "mermaid@12.1.0";
 
 /// Upstream Mermaid semver pinned by this repository.
-pub const PINNED_MERMAID_BASELINE_VERSION: &str = "12.0.0";
+pub const PINNED_MERMAID_BASELINE_VERSION: &str = "12.1.0";
 
 /// Upstream `@mermaid-js/mermaid-cli` semver used by compatibility surfaces.
-pub const PINNED_MERMAID_CLI_VERSION: &str = "11.17.0";
+pub const PINNED_MERMAID_CLI_VERSION: &str = "12.0.0";
 
 /// Filesystem/module-name-safe baseline version.
-pub const PINNED_MERMAID_BASELINE_VERSION_SUFFIX: &str = "12_0_0";
+pub const PINNED_MERMAID_BASELINE_VERSION_SUFFIX: &str = "12_1_0";

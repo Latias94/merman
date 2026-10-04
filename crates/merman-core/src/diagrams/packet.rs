@@ -849,6 +849,32 @@ mod tests {
     }
 
     #[test]
+    fn packet_bit_order_preserves_typed_model_and_semantic_ranges() {
+        let source = "packet\n+12: \"wide\"\n+1: \"flag\"\n";
+        let mut packets = Vec::new();
+        for bit_order in ["ascending", "descending"] {
+            let meta = ParseMetadata {
+                diagram_type: "packet".to_string(),
+                config: MermaidConfig::empty_object(),
+                effective_config: MermaidConfig::from_value(json!({
+                    "packet": { "bitsPerRow": 8, "bitOrder": bit_order }
+                })),
+                title: None,
+            };
+            let typed = parse_packet_model_for_render(source, &meta).unwrap();
+            let compat = render_model_to_compat_json(&typed, &meta).unwrap();
+            assert_eq!(compat, parse_packet(source, &meta).unwrap());
+            assert_eq!(compat["config"]["packet"]["bitOrder"], bit_order);
+            packets.push(compat["packet"].clone());
+            assert!(parse_packet("packet\n7-0: \"reversed\"", &meta).is_err());
+        }
+        assert_eq!(packets[0], packets[1]);
+        assert_eq!(packets[1][1][0]["start"], 8);
+        assert_eq!(packets[1][1][0]["end"], 11);
+        assert_eq!(packets[1][1][1]["start"], 12);
+    }
+
+    #[test]
     fn packet_typed_projection_preserves_empty_and_header_only_output_states() {
         let meta = ParseMetadata {
             diagram_type: "packet".to_string(),

@@ -1634,3 +1634,460 @@ classDiagram
         );
     }
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_and_dagre_labels_follow_the_requested_dom_mode() {
+    for layout in ["elk", "dagre"] {
+        for html in [false, true] {
+            let svg = render_class_svg_from_text(&format!(
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {}\n---\nclassDiagram\nnamespace NamespaceTitle {{\nclass ServiceClass {{\n+completeOperation()\n}}\n}}\nServiceClass --() ProvidedInterface\n",
+                !html
+            ));
+            let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+            if !html {
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    "SVG label mode must cover every label owner: {layout}"
+                );
+            }
+            for (id, expected_text) in [
+                ("merman-NamespaceTitle", "NamespaceTitle"),
+                ("merman-classId-ServiceClass-0", "ServiceClass"),
+                ("merman-interface0", "ProvidedInterface"),
+            ] {
+                let owner = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .expect("label owner");
+                let label = owner
+                    .descendants()
+                    .find(|node| node.has_tag_name(if html { "foreignObject" } else { "text" }))
+                    .expect("label in the requested DOM mode");
+                let text = label
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert!(
+                    text.contains(expected_text),
+                    "missing complete label {expected_text}: {text}"
+                );
+            }
+            let visible = document
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert!(visible.contains("completeOperation()"));
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_interface_padding_is_measured_before_layout_and_matches_painted_rect() {
+    for look in ["classic", "neo"] {
+        for html in [false, true] {
+            for font_size in [14, 23] {
+                let source = format!(
+                    "---\nconfig:\n  layout: elk\n  look: {look}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA --() CompleteInterface\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .unwrap()
+                    .unwrap();
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::headless_svg_defaults(),
+                    RenderEnvironment::deterministic().begin_session().unwrap(),
+                )
+                .unwrap();
+                let projection = artifact.layout_json().unwrap();
+                let layout: merman_render::model::ClassDiagramLayout =
+                    serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+                let node = layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "interface0")
+                    .unwrap();
+                let (padding_x, padding_y) = if look == "neo" {
+                    (32.0, 24.0)
+                } else {
+                    (0.0, 0.0)
+                };
+                let svg = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(svg.svg()).unwrap();
+                let owner = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-interface0"))
+                    .unwrap();
+                let rect = owner
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                let number = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+                assert!((number("width") - node.width).abs() < 1e-3);
+                assert!((number("height") - node.height).abs() < 1e-3);
+                if html {
+                    let label = owner
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .unwrap();
+                    let label_width = label.attribute("width").unwrap().parse::<f64>().unwrap();
+                    let label_height = label.attribute("height").unwrap().parse::<f64>().unwrap();
+                    assert!((number("width") - label_width - padding_x).abs() < 1e-3);
+                    assert!((number("height") - label_height - padding_y).abs() < 1e-3);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_line_hops_only_change_crossing_paths() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA --> X : ax\nA --> Y\nA --> Z\nB --> X\nB --> Y : by\nB --> Z\nC --> X\nC --> Y\nC --> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| (node.attribute("data-id").unwrap(), node))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths[0].len(), 9);
+    let mut rewritten = 0;
+    let mut visible_hops = 0;
+    let mut unchanged = 0;
+    for (id, base) in &paths[0] {
+        let arc = paths[1][id];
+        let gap = paths[2][id];
+        if base.attribute("d") != arc.attribute("d") {
+            rewritten += 1;
+            assert_ne!(base.attribute("d"), gap.attribute("d"));
+            // Crossings still trigger source path normalization when every hop is clamped.
+            // Require a separate surviving hop to prove that arc and gap modes both render.
+            if arc.attribute("d") != gap.attribute("d") {
+                visible_hops += 1;
+                assert!(arc.attribute("d").unwrap().contains('A'));
+                assert!(gap.attribute("d").unwrap().matches('M').count() > 1);
+            }
+        } else {
+            unchanged += 1;
+            assert_eq!(base.attribute("d"), gap.attribute("d"));
+        }
+        for attr in ["marker-start", "marker-end", "data-points"] {
+            assert_eq!(
+                base.attribute(attr),
+                arc.attribute(attr),
+                "arc changed {attr} for {id}"
+            );
+            assert_eq!(
+                base.attribute(attr),
+                gap.attribute(attr),
+                "gap changed {attr} for {id}"
+            );
+        }
+    }
+    assert!(rewritten > 0, "K3,3 must exercise a crossing rewrite");
+    assert!(
+        visible_hops > 0,
+        "labelled K3,3 must retain a visible hop in both enabled modes"
+    );
+    assert!(unchanged > 0, "noncrossing paths must remain unchanged");
+    let label_positions = documents
+        .iter()
+        .map(|document| {
+            let group = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("edgeLabels"))
+                .unwrap();
+            group
+                .descendants()
+                .filter_map(|node| node.attribute("transform"))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert!(!label_positions[0].is_empty());
+    assert_eq!(label_positions[0], label_positions[1]);
+    assert_eq!(label_positions[0], label_positions[2]);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_neo_hops_rewrite_the_original_dashed_marker_mask() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA ..> X\nA ..> Y\nA ..> Z\nB ..> X\nB ..> Y\nB ..> Z\nC ..> X\nC ..> Y\nC ..> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  look: neo\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| (node.attribute("data-id").unwrap(), node))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    let dash_values = |style: &str| {
+        style
+            .split("stroke-dasharray:")
+            .nth(1)
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>()
+    };
+    for hopped in &paths[1..] {
+        let mut changed = 0;
+        for (id, original) in &paths[0] {
+            let rewritten = hopped[id];
+            let original_style = original.attribute("style").unwrap();
+            let rewritten_style = rewritten.attribute("style").unwrap();
+            if original.attribute("d") != rewritten.attribute("d") {
+                changed += 1;
+                let before = dash_values(original_style);
+                let after = dash_values(rewritten_style);
+                assert!(
+                    before.len() > 4,
+                    "original mask contains repeated 2 2 dashes"
+                );
+                assert_eq!(
+                    after.len(),
+                    4,
+                    "afterPaint collapses the original mask to one on interval"
+                );
+                assert_eq!((after[0], after[1], after[3]), (0.0, before[1], before[3]));
+                assert_eq!(
+                    after[3], 2.0,
+                    "Mermaid reads the original mask's fourth number as its tail"
+                );
+                assert!(after[2] > 2.0);
+                assert!(!rewritten_style.contains(";;"));
+            } else {
+                assert_eq!(original_style, rewritten_style);
+            }
+            assert_eq!(
+                original.attribute("marker-end"),
+                rewritten.attribute("marker-end")
+            );
+        }
+        assert!(changed > 0, "dashed K3,3 must exercise an actual crossing");
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_svg_interface_wraps_long_words_without_wrapping_namespace_titles() {
+    let label = "ProvidedInterfaceWithALongLabel";
+    let dimensions = [40, 400].map(|width| {
+        let source = format!(
+            "---\nconfig:\n  layout: elk\n  htmlLabels: false\n  flowchart:\n    wrappingWidth: {width}\n---\nclassDiagram\nnamespace NamespaceTitleMustRemainUnwrapped {{\nclass A\n}}\nA --() {label}\n"
+        );
+        let svg = render_class_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let owner = document.descendants().find(|node| node.attribute("id") == Some("merman-interface0")).unwrap();
+        let rect = owner.children().find(|node| node.has_tag_name("rect")).unwrap();
+        let rows = |owner: roxmltree::Node<'_, '_>| {
+            owner.descendants().filter(|node| node.attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| class == "text-outer-tspan")
+            })).count()
+        };
+        let visible = owner.descendants().filter(|node| node.is_text()).filter_map(|node| node.text()).collect::<String>();
+        assert_eq!(visible, label, "wrapping must retain every character");
+        let namespace = document.descendants().find(|node| node.attribute("id") == Some("merman-NamespaceTitleMustRemainUnwrapped")).unwrap();
+        assert_eq!(rows(namespace), 1, "ELK ordinary namespace titles stay unwrapped");
+        (rect.attribute("width").unwrap().parse::<f64>().unwrap(),
+            rect.attribute("height").unwrap().parse::<f64>().unwrap(), rows(owner))
+    });
+    assert!(dimensions[0].0 < dimensions[1].0);
+    assert!(dimensions[0].1 > dimensions[1].1);
+    assert!(dimensions[0].2 > dimensions[1].2);
+    assert_eq!(dimensions[1].2, 1);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_rewrites_detected_crossings_even_when_hops_are_squeezed_out() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA --> X\nA --> Y\nA --> Z\nB --> X\nB --> Y\nB --> Z\nC --> X\nC --> Y\nC --> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  look: neo\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| {
+                    (
+                        node.attribute("data-id").unwrap(),
+                        node.attribute("d").unwrap(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    let rewritten_without_a_visible_hop = paths[0]
+        .iter()
+        .filter(|(id, original)| **original != paths[1][*id] && paths[1][*id] == paths[2][*id])
+        .count();
+    assert!(
+        rewritten_without_a_visible_hop > 0,
+        "Mermaid still normalizes crossing paths when corner and adjacency limits suppress every hop"
+    );
+}
+
+#[test]
+fn class_cardinality_terminals_share_measured_bounds_and_centered_inner_in_both_layouts() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n---\nclassDiagram\nA \"WWWWideStartCardinality\" --> \"LongEndCardinality\" B\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .unwrap();
+            let json = artifact.layout_json().unwrap();
+            let headless: merman_render::model::ClassDiagramLayout =
+                serde_json::from_value(json["layout"]["ClassDiagramV2"].clone()).unwrap();
+            let edge = &headless.edges[0];
+            let expected = [
+                edge.start_label_right.as_ref().unwrap(),
+                edge.end_label_left.as_ref().unwrap(),
+            ];
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+                .svg()
+                .to_owned();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let terminals: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("edgeTerminals"))
+                .collect();
+            assert_eq!(terminals.len(), 2);
+            for ((terminal, metrics), text) in terminals
+                .into_iter()
+                .zip(expected)
+                .zip(["WWWWideStartCardinality", "LongEndCardinality"])
+            {
+                let inner = terminal
+                    .children()
+                    .find(|node| node.attribute("class") == Some("inner"))
+                    .unwrap();
+                let content: String = inner
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect();
+                assert_eq!(
+                    content, text,
+                    "{layout}/{html}: terminal content must stay inside its centered inner group"
+                );
+                assert!(metrics.width > 50.0 && metrics.height > 0.0);
+                let transform = inner.attribute("transform").unwrap();
+                assert!(transform.starts_with("translate("));
+                if html {
+                    let foreign = inner
+                        .children()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .unwrap();
+                    let width: f64 = foreign.attribute("width").unwrap().parse().unwrap();
+                    let height: f64 = foreign.attribute("height").unwrap().parse().unwrap();
+                    assert!((width - metrics.width).abs() < 0.002);
+                    assert!((height - metrics.height).abs() < 0.002);
+                    assert!(
+                        height > 12.0,
+                        "11px terminal text has a measured 1.5 line height"
+                    );
+                    let style = foreign.attribute("style").unwrap();
+                    let css_number = |name: &str| {
+                        style
+                            .split(';')
+                            .find_map(|part| part.trim().strip_prefix(name))
+                            .unwrap()
+                            .trim()
+                            .trim_end_matches("px")
+                            .parse::<f64>()
+                            .unwrap()
+                    };
+                    assert!((css_number("height:") - height).abs() < 0.002);
+                    assert!(
+                        (css_number("width:")
+                            - width.max(text.encode_utf16().count() as f64 * 9.0))
+                        .abs()
+                            < 0.002
+                    );
+                    let coordinates = transform
+                        .strip_prefix("translate(")
+                        .unwrap()
+                        .trim_end_matches(')')
+                        .split(',')
+                        .map(|value| value.trim().parse::<f64>().unwrap())
+                        .collect::<Vec<_>>();
+                    assert!((coordinates[0] + width / 2.0).abs() < 0.002);
+                    assert!((coordinates[1] + height / 2.0).abs() < 0.002);
+                } else {
+                    assert!(
+                        !inner
+                            .descendants()
+                            .any(|node| node.has_tag_name("foreignObject"))
+                    );
+                    assert!(inner.descendants().any(|node| node.has_tag_name("text")));
+                }
+            }
+        }
+    }
+}

@@ -197,6 +197,7 @@ mod tests {
                 source: "a".into(),
                 target: "outside".into(),
                 label: None,
+                terminal_labels: Vec::new(),
                 minlen: 1,
                 inside_self_loops_yo: false,
             }],

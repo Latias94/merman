@@ -207,3 +207,33 @@ fn new_family_container_metadata_and_relation_edits_match_fresh_parses() {
         );
     }
 }
+
+#[test]
+fn sequence_menu_keyword_endpoint_edits_match_fresh_parses() {
+    for (source, old, replacement) in [
+        ("sequenceDiagram\nLink->>A: message\n", "Link", "Properties"),
+        (
+            "sequenceDiagram\nlink Link: Help\n",
+            "link Link:",
+            "Link->>A:",
+        ),
+        (
+            "sequenceDiagram\nLink->>A: message\n",
+            "Link->>A:",
+            "links A:",
+        ),
+        (
+            "sequenceDiagram\nLinks->>A: message\n",
+            "Links",
+            "LinkService",
+        ),
+    ] {
+        let start = source.find(old).unwrap();
+        replace_and_compare(
+            source.as_bytes(),
+            start,
+            start + old.len(),
+            replacement.as_bytes(),
+        );
+    }
+}

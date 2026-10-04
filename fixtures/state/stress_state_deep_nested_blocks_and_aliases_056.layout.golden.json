@@ -21,9 +21,9 @@
         },
         {
           "id": "Mid",
-          "x": 158.19,
+          "x": 170.38,
           "y": 225.5,
-          "width": 220.38,
+          "width": 196.0,
           "height": 147.0,
           "is_cluster": true
         },
@@ -37,9 +37,9 @@
         },
         {
           "id": "Outer",
-          "x": 152.19,
+          "x": 158.19,
           "y": 247.5,
-          "width": 280.38,
+          "width": 268.38,
           "height": 363.0,
           "is_cluster": true
         },
@@ -245,15 +245,15 @@
       "clusters": [
         {
           "id": "Mid",
-          "x": 158.19,
+          "x": 170.38,
           "y": 225.5,
-          "width": 220.38,
+          "width": 196.0,
           "height": 147.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Mid State",
           "title_label": {
-            "x": 158.19,
+            "x": 170.38,
             "y": 162.5,
             "width": 55.44,
             "height": 21.0
@@ -266,15 +266,15 @@
         },
         {
           "id": "Outer",
-          "x": 152.19,
+          "x": 158.19,
           "y": 247.5,
-          "width": 280.38,
+          "width": 268.38,
           "height": 363.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Outer State",
           "title_label": {
-            "x": 152.19,
+            "x": 158.19,
             "y": 76.5,
             "width": 69.58,
             "height": 21.0
@@ -287,7 +287,7 @@
         }
       ],
       "bounds": {
-        "min_x": 12.0,
+        "min_x": 24.0,
         "min_y": 12.0,
         "max_x": 292.38,
         "max_y": 493.0

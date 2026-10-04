@@ -1,6 +1,6 @@
 use crate::Result;
 use cssparser::{
-    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserInput, ParserState,
+    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, SourcePosition, StyleSheetParser, ToCss, Token,
 };
 use std::borrow::Cow;
@@ -103,8 +103,7 @@ pub(super) fn sanitize_css_with_checkpoints<E>(
 
 #[cfg(test)]
 pub(super) fn sanitize_css_value(value: &str) -> Option<String> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let mut probe = || true;
     let mut control = CssParseControl::new(&mut probe);
     rewrite_component_values(
@@ -121,8 +120,7 @@ pub(super) fn sanitize_css_value_with_checkpoints<E>(
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<Option<String>, E> {
     Ok(run_with_css_control(checkpoint, |control| {
-        let mut input = ParserInput::new(value);
-        let mut parser = Parser::new(&mut input);
+        let mut parser = Parser::new(value);
         rewrite_component_values(
             &mut parser,
             CssProcessingMode::Sanitize,
@@ -155,8 +153,7 @@ pub(in crate::svg::pipeline) fn validate_resvg_css_stylesheet_with_checkpoints<E
 pub(in crate::svg::pipeline) fn validate_resvg_css_declaration_list(
     css: &str,
 ) -> std::result::Result<(), String> {
-    let mut input = ParserInput::new(css);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(css);
     let mut probe = || true;
     let mut control = CssParseControl::new(&mut probe);
     rewrite_declaration_list(
@@ -174,8 +171,7 @@ pub(in crate::svg::pipeline) fn validate_resvg_css_declaration_list_with_checkpo
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<(), CssValidationError<E>> {
     run_with_css_control(checkpoint, |control| {
-        let mut input = ParserInput::new(css);
-        let mut parser = Parser::new(&mut input);
+        let mut parser = Parser::new(css);
         rewrite_declaration_list(
             &mut parser,
             CssProcessingMode::Validate,
@@ -239,12 +235,8 @@ impl<'a> CssParseControl<'a> {
         }
     }
 
-    fn step<'i, 't>(
-        &mut self,
-        input: &Parser<'i, 't>,
-    ) -> std::result::Result<(), ParseError<'i, CssViolation>> {
-        self.observe()
-            .map_err(|violation| input.new_custom_error(violation))
+    fn step(&mut self) -> std::result::Result<(), ParseError<CssViolation>> {
+        self.observe().map_err(ParseError::custom)
     }
 
     fn observe(&mut self) -> std::result::Result<(), CssViolation> {
@@ -268,12 +260,9 @@ impl<'a> CssParseControl<'a> {
 struct CssNestingDepth(u8);
 
 impl CssNestingDepth {
-    fn descend<'i, 't>(
-        self,
-        input: &Parser<'i, 't>,
-    ) -> std::result::Result<Self, ParseError<'i, CssViolation>> {
+    fn descend(self) -> std::result::Result<Self, ParseError<CssViolation>> {
         if self.0 >= CSS_NESTING_HARD_LIMIT {
-            return Err(input.new_custom_error(CssViolation::NestingLimit));
+            return Err(ParseError::custom(CssViolation::NestingLimit));
         }
         Ok(Self(self.0 + 1))
     }
@@ -354,11 +343,11 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
     type AtRule = String;
     type Error = CssViolation;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         let prelude = rewrite_component_values(input, self.mode, self.depth, self.control)?;
         let normalized_name = name.to_ascii_lowercase();
         let body = match normalized_name.as_str() {
@@ -375,9 +364,9 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
         );
         if explicitly_removed || body.is_none() {
             if self.mode == CssProcessingMode::Validate {
-                return Err(
-                    input.new_custom_error(CssViolation::UnsupportedAtRule(normalized_name))
-                );
+                return Err(ParseError::custom(CssViolation::UnsupportedAtRule(
+                    normalized_name,
+                )));
             }
             return Ok(AtRulePrelude::Drop);
         }
@@ -400,13 +389,13 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::AtRule, ParseError<'i, Self::Error>> {
-        let depth = self.depth.descend(input)?;
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::AtRule, ParseError<Self::Error>> {
+        let depth = self.depth.descend()?;
         let AtRulePrelude::Keep {
             name,
             prelude,
@@ -432,29 +421,27 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
     type QualifiedRule = String;
     type Error = CssViolation;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         let prelude = rewrite_component_values(input, self.mode, self.depth, self.control)?;
-        if selector_contains_root(&prelude, self.depth, self.control)
-            .map_err(|violation| input.new_custom_error(violation))?
-        {
+        if selector_contains_root(&prelude, self.depth, self.control).map_err(ParseError::custom)? {
             if self.mode == CssProcessingMode::Validate {
-                return Err(input.new_custom_error(CssViolation::RootSelector));
+                return Err(ParseError::custom(CssViolation::RootSelector));
             }
             return Ok(None);
         }
         Ok(Some(prelude))
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
-        let depth = self.depth.descend(input)?;
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::QualifiedRule, ParseError<Self::Error>> {
+        let depth = self.depth.descend()?;
         let Some(prelude) = prelude else {
             consume_component_values(input, depth, self.control)?;
             return Ok(String::new());
@@ -476,18 +463,17 @@ fn process_stylesheet_with_control(
     mode: CssProcessingMode,
     control: &mut CssParseControl<'_>,
 ) -> std::result::Result<String, String> {
-    let mut input = ParserInput::new(css);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(css);
     rewrite_rule_list(&mut input, mode, CssNestingDepth::default(), control)
         .map_err(format_parse_error)
 }
 
-fn rewrite_rule_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_rule_list(
+    input: &mut Parser<'_>,
     mode: CssProcessingMode,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<String, ParseError<'i, CssViolation>> {
+) -> std::result::Result<String, ParseError<CssViolation>> {
     let mut parser = ResvgCssRuleParser {
         mode,
         depth,
@@ -498,8 +484,8 @@ fn rewrite_rule_list<'i, 't>(
     for rule in StyleSheetParser::new(input, &mut parser) {
         match rule {
             Ok(rule) => output.push_str(&rule),
-            Err((error, _)) if is_cancelled_parse_error(&error) => return Err(error),
-            Err((error, _)) if mode == CssProcessingMode::Validate => return Err(error),
+            Err((error, _, _)) if is_cancelled_parse_error(&error) => return Err(error),
+            Err((error, _, _)) if mode == CssProcessingMode::Validate => return Err(error),
             Err(_) => {}
         }
     }
@@ -507,16 +493,16 @@ fn rewrite_rule_list<'i, 't>(
     Ok(output)
 }
 
-fn rewrite_declaration_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_declaration_list(
+    input: &mut Parser<'_>,
     mode: CssProcessingMode,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<String, ParseError<'i, CssViolation>> {
+) -> std::result::Result<String, ParseError<CssViolation>> {
     let mut output = String::new();
 
     loop {
-        control.step(input)?;
+        control.step()?;
         let declaration_start = input.position();
         if input.is_exhausted() {
             output.push_str(input.slice_from(declaration_start));
@@ -533,7 +519,7 @@ fn rewrite_declaration_list<'i, 't>(
             if is_animation_property(&property) {
                 consume_component_values(declaration, depth, control)?;
                 if mode == CssProcessingMode::Validate {
-                    return Err(declaration.new_custom_error(CssViolation::Animation));
+                    return Err(ParseError::custom(CssViolation::Animation));
                 }
                 return Ok(None);
             }
@@ -541,14 +527,14 @@ fn rewrite_declaration_list<'i, 't>(
             if is_marker_reference_property(&property) {
                 consume_component_values(declaration, depth, control)?;
                 if mode == CssProcessingMode::Validate {
-                    return Err(declaration.new_custom_error(CssViolation::MarkerReference));
+                    return Err(ParseError::custom(CssViolation::MarkerReference));
                 }
                 return Ok(None);
             }
 
             let value = rewrite_component_values(declaration, mode, depth, control)?;
             if value.trim().is_empty() {
-                return Err(declaration.new_custom_error(CssViolation::EmptyDeclaration));
+                return Err(ParseError::custom(CssViolation::EmptyDeclaration));
             }
             Ok(Some((prefix, value)))
         });
@@ -574,16 +560,16 @@ fn rewrite_declaration_list<'i, 't>(
     }
 }
 
-fn rewrite_component_values<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_component_values(
+    input: &mut Parser<'_>,
     mode: CssProcessingMode,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<String, ParseError<'i, CssViolation>> {
+) -> std::result::Result<String, ParseError<CssViolation>> {
     let mut output = String::new();
 
     loop {
-        control.step(input)?;
+        control.step()?;
         let token_start = input.position();
         let token = match input.next_including_whitespace() {
             Ok(token) => token.clone(),
@@ -603,7 +589,7 @@ fn rewrite_component_values<'i, 't>(
                 unit,
             } if unit.eq_ignore_ascii_case("deg") => {
                 if mode == CssProcessingMode::Validate {
-                    return Err(input.new_custom_error(CssViolation::Degrees));
+                    return Err(ParseError::custom(CssViolation::Degrees));
                 }
                 output.push_str(
                     &Token::Number {
@@ -616,15 +602,15 @@ fn rewrite_component_values<'i, 't>(
             }
             Token::UnquotedUrl(url) => {
                 if is_unsafe_render_resource_url_value(&url) {
-                    return Err(input.new_custom_error(CssViolation::UnsafeUrl));
+                    return Err(ParseError::custom(CssViolation::UnsafeUrl));
                 }
                 output.push_str(input.slice(token_start..token_end));
             }
             Token::Function(name) => {
                 if matches_external_image_function(&name) {
-                    return Err(input.new_custom_error(CssViolation::ExternalImageFunction));
+                    return Err(ParseError::custom(CssViolation::ExternalImageFunction));
                 }
-                let nested_depth = depth.descend(input)?;
+                let nested_depth = depth.descend()?;
                 output.push_str(input.slice(token_start..token_end));
                 let nested = input.parse_nested_block(|nested| {
                     if name.eq_ignore_ascii_case("url") {
@@ -638,7 +624,7 @@ fn rewrite_component_values<'i, 't>(
                 output.push(')');
             }
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
-                let nested_depth = depth.descend(input)?;
+                let nested_depth = depth.descend()?;
                 output.push_str(input.slice(token_start..token_end));
                 let nested = input.parse_nested_block(|nested| {
                     rewrite_component_values(nested, mode, nested_depth, control)
@@ -654,7 +640,7 @@ fn rewrite_component_values<'i, 't>(
                 output.push(close);
             }
             Token::BadUrl(_) | Token::BadString(_) => {
-                return Err(input.new_custom_error(CssViolation::BadToken));
+                return Err(ParseError::custom(CssViolation::BadToken));
             }
             _ => output.push_str(input.slice(token_start..token_end)),
         }
@@ -665,22 +651,20 @@ pub(in crate::svg::pipeline) fn matches_external_image_function(name: &str) -> b
     name.eq_ignore_ascii_case("image-set") || name.eq_ignore_ascii_case("-webkit-image-set")
 }
 
-fn ensure_source_closed_block<'i, 't>(
-    input: &Parser<'i, 't>,
+fn ensure_source_closed_block(
+    input: &Parser<'_>,
     token_start: SourcePosition,
     close: char,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<(), ParseError<'i, CssViolation>> {
+) -> std::result::Result<(), ParseError<CssViolation>> {
     let raw_block = input.slice(token_start..input.position());
-    if source_ends_with_close(raw_block, close, control)
-        .map_err(|violation| input.new_custom_error(violation))?
-        && source_closes_initial_block(raw_block, close, control)
-            .map_err(|violation| input.new_custom_error(violation))?
+    if source_ends_with_close(raw_block, close, control).map_err(ParseError::custom)?
+        && source_closes_initial_block(raw_block, close, control).map_err(ParseError::custom)?
     {
         return Ok(());
     }
 
-    Err(input.new_custom_error(CssViolation::UnclosedBlock))
+    Err(ParseError::custom(CssViolation::UnclosedBlock))
 }
 
 fn source_ends_with_close(
@@ -711,8 +695,7 @@ fn source_closes_initial_block(
     probe.push(' ');
     probe.push_str(SENTINEL);
 
-    let mut input = ParserInput::new(&probe);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(&probe);
     let Ok(token) = parser.next_including_whitespace().cloned() else {
         return Ok(false);
     };
@@ -722,12 +705,12 @@ fn source_closes_initial_block(
 
     let nested_result = parser.parse_nested_block(|nested| {
         loop {
-            control.step(nested)?;
+            control.step()?;
             if nested.next_including_whitespace().is_err() {
                 break;
             }
         }
-        Ok::<_, ParseError<'_, CssViolation>>(())
+        Ok::<_, ParseError<CssViolation>>(())
     });
     if let Err(error) = nested_result {
         return if is_cancelled_parse_error(&error) {
@@ -753,33 +736,32 @@ fn opening_token_matches_close(token: &Token<'_>, close: char) -> bool {
     }
 }
 
-fn rewrite_quoted_url<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_quoted_url(
+    input: &mut Parser<'_>,
     mode: CssProcessingMode,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<String, ParseError<'i, CssViolation>> {
-    control.step(input)?;
+) -> std::result::Result<String, ParseError<CssViolation>> {
+    control.step()?;
     let url_start = input.position();
     let url = input.expect_string_cloned()?;
     input.expect_exhausted()?;
     if is_unsafe_render_resource_url_value(&url) {
-        return Err(input.new_custom_error(CssViolation::UnsafeUrl));
+        return Err(ParseError::custom(CssViolation::UnsafeUrl));
     }
 
     let raw = input.slice_from(url_start);
-    let mut raw_input = ParserInput::new(raw);
-    let mut raw_parser = Parser::new(&mut raw_input);
+    let mut raw_parser = Parser::new(raw);
     rewrite_component_values(&mut raw_parser, mode, depth, control)
 }
 
-fn consume_component_values<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn consume_component_values(
+    input: &mut Parser<'_>,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<(), ParseError<'i, CssViolation>> {
+) -> std::result::Result<(), ParseError<CssViolation>> {
     loop {
-        control.step(input)?;
+        control.step()?;
         let token = match input.next_including_whitespace() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => return Ok(()),
@@ -792,7 +774,7 @@ fn consume_component_values<'i, 't>(
                 | Token::SquareBracketBlock
                 | Token::CurlyBracketBlock
         ) {
-            let nested_depth = depth.descend(input)?;
+            let nested_depth = depth.descend()?;
             input.parse_nested_block(|nested| {
                 consume_component_values(nested, nested_depth, control)
             })?;
@@ -817,22 +799,21 @@ fn selector_contains_root(
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
 ) -> std::result::Result<bool, CssViolation> {
-    let mut input = ParserInput::new(selector);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(selector);
     parser_contains_root_selector(&mut parser, depth, control).map_err(|error| match error.kind {
         cssparser::ParseErrorKind::Custom(violation) => violation,
         cssparser::ParseErrorKind::Basic(_) => CssViolation::BadToken,
     })
 }
 
-fn parser_contains_root_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parser_contains_root_selector(
+    input: &mut Parser<'_>,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<bool, ParseError<'i, CssViolation>> {
+) -> std::result::Result<bool, ParseError<CssViolation>> {
     let mut after_colon = false;
     loop {
-        control.step(input)?;
+        control.step()?;
         let token = match input.next_including_whitespace() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
@@ -849,7 +830,7 @@ fn parser_contains_root_selector<'i, 't>(
                 if after_colon && name.eq_ignore_ascii_case("root") {
                     return Ok(true);
                 }
-                let nested_depth = depth.descend(input)?;
+                let nested_depth = depth.descend()?;
                 if input.parse_nested_block(|nested| {
                     parser_contains_root_selector(nested, nested_depth, control)
                 })? {
@@ -858,7 +839,7 @@ fn parser_contains_root_selector<'i, 't>(
                 after_colon = false;
             }
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
-                let nested_depth = depth.descend(input)?;
+                let nested_depth = depth.descend()?;
                 if input.parse_nested_block(|nested| {
                     parser_contains_root_selector(nested, nested_depth, control)
                 })? {
@@ -872,18 +853,15 @@ fn parser_contains_root_selector<'i, 't>(
     }
 }
 
-fn is_cancelled_parse_error(error: &ParseError<'_, CssViolation>) -> bool {
+fn is_cancelled_parse_error(error: &ParseError<CssViolation>) -> bool {
     matches!(
         &error.kind,
         cssparser::ParseErrorKind::Custom(CssViolation::Cancelled)
     )
 }
 
-fn format_parse_error(error: ParseError<'_, CssViolation>) -> String {
-    format!(
-        "{} at line {}, column {}",
-        error.kind, error.location.line, error.location.column
-    )
+fn format_parse_error(error: ParseError<CssViolation>) -> String {
+    error.to_string()
 }
 
 #[cfg(test)]

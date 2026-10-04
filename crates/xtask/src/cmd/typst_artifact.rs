@@ -381,7 +381,7 @@ impl ToolIdentity {
         hash_optional(&mut hasher, self.rustflags.as_deref());
         hash_optional(&mut hasher, self.cargo_encoded_rustflags.as_deref());
         ToolFingerprint {
-            sha256: format!("{:x}", hasher.finalize()),
+            sha256: crate::util::encode_lower_hex(&hasher.finalize()),
             cargo_version: self.cargo_version,
             rustc_version: self.rustc_version,
             wasm_opt_version: self.wasm_opt_version,
@@ -957,7 +957,7 @@ fn collect_input_fingerprint(
         hash_framed(&mut hasher, file.sha256.as_bytes());
     }
     Ok(InputFingerprint {
-        sha256: format!("{:x}", hasher.finalize()),
+        sha256: crate::util::encode_lower_hex(&hasher.finalize()),
         packages,
         files,
     })

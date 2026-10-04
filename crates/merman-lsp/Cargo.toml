@@ -268,12 +268,12 @@ ropey.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tower = { version = "0.5.2", default-features = false }
+tower = { version = "0.5.3", default-features = false }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
-tree-sitter = "=0.26.12"
+tree-sitter = "=0.27.0"
 tree-sitter-mermaid = { path = "../../distribution/tree-sitter-mermaid", version = "0.2.0" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
-tower = { version = "0.5.2", default-features = false, features = ["util"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }

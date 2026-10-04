@@ -1,0 +1,85 @@
+{
+  "diagramType": "packet",
+  "layout": {
+    "PacketDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 162.0,
+        "max_y": 106.0
+      },
+      "width": 162.0,
+      "height": 106.0,
+      "row_height": 32.0,
+      "padding_x": 2.0,
+      "padding_y": 14.0,
+      "bit_width": 10.0,
+      "bits_per_row": 16.0,
+      "show_bits": true,
+      "words": [
+        {
+          "blocks": [
+            {
+              "start": 0.0,
+              "end": 7.0,
+              "label": "DATA",
+              "x": 81.0,
+              "y": 14.0,
+              "width": 78.0,
+              "height": 32.0
+            },
+            {
+              "start": 8.0,
+              "end": 11.0,
+              "label": "TYPE",
+              "x": 41.0,
+              "y": 14.0,
+              "width": 38.0,
+              "height": 32.0
+            },
+            {
+              "start": 12.0,
+              "end": 12.0,
+              "label": "EN",
+              "x": 31.0,
+              "y": 14.0,
+              "width": 8.0,
+              "height": 32.0
+            },
+            {
+              "start": 13.0,
+              "end": 15.0,
+              "label": "FLAGS",
+              "x": 1.0,
+              "y": 14.0,
+              "width": 28.0,
+              "height": 32.0
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "start": 16.0,
+              "end": 20.0,
+              "label": "FLAGS",
+              "x": 111.0,
+              "y": 60.0,
+              "width": 48.0,
+              "height": 32.0
+            },
+            {
+              "start": 21.0,
+              "end": 23.0,
+              "label": "TAIL",
+              "x": 81.0,
+              "y": 60.0,
+              "width": 28.0,
+              "height": 32.0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -6,15 +6,15 @@
         {
           "id": "subGraph0",
           "x": 402.0,
-          "y": 83.1,
+          "y": 67.7,
           "width": 376.0,
-          "height": 142.2,
+          "height": 111.4,
           "is_cluster": true
         },
         {
           "id": "outside",
           "x": 88.0,
-          "y": 107.7,
+          "y": 76.9,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "outside2",
           "x": 716.0,
-          "y": 107.7,
+          "y": 76.9,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "x1",
           "x": 314.0,
-          "y": 107.7,
+          "y": 76.9,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "x2",
           "x": 490.0,
-          "y": 107.7,
+          "y": 76.9,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -54,15 +54,15 @@
           "points": [
             {
               "x": 164.0,
-              "y": 107.7
+              "y": 76.9
             },
             {
               "x": 204.0,
-              "y": 107.7
+              "y": 76.9
             },
             {
               "x": 238.0,
-              "y": 107.7
+              "y": 76.9
             }
           ],
           "label": null,
@@ -83,15 +83,15 @@
           "points": [
             {
               "x": 566.0,
-              "y": 107.7
+              "y": 76.9
             },
             {
               "x": 600.0,
-              "y": 107.7
+              "y": 76.9
             },
             {
               "x": 640.0,
-              "y": 107.7
+              "y": 76.9
             }
           ],
           "label": null,
@@ -112,11 +112,11 @@
           "points": [
             {
               "x": 390.0,
-              "y": 107.7
+              "y": 76.9
             },
             {
               "x": 414.0,
-              "y": 107.7
+              "y": 76.9
             }
           ],
           "label": null,
@@ -133,17 +133,17 @@
         {
           "id": "subGraph0",
           "x": 402.0,
-          "y": 83.1,
+          "y": 67.7,
           "width": 376.0,
-          "height": 142.2,
+          "height": 111.4,
           "diff": -4.0,
-          "offset_y": 40.2,
+          "offset_y": 9.4,
           "title": "A very long cluster title with punctuation: (a/b/c)",
           "title_label": {
             "x": 402.0,
-            "y": 34.1,
-            "width": 110.04,
-            "height": 44.2
+            "y": 18.7,
+            "width": 285.88,
+            "height": 13.4
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -156,7 +156,7 @@
         "min_x": 12.0,
         "min_y": 12.0,
         "max_x": 792.0,
-        "max_y": 154.2
+        "max_y": 123.4
       }
     }
   }

@@ -460,6 +460,10 @@ name = "render_many"
 required-features = ["svg"]
 
 [[example]]
+name = "render_cancellable"
+required-features = ["svg"]
+
+[[example]]
 name = "render_png"
 required-features = ["png"]
 

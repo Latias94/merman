@@ -6,9 +6,9 @@
         {
           "id": "A",
           "x": 254.0,
-          "y": 437.074,
+          "y": 432.074,
           "width": 484.0,
-          "height": 850.149,
+          "height": 840.149,
           "is_cluster": true
         },
         {
@@ -331,9 +331,9 @@
         {
           "id": "A",
           "x": 254.0,
-          "y": 437.074,
+          "y": 432.074,
           "width": 484.0,
-          "height": 850.149,
+          "height": 840.149,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "Parent Cluster",

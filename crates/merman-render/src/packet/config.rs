@@ -47,6 +47,7 @@ impl<'a> PacketConfigView<'a> {
 
         Ok(PacketLayoutSettings {
             show_bits,
+            bit_order: self.bit_order(),
             row_height: self
                 .packet_f64("rowHeight")
                 .unwrap_or(DEFAULT_ROW_HEIGHT)
@@ -62,6 +63,13 @@ impl<'a> PacketConfigView<'a> {
                 .max(1.0),
             bits_per_row: validate_packet_bits_per_row(self.packet_i64("bitsPerRow"))?,
         })
+    }
+
+    pub(crate) fn bit_order(&self) -> PacketBitOrder {
+        match self.packet_config.get("bitOrder").and_then(Value::as_str) {
+            Some("descending") => PacketBitOrder::Descending,
+            _ => PacketBitOrder::Ascending,
+        }
     }
 
     pub(crate) fn style_settings(&self) -> PacketStyleSettings {
@@ -97,9 +105,16 @@ impl<'a> PacketConfigView<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PacketBitOrder {
+    Ascending,
+    Descending,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PacketLayoutSettings {
     pub(crate) show_bits: bool,
+    pub(crate) bit_order: PacketBitOrder,
     pub(crate) row_height: f64,
     pub(crate) padding_x: f64,
     pub(crate) padding_y: f64,
@@ -132,6 +147,7 @@ mod tests {
         let settings = PacketConfigView::new(&cfg).layout_settings().unwrap();
 
         assert!(settings.show_bits);
+        assert_eq!(settings.bit_order, PacketBitOrder::Ascending);
         assert_eq!(settings.row_height, DEFAULT_ROW_HEIGHT);
         assert_eq!(settings.padding_x, DEFAULT_PADDING_X);
         assert_eq!(
@@ -147,6 +163,7 @@ mod tests {
         let cfg = json!({
             "packet": {
                 "showBits": false,
+                "bitOrder": "descending",
                 "rowHeight": "40",
                 "paddingX": 9,
                 "paddingY": 11,
@@ -157,6 +174,7 @@ mod tests {
         let settings = PacketConfigView::new(&cfg).layout_settings().unwrap();
 
         assert!(!settings.show_bits);
+        assert_eq!(settings.bit_order, PacketBitOrder::Descending);
         assert_eq!(settings.row_height, 40.0);
         assert_eq!(settings.padding_x, 9.0);
         assert_eq!(settings.padding_y, 11.0);

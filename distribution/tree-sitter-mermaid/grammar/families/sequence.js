@@ -1,6 +1,8 @@
 // Source translation: Mermaid 11.16.1
 // packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison
 // commit 7ecca0cd7f1658ef74f4e7e91f925724ef403bbf.
+// Actor-menu keyword endpoints also follow Mermaid 12.1.0,
+// commit 21f72f07ea22c0af48a3149c550654e80d8e40cb (same Jison source).
 
 const diagramKeyword = ($) => field(
   'keyword',
@@ -167,6 +169,7 @@ const sequenceRules = {
 
   _sequence_actor_identifier: ($) => choice(
     $._sequence_keyword_prefixed_actor_identifier,
+    $._sequence_actor_menu_keyword,
     token(prec(30, choice(
       // Reserve `-x` for cross arrows while retaining ordinary hyphenated ids.
       /[A-Za-z0-9_\u00c0-\uffff](?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])*/,
@@ -175,12 +178,17 @@ const sequenceRules = {
     ))),
   ),
 
-  // Jison only recognizes block keywords at word boundaries. Give a longer
-  // actor such as `Parser` priority over the shorter `par` token.
-  _sequence_keyword_prefixed_actor_identifier: (_) => token(prec(
-    50,
-    /(?:loop|rect|opt|alt|else|par_over|par|and|critical|option|break|box|end)(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])*/i,
-  )),
+  // Give longer actor ids priority over shorter keyword tokens. Keep bare
+  // `links` out of the `link` prefix branch so it remains a shared menu token.
+  _sequence_keyword_prefixed_actor_identifier: (_) => token(prec(50, choice(
+    /(?:loop|rect|opt|alt|else|par_over|par|and|critical|option|break|box|end)(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])+/i,
+    /(?:links|properties|details)(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])+/i,
+    /link(?:[A-RT-Za-rt-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])*/i,
+  ))),
+
+  // Share the lexical token between metadata and endpoints. The following
+  // actor or arrow chooses the statement without consuming an endpoint as a directive.
+  _sequence_actor_menu_keyword: (_) => token(prec(40, /(?:links|link|properties|details)/i)),
 
   sequence_participant_config: (_) => token(prec(30, /@\{[^}\r\n]*\}/)),
 
@@ -381,11 +389,9 @@ const sequenceRules = {
   ),
 
   sequence_actor_metadata_statement: ($) => seq(
-    field('kind', choice(
-      statementKeyword($, /links/i),
-      statementKeyword($, /link/i),
-      statementKeyword($, /properties/i),
-      statementKeyword($, /details/i),
+    field('keyword', alias(
+      $._sequence_actor_menu_keyword,
+      $.sequence_statement_keyword,
     )),
     actorReference($, 'participant'),
     field('delimiter', ':'),

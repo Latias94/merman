@@ -35,7 +35,7 @@ use merman_render::{
 
 pub use crate::operation_runner::SemanticArtifact;
 
-/// SVG-only host services and rendering limits.
+/// SVG host services and source-to-output resource limits.
 ///
 /// Operation time, timezone, randomness, cancellation, and deadlines deliberately do not live
 /// here. [`Renderer`] owns those operation-wide concerns and injects the already captured context
@@ -45,6 +45,9 @@ pub use crate::operation_runner::SemanticArtifact;
 pub struct SvgEnvironment {
     backend: BackendRenderEnvironment,
     text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
+    // Keep the admission projection with the backend policy so the facade can read it
+    // before creating an operation or SVG session. Both are set by the same builders.
+    input_resources: InputResourcePolicy,
 }
 
 #[cfg(feature = "svg")]
@@ -52,10 +55,13 @@ impl SvgEnvironment {
     /// Creates the deterministic default SVG service set.
     pub fn deterministic() -> Self {
         let text_measurement = TextMeasurementPolicy::deterministic();
+        let resources = RenderResourcePolicy::default();
         Self {
             backend: BackendRenderEnvironment::deterministic()
-                .with_text_measurement_policy(text_measurement.clone()),
+                .with_text_measurement_policy(text_measurement.clone())
+                .with_resource_policy(resources),
             text_measurement_routes: text_measurement.routes(),
+            input_resources: *resources.input_policy(),
         }
     }
 
@@ -93,7 +99,13 @@ impl SvgEnvironment {
         self
     }
 
+    /// Sets source, model, layout, and SVG limits for graphical targets in one place.
+    ///
+    /// [`Renderer::render`] uses this policy's input limits unless the renderer or request
+    /// explicitly supplies an [`InputResourcePolicy`]. Those input overrides do not change
+    /// this environment's layout or SVG limits.
     pub fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
+        self.input_resources = *policy.input_policy();
         self.backend = self.backend.with_resource_policy(policy);
         self
     }
@@ -550,6 +562,26 @@ pub enum RenderTarget {
     Pdf(PdfRequest),
 }
 
+impl RenderTarget {
+    fn svg_input_resource_policy(&self) -> Option<InputResourcePolicy> {
+        match self {
+            Self::Semantic => None,
+            #[cfg(feature = "ascii")]
+            Self::Ascii(_) => None,
+            #[cfg(feature = "svg")]
+            Self::Svg(request) | Self::LayoutJson(request) | Self::SvgPlan(request) => {
+                Some(request.environment.input_resources)
+            }
+            #[cfg(feature = "png")]
+            Self::Png(request) => Some(request.svg.environment.input_resources),
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg(request) => Some(request.svg.environment.input_resources),
+            #[cfg(feature = "pdf")]
+            Self::Pdf(request) => Some(request.svg.environment.input_resources),
+        }
+    }
+}
+
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub struct SvgRequest {
@@ -634,8 +666,10 @@ pub struct RenderRequest<'a> {
 }
 
 impl<'a> RenderRequest<'a> {
-    /// Creates a typed operation request that inherits the renderer's parse and input-resource
-    /// defaults until an explicit request override is applied.
+    /// Creates a typed operation request that inherits the renderer's parse defaults.
+    ///
+    /// Input limits come from an explicit request override, then an explicit renderer policy,
+    /// then a graphical target's SVG environment, or otherwise the renderer's default policy.
     pub fn new(source: &'a str, target: RenderTarget, control: OperationControl) -> Self {
         Self {
             source,
@@ -690,6 +724,8 @@ impl<'a> RenderRequest<'a> {
         self
     }
 
+    /// Overrides input admission for this operation, ahead of renderer and target policies.
+    /// Target-local layout and output limits remain unchanged.
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
         self.resources = Some(resources);
         self
@@ -722,6 +758,7 @@ pub struct Renderer {
     engine: Engine,
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
+    resources_explicit: bool,
 }
 
 impl Default for Renderer {
@@ -730,6 +767,7 @@ impl Default for Renderer {
             engine: Engine::new(),
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
+            resources_explicit: false,
         }
     }
 }
@@ -754,8 +792,11 @@ impl Renderer {
         self
     }
 
+    /// Sets an explicit input policy ahead of graphical targets' SVG environment defaults.
+    /// A request's explicit input policy can still override this policy.
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
         self.resources = resources;
+        self.resources_explicit = true;
         self
     }
 
@@ -772,6 +813,10 @@ impl Renderer {
     }
 
     /// Executes one typed target request through the canonical operation runner.
+    ///
+    /// Input admission uses the request's explicit policy, then the renderer's explicit policy,
+    /// then the graphical target's SVG environment policy. Semantic and ASCII targets use the
+    /// renderer's input defaults when neither the request nor the renderer overrides them.
     pub fn render(&self, request: RenderRequest<'_>) -> Result<RenderOutput, RenderError> {
         let RenderRequest {
             source,
@@ -780,12 +825,14 @@ impl Renderer {
             parse_options,
             resources,
         } = request;
-        let operation = Operation::begin(
-            &self.engine,
-            source,
-            control,
-            resources.unwrap_or(self.resources),
-        )?;
+        let resources = resources.unwrap_or_else(|| {
+            if self.resources_explicit {
+                self.resources
+            } else {
+                target.svg_input_resource_policy().unwrap_or(self.resources)
+            }
+        });
+        let operation = Operation::begin(&self.engine, source, control, resources)?;
         let semantic =
             operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
         let Some(semantic) = semantic else {
@@ -799,6 +846,7 @@ impl Renderer {
     }
 
     /// Prepares a format-neutral semantic artifact through the same runner used by `render`.
+    /// This uses the renderer's input policy before any output target is selected.
     pub fn prepare_semantic(
         &self,
         source: &str,

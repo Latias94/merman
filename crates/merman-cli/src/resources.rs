@@ -274,7 +274,8 @@ const CLI_PROFILE_VALUES: [[Option<u64>; 4]; CLI_RESOURCE_LIMIT_COUNT] = [
     ],
     [Some(1_024), Some(256), Some(8_192), None],
     [Some(GIB), Some(512 * MIB), Some(8 * GIB), None],
-    [Some(640 * MIB), Some(576 * MIB), Some(2 * GIB), None],
+    // Admit the complete default graphical envelope, including derived layout storage.
+    [Some(GIB), Some(576 * MIB), Some(2 * GIB), None],
     [Some(4), Some(2), Some(32), Some(HARD_MAX_JOBS)],
     [Some(5), Some(3), Some(10), Some(HARD_MAX_REDIRECTS)],
     [

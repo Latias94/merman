@@ -45,9 +45,9 @@
         },
         {
           "id": "B----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 494.5,
-          "width": 216.0,
+          "width": 198.0,
           "height": 291.0,
           "is_cluster": true
         },
@@ -259,15 +259,15 @@
         },
         {
           "id": "B----parent",
-          "x": 120.0,
+          "x": 111.0,
           "y": 494.5,
-          "width": 216.0,
+          "width": 198.0,
           "height": 291.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
           "title_label": {
-            "x": 120.0,
+            "x": 111.0,
             "y": 401.5,
             "width": 32.2,
             "height": 105.0

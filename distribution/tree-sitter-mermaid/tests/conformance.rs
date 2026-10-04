@@ -266,3 +266,86 @@ fn every_strict_valid_merman_fixture_has_a_clean_tree_sitter_tree() {
             .join("\n")
     );
 }
+
+#[test]
+fn sequence_actor_menu_names_are_endpoints_and_keep_metadata_statements() {
+    let language: Language = LANGUAGE.into();
+    let mut parser = Parser::new();
+    parser.set_language(&language).unwrap();
+    for actor in [
+        "Link",
+        "link",
+        "LINK",
+        "Links",
+        "Properties",
+        "Details",
+        "LinkService",
+        "details-worker",
+    ] {
+        let source = format!(
+            "sequenceDiagram\n{actor} -->>A: message\nA->>{actor} : reply\nlink {actor}: Help @ https://example.com/help\n"
+        );
+        let tree = parser.parse(&source, None).unwrap();
+        let root = tree.root_node();
+        assert_eq!(first_invalid_node(root), None, "{source}");
+        assert_eq!(diagram_roots(root), ["sequence_diagram"]);
+        let body = root
+            .named_child(0)
+            .unwrap()
+            .child_by_field_name("body")
+            .unwrap();
+        let mut cursor = body.walk();
+        let statements: Vec<_> = body.named_children(&mut cursor).collect();
+        assert_eq!(statements.len(), 3);
+        for (statement, from, to) in [(statements[0], actor, "A"), (statements[1], "A", actor)] {
+            assert_eq!(statement.kind(), "sequence_message_statement");
+            assert_eq!(
+                statement
+                    .child_by_field_name("source")
+                    .unwrap()
+                    .utf8_text(source.as_bytes())
+                    .unwrap(),
+                from
+            );
+            assert_eq!(
+                statement
+                    .child_by_field_name("target")
+                    .unwrap()
+                    .utf8_text(source.as_bytes())
+                    .unwrap(),
+                to
+            );
+        }
+        assert_eq!(statements[2].kind(), "sequence_actor_metadata_statement");
+        assert_eq!(
+            statements[2]
+                .child_by_field_name("keyword")
+                .unwrap()
+                .utf8_text(source.as_bytes())
+                .unwrap(),
+            "link"
+        );
+        assert_eq!(
+            statements[2]
+                .child_by_field_name("participant")
+                .unwrap()
+                .utf8_text(source.as_bytes())
+                .unwrap(),
+            actor
+        );
+    }
+}
+
+#[test]
+fn sequence_participant_config_accepts_spacing_and_hyphenated_names() {
+    let language: Language = LANGUAGE.into();
+    let mut parser = Parser::new();
+    parser.set_language(&language).unwrap();
+    for source in [
+        "sequenceDiagram\nparticipant order-svc @{\"type\":\"queue\"}\n",
+        "sequenceDiagram\nactor lead-actor@{\"type\":\"control\"} as Lead\n",
+        "sequenceDiagram\nparticipant data=svc\t@{\"type\":\"database\"}\n",
+    ] {
+        validate_tree(&mut parser, source, "sequence_diagram").unwrap();
+    }
+}

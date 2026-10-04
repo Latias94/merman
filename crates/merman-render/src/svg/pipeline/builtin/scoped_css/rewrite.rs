@@ -2,7 +2,7 @@ use crate::svg::pipeline::SvgPostprocessExecution;
 use crate::{Error, Result};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, Delimiter, ParseError, ParseErrorKind, Parser,
-    ParserInput, ParserState, QualifiedRuleParser, StyleSheetParser, Token,
+    ParserState, QualifiedRuleParser, StyleSheetParser, Token,
 };
 use std::fmt;
 
@@ -157,23 +157,20 @@ impl<'a> ScopedCssCadence<'a> {
         Ok(())
     }
 
-    fn step<'i, 't>(
-        &mut self,
-        input: &Parser<'i, 't>,
-    ) -> std::result::Result<(), ParseError<'i, Error>> {
-        self.tick().map_err(|error| input.new_custom_error(error))
+    fn step(&mut self) -> std::result::Result<(), ParseError<Error>> {
+        self.tick().map_err(ParseError::custom)
     }
 }
 
-fn consume_css_component_values<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn consume_css_component_values<'i>(
+    input: &mut Parser<'i>,
     source: &'i str,
     expected_close: Option<u8>,
     depth: u8,
     cadence: &mut ScopedCssCadence<'_>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
+) -> std::result::Result<(), ParseError<Error>> {
     loop {
-        cadence.step(input)?;
+        cadence.step()?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
@@ -184,7 +181,7 @@ fn consume_css_component_values<'i, 't>(
                         .copied()
                         != Some(expected_close)
                 {
-                    return Err(input.new_custom_error(Error::svg_postprocess(
+                    return Err(ParseError::custom(Error::svg_postprocess(
                         "scoped-css",
                         "invalid scoped CSS: unclosed block or function",
                     )));
@@ -203,7 +200,7 @@ fn consume_css_component_values<'i, 't>(
             | Token::CloseParenthesis
             | Token::CloseSquareBracket
             | Token::CloseCurlyBracket => {
-                return Err(input.new_custom_error(Error::svg_postprocess(
+                return Err(ParseError::custom(Error::svg_postprocess(
                     "scoped-css",
                     "invalid scoped CSS token",
                 )));
@@ -211,7 +208,7 @@ fn consume_css_component_values<'i, 't>(
             _ => None,
         };
         if let Some(expected_close) = expected_close {
-            let nested_depth = descend_scoped_css(input, depth)?;
+            let nested_depth = descend_scoped_css(depth)?;
             input.parse_nested_block(|nested| {
                 consume_css_component_values(
                     nested,
@@ -225,15 +222,12 @@ fn consume_css_component_values<'i, 't>(
     }
 }
 
-fn descend_scoped_css<'i, 't>(
-    input: &Parser<'i, 't>,
-    depth: u8,
-) -> std::result::Result<u8, ParseError<'i, Error>> {
+fn descend_scoped_css(depth: u8) -> std::result::Result<u8, ParseError<Error>> {
     depth
         .checked_add(1)
         .filter(|depth| *depth <= SCOPED_CSS_NESTING_HARD_LIMIT)
         .ok_or_else(|| {
-            input.new_custom_error(Error::svg_postprocess(
+            ParseError::custom(Error::svg_postprocess(
                 "scoped-css",
                 format!(
                     "scoped CSS nesting exceeds the hard limit of {SCOPED_CSS_NESTING_HARD_LIMIT}"
@@ -249,8 +243,7 @@ fn write_scoped_css<W: fmt::Write>(
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
     let Some(scope) = scope else {
-        let mut input = ParserInput::new(css);
-        let mut input = Parser::new(&mut input);
+        let mut input = Parser::new(css);
         let mut cadence = ScopedCssCadence::new(execution);
         consume_css_component_values(&mut input, css, None, 0, &mut cadence)
             .map_err(map_scoped_css_parse_error)?;
@@ -261,8 +254,7 @@ fn write_scoped_css<W: fmt::Write>(
         return Ok(());
     };
 
-    let mut input = ParserInput::new(css);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(css);
     let mut cadence = ScopedCssCadence::new(execution);
     write_scoped_rule_list(&mut input, css, scope, output, 0, &mut cadence)
         .map_err(map_scoped_css_parse_error)?;
@@ -298,11 +290,11 @@ impl<'i, 'execution, W: fmt::Write> AtRuleParser<'i>
     type AtRule = ();
     type Error = Error;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         let start = input.position();
         consume_css_component_values(input, self.source, None, self.depth, self.cadence)?;
         let normalized_name = name.to_ascii_lowercase();
@@ -342,34 +334,34 @@ impl<'i, 'execution, W: fmt::Write> AtRuleParser<'i>
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::AtRule, ParseError<Self::Error>> {
         match prelude.kind {
             ScopedAtRuleKind::Forbidden | ScopedAtRuleKind::Unsupported => {
                 consume_css_component_values(input, self.source, None, self.depth, self.cadence)?;
                 require_source_close(input, self.source, b'}')
             }
             ScopedAtRuleKind::Keyframes => {
-                write_css(self.output, "@", input)?;
-                write_css(self.output, &prelude.name, input)?;
-                write_css(self.output, prelude.prelude, input)?;
-                write_css(self.output, "{", input)?;
+                write_css(self.output, "@")?;
+                write_css(self.output, &prelude.name)?;
+                write_css(self.output, prelude.prelude)?;
+                write_css(self.output, "{")?;
                 let body_start = input.position();
                 consume_css_component_values(input, self.source, None, self.depth, self.cadence)?;
-                write_css(self.output, input.slice_from(body_start), input)?;
+                write_css(self.output, input.slice_from(body_start))?;
                 require_source_close(input, self.source, b'}')?;
-                write_css(self.output, "}", input)
+                write_css(self.output, "}")
             }
             ScopedAtRuleKind::Group => {
-                write_css(self.output, "@", input)?;
-                write_css(self.output, &prelude.name, input)?;
-                write_css(self.output, prelude.prelude, input)?;
-                write_css(self.output, "{", input)?;
-                let nested_depth = descend_scoped_css(input, self.depth)?;
+                write_css(self.output, "@")?;
+                write_css(self.output, &prelude.name)?;
+                write_css(self.output, prelude.prelude)?;
+                write_css(self.output, "{")?;
+                let nested_depth = descend_scoped_css(self.depth)?;
                 write_scoped_rule_list(
                     input,
                     self.source,
@@ -379,7 +371,7 @@ impl<'i, 'execution, W: fmt::Write> AtRuleParser<'i>
                     self.cadence,
                 )?;
                 require_source_close(input, self.source, b'}')?;
-                write_css(self.output, "}", input)
+                write_css(self.output, "}")
             }
         }
     }
@@ -392,21 +384,21 @@ impl<'i, 'execution, W: fmt::Write> QualifiedRuleParser<'i>
     type QualifiedRule = ();
     type Error = Error;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         let start = input.position();
         consume_css_component_values(input, self.source, None, self.depth, self.cadence)?;
         Ok(input.slice_from(start))
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::QualifiedRule, ParseError<Self::Error>> {
         let body_start = input.position();
         consume_css_component_values(input, self.source, None, self.depth, self.cadence)?;
         let body = input.slice_from(body_start);
@@ -418,25 +410,25 @@ impl<'i, 'execution, W: fmt::Write> QualifiedRuleParser<'i>
             self.depth,
             self.cadence,
         )
-        .map_err(|error| input.new_custom_error(error))?;
-        write_css(self.output, " {", input)?;
-        write_css(self.output, body, input)?;
+        .map_err(ParseError::custom)?;
+        write_css(self.output, " {")?;
+        write_css(self.output, body)?;
         require_source_close(input, self.source, b'}')?;
-        write_css(self.output, "}", input)
+        write_css(self.output, "}")
     }
 }
 
-fn write_scoped_rule_list<'i, 't, W: fmt::Write>(
-    input: &mut Parser<'i, 't>,
+fn write_scoped_rule_list<'i, W: fmt::Write>(
+    input: &mut Parser<'i>,
     source: &'i str,
     scope: &str,
     output: &mut W,
     depth: u8,
     cadence: &mut ScopedCssCadence<'_>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    cadence.step(input)?;
+) -> std::result::Result<(), ParseError<Error>> {
+    cadence.step()?;
     if depth >= SCOPED_CSS_NESTING_HARD_LIMIT {
-        return Err(input.new_custom_error(Error::svg_postprocess(
+        return Err(ParseError::custom(Error::svg_postprocess(
             "scoped-css",
             format!(
                 "scoped CSS rule nesting exceeds the hard limit of {SCOPED_CSS_NESTING_HARD_LIMIT}"
@@ -451,16 +443,16 @@ fn write_scoped_rule_list<'i, 't, W: fmt::Write>(
         cadence,
     };
     for rule in StyleSheetParser::new(input, &mut parser) {
-        rule.map_err(|(error, _)| error)?;
+        rule.map_err(|(error, _, _)| error)?;
     }
     Ok(())
 }
 
-fn require_source_close<'i, 't>(
-    input: &Parser<'i, 't>,
+fn require_source_close<'i>(
+    input: &Parser<'i>,
     source: &'i str,
     expected_close: u8,
-) -> std::result::Result<(), ParseError<'i, Error>> {
+) -> std::result::Result<(), ParseError<Error>> {
     if source
         .as_bytes()
         .get(input.position().byte_index())
@@ -469,7 +461,7 @@ fn require_source_close<'i, 't>(
     {
         Ok(())
     } else {
-        Err(input.new_custom_error(Error::svg_postprocess(
+        Err(ParseError::custom(Error::svg_postprocess(
             "scoped-css",
             "invalid scoped CSS: unclosed rule block",
         )))
@@ -485,11 +477,10 @@ fn write_selector_list<W: fmt::Write>(
     cadence: &mut ScopedCssCadence<'_>,
 ) -> Result<()> {
     let mut safe_root_declarations = None;
-    let mut input = ParserInput::new(selector);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(selector);
     let mut part_start = 0usize;
     loop {
-        cadence.step(&input).map_err(map_scoped_css_parse_error)?;
+        cadence.step().map_err(map_scoped_css_parse_error)?;
         let token_start = input.position().byte_index();
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
@@ -523,8 +514,7 @@ fn write_selector_list<W: fmt::Write>(
                 part_start = token_end;
             }
             Token::Function(_) | Token::ParenthesisBlock => {
-                let nested_depth =
-                    descend_scoped_css(&input, depth).map_err(map_scoped_css_parse_error)?;
+                let nested_depth = descend_scoped_css(depth).map_err(map_scoped_css_parse_error)?;
                 input
                     .parse_nested_block(|nested| {
                         consume_css_component_values(
@@ -538,8 +528,7 @@ fn write_selector_list<W: fmt::Write>(
                     .map_err(map_scoped_css_parse_error)?;
             }
             Token::SquareBracketBlock => {
-                let nested_depth =
-                    descend_scoped_css(&input, depth).map_err(map_scoped_css_parse_error)?;
+                let nested_depth = descend_scoped_css(depth).map_err(map_scoped_css_parse_error)?;
                 input
                     .parse_nested_block(|nested| {
                         consume_css_component_values(
@@ -553,8 +542,7 @@ fn write_selector_list<W: fmt::Write>(
                     .map_err(map_scoped_css_parse_error)?;
             }
             Token::CurlyBracketBlock => {
-                let nested_depth =
-                    descend_scoped_css(&input, depth).map_err(map_scoped_css_parse_error)?;
+                let nested_depth = descend_scoped_css(depth).map_err(map_scoped_css_parse_error)?;
                 input
                     .parse_nested_block(|nested| {
                         consume_css_component_values(
@@ -635,9 +623,8 @@ fn selector_is_already_namespaced(
         return Ok(is_namespaced_suffix(suffix));
     }
 
-    let mut input = ParserInput::new(selector);
-    let mut input = Parser::new(&mut input);
-    cadence.step(&input).map_err(map_scoped_css_parse_error)?;
+    let mut input = Parser::new(selector);
+    cadence.step().map_err(map_scoped_css_parse_error)?;
     if !matches!(input.next(), Ok(Token::Delim('&'))) {
         return Ok(false);
     }
@@ -697,21 +684,20 @@ fn write_expanded_selector<W: fmt::Write>(
     depth: u8,
     cadence: &mut ScopedCssCadence<'_>,
 ) -> Result<()> {
-    let mut input = ParserInput::new(selector);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(selector);
     write_expanded_selector_parser(&mut input, scope, output, depth, cadence)
         .map_err(map_scoped_css_parse_error)
 }
 
-fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
-    input: &mut Parser<'i, 't>,
+fn write_expanded_selector_parser<'i, W: fmt::Write>(
+    input: &mut Parser<'i>,
     scope: &str,
     output: &mut W,
     depth: u8,
     cadence: &mut ScopedCssCadence<'_>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
+) -> std::result::Result<(), ParseError<Error>> {
     loop {
-        cadence.step(input)?;
+        cadence.step()?;
         let token_start = input.position();
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
@@ -720,42 +706,42 @@ fn write_expanded_selector_parser<'i, 't, W: fmt::Write>(
         };
         let token_end = input.position();
         match token {
-            Token::Delim('&') => write_css(output, scope, input)?,
+            Token::Delim('&') => write_css(output, scope)?,
             Token::Function(_) | Token::ParenthesisBlock => {
-                write_css(output, input.slice(token_start..token_end), input)?;
-                let nested_depth = descend_scoped_css(input, depth)?;
+                write_css(output, input.slice(token_start..token_end))?;
+                let nested_depth = descend_scoped_css(depth)?;
                 input.parse_nested_block(|nested| {
                     write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
-                write_css(output, ")", input)?;
+                write_css(output, ")")?;
             }
             Token::SquareBracketBlock => {
-                write_css(output, input.slice(token_start..token_end), input)?;
-                let nested_depth = descend_scoped_css(input, depth)?;
+                write_css(output, input.slice(token_start..token_end))?;
+                let nested_depth = descend_scoped_css(depth)?;
                 input.parse_nested_block(|nested| {
                     write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
-                write_css(output, "]", input)?;
+                write_css(output, "]")?;
             }
             Token::CurlyBracketBlock => {
-                write_css(output, input.slice(token_start..token_end), input)?;
-                let nested_depth = descend_scoped_css(input, depth)?;
+                write_css(output, input.slice(token_start..token_end))?;
+                let nested_depth = descend_scoped_css(depth)?;
                 input.parse_nested_block(|nested| {
                     write_expanded_selector_parser(nested, scope, output, nested_depth, cadence)
                 })?;
-                write_css(output, "}", input)?;
+                write_css(output, "}")?;
             }
             Token::BadUrl(_)
             | Token::BadString(_)
             | Token::CloseParenthesis
             | Token::CloseSquareBracket
             | Token::CloseCurlyBracket => {
-                return Err(input.new_custom_error(Error::svg_postprocess(
+                return Err(ParseError::custom(Error::svg_postprocess(
                     "scoped-css",
                     "invalid scoped CSS selector token",
                 )));
             }
-            _ => write_css(output, input.slice(token_start..token_end), input)?,
+            _ => write_css(output, input.slice(token_start..token_end))?,
         }
     }
 }
@@ -765,10 +751,9 @@ fn has_only_safe_root_declarations(
     depth: u8,
     cadence: &mut ScopedCssCadence<'_>,
 ) -> Result<bool> {
-    let mut input = ParserInput::new(body);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(body);
     while !parser.is_exhausted() {
-        cadence.step(&parser).map_err(map_scoped_css_parse_error)?;
+        cadence.step().map_err(map_scoped_css_parse_error)?;
         if parser
             .try_parse(|declaration| declaration.expect_semicolon())
             .is_ok()
@@ -776,7 +761,7 @@ fn has_only_safe_root_declarations(
             continue;
         }
         let allowed = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
-            cadence.step(declaration)?;
+            cadence.step()?;
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
             consume_css_component_values(declaration, body, None, depth, cadence)?;
@@ -794,17 +779,16 @@ fn has_only_safe_root_declarations(
     Ok(true)
 }
 
-fn write_css<'i, 't>(
+fn write_css(
     output: &mut impl fmt::Write,
     value: &str,
-    input: &Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
+) -> std::result::Result<(), ParseError<Error>> {
     output
         .write_str(value)
-        .map_err(|error| input.new_custom_error(scoped_css_write_error(error)))
+        .map_err(|error| ParseError::custom(scoped_css_write_error(error)))
 }
 
-fn map_scoped_css_parse_error(error: ParseError<'_, Error>) -> Error {
+fn map_scoped_css_parse_error(error: ParseError<Error>) -> Error {
     match error.kind {
         ParseErrorKind::Custom(error) => error,
         ParseErrorKind::Basic(error) => {

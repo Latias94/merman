@@ -3,236 +3,6 @@
   "receiptKind": "mermaid-selection-decision",
   "decision": "selected",
   "previous": {
-    "identityDigest": "9634181804174022a42a1288be799a7612226a4a95b3374642a32515348b40e7",
-    "identity": {
-      "release": {
-        "role": "core",
-        "package": "mermaid",
-        "version": "12.0.0",
-        "declaredRange": "12.0.0",
-        "integrity": "sha512-/wQXC9iBxoGV8p3erbvaXs9h77VyLDBH6GdayVjj3hEcSQhFU4N1WUhUppotCEqlIxI2pRMwjwBSwTB1MfZBgQ==",
-        "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.0.0.tgz",
-        "requiredSurfaces": [
-          "parser",
-          "semantic",
-          "render",
-          "editor",
-          "lsp",
-          "playground",
-          "reference-cli"
-        ],
-        "runtimeRegistration": null,
-        "source": {
-          "repository": "https://github.com/mermaid-js/mermaid.git",
-          "reference": "mermaid@12.0.0",
-          "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-          "packagePath": "packages/mermaid"
-        }
-      },
-      "parser": {
-        "role": "parser",
-        "package": "@mermaid-js/parser",
-        "version": "2.0.0",
-        "declaredRange": "^2.0.0",
-        "integrity": "sha512-K8BeapFUfrfxbRAUQAG5oBOCwo1+bNWzaVnPxTCutkfrTBn6T/j91FIhqxWJ32SUeQ9T3iy1zcmPZ5ROZEvDrg==",
-        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-2.0.0.tgz",
-        "requiredSurfaces": [
-          "parser",
-          "editor",
-          "lsp"
-        ],
-        "runtimeRegistration": null,
-        "source": {
-          "repository": "https://github.com/mermaid-js/mermaid.git",
-          "reference": "@mermaid-js/parser@2.0.0",
-          "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-          "packagePath": "packages/parser"
-        }
-      },
-      "sanitizer": {
-        "role": "sanitizer",
-        "package": "dompurify",
-        "version": "3.4.15",
-        "declaredRange": "3.4.15",
-        "integrity": "sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==",
-        "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.15.tgz",
-        "requiredSurfaces": [
-          "playground",
-          "reference-cli",
-          "rust-sanitizer"
-        ],
-        "runtimeRegistration": null,
-        "source": {
-          "repository": "https://github.com/cure53/DOMPurify.git",
-          "reference": "3.4.15",
-          "commit": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5",
-          "packagePath": "."
-        }
-      },
-      "externalDiagrams": [
-        {
-          "id": "zenuml",
-          "plugin": {
-            "role": "external-diagram",
-            "package": "@mermaid-js/mermaid-zenuml",
-            "version": "1.0.1",
-            "declaredRange": "1.0.1",
-            "integrity": "sha512-O5DiRODoFVNgugOVloxcDXmd+bXe/sbGlDh3onnzuE4EWtgTWwaAlWuPPOXbU9QESsztnD4Gtnu7dr+tYLFE0A==",
-            "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-zenuml/-/mermaid-zenuml-1.0.1.tgz",
-            "requiredSurfaces": [
-              "playground",
-              "reference-cli"
-            ],
-            "runtimeRegistration": {
-              "moduleId": "zenuml",
-              "diagramAliases": [
-                "zenuml"
-              ],
-              "layoutIds": [],
-              "sourcePath": "packages/mermaid-zenuml/src/detector.ts",
-              "sourceSha256": "3ba1407a7c6f00ed82f281b199ac4365d2d004d2d166b5712b31848020a5082e"
-            },
-            "source": {
-              "repository": "https://github.com/mermaid-js/mermaid.git",
-              "reference": "@mermaid-js/mermaid-zenuml@1.0.1",
-              "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
-              "packagePath": "packages/mermaid-zenuml"
-            }
-          },
-          "behavior": {
-            "role": "external-diagram-behavior",
-            "package": "@zenuml/core",
-            "version": "3.50.1",
-            "declaredRange": "^3.47.0",
-            "integrity": "sha512-Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw==",
-            "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-3.50.1.tgz",
-            "requiredSurfaces": [
-              "playground",
-              "reference-cli",
-              "zenuml-model"
-            ],
-            "runtimeRegistration": null,
-            "source": {
-              "repository": "https://github.com/mermaid-js/zenuml-core.git",
-              "reference": "v3.50.1",
-              "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
-              "packagePath": "."
-            }
-          }
-        }
-      ],
-      "externalLayouts": [
-        {
-          "role": "external-layout",
-          "package": "@mermaid-js/layout-tidy-tree",
-          "version": "1.0.1",
-          "declaredRange": "1.0.1",
-          "integrity": "sha512-suZgFgQQHYuAxiEiNVgPJwOoXi/keXV6DghCL3rT4K9DmX7xYQ2XZI2suiBVs/fj1gn/OoXIWB2DFSmeY7trvw==",
-          "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-tidy-tree/-/layout-tidy-tree-1.0.1.tgz",
-          "requiredSurfaces": [
-            "playground",
-            "reference-cli",
-            "compare",
-            "benchmark"
-          ],
-          "runtimeRegistration": {
-            "moduleId": "tidy-tree",
-            "diagramAliases": [],
-            "layoutIds": [
-              "tidy-tree"
-            ],
-            "sourcePath": "packages/mermaid-layout-tidy-tree/src/layouts.ts",
-            "sourceSha256": "ea3bb7ed7257800a629df59479d70436dfd7c5241dee495fbdd99e87df1bc5f4"
-          },
-          "source": {
-            "repository": "https://github.com/mermaid-js/mermaid.git",
-            "reference": "@mermaid-js/layout-tidy-tree@1.0.1",
-            "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
-            "packagePath": "packages/mermaid-layout-tidy-tree"
-          }
-        }
-      ],
-      "referenceCli": {
-        "role": "reference-cli",
-        "package": "@mermaid-js/mermaid-cli",
-        "version": "11.17.0",
-        "declaredRange": "11.17.0",
-        "integrity": "sha512-pxF8rmheBb1gabIN4GFDCNWzIUsOzcEsSp7H5CQoL7gv7X8U8r6FFKtdMzEmZMeHmziNAq2B7J7LG+CDSfIg9w==",
-        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.17.0.tgz",
-        "requiredSurfaces": [
-          "upstream-svg",
-          "provenance"
-        ],
-        "runtimeRegistration": null,
-        "source": {
-          "repository": "https://github.com/mermaid-js/mermaid-cli.git",
-          "reference": "11.17.0",
-          "commit": "0f792feed2fb69ab010c4149f733ede1871f706f",
-          "packagePath": "."
-        }
-      },
-      "rendererTools": [
-        {
-          "role": "renderer-tool",
-          "package": "@puppeteer/browsers",
-          "version": "3.2.0",
-          "declaredRange": "3.2.0",
-          "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
-          "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "browsers-v3.2.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/browsers"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer-core",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-core-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer-core"
-          }
-        }
-      ]
-    }
-  },
-  "current": {
     "identityDigest": "1fe1eeaaaeec7e1e66a506360a7c1e2bf25c6fd47709aff6d08b2f38f0f1d868",
     "identity": {
       "release": {
@@ -433,13 +203,263 @@
             "upstream-svg",
             "provenance"
           ],
+          "runtimeRegistration": null,
           "source": {
             "repository": "https://github.com/evanw/esbuild.git",
             "reference": "v0.28.1",
             "commit": "bb9db84c02433fbe37b3509f53f9f3e3cc48725e",
             "packagePath": "npm/esbuild"
+          }
+        },
+        {
+          "role": "renderer-tool",
+          "package": "puppeteer",
+          "version": "25.6.0",
+          "declaredRange": "25.6.0",
+          "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
+          "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
+          "requiredSurfaces": [
+            "upstream-svg",
+            "provenance"
+          ],
+          "runtimeRegistration": null,
+          "source": {
+            "repository": "https://github.com/puppeteer/puppeteer.git",
+            "reference": "puppeteer-v25.6.0",
+            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+            "packagePath": "packages/puppeteer"
+          }
+        },
+        {
+          "role": "renderer-tool",
+          "package": "puppeteer-core",
+          "version": "25.6.0",
+          "declaredRange": "25.6.0",
+          "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
+          "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
+          "requiredSurfaces": [
+            "upstream-svg",
+            "provenance"
+          ],
+          "runtimeRegistration": null,
+          "source": {
+            "repository": "https://github.com/puppeteer/puppeteer.git",
+            "reference": "puppeteer-core-v25.6.0",
+            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+            "packagePath": "packages/puppeteer-core"
+          }
+        }
+      ]
+    }
+  },
+  "current": {
+    "identityDigest": "fd017d02accf77be83e2f42b37982a116ccd198b6bf7b90c3432b341d5a1a92d",
+    "identity": {
+      "release": {
+        "role": "core",
+        "package": "mermaid",
+        "version": "12.1.0",
+        "declaredRange": "12.1.0",
+        "integrity": "sha512-wlVCp+8eTupfCeeFvoZNNiTuHrvag0P2jz/ILgb/f/6jkVokUefOcujefi8qUe/j2asHiSePncVsz/xzzA80LQ==",
+        "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.1.0.tgz",
+        "requiredSurfaces": [
+          "parser",
+          "semantic",
+          "render",
+          "editor",
+          "lsp",
+          "playground",
+          "reference-cli"
+        ],
+        "runtimeRegistration": null,
+        "source": {
+          "repository": "https://github.com/mermaid-js/mermaid.git",
+          "reference": "mermaid@12.1.0",
+          "commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
+          "packagePath": "packages/mermaid"
+        }
+      },
+      "parser": {
+        "role": "parser",
+        "package": "@mermaid-js/parser",
+        "version": "2.0.1",
+        "declaredRange": "^2.0.1",
+        "integrity": "sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA==",
+        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-2.0.1.tgz",
+        "requiredSurfaces": [
+          "parser",
+          "editor",
+          "lsp"
+        ],
+        "runtimeRegistration": null,
+        "source": {
+          "repository": "https://github.com/mermaid-js/mermaid.git",
+          "reference": "@mermaid-js/parser@2.0.1",
+          "commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
+          "packagePath": "packages/parser"
+        }
+      },
+      "sanitizer": {
+        "role": "sanitizer",
+        "package": "dompurify",
+        "version": "3.4.16",
+        "declaredRange": "3.4.16",
+        "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==",
+        "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz",
+        "requiredSurfaces": [
+          "playground",
+          "reference-cli",
+          "rust-sanitizer"
+        ],
+        "runtimeRegistration": null,
+        "source": {
+          "repository": "https://github.com/cure53/DOMPurify.git",
+          "reference": "3.4.16",
+          "commit": "b9b9d80f7e401771c2ccaef5f45def7eec8f27d7",
+          "packagePath": "."
+        }
+      },
+      "externalDiagrams": [
+        {
+          "id": "zenuml",
+          "plugin": {
+            "role": "external-diagram",
+            "package": "@mermaid-js/mermaid-zenuml",
+            "version": "1.0.1",
+            "declaredRange": "1.0.1",
+            "integrity": "sha512-O5DiRODoFVNgugOVloxcDXmd+bXe/sbGlDh3onnzuE4EWtgTWwaAlWuPPOXbU9QESsztnD4Gtnu7dr+tYLFE0A==",
+            "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-zenuml/-/mermaid-zenuml-1.0.1.tgz",
+            "requiredSurfaces": [
+              "playground",
+              "reference-cli"
+            ],
+            "runtimeRegistration": {
+              "moduleId": "zenuml",
+              "diagramAliases": [
+                "zenuml"
+              ],
+              "layoutIds": [],
+              "sourcePath": "packages/mermaid-zenuml/src/detector.ts",
+              "sourceSha256": "3ba1407a7c6f00ed82f281b199ac4365d2d004d2d166b5712b31848020a5082e"
+            },
+            "source": {
+              "repository": "https://github.com/mermaid-js/mermaid.git",
+              "reference": "@mermaid-js/mermaid-zenuml@1.0.1",
+              "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
+              "packagePath": "packages/mermaid-zenuml"
+            }
           },
-          "runtimeRegistration": null
+          "behavior": {
+            "role": "external-diagram-behavior",
+            "package": "@zenuml/core",
+            "version": "3.50.1",
+            "declaredRange": "^3.47.9",
+            "integrity": "sha512-Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw==",
+            "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-3.50.1.tgz",
+            "requiredSurfaces": [
+              "playground",
+              "reference-cli",
+              "zenuml-model"
+            ],
+            "runtimeRegistration": null,
+            "source": {
+              "repository": "https://github.com/mermaid-js/zenuml-core.git",
+              "reference": "v3.50.1",
+              "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+              "packagePath": "."
+            }
+          }
+        }
+      ],
+      "externalLayouts": [
+        {
+          "role": "external-layout",
+          "package": "@mermaid-js/layout-tidy-tree",
+          "version": "1.0.1",
+          "declaredRange": "1.0.1",
+          "integrity": "sha512-suZgFgQQHYuAxiEiNVgPJwOoXi/keXV6DghCL3rT4K9DmX7xYQ2XZI2suiBVs/fj1gn/OoXIWB2DFSmeY7trvw==",
+          "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-tidy-tree/-/layout-tidy-tree-1.0.1.tgz",
+          "requiredSurfaces": [
+            "playground",
+            "reference-cli",
+            "compare",
+            "benchmark"
+          ],
+          "runtimeRegistration": {
+            "moduleId": "tidy-tree",
+            "diagramAliases": [],
+            "layoutIds": [
+              "tidy-tree"
+            ],
+            "sourcePath": "packages/mermaid-layout-tidy-tree/src/layouts.ts",
+            "sourceSha256": "ea3bb7ed7257800a629df59479d70436dfd7c5241dee495fbdd99e87df1bc5f4"
+          },
+          "source": {
+            "repository": "https://github.com/mermaid-js/mermaid.git",
+            "reference": "@mermaid-js/layout-tidy-tree@1.0.1",
+            "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
+            "packagePath": "packages/mermaid-layout-tidy-tree"
+          }
+        }
+      ],
+      "referenceCli": {
+        "role": "reference-cli",
+        "package": "@mermaid-js/mermaid-cli",
+        "version": "12.0.0",
+        "declaredRange": "12.0.0",
+        "integrity": "sha512-AA18uaJtWVlM5PX7RGBxrVrqTTesmEaWCmfV+l5RkD6A1CnpUAtPpL+wWhkQAZrDSfyAw5FZyj084MsnDIPY3g==",
+        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-12.0.0.tgz",
+        "requiredSurfaces": [
+          "upstream-svg",
+          "provenance"
+        ],
+        "runtimeRegistration": null,
+        "source": {
+          "repository": "https://github.com/mermaid-js/mermaid-cli.git",
+          "reference": "12.0.0",
+          "commit": "db1ceebbe529d7975474eb0d0e9c23e9dc57cd37",
+          "packagePath": "."
+        }
+      },
+      "rendererTools": [
+        {
+          "role": "renderer-tool",
+          "package": "@puppeteer/browsers",
+          "version": "3.2.0",
+          "declaredRange": "3.2.0",
+          "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
+          "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
+          "requiredSurfaces": [
+            "upstream-svg",
+            "provenance"
+          ],
+          "runtimeRegistration": null,
+          "source": {
+            "repository": "https://github.com/puppeteer/puppeteer.git",
+            "reference": "browsers-v3.2.0",
+            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+            "packagePath": "packages/browsers"
+          }
+        },
+        {
+          "role": "renderer-tool",
+          "package": "esbuild",
+          "version": "0.28.1",
+          "declaredRange": "0.28.1",
+          "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
+          "tarballUrl": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz",
+          "requiredSurfaces": [
+            "reference-cli",
+            "upstream-svg",
+            "provenance"
+          ],
+          "runtimeRegistration": null,
+          "source": {
+            "repository": "https://github.com/evanw/esbuild.git",
+            "reference": "v0.28.1",
+            "commit": "bb9db84c02433fbe37b3509f53f9f3e3cc48725e",
+            "packagePath": "npm/esbuild"
+          }
         },
         {
           "role": "renderer-tool",
@@ -484,175 +504,99 @@
   },
   "changes": [
     {
-      "path": "rendererTools",
-      "previous": [
-        {
-          "role": "renderer-tool",
-          "package": "@puppeteer/browsers",
-          "version": "3.2.0",
-          "declaredRange": "3.2.0",
-          "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
-          "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "browsers-v3.2.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/browsers"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer-core",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-core-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer-core"
-          }
-        }
-      ],
-      "current": [
-        {
-          "role": "renderer-tool",
-          "package": "@puppeteer/browsers",
-          "version": "3.2.0",
-          "declaredRange": "3.2.0",
-          "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
-          "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "browsers-v3.2.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/browsers"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "esbuild",
-          "version": "0.28.1",
-          "declaredRange": "0.28.1",
-          "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-          "tarballUrl": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz",
-          "requiredSurfaces": [
-            "reference-cli",
-            "upstream-svg",
-            "provenance"
-          ],
-          "source": {
-            "repository": "https://github.com/evanw/esbuild.git",
-            "reference": "v0.28.1",
-            "commit": "bb9db84c02433fbe37b3509f53f9f3e3cc48725e",
-            "packagePath": "npm/esbuild"
-          },
-          "runtimeRegistration": null
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer"
-          }
-        },
-        {
-          "role": "renderer-tool",
-          "package": "puppeteer-core",
-          "version": "25.6.0",
-          "declaredRange": "25.6.0",
-          "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
-          "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
-          "requiredSurfaces": [
-            "upstream-svg",
-            "provenance"
-          ],
-          "runtimeRegistration": null,
-          "source": {
-            "repository": "https://github.com/puppeteer/puppeteer.git",
-            "reference": "puppeteer-core-v25.6.0",
-            "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
-            "packagePath": "packages/puppeteer-core"
-          }
-        }
-      ]
+      "path": "externalDiagrams[0].behavior.declaredRange",
+      "previous": "^3.47.0",
+      "current": "^3.47.9"
     },
     {
-      "path": "sanitizer.declaredRange",
-      "previous": "3.4.15",
-      "current": "3.4.16"
+      "path": "parser.declaredRange",
+      "previous": "^2.0.0",
+      "current": "^2.0.1"
     },
     {
-      "path": "sanitizer.integrity",
-      "previous": "sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==",
-      "current": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ=="
+      "path": "parser.integrity",
+      "previous": "sha512-K8BeapFUfrfxbRAUQAG5oBOCwo1+bNWzaVnPxTCutkfrTBn6T/j91FIhqxWJ32SUeQ9T3iy1zcmPZ5ROZEvDrg==",
+      "current": "sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA=="
     },
     {
-      "path": "sanitizer.source.commit",
-      "previous": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5",
-      "current": "b9b9d80f7e401771c2ccaef5f45def7eec8f27d7"
+      "path": "parser.source.commit",
+      "previous": "98a0945418c76238f15df2afaddbba4272656c3b",
+      "current": "21f72f07ea22c0af48a3149c550654e80d8e40cb"
     },
     {
-      "path": "sanitizer.source.reference",
-      "previous": "3.4.15",
-      "current": "3.4.16"
+      "path": "parser.source.reference",
+      "previous": "@mermaid-js/parser@2.0.0",
+      "current": "@mermaid-js/parser@2.0.1"
     },
     {
-      "path": "sanitizer.tarballUrl",
-      "previous": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.15.tgz",
-      "current": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz"
+      "path": "parser.tarballUrl",
+      "previous": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-2.0.0.tgz",
+      "current": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-2.0.1.tgz"
     },
     {
-      "path": "sanitizer.version",
-      "previous": "3.4.15",
-      "current": "3.4.16"
+      "path": "parser.version",
+      "previous": "2.0.0",
+      "current": "2.0.1"
+    },
+    {
+      "path": "referenceCli.declaredRange",
+      "previous": "11.17.0",
+      "current": "12.0.0"
+    },
+    {
+      "path": "referenceCli.integrity",
+      "previous": "sha512-pxF8rmheBb1gabIN4GFDCNWzIUsOzcEsSp7H5CQoL7gv7X8U8r6FFKtdMzEmZMeHmziNAq2B7J7LG+CDSfIg9w==",
+      "current": "sha512-AA18uaJtWVlM5PX7RGBxrVrqTTesmEaWCmfV+l5RkD6A1CnpUAtPpL+wWhkQAZrDSfyAw5FZyj084MsnDIPY3g=="
+    },
+    {
+      "path": "referenceCli.source.commit",
+      "previous": "0f792feed2fb69ab010c4149f733ede1871f706f",
+      "current": "db1ceebbe529d7975474eb0d0e9c23e9dc57cd37"
+    },
+    {
+      "path": "referenceCli.source.reference",
+      "previous": "11.17.0",
+      "current": "12.0.0"
+    },
+    {
+      "path": "referenceCli.tarballUrl",
+      "previous": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.17.0.tgz",
+      "current": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-12.0.0.tgz"
+    },
+    {
+      "path": "referenceCli.version",
+      "previous": "11.17.0",
+      "current": "12.0.0"
+    },
+    {
+      "path": "release.declaredRange",
+      "previous": "12.0.0",
+      "current": "12.1.0"
+    },
+    {
+      "path": "release.integrity",
+      "previous": "sha512-/wQXC9iBxoGV8p3erbvaXs9h77VyLDBH6GdayVjj3hEcSQhFU4N1WUhUppotCEqlIxI2pRMwjwBSwTB1MfZBgQ==",
+      "current": "sha512-wlVCp+8eTupfCeeFvoZNNiTuHrvag0P2jz/ILgb/f/6jkVokUefOcujefi8qUe/j2asHiSePncVsz/xzzA80LQ=="
+    },
+    {
+      "path": "release.source.commit",
+      "previous": "98a0945418c76238f15df2afaddbba4272656c3b",
+      "current": "21f72f07ea22c0af48a3149c550654e80d8e40cb"
+    },
+    {
+      "path": "release.source.reference",
+      "previous": "mermaid@12.0.0",
+      "current": "mermaid@12.1.0"
+    },
+    {
+      "path": "release.tarballUrl",
+      "previous": "https://registry.npmjs.org/mermaid/-/mermaid-12.0.0.tgz",
+      "current": "https://registry.npmjs.org/mermaid/-/mermaid-12.1.0.tgz"
+    },
+    {
+      "path": "release.version",
+      "previous": "12.0.0",
+      "current": "12.1.0"
     }
   ],
   "verification": {
@@ -663,20 +607,30 @@
     },
     "packages": [
       {
-        "package": "dompurify",
-        "version": "3.4.16",
-        "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ=="
+        "package": "mermaid",
+        "version": "12.1.0",
+        "integrity": "sha512-wlVCp+8eTupfCeeFvoZNNiTuHrvag0P2jz/ILgb/f/6jkVokUefOcujefi8qUe/j2asHiSePncVsz/xzzA80LQ=="
       },
       {
-        "package": "esbuild",
-        "version": "0.28.1",
-        "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="
+        "package": "@mermaid-js/parser",
+        "version": "2.0.1",
+        "integrity": "sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA=="
+      },
+      {
+        "package": "@mermaid-js/mermaid-cli",
+        "version": "12.0.0",
+        "integrity": "sha512-AA18uaJtWVlM5PX7RGBxrVrqTTesmEaWCmfV+l5RkD6A1CnpUAtPpL+wWhkQAZrDSfyAw5FZyj084MsnDIPY3g=="
+      },
+      {
+        "package": "@zenuml/core",
+        "version": "3.50.1",
+        "integrity": "sha512-Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw=="
       }
     ],
     "behaviorResult": "pass",
     "rawOutput": {
       "kind": "official-tool-output",
-      "sha256": "0c52ef7ae532f570cb40cac1b59da7d60f927a0c47097159eb73855ef54a0be1",
+      "sha256": "f1dcc57cd1fa10b96b7ebf9409d25ec8a12f856dec9d6271040814c14b7929a6",
       "officialToolStdoutArchived": true
     }
   }

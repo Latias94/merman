@@ -78,6 +78,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
+    let bit_order = crate::packet::PacketConfigView::new(effective_config).bit_order();
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -155,6 +156,10 @@ pub(crate) fn render_packet_diagram_svg_model(
             if !layout.show_bits {
                 continue;
             }
+            let (leading_bit, trailing_bit) = match bit_order {
+                crate::packet::PacketBitOrder::Ascending => (b.start, b.end),
+                crate::packet::PacketBitOrder::Descending => (b.end, b.start),
+            };
             let is_single_block = b.start == b.end;
             let bit_number_y = b.y - 2.0;
             let start_x = if is_single_block {
@@ -169,7 +174,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                 x = fmt(start_x),
                 y = fmt(bit_number_y),
                 anchor = start_anchor,
-                text = b.start
+                text = leading_bit
             );
             if !is_single_block {
                 let _ = write!(
@@ -177,7 +182,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                     r#"<text x="{x}" y="{y}" class="packetByte end" dominant-baseline="auto" text-anchor="end">{text}</text>"#,
                     x = fmt(b.x + b.width),
                     y = fmt(bit_number_y),
-                    text = b.end
+                    text = trailing_bit
                 );
             }
         }

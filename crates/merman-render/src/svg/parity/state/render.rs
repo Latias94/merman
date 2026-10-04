@@ -462,22 +462,27 @@ fn prepare_state_line_hop_paths(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<FxHashMap<String, String>> {
-    use crate::svg::parity::line_hops::{
-        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops,
-        process_edges_with_line_hops,
-    };
+    use crate::svg::parity::line_hops::{LineHopEdge, elk_line_hop_paths};
 
-    let line_hops_value = effective_config
-        .get("elk")
-        .and_then(|value| value.get("lineHops"));
-    if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
+    if effective_config
+        .pointer("/elk/lineHops")
+        .and_then(serde_json::Value::as_bool)
+        == Some(false)
+    {
         return Ok(FxHashMap::default());
     }
-    let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
-        LineHopStyle::Gap
-    } else {
-        LineHopStyle::Arc
-    };
+    options.work_meter().charge(ctx.edges.len())?;
+    let point_count = ctx
+        .edges
+        .iter()
+        .filter_map(|edge| ctx.layout_edges_by_id.get(edge.id.as_str()))
+        .map(|edge| {
+            ctx.elk_edge_paths
+                .get(&edge.id)
+                .map_or(edge.points.len(), Vec::len)
+        })
+        .fold(0usize, usize::saturating_add);
+    options.work_meter().charge(point_count.saturating_mul(2))?;
 
     struct OwnedEdge<'a> {
         id: &'a str,
@@ -527,27 +532,12 @@ fn prepare_state_line_hop_paths(
             arrow_type_end: edge.arrow_type_end,
         })
         .collect();
-    let paths = process_edges_with_line_hops(
-        &edges,
-        LineHopConfig {
-            enabled: true,
-            jump_radius: 6.0,
-            jump_style,
-        },
-        options.work_meter(),
-    )?;
-
-    Ok(paths
-        .into_iter()
-        .filter(|path| {
-            path.has_hops
-                && edges
-                    .iter()
-                    .find(|edge| edge.id == path.edge_id)
-                    .is_some_and(|edge| curve_supports_line_hops(edge.curve))
-        })
-        .map(|path| (path.edge_id.to_owned(), path.path))
-        .collect())
+    Ok(
+        elk_line_hop_paths(effective_config, &edges, options.work_meter())?
+            .into_iter()
+            .map(|(id, path)| (id.to_owned(), path))
+            .collect(),
+    )
 }
 
 fn render_state_root(
@@ -707,7 +697,14 @@ fn render_state_root(
             if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
             }
-            render_state_edge_path(out, ctx, edge, origin_x, origin_y);
+            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                let original_path_work = ctx
+                    .elk_edge_paths
+                    .get(&layout_edge.id)
+                    .map_or(layout_edge.points.len(), Vec::len);
+                options.work_meter().charge(original_path_work)?;
+            }
+            render_state_edge_path(out, ctx, edge, origin_x, origin_y, options.work_meter())?;
             options.checkpoint_emit()?;
         }
     }
@@ -730,6 +727,13 @@ fn render_state_root(
             }
             if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
+            }
+            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                let original_path_work = ctx
+                    .elk_edge_paths
+                    .get(&layout_edge.id)
+                    .map_or(layout_edge.points.len(), Vec::len);
+                options.work_meter().charge(original_path_work)?;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
             options.checkpoint_emit()?;
@@ -980,5 +984,160 @@ fn render_state_cluster(
             fmt(cluster.width.max(1.0)),
             fmt(inner_height)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_elk_neo_note_crossing_rewrites_the_complete_original_mask() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nA --> B: move\nC --> D\nnote right of A: annotation\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected State render model");
+        };
+        let note = model
+            .edges
+            .iter()
+            .find(|edge| edge.classes.contains("note-edge"))
+            .unwrap();
+        // Supply controlled provider routes to the real State paint path. The note crosses an
+        // unrelated transition, while the labelled transition is deliberately away from both.
+        let edges: Vec<crate::model::LayoutEdge> = model
+            .edges
+            .iter()
+            .map(|edge| {
+                let points = if edge.id == note.id {
+                    vec![
+                        crate::model::LayoutPoint { x: 0.0, y: 50.0 },
+                        crate::model::LayoutPoint { x: 100.0, y: 50.0 },
+                    ]
+                } else if edge.start == "C" {
+                    vec![
+                        crate::model::LayoutPoint { x: 50.0, y: 0.0 },
+                        crate::model::LayoutPoint { x: 50.0, y: 100.0 },
+                    ]
+                } else {
+                    vec![
+                        crate::model::LayoutPoint { x: 0.0, y: 200.0 },
+                        crate::model::LayoutPoint { x: 100.0, y: 200.0 },
+                    ]
+                };
+                crate::model::LayoutEdge {
+                    id: edge.id.clone(),
+                    from: edge.start.clone(),
+                    to: edge.end.clone(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points,
+                    label: (!edge.label.is_empty()).then_some(crate::model::LayoutLabel {
+                        x: 50.0,
+                        y: 200.0,
+                        width: 32.0,
+                        height: 24.0,
+                    }),
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                }
+            })
+            .collect();
+        let layout = StateDiagramLayout {
+            nodes: Vec::new(),
+            clusters: Vec::new(),
+            edges,
+            bounds: None,
+            uses_elk_adapter_dom: true,
+            elk_edge_paths: Default::default(),
+        };
+        let render = |hops: serde_json::Value| {
+            let config =
+                serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
+            crate::svg::with_test_svg_execution(&SvgRenderOptions::default(), |execution| {
+                render_state_diagram_svg_model(
+                    &layout,
+                    model,
+                    &config,
+                    None,
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    execution,
+                )
+                .unwrap()
+                .into_string_for(crate::family::RenderFamilyKind::State)
+                .unwrap()
+            })
+        };
+        let baseline = render(serde_json::json!(false));
+        let baseline_doc = roxmltree::Document::parse(&baseline).unwrap();
+        for hops in [serde_json::json!(true), serde_json::json!("gap")] {
+            let svg = render(hops);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            for expected in baseline_doc
+                .descendants()
+                .filter(|node| node.attribute("data-edge") == Some("true"))
+            {
+                let actual = doc
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-id") == expected.attribute("data-id")
+                            && node.has_tag_name("path")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    actual.attribute("data-points"),
+                    expected.attribute("data-points")
+                );
+                assert_eq!(
+                    actual.attribute("marker-end"),
+                    expected.attribute("marker-end")
+                );
+                if expected.attribute("data-id") != Some(note.id.as_str()) {
+                    assert_eq!(actual.attribute("d"), expected.attribute("d"));
+                    assert_eq!(actual.attribute("style"), expected.attribute("style"));
+                    continue;
+                }
+                let d = actual.attribute("d").unwrap();
+                assert_ne!(Some(d), expected.attribute("d"));
+                let style = actual.attribute("style").unwrap();
+                let mask = style
+                    .split(';')
+                    .find_map(|declaration| declaration.trim().strip_prefix("stroke-dasharray:"))
+                    .unwrap();
+                let mask: Vec<f64> = mask
+                    .split_whitespace()
+                    .map(|number| number.parse().unwrap())
+                    .collect();
+                assert_eq!(mask.len(), 4, "{style}");
+                assert_eq!((mask[0], mask[1], mask[3]), (0.0, 0.0, 2.0));
+                let length = crate::svg::parity::svg_path_length_from_d(d).unwrap();
+                assert!(
+                    (mask[2] + 2.0 - length).abs() < 1e-6,
+                    "{style}: length={length}"
+                );
+            }
+            let label = |document: &roxmltree::Document<'_>| {
+                let group = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("edgeLabels"))
+                    .unwrap();
+                group
+                    .descendants()
+                    .filter_map(|node| node.attribute("transform"))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(label(&doc), label(&baseline_doc));
+        }
     }
 }

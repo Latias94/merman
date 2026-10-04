@@ -6,6 +6,9 @@ A tolerant, incremental [Tree-sitter] grammar for Mermaid source. It provides st
 syntax trees and editor queries for 37 public diagram families: the original 35-family Mermaid
 11.16.1 syntax baseline, plus Agentflow and Usecase from Mermaid 12.0.0. The ZenUML integration
 follows ZenUML Core 3.50.1.
+Sequence actor-menu names (`link`, `links`, `properties`, and `details`) also work as message
+endpoints, following the focused Mermaid 12.1.0 lexer fix without changing the other families'
+syntax baseline.
 
 Use this package for syntax highlighting, syntax-aware selection, folding, and other editor features
 that must keep working while a document is incomplete. Use [`@mermanjs/web`] or the Merman Rust
@@ -101,7 +104,7 @@ diagnostics, completion, navigation, and rename.
 ## Rust
 
 ```console
-cargo add tree-sitter@=0.26.12 tree-sitter-mermaid@=0.2.0
+cargo add tree-sitter@=0.27.0 tree-sitter-mermaid@=0.2.0
 ```
 
 ```rust
@@ -151,7 +154,7 @@ int main(void) {
 | Agentflow and Usecase syntax | 12.0.0 |
 | ZenUML Core syntax baseline | 3.50.1 |
 | Tree-sitter language ABI | 15 |
-| Tested Rust runtime | 0.26.12 |
+| Tested Rust runtime | 0.27.0 |
 | Tested Web runtime | 0.27.0 |
 | Native Node runtime contract | 0.25.x |
 

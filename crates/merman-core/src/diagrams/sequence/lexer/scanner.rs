@@ -417,19 +417,19 @@ impl<'input> SequenceScanner<'input> {
             return Some((start, Tok::Note, self.pos));
         }
 
-        if self.starts_with_ci_word("links") {
+        if self.starts_menu_statement("links") {
             self.pos += "links".len();
             return Some((start, Tok::Links, self.pos));
         }
-        if self.starts_with_ci_word("link") {
+        if self.starts_menu_statement("link") {
             self.pos += "link".len();
             return Some((start, Tok::Link, self.pos));
         }
-        if self.starts_with_ci_word("properties") {
+        if self.starts_menu_statement("properties") {
             self.pos += "properties".len();
             return Some((start, Tok::Properties, self.pos));
         }
-        if self.starts_with_ci_word("details") {
+        if self.starts_menu_statement("details") {
             self.pos += "details".len();
             return Some((start, Tok::Details, self.pos));
         }
@@ -569,14 +569,9 @@ impl<'input> SequenceScanner<'input> {
         if !self.input[self.pos..].starts_with("@{") {
             return None;
         }
-        let attached_without_whitespace = self.input[..start]
-            .chars()
-            .next_back()
-            .is_some_and(|ch| !is_ecmascript_whitespace(ch));
-        if !self.declaration_config_allowed || !attached_without_whitespace {
+        if !self.declaration_config_allowed {
             return Some(Err(LexError {
-                message: "Config objects require a whitespace-free actor id and must be attached without whitespace"
-                    .to_string(),
+                message: "Config objects require a whitespace-free actor id".to_string(),
                 span: SourceSpan::new(start, (start + 2).min(self.input.len())),
             }));
         }
@@ -689,7 +684,7 @@ impl<'input> SequenceScanner<'input> {
             return true;
         }
 
-        const KEYWORDS: [&str; 28] = [
+        const KEYWORDS: [&str; 24] = [
             "sequenceDiagram",
             "participant",
             "actor",
@@ -709,10 +704,6 @@ impl<'input> SequenceScanner<'input> {
             "break",
             "end",
             "note",
-            "links",
-            "link",
-            "properties",
-            "details",
             "autonumber",
             "off",
             "activate",
@@ -722,8 +713,30 @@ impl<'input> SequenceScanner<'input> {
         KEYWORDS
             .iter()
             .any(|keyword| self.starts_with_ci_word(keyword))
+            || ["links", "link", "properties", "details"]
+                .iter()
+                .any(|keyword| self.starts_menu_statement(keyword))
             || self.starts_initial_relative_note_keyword("left of")
             || self.starts_initial_relative_note_keyword("right of")
+    }
+
+    fn starts_menu_statement(&self, keyword: &str) -> bool {
+        if !self.starts_with_ci(keyword) {
+            return false;
+        }
+        let mut cursor = self.pos + keyword.len();
+        let start = cursor;
+        while matches!(self.input.as_bytes().get(cursor), Some(b' ' | b'\t')) {
+            cursor += 1;
+        }
+        cursor > start
+            && self.input[cursor..].chars().next().is_some_and(|ch| {
+                !is_ecmascript_whitespace(ch)
+                    && !matches!(
+                        ch,
+                        '/' | '\\' | '+' | '(' | ')' | '<' | '>' | ':' | ',' | ';' | '-'
+                    )
+            })
     }
 
     fn starts_initial_relative_note_keyword(&self, keyword: &str) -> bool {

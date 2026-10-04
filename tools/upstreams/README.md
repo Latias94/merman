@@ -5,7 +5,7 @@ are not submodules, and must resolve to the selected revisions in `REPOS.lock.js
 
 Typical selected checkouts include:
 
-- `repo-ref/mermaid` for Mermaid `12.0.0`;
+- `repo-ref/mermaid` for Mermaid `12.1.0`;
 - `repo-ref/dompurify` for the selected sanitizer source;
 - `repo-ref/zenuml-core` for the selected ZenUML Core `3.50.1` source;
 - the selected Dagre, Graphlib, Cytoscape, and layout sources listed in the lock.
@@ -41,13 +41,13 @@ The renderer probes the built artifact's Mermaid version and verifies that a str
 render calls its selected DOMPurify instance. It records the artifact SHA-256 and compiler identity,
 then executes the verified bytes. Package and artifact drift block baseline promotion.
 
-Mermaid 12.0.0 owns ELK in its standard runtime. Do not register the legacy ELK adapter that the
-reference CLI still carries transitively: it replaces core layout/shape registrations and can
-break Agentflow and Usecase.
+Mermaid 12.1.0 owns ELK in its standard runtime. The selected reference CLI 12.0.0 no longer
+carries the legacy ELK adapter. Do not register that adapter alongside the built-in implementation:
+it replaces core layout/shape registrations and can break Agentflow and Usecase.
 
 Tidy Tree 1.0.1 and ZenUML 1.0.1 remain external companions. Their published package tags resolve
-to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.0.0's
-`98a0945418c76238f15df2afaddbba4272656c3b`. The bundle records each package's own source and
+to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.1.0's
+`21f72f07ea22c0af48a3149c550654e80d8e40cb`. The bundle records each package's own source and
 installed-content identity. Historical baseline and source-corpus records retain their original
 versions until new target output is generated and reviewed.
 

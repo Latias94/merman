@@ -21,7 +21,7 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This checkout prepares the `0.8.0` stable candidate. The latest published workspace release at this checkpoint is `0.8.0-alpha.7`, which follows `mermaid@12.0.0`; the inspected source retains that pinned baseline. Parser, layout, configuration, theming, sanitization, and SVG structure are checked against the selected upstream source and fixtures. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) when upgrading from the previous stable release, or the [versioned upgrade index](docs/release/README.md) for prereleases. The broader theme refactor remains deferred.
+This checkout prepares **`0.8.0` (unreleased)** with Mermaid `12.1.0` selected at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid `12.0.0`. Parser, layout, configuration, theming, sanitization, and SVG structure follow the pinned source and fixtures; transition validation remains in progress. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the previous stable release, the [alpha.7-to-0.8.0 guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for Mermaid 12.1 and low-level Rust changes, or the [versioned index](docs/release/README.md) for earlier prereleases. The broader theme refactor remains deferred.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -32,7 +32,10 @@ This checkout prepares the `0.8.0` stable candidate. The latest published worksp
 
 ## Quick start
 
-Add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies. Upgrade coupled Merman crates together; use the matching tagged documentation for an older release.
+For the published alpha.7 release, add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies and
+use its [tagged documentation](https://github.com/Latias94/merman/blob/v0.8.0-alpha.7/README.md).
+The source-checkout examples below describe current development. Upgrade coupled Merman crates
+together; `0.8.0` is not yet a published installation target.
 
 Run the maintained SVG example from a source checkout:
 
@@ -150,8 +153,10 @@ optional monotonic deadline. Cancellation is observed at operation checkpoints; 
 callback already in progress may return before Merman reaches the next checkpoint.
 
 Resource limits are part of the request contract. Missing capabilities and exhausted limits return
-typed errors rather than partial output or a silent fallback. See the [resource and options guide]
-for the complete policy model.
+typed errors rather than partial output or a silent fallback. The
+[host integration guide](docs/integration/RESOURCE_POLICY.md) shows how to select a finite policy,
+run cancellable background previews, and keep layout work separate from host memory/concurrency.
+See the [resource and options guide] for the complete policy model.
 
 ## Internal flow
 

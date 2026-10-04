@@ -6,7 +6,8 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
+This guide documents the current unreleased `0.8.0` development line. For published alpha.7 APIs,
+use the matching tagged release documentation and dependency versions in the examples below.
 
 ## Source Feature Migration
 
@@ -131,7 +132,12 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Compatibility
 
-`merman-core` tracks Mermaid `@12.0.0` and treats the selected pinned upstream behavior graph as the compatibility target. Compatibility semantic JSON is the public serialized parser projection. It is not a second successful grammar or the master built-in render input. Typed render models and editor facts project the same family semantic construction into purpose-specific shapes.
+The development version of `merman-core` targets Mermaid `12.1.0` at
+`21f72f07ea22c0af48a3149c550654e80d8e40cb` for unreleased Merman `0.8.0`; published alpha.7 targets
+Mermaid `12.0.0`. The selected pinned upstream behavior graph is the compatibility authority.
+Compatibility semantic JSON is the public serialized parser projection. It is not a second
+successful grammar or the master built-in render input. Typed render models and editor facts
+project the same family semantic construction into purpose-specific shapes.
 
 The built-in Diagram Family catalog is the authoritative source for ids, aliases, detector order, parser/editor/render capabilities, metadata, configuration namespaces, and authoring headers. The pinned Mermaid catalog is complete and independent of Cargo feature selection. Custom parser overlays remain explicit and do not inherit a built-in renderer or editor capability.
 

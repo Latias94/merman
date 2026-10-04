@@ -2,8 +2,6 @@
 //!
 //! Provider routes remain immutable. These helpers operate on the separate paint projection.
 
-use crate::Result;
-use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint as P};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -419,16 +417,10 @@ pub(crate) fn marker_segment(
     }
 }
 
-pub(crate) fn straighten_routes(
-    routes: &mut [Vec<P>],
-    work: &mut OperationLayoutWorkControl,
-) -> Result<()> {
-    crate::elk_terminal_jogs::straighten_edge_terminals(routes, |units| work.charge_adapter(units))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout_work::OperationLayoutWorkControl;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use std::sync::Arc;
 
@@ -593,7 +585,10 @@ mod tests {
         let mut work = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::default(),
         )));
-        straighten_routes(&mut routes, &mut work).unwrap();
+        crate::elk_terminal_jogs::straighten_edge_terminals(&mut routes, |units| {
+            work.charge_adapter(units)
+        })
+        .unwrap();
         assert_eq!(coordinates(&routes[0]), coordinates(&raw));
     }
 

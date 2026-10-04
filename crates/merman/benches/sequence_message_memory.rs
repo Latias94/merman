@@ -259,7 +259,11 @@ fn sha256_file(path: &Path) -> Result<String, ProbeError> {
         }
         digest.update(&buffer[..bytes_read]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    let mut output = String::with_capacity(64);
+    for byte in digest.finalize() {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(output)
 }
 
 fn executable_sha256() -> Result<String, ProbeError> {

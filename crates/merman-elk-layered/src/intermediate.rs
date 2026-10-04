@@ -2112,10 +2112,10 @@ fn gather_end_labels_for_node(graph: &mut LGraph, node: usize) {
                 continue;
             };
 
-            let mut index = 0usize;
-            while index < graph.edges[edge].labels.len() {
-                if graph.edges[edge].labels[index].placement == placement {
-                    let mut label = graph.edges[edge].labels.remove(index);
+            let labels = std::mem::take(&mut graph.edges[edge].labels);
+            let mut retained = Vec::with_capacity(labels.len());
+            for mut label in labels {
+                if label.placement == placement {
                     if label.end_label_edge.is_none() {
                         label.end_label_edge = Some(edge);
                     }
@@ -2123,9 +2123,10 @@ fn gather_end_labels_for_node(graph: &mut LGraph, node: usize) {
                         .labels
                         .push(label);
                 } else {
-                    index += 1;
+                    retained.push(label);
                 }
             }
+            graph.edges[edge].labels = retained;
         }
     }
 }
@@ -4248,21 +4249,20 @@ fn set_dummy_node_properties(
 }
 
 fn move_head_labels(graph: &mut LGraph, old_edge: usize, new_edge: usize) {
+    let labels = std::mem::take(&mut graph.edges[old_edge].labels);
+    let mut retained = Vec::with_capacity(labels.len());
     let mut moved = Vec::new();
-    let mut index = 0usize;
-
-    while index < graph.edges[old_edge].labels.len() {
-        if graph.edges[old_edge].labels[index].placement == EdgeLabelPlacement::Head {
-            let mut label = graph.edges[old_edge].labels.remove(index);
+    for mut label in labels {
+        if label.placement == EdgeLabelPlacement::Head {
             if label.end_label_edge.is_none() {
                 label.end_label_edge = Some(old_edge);
             }
             moved.push(label);
         } else {
-            index += 1;
+            retained.push(label);
         }
     }
-
+    graph.edges[old_edge].labels = retained;
     graph.edges[new_edge].labels.extend(moved);
 }
 
@@ -4298,7 +4298,7 @@ mod tests {
             id: id.to_string(),
             source: source.to_string(),
             target: target.to_string(),
-            label: None,
+            labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
             model_order: None,
@@ -4547,7 +4547,7 @@ mod tests {
         let mut head = ElkInputLabel::center("head", 20.0, 10.0);
         head.placement = EdgeLabelPlacement::Head;
         let mut long = edge("A-C", "A", "C");
-        long.label = Some(head);
+        long.labels = vec![head];
 
         let mut graph = graph(
             vec![node("A"), node("B"), node("C")],
@@ -4691,7 +4691,7 @@ mod tests {
         let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
         center.placement = EdgeLabelPlacement::Center;
         let mut labelled = edge("A-B", "A", "B");
-        labelled.label = Some(center);
+        labelled.labels = vec![center];
         let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
         let edge_index = graph
             .edges
@@ -4733,7 +4733,7 @@ mod tests {
         let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
         center.placement = EdgeLabelPlacement::Center;
         let mut labelled = edge("A-B", "A", "B");
-        labelled.label = Some(center);
+        labelled.labels = vec![center];
         let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
         graph.options.direction = ElkDirection::Right;
 
@@ -4776,7 +4776,7 @@ mod tests {
         let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
         center.placement = EdgeLabelPlacement::Center;
         let mut labelled = edge("A-C", "A", "C");
-        labelled.label = Some(center);
+        labelled.labels = vec![center];
         let mut graph = graph(
             vec![node("A"), node("B"), node("C")],
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
@@ -4824,12 +4824,53 @@ mod tests {
     }
 
     #[test]
+    fn end_label_gather_preserves_large_mixed_label_order_and_identity() {
+        let mut input = edge("A-B", "A", "B");
+        input.labels = (0..4096)
+            .map(|index| {
+                let mut label = ElkInputLabel::center(index.to_string(), 12.0, 10.0);
+                label.placement = if index % 3 == 0 {
+                    EdgeLabelPlacement::Center
+                } else {
+                    EdgeLabelPlacement::Head
+                };
+                label.source_index = Some(index);
+                label
+            })
+            .collect();
+        let mut graph = graph(vec![node("A"), node("B")], vec![input]);
+        let target = graph.edges[0].target;
+        gather_end_labels_for_node(&mut graph, target.node);
+        let port = &graph.layerless_nodes[target.node].ports[target.port];
+        assert_eq!(
+            port.labels
+                .iter()
+                .map(|label| label.source_index.unwrap())
+                .collect::<Vec<_>>(),
+            (0..4096).filter(|index| index % 3 != 0).collect::<Vec<_>>()
+        );
+        assert!(
+            port.labels
+                .iter()
+                .all(|label| label.end_label_edge == Some(0))
+        );
+        assert_eq!(
+            graph.edges[0]
+                .labels
+                .iter()
+                .map(|label| label.source_index.unwrap())
+                .collect::<Vec<_>>(),
+            (0..4096).filter(|index| index % 3 == 0).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn end_label_preprocessor_moves_head_labels_to_port_cell_and_expands_margin() {
         let mut head = ElkInputLabel::center("head", 24.0, 10.0);
         head.placement = EdgeLabelPlacement::Head;
         head.inline = false;
         let mut labelled = edge("A-B", "A", "B");
-        labelled.label = Some(head);
+        labelled.labels = vec![head];
         let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
 
         layer_network_simplex(&mut graph).unwrap();
@@ -4857,7 +4898,7 @@ mod tests {
         let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
         center.placement = EdgeLabelPlacement::Center;
         let mut labelled = edge("A-C", "A", "C");
-        labelled.label = Some(center);
+        labelled.labels = vec![center];
         let mut graph = graph(
             vec![node("A"), node("B"), node("C")],
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
@@ -4894,6 +4935,7 @@ mod tests {
                 label_side: None,
                 end_label_edge: None,
                 original_label_edge: None,
+                source_index: None,
             });
 
         remove_label_dummies(&mut graph);

@@ -1,5 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions};
+use merman::svg::{LayoutOptions, RenderResourcePolicy, SvgDebugOptions, SvgRenderOptions};
 use merman_core::{DetectorRegistry, Engine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use serde_json::{Value, json};
@@ -15,7 +15,14 @@ struct OutputIdentity {
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn output_identity(
@@ -218,6 +225,14 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
         (
             "class_namespace_dense",
             include_str!("fixtures/stress_class_dense_namespaces_generics_001.mmd"),
+        ),
+        (
+            "class_nested_namespaces",
+            include_str!("fixtures/class_nested_namespaces.mmd"),
+        ),
+        (
+            "class_nested_namespaces_large",
+            include_str!("fixtures/class_nested_namespaces_large.mmd"),
         ),
         ("state_tiny", include_str!("fixtures/state_tiny.mmd")),
         ("state_medium", include_str!("fixtures/state_medium.mmd")),
@@ -536,7 +551,9 @@ fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
-    let environment = RenderEnvironment::deterministic();
+    // Native batch fixtures include layouts beyond the interactive preview budget.
+    let environment = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::trusted_native());
 
     let mut group = c.benchmark_group("layout");
     for (name, input) in fixtures() {
@@ -587,7 +604,9 @@ fn bench_render(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
-    let environment = RenderEnvironment::deterministic();
+    // Native batch fixtures include layouts beyond the interactive preview budget.
+    let environment = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::trusted_native());
 
     let mut group = c.benchmark_group("render");
     for (name, input) in fixtures() {
@@ -646,9 +665,11 @@ fn bench_end_to_end(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
+    let resources = RenderResourcePolicy::trusted_native();
     let renderer = merman::Renderer::new()
         .with_engine(engine.clone())
-        .with_parse_options(parse_opts);
+        .with_parse_options(parse_opts)
+        .with_resource_policy(*resources.input_policy());
 
     let mut group = c.benchmark_group("end_to_end");
     for (name, input) in fixtures() {
@@ -660,6 +681,7 @@ fn bench_end_to_end(c: &mut Criterion) {
             ..SvgRenderOptions::default()
         };
         let request = || merman::SvgRequest {
+            environment: merman::SvgEnvironment::deterministic().with_resource_policy(resources),
             layout: layout.clone(),
             options: svg_opts.clone(),
             ..Default::default()

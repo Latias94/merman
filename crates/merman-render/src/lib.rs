@@ -43,6 +43,16 @@ pub mod cynefin;
     feature = "diagram-state"
 ))]
 mod dagre;
+#[cfg(feature = "layout-elk")]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod elk_adapter;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -52,6 +62,16 @@ mod dagre;
     )
 )]
 mod elk_edge_geometry;
+#[cfg(feature = "layout-elk")]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod elk_feedback_edges;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -119,6 +139,7 @@ mod generated;
 pub mod gitgraph;
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-class",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"

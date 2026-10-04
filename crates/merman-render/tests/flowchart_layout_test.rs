@@ -1005,13 +1005,13 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    // The edge spans two different subgraphs; the label node should be assigned to the lowest
-    // common compound parent (the outer subgraph), so only the outer cluster must include it.
+    // Dagre assigns its edge-label node to the lowest common compound parent. ELK's
+    // evenGroupFrames instead retains route points, but does not include edge-label boxes.
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Left\n    a\n  end\n  subgraph Right\n    b\n  end\n  a -->|this is a very very very long cross-subgraph label| b\nend\n";
 
     // Keep the minimum node width from hiding the measured-label relationship.
     let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
-        serde_json::json!({"flowchart": {"minNodeWidth": 0}}),
+        serde_json::json!({"layout": "dagre", "flowchart": {"minNodeWidth": 0}}),
     ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
@@ -2030,49 +2030,64 @@ end
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn flowchart_elk_subgraph_title_uses_configured_wrapping_width_for_layout() {
-    fn cluster_for(wrapping_width: usize) -> merman_render::model::LayoutCluster {
+fn flowchart_elk_group_titles_unwrap_plain_text_and_preserve_markdown_wrapping() {
+    fn layout_for(wrapping_width: usize, html_labels: bool, markdown: bool) -> FlowchartLayout {
+        let title = "alpha beta gamma delta epsilon zeta eta theta";
+        let title = if markdown {
+            format!("`{title}`")
+        } else {
+            title.to_owned()
+        };
         let text = format!(
             r#"---
 config:
   layout: elk
-  htmlLabels: false
+  htmlLabels: {html_labels}
   flowchart:
-    htmlLabels: false
+    htmlLabels: {html_labels}
     wrappingWidth: {wrapping_width}
 ---
 flowchart TB
-subgraph Group["alpha beta gamma delta epsilon zeta eta theta"]
+subgraph Group["{title}"]
   A[child]
 end
+Group --> Outside[out]
 "#
         );
-        let engine = Engine::new();
-        let parsed = futures::executor::block_on(
-            engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
-        )
-        .expect("parse ok")
-        .expect("diagram detected");
-        layout_flowchart_render_model(
-            &parsed,
-            &LayoutOptions::default(),
-            &RenderEnvironment::deterministic()
-                .begin_session()
-                .expect("render session"),
-        )
-        .expect("ELK layout")
-        .clusters
-        .into_iter()
-        .find(|cluster| cluster.id == "Group")
-        .expect("Group cluster")
+        layout_flowchart(&text)
     }
 
-    let narrow = cluster_for(60);
-    let wide = cluster_for(240);
-    assert!(
-        narrow.title_label.height > wide.title_label.height + 1e-6,
-        "ELK temporary subgraph labels must use configured wrapping width: narrow={narrow:?}, wide={wide:?}"
-    );
+    for html_labels in [false, true] {
+        for markdown in [false, true] {
+            let narrow = layout_for(60, html_labels, markdown);
+            let wide = layout_for(240, html_labels, markdown);
+            let context = format!("htmlLabels={html_labels}, markdown={markdown}");
+            if markdown {
+                let narrow_title = &narrow
+                    .clusters
+                    .iter()
+                    .find(|c| c.id == "Group")
+                    .unwrap()
+                    .title_label;
+                let wide_title = &wide
+                    .clusters
+                    .iter()
+                    .find(|c| c.id == "Group")
+                    .unwrap()
+                    .title_label;
+                assert!(
+                    narrow_title.height > wide_title.height + 1e-6,
+                    "{context}: Markdown must retain configured wrapping: narrow={narrow_title:?}, wide={wide_title:?}"
+                );
+            } else {
+                assert_eq!(
+                    serde_json::to_value(&narrow).unwrap(),
+                    serde_json::to_value(&wide).unwrap(),
+                    "{context}: ordinary title width must not change group geometry or routing"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -2535,11 +2550,6 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
         .unwrap();
     let cases = [
         (
-            "self-contained",
-            "flowchart TD\n  subgraph A\n    A\n  end",
-            "Setting A as parent of A would create a cycle",
-        ),
-        (
             "two-node cycle",
             "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    A\n  end",
             "Setting B as parent of A would create a cycle",
@@ -2592,6 +2602,32 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
             "expected Mermaid-compatible subgraph-cycle error for {name}"
         );
     }
+}
+
+#[test]
+fn repeated_subgraph_self_membership_flattens_and_lays_out() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram_for_render_model(
+        "flowchart TD\nsubgraph A[Outer]\n  A\n  B\nend\nsubgraph A[Later]\n  C\nend\nA --> B\nB --> C\n",
+        ParseOptions::default(),
+    ))
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("self membership is flattened by Mermaid 12.1");
+    assert_eq!(
+        layout
+            .clusters
+            .iter()
+            .filter(|cluster| cluster.id == "A")
+            .count(),
+        1
+    );
+    assert!(layout.nodes.iter().any(|node| node.id == "B"));
+    assert!(layout.nodes.iter().any(|node| node.id == "C"));
 }
 
 #[test]

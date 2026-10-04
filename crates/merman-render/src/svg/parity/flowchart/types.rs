@@ -132,7 +132,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
 #[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) json: String,
-    pub(in crate::svg::parity::flowchart) style_escaped: String,
+    pub(in crate::svg::parity::flowchart) edge_style: String,
     pub(in crate::svg::parity::flowchart) ryu: ryu_js::Buffer,
     pub(in crate::svg::parity::flowchart) local_points: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_a: Vec<crate::model::LayoutPoint>,
@@ -150,9 +150,15 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) data_points_b64: String,
     pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
     pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
+    /// A crossing triggered after-paint path rewriting, even if its visible jump was suppressed.
     pub(in crate::svg::parity::flowchart) line_hop_applied: bool,
+    /// Input to insertEdge after layout postprocessing, before paint-time clipping.
+    pub(in crate::svg::parity::flowchart) original_label_path_points:
+        Vec<crate::model::LayoutPoint>,
     /// Label polyline after endpoint/cluster clipping and before curve preprocessing.
     pub(in crate::svg::parity::flowchart) label_path_points: Vec<crate::model::LayoutPoint>,
+    /// ELK main label after terminal-run projection and paired-label separation, in local coordinates.
+    pub(in crate::svg::parity::flowchart) label_anchor: Option<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) label_path_was_explicitly_updated: bool,
     /// Actual path emitted by `insertEdge`; hand-drawn edges differ from the logical curve `d`.
     pub(in crate::svg::parity::flowchart) emitted_d_for_label: Option<String>,
