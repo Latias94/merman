@@ -131,6 +131,14 @@ fn verify_postflight(
 fn fixtures() -> Vec<(&'static str, &'static str)> {
     vec![
         (
+            "flowchart_medium_dagre_classic",
+            include_str!("fixtures/flowchart_medium_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_nested_clusters_dagre_classic",
+            include_str!("fixtures/flowchart_nested_clusters_dagre_classic.mmd"),
+        ),
+        (
             "flowchart_tiny",
             include_str!("fixtures/flowchart_tiny.mmd"),
         ),
