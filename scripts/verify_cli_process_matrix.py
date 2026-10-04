@@ -13,6 +13,11 @@ import subprocess
 import sys
 from typing import TypeAlias
 
+if __package__:
+    from .artifact_profile_recipe import load_artifact_profile
+else:
+    from artifact_profile_recipe import load_artifact_profile
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROFILE_CASE_ENV = "MERMAN_CLI_PROFILE_CASE"
@@ -187,8 +192,14 @@ PROFILE_CASES = (
     ProfileCase(
         "release",
         "Release",
+        load_artifact_profile("cli-release").features,
+        "Exercise the exact published recipe and the native runtime shortcut.",
+    ),
+    ProfileCase(
+        "all-features",
+        "All features",
         (),
-        "Exercise every cfg branch and the native runtime shortcut.",
+        "Exercise the standard workflows together with opt-in authoring tools.",
         use_all_features=True,
     ),
 )

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 import signal
@@ -17,6 +18,19 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_process_matrix as matrix
+
+
+CLI_RELEASE_FEATURES = tuple(
+    next(
+        profile["cargo"]["features"]
+        for profile in json.loads(
+            (matrix.REPO_ROOT / "capabilities/artifact-profiles-v2.json").read_text(
+                encoding="utf-8"
+            )
+        )["profiles"]
+        if profile["id"] == "cli-release"
+    )
+)
 
 
 EXPECTED_SELECTIONS = (
@@ -43,7 +57,8 @@ EXPECTED_SELECTIONS = (
     ("system-random", ("all-diagrams", "system-random"), "exact"),
     ("system-timing", ("all-diagrams", "system-timing"), "exact"),
     ("default", (), "default"),
-    ("release", (), "all"),
+    ("release", CLI_RELEASE_FEATURES, "exact"),
+    ("all-features", (), "all"),
 )
 
 
