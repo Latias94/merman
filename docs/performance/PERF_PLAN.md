@@ -114,6 +114,12 @@ Before implementation:
 5. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
 6. Profile only after the slow stage is known.
 
+## 2026-10-05 native release follow-up
+
+The [v0.7.0-to-01cc4562f library observation](library_rendering_v070_to_01cc4562f_2026-10-05.md) measures reused-engine crate rendering, excluding CLI startup. Six of seven valid selected inputs are faster, and two explicit Dagre/classic controls remain about 32% faster. Mindmap is repeatedly slower: eight fresh alternating pairs show +11.1% and +38.83 us paired median. This is a release-product observation across changed output/default contracts, not an admitted same-output implementation regression; the absolute median remains below the fallback 50-us materiality gate.
+
+Before further optimization, retain and investigate LIBPERF-01 (Mindmap parse/public-operation cost), LIBPERF-02 (SVG-emission signals with changed ownership and host drift), LIBPERF-03 (State identity instability), and LIBPERF-04 (twelve missing AgentFlow/Usecase benchmark selectors). LIBPERF-05 tracks the remaining family/stress/transport coverage. Detailed reproduction, raw artifact digests, and handoff boundaries are in the report. No production fix is made; the older priorities below retain their original revision/host scope.
+
 ## Priorities
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
