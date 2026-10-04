@@ -27,13 +27,12 @@ def ascii_capabilities_contract() -> dict[str, object]:
 
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
-    def test_standard_release_omits_optional_rustdoc_and_its_manpages(self) -> None:
+    def test_standard_release_includes_rustdoc_and_its_manpages(self) -> None:
         self.assertEqual(verifier.CLI_CONTRACT_VERSION, 5)
-        self.assertNotIn("rustdoc", verifier.COMMANDS)
-        self.assertEqual(len(verifier.MANPAGE_NAMES), 12)
-        self.assertTrue(
-            all("rustdoc" not in name for name in verifier.MANPAGE_NAMES)
-        )
+        self.assertIn("rustdoc", verifier.COMMANDS)
+        self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
+        for name in ("merman-cli-rustdoc.1", "merman-cli-rustdoc-build.1", "merman-cli-rustdoc-check.1"):
+            self.assertIn(name, verifier.MANPAGE_NAMES)
 
     def test_versions_before_threshold_keep_the_binary_only_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -158,31 +158,87 @@ fn generated_manpages_have_deterministic_metadata_and_descriptions() {
 }
 
 #[test]
-fn standard_profile_assets_exclude_opt_in_rustdoc_command_hierarchy() {
-    for (asset, absent) in [
-        ("completions/merman-cli.bash", "merman__cli,rustdoc)"),
+fn complete_profile_assets_expose_the_full_rustdoc_command_hierarchy() {
+    for (asset, required) in [
+        (
+            "completions/merman-cli.bash",
+            [
+                "merman__cli,rustdoc)",
+                "merman__cli__subcmd__rustdoc,build)",
+                "merman__cli__subcmd__rustdoc,check)",
+            ],
+        ),
         (
             "completions/_merman-cli",
-            "_merman-cli__subcmd__rustdoc_commands",
+            [
+                "_merman-cli__subcmd__rustdoc_commands",
+                "_merman-cli__subcmd__rustdoc__subcmd__build_commands",
+                "_merman-cli__subcmd__rustdoc__subcmd__check_commands",
+            ],
         ),
-        ("completions/merman-cli.fish", "-a \"rustdoc\""),
-        ("completions/merman-cli.elv", "&'merman-cli;rustdoc'="),
-        ("completions/merman-cli.ps1", "'merman-cli;rustdoc'"),
+        (
+            "completions/merman-cli.fish",
+            [
+                "-a \"rustdoc\"",
+                "__fish_seen_subcommand_from build",
+                "__fish_seen_subcommand_from check",
+            ],
+        ),
+        (
+            "completions/merman-cli.elv",
+            [
+                "&'merman-cli;rustdoc'=",
+                "&'merman-cli;rustdoc;build'=",
+                "&'merman-cli;rustdoc;check'=",
+            ],
+        ),
+        (
+            "completions/merman-cli.ps1",
+            [
+                "'merman-cli;rustdoc'",
+                "'merman-cli;rustdoc;build'",
+                "'merman-cli;rustdoc;check'",
+            ],
+        ),
+    ] {
+        let text = read_asset(asset);
+        for token in required {
+            assert!(text.contains(token), "{asset} omits {token:?}");
+        }
+    }
+
+    for (asset, required) in [
         ("man/merman-cli.1", "merman\\-cli\\-rustdoc(1)"),
+        (
+            "man/merman-cli-rustdoc.1",
+            "merman\\-cli\\-rustdoc\\-build(1)",
+        ),
+        (
+            "man/merman-cli-rustdoc.1",
+            "merman\\-cli\\-rustdoc\\-check(1)",
+        ),
+        (
+            "man/merman-cli-rustdoc-build.1",
+            "merman\\-cli rustdoc build",
+        ),
+        (
+            "man/merman-cli-rustdoc-check.1",
+            "merman\\-cli rustdoc check",
+        ),
     ] {
         assert!(
-            !read_asset(asset).contains(absent),
-            "{asset} unexpectedly exposes optional Rustdoc command {absent:?}"
+            read_asset(asset).contains(required),
+            "{asset} omits {required:?}"
         );
     }
 }
 
 #[test]
-fn readme_labels_tracked_assets_as_standard_profile_snapshots() {
+fn readme_labels_tracked_assets_as_complete_profile_snapshots() {
     let readme = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
         .expect("read merman-cli README");
     assert!(
-        readme.contains("canonical `cli-release` standard profile"),
+        readme.contains("canonical `cli-release` complete profile"),
         "tracked assets must not be presented as feature-neutral runtime output"
     );
 }

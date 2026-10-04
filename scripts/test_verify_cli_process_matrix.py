@@ -58,7 +58,6 @@ EXPECTED_SELECTIONS = (
     ("system-timing", ("all-diagrams", "system-timing"), "exact"),
     ("default", (), "default"),
     ("release", CLI_RELEASE_FEATURES, "exact"),
-    ("all-features", (), "all"),
 )
 
 
@@ -66,13 +65,7 @@ def selection_projection(profile: matrix.ProfileCase) -> tuple[object, ...]:
     return (
         profile.case_id,
         profile.features,
-        (
-            "all"
-            if profile.use_all_features
-            else "default"
-            if profile.use_default_features
-            else "exact"
-        ),
+        "default" if profile.use_default_features else "exact",
     )
 
 
@@ -81,9 +74,7 @@ def expected_command(selection: tuple[object, ...]) -> list[str]:
     del case_id
     features = tuple(raw_features)
     command = ["cargo", "nextest", "run", "-p", "merman-cli"]
-    if mode == "all":
-        command.append("--all-features")
-    elif mode == "exact":
+    if mode == "exact":
         command.append("--no-default-features")
         if features:
             command.extend(["--features", ",".join(features)])
@@ -117,7 +108,7 @@ class CliProcessMatrixTests(unittest.TestCase):
         diagram_selectors = {
             feature for feature in public_features if feature.startswith("diagram-")
         }
-        expected_defaults = public_features - diagram_selectors - {"rustdoc"}
+        expected_defaults = public_features - diagram_selectors
         self.assertSetEqual(
             set(features["default"]),
             expected_defaults,
@@ -125,7 +116,7 @@ class CliProcessMatrixTests(unittest.TestCase):
         )
         self.assertIn("layout-elk", features["default"])
         self.assertIn("rustdoc", public_features)
-        self.assertNotIn("rustdoc", features["default"])
+        self.assertIn("rustdoc", features["default"])
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

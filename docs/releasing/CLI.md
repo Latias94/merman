@@ -7,7 +7,7 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 ## Canonical release profile
 
 The standard CLI release is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v2.json`. Its 19 direct features must match in two places:
+`capabilities/artifact-profiles-v2.json`. Its 20 direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
@@ -15,8 +15,8 @@ The standard CLI release is defined by the `cli-release` entry in
 The `0.8.0` source candidate uses the same capabilities for its default feature list,
 including `layout-elk`; both standard binaries therefore include the EPL-2.0 ELK closure and
 its notice/source obligations. The published `0.8.0-alpha.7` default and archives include
-the Rustdoc authoring command; `0.8.0` makes it opt-in with `--features rustdoc`. Custom source
-builds can omit ELK by disabling defaults and selecting the required individual features.
+the Rustdoc authoring command. Custom source builds can omit ELK or Rustdoc by disabling defaults
+and selecting the required individual features.
 
 Both cargo-dist and `cli-release` use Cargo's `dist` profile and disable Cargo default features
 before selecting that explicit list. Run the installation contract before changing a target,
@@ -36,7 +36,7 @@ contract 5. Contract 5 retains contract 4's `-f/--format` native spelling, text-
 narrowed `detect`, and feature-gated top-level `rustdoc` workflow. It adds the ASCII capability
 subcontract and the Plain JSON stderr failure channel selected by `--ascii-report`. The standard
 release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
-`lint`, `lint-rules`, `mmdc`, `parse`, and `render`. An opt-in source build also reports `rustdoc`.
+`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
@@ -54,7 +54,7 @@ document and no mixed diagnostic text.
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Version-specific defaults: alpha.7 includes ELK and Rustdoc; `0.8.0` includes ELK and makes Rustdoc opt-in. |
+| `cargo install merman-cli` | crates.io source | No | Both alpha.7 and `0.8.0` include ELK and Rustdoc by default. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
@@ -78,10 +78,8 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`. The `0.8.0` standard profile ships 12 manual pages;
-its checked completions and manual pages match the compiled command tree. Optional
-Rustdoc source builds can generate completions at runtime; the standard release does not
-ship Rustdoc manual pages.
+`completions/` and `man/`. The `0.8.0` standard profile ships 15 manual pages, including
+Rustdoc build/check; its checked completions and manual pages match the compiled command tree.
 
 The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
 repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
@@ -269,7 +267,7 @@ capability schema and digest must also match that tag's declared capability auth
 
 Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
 expose CLI contract 5, match the complete `cli-release` capability set, install four Homebrew
-completion files, and install all 12 standard-profile man pages. A later release line may
+completion files, and install all 15 standard-profile man pages. A later release line may
 advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
@@ -280,7 +278,7 @@ Use this shape when preparing the upstream Formula change for `0.8.0`:
 def install
   features = %w[
     all-diagrams analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
-    network-icons parallel-markdown pdf png shell-completions svg
+    network-icons parallel-markdown pdf png rustdoc shell-completions svg
     system-clock system-random system-timezone system-timing
   ]
 

@@ -45,6 +45,7 @@ COMMANDS = (
     "mmdc",
     "parse",
     "render",
+    "rustdoc",
 )
 HOMEBREW_COMPLETION_PATHS = {
     "bash": Path("etc/bash_completion.d/merman-cli"),
@@ -75,6 +76,9 @@ MANPAGE_NAMES = (
     "merman-cli-mmdc.1",
     "merman-cli-parse.1",
     "merman-cli-render.1",
+    "merman-cli-rustdoc-build.1",
+    "merman-cli-rustdoc-check.1",
+    "merman-cli-rustdoc.1",
     "merman-cli.1",
 )
 RUNTIME_TIMEOUT_SECONDS = 30

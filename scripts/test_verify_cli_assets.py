@@ -67,7 +67,13 @@ class CliAssetValidationTests(unittest.TestCase):
             ) -> subprocess.CompletedProcess[str]:
                 commands.append(command)
                 if "-c" in command:
-                    stdout = "--format\n__MMDC__\n-e\n"
+                    stdout = (
+                        "--format\n"
+                        "__MMDC__\n-e\n"
+                        "__RUSTDOC__\nbuild\n"
+                        "__RUSTDOC_BUILD__\n--config\n"
+                        "__RUSTDOC_CHECK__\n--config\n"
+                    )
                 elif "utf8" in command:
                     stdout = "MERMAN-CLI(1)\n"
                 else:
@@ -100,6 +106,13 @@ class CliAssetValidationTests(unittest.TestCase):
     case "${COMP_WORDS[1]}" in
         render) COMPREPLY=(--format) ;;
         mmdc) COMPREPLY=(-e) ;;
+        rustdoc)
+            if [[ "$COMP_CWORD" -eq 2 ]]; then
+                COMPREPLY=(build)
+            else
+                COMPREPLY=(--config)
+            fi
+            ;;
     esac
 }
 complete -F _generated_completion merman-cli

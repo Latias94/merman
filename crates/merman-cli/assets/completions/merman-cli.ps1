@@ -26,6 +26,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('lint-rules', 'lint-rules', [CompletionResultType]::ParameterValue, 'List lint rule metadata')
+            [CompletionResult]::new('rustdoc', 'rustdoc', [CompletionResultType]::ParameterValue, 'Build or check committed static Mermaid fragments for Rustdoc')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Print the compiled capabilities from the canonical capability descriptor')
             [CompletionResult]::new('detect', 'detect', [CompletionResultType]::ParameterValue, 'Detect the Mermaid diagram type')
             [CompletionResult]::new('parse', 'parse', [CompletionResultType]::ParameterValue, 'Parse Mermaid source and print the semantic JSON model')
@@ -44,6 +45,35 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--configurable', '--configurable', [CompletionResultType]::ParameterName, 'Only list rules that public lint configuration can reference')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
+        'merman-cli;rustdoc' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the complete managed Rustdoc fragment bundle')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check the managed Rustdoc fragment bundle without writing')
+            break
+        }
+        'merman-cli;rustdoc;build' {
+            [CompletionResult]::new('--config', '--config', [CompletionResultType]::ParameterName, 'Rustdoc fragment configuration file')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error progress output')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
+        'merman-cli;rustdoc;check' {
+            [CompletionResult]::new('--config', '--config', [CompletionResultType]::ParameterName, 'Rustdoc fragment configuration file')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error progress output')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             break

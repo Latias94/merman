@@ -52,27 +52,6 @@ const DEFAULT_CAPABILITIES: &[&str] = &[
     "parallel-markdown",
     "pdf",
     "png",
-    "shell-completions",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-];
-
-const ALL_FEATURE_CAPABILITIES: &[&str] = &[
-    "analysis",
-    "ascii",
-    "icons",
-    "jpeg",
-    "layout-cytoscape",
-    "layout-elk",
-    "markdown",
-    "math",
-    "network-icons",
-    "parallel-markdown",
-    "pdf",
-    "png",
     "rustdoc",
     "shell-completions",
     "svg",
@@ -207,7 +186,6 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "system-timing" => vec!["system-timing"],
         "default" => DEFAULT_CAPABILITIES.to_vec(),
         "release" => DEFAULT_CAPABILITIES.to_vec(),
-        "all-features" => ALL_FEATURE_CAPABILITIES.to_vec(),
         "auto" => compiled_capabilities_for_auto_detection(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }
@@ -328,7 +306,11 @@ fn assert_capability_document(case: &str, payload: &Value) {
         }),
         "runtime provenance must match the artifact-profile authority"
     );
-    assert_eq!(payload["commands"], json!(expected_commands));
+    assert_eq!(
+        payload["commands"],
+        json!(expected_commands),
+        "compiled commands drifted for matrix case {case} with capabilities {expected_ids:?}"
+    );
 
     let expected_capability_objects = sorted_objects_by_id(
         surface["capabilities"]
@@ -1265,6 +1247,7 @@ fn workflow_standard_cli() {
     workflow_cytoscape();
     workflow_elk();
     workflow_math();
+    workflow_rustdoc();
     workflow_completions();
     for flag in [
         "--system-clock",
@@ -1345,10 +1328,6 @@ fn execute_primary_workflow(case: &str) {
         "system-random" => workflow_adapter("--system-random"),
         "system-timing" => workflow_adapter("--system-timing"),
         "default" | "release" => workflow_standard_cli(),
-        "all-features" => {
-            workflow_standard_cli();
-            workflow_rustdoc();
-        }
         "auto" => workflow_auto(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }

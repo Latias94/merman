@@ -35,14 +35,11 @@ class ProfileCase:
     name: str
     features: tuple[str, ...]
     workflow: str
-    use_all_features: bool = False
     use_default_features: bool = False
 
     def __post_init__(self) -> None:
-        if self.use_all_features and self.use_default_features:
-            raise ValueError(f"{self.name} cannot select defaults and --all-features")
-        if (self.use_all_features or self.use_default_features) and self.features:
-            raise ValueError(f"{self.name} cannot list explicit features in aggregate mode")
+        if self.use_default_features and self.features:
+            raise ValueError(f"{self.name} cannot list explicit features with defaults")
         if not self.case_id or not self.name or not self.workflow:
             raise ValueError("profile cases require an id, name, and workflow")
         if any(not feature for feature in self.features):
@@ -195,13 +192,6 @@ PROFILE_CASES = (
         load_artifact_profile("cli-release").features,
         "Exercise the exact published recipe and the native runtime shortcut.",
     ),
-    ProfileCase(
-        "all-features",
-        "All features",
-        (),
-        "Exercise the standard workflows together with opt-in authoring tools.",
-        use_all_features=True,
-    ),
 )
 
 
@@ -310,9 +300,7 @@ def cargo_nextest_args(
         args.append("--locked")
     args.extend(["-p", "merman-cli"])
 
-    if profile.use_all_features:
-        args.append("--all-features")
-    elif not profile.use_default_features:
+    if not profile.use_default_features:
         args.append("--no-default-features")
         if profile.features:
             args.extend(["--features", ",".join(profile.features)])
