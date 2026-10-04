@@ -27,7 +27,6 @@ use std::process::ExitCode;
     feature = "parallel-markdown",
     feature = "pdf",
     feature = "png",
-    feature = "rustdoc",
     feature = "shell-completions",
     feature = "svg",
     feature = "system-clock",

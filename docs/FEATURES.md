@@ -76,9 +76,9 @@ select their own direct leaf set instead.
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features all-diagrams,stdio` |
-| Complete CLI | `merman-cli` | Default direct leaves including all families and ELK, or the exact `cli-release` recipe |
+| Complete diagram CLI | `merman-cli` | Defaults or `cli-release`: all families, ELK, math, exports, editor tooling, and Markdown; add `rustdoc` for checked documentation fragments |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
-| Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
+| Checked Rustdoc fragments | `merman-cli rustdoc` | Source-build the CLI with `rustdoc`; documented crates consume committed files through native `include_str!` |
 | One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` or `complete-svg` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
@@ -285,9 +285,8 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
 SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
-Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
-Markdown, and shell completions.
-The `cli-release` artifact selects the same capabilities explicitly. Both closures include the
+Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is explicitly selected when building the authoring CLI; the standard archive omits that subcommand.
+The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
 EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7 and the stable candidate include ELK in both recipes.
 Compiled native adapters never change the default runtime policy:
 
@@ -325,10 +324,11 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The CLI `rustdoc` tool leaf
-enables deterministic SVG rendering with Cytoscape and math for an explicit `build/check` authoring
-workflow; it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are committed,
-packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
+Rustdoc has two independently distributed static-SVG workflows. For the `0.8.0` source candidate,
+build the CLI with `--features rustdoc` for the deterministic `build/check` authoring workflow;
+standard CLI release archives omit this command. It enables SVG rendering with Cytoscape and math;
+it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
+committed, packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 `#![doc = include_str!(...)]`. This gives the documented crate zero attributable Merman packages
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 

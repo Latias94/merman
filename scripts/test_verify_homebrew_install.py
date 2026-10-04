@@ -27,16 +27,12 @@ def ascii_capabilities_contract() -> dict[str, object]:
 
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
-    def test_contract_five_retains_the_rustdoc_command_and_manpages(self) -> None:
+    def test_standard_release_omits_optional_rustdoc_and_its_manpages(self) -> None:
         self.assertEqual(verifier.CLI_CONTRACT_VERSION, 5)
-        self.assertIn("rustdoc", verifier.COMMANDS)
-        self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
+        self.assertNotIn("rustdoc", verifier.COMMANDS)
+        self.assertEqual(len(verifier.MANPAGE_NAMES), 12)
         self.assertTrue(
-            {
-                "merman-cli-rustdoc.1",
-                "merman-cli-rustdoc-build.1",
-                "merman-cli-rustdoc-check.1",
-            }.issubset(verifier.MANPAGE_NAMES)
+            all("rustdoc" not in name for name in verifier.MANPAGE_NAMES)
         )
 
     def test_versions_before_threshold_keep_the_binary_only_contract(self) -> None:
@@ -243,9 +239,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_all_fifteen_man_pages_are_required(self) -> None:
+    def test_all_twelve_man_pages_are_required(self) -> None:
         with self.installation_fixture() as fixture:
-            (fixture.prefix / "share/man/man1/merman-cli-rustdoc-check.1").unlink()
+            (fixture.prefix / "share/man/man1/merman-cli-render.1").unlink()
             with self.assertRaisesRegex(
                 verifier.HomebrewVerificationError,
                 "man page set differs",
@@ -418,7 +414,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
 
     def test_installed_manpage_body_must_match_the_release_source_asset(self) -> None:
         with self.installation_fixture() as fixture:
-            path = fixture.prefix / "share/man/man1/merman-cli-rustdoc-build.1"
+            path = fixture.prefix / "share/man/man1/merman-cli-render.1"
             path.write_bytes(path.read_bytes() + b".SH STALE\nstale body\n")
 
             with self.assertRaisesRegex(

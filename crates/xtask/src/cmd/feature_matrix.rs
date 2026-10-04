@@ -1561,7 +1561,6 @@ mod tests {
         "parallel-markdown",
         "pdf",
         "png",
-        "rustdoc",
         "shell-completions",
         "svg",
         "system-clock",
@@ -1584,7 +1583,6 @@ mod tests {
         "parallel-markdown",
         "pdf",
         "png",
-        "rustdoc",
         "shell-completions",
         "svg",
         "system-clock",
@@ -1916,7 +1914,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_default_must_be_the_release_recipe_without_elk() {
+    fn cli_default_must_match_the_release_recipe() {
         let mut graph = product_contract_graph();
         graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
             serde_json::json!(["analysis"]);

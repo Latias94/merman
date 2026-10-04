@@ -143,7 +143,7 @@
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "dist",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -163,13 +163,13 @@
         "capabilities": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "runtime_ids": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
-          "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
+          "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]

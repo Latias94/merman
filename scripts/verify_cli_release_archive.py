@@ -881,7 +881,8 @@ def verify_runtime_contract(
         )
         validator(payload)
 
-    _verify_rustdoc_runtime(command, runner=runner)
+    if "rustdoc" in expected_capabilities["commands"]:
+        _verify_rustdoc_runtime(command, runner=runner)
 
 
 def verify_release_archive(

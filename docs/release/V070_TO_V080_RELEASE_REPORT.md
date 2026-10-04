@@ -44,6 +44,21 @@ The full historical product is larger. New functionality and dependency/default 
 
 The ignored raw receipt is `target/bench/experiments/stable-080/published-cli-sizes.json`; each tag directory contains the release API metadata, checksum sidecar, downloaded ZIP, and extracted executable. The experiment registration is `target/bench/experiments/stable-080/experiment.yaml`. Keep this historical receipt separate from later candidate builds.
 
+PE section inspection puts 15,849,584 bytes of the historical executable delta in `.text` (81.13% of the full file delta), 3,182,840 in `.rdata` (16.29%), and 470,940 in `.pdata`. These are section virtual-size differences, not a source-code or dependency attribution. Both enabled capabilities and their implementations compile into `.text`; these two published releases do not control compiler, flags, code paths, or workloads. The inspection receipt is `target/bench/experiments/stable-080/pe-sections.json`.
+
+### Controlled CLI Rustdoc feature decision
+
+At the clean `c45ef5392d8d7447b29197cc133a485c269792f8` code checkpoint, both binaries were built for `x86_64-pc-windows-msvc` using Rust 1.95.0, `cargo build --locked --profile dist -p merman-cli --no-default-features --features <exact recipe> --jobs 1`. The second recipe removes only `rustdoc` from the first recipe's 20 direct features. This is a within-revision, within-profile feature comparison; it does not measure the release-version transition or a compilation-speed improvement.
+
+| Explicit CLI recipe | Uncompressed executable | Normal runtime dependency packages | Difference from full recipe |
+| --- | ---: | ---: | ---: |
+| Full alpha.7-style release features | 49,723,904 bytes | 303 | Baseline |
+| Identical features except `rustdoc` | 48,630,784 bytes | 296 | -1,093,120 bytes (-2.20%); seven fewer packages |
+
+The removed packages are `merman-doc`, `toml`, `toml_datetime`, `toml_parser`, `toml_writer`, `serde_spanned`, and `winnow`. For the same Flowchart, Sequence, Gantt, and Class inputs, SVG output bytes and hashes matched across both binaries. The compiled command catalog includes Rustdoc only in the first binary; the second rejects the missing command. `.text` accounts for 901,936 bytes of the controlled PE section difference. Raw recipes, executable checksums, package closures, output controls, and binary copies are in `target/bench/experiments/cli-rustdoc-default/`. Their build times came from different cache states and are not comparable.
+
+The authoring-only Rustdoc workflow can be explicitly selected with `--features rustdoc`; standard CLI defaults and the official `cli-release` archive omit it. For an installed prebuilt archive, the command cannot be enabled retroactively. Keep the renderer, all diagram families, analysis, ASCII, exports, ELK, math, and local icons available in the standard CLI while attribution for the other choices is still in progress; `network-icons` requires explicit runtime `--allow-network` even when compiled. Retain exact slim source recipes for embedders and lint-only applications. Do not decide to remove a Mermaid-default backend or an advertised CLI output format based on executable bytes alone.
+
 The release campaign has two distinct lanes: **distributed product defaults**, which include each version's declared capabilities, and **equivalent capabilities**, which control the host workload, languages, output, optional backends, runtime policy, and profile. Full-product growth can include newly delivered capabilities; it is not automatically an implementation regression. A parser-only 0.7.0 facade and a default complete-SVG 0.8.0 facade are different workloads.
 
 | Check | State at this preparation checkpoint | Acceptance boundary |

@@ -24,6 +24,16 @@ change. Coupled Rust crates, generated wrappers, and native/WASM artifacts must 
 one matching Merman build. The independent Tree-sitter package keeps its own baseline and release
 process; the parent Mermaid upgrade does not promote its grammar or query contract.
 
+## Select CLI Rustdoc explicitly
+
+The `0.8.0` source default and `cli-release` archives no longer compile the `merman-cli rustdoc` subcommand. Alpha.7 source defaults and archives include it. Most diagram, batch, and lint workflows continue to work with the default CLI; use the feature only for checked documentation fragments:
+
+```console
+cargo run --locked -p merman-cli --features rustdoc -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+```
+
+After `0.8.0` is published, a source installation that needs this workflow can use `cargo install merman-cli --version 0.8.0 --locked --features rustdoc`. Prebuilt archives cannot enable a feature after installation; use the source build or keep an existing alpha.7 tool until the migration is complete. The separate `merman-rustdoc` proc-macro crate is unaffected. Normal CLI release builds retain all diagram families, SVG, ELK, math, raster formats, analysis, ASCII, and Markdown batching. The installed CLI's `capabilities --json` lists compiled commands.
+
 ## Review ELK output changes
 
 The Mermaid 12.0 defaults introduced in alpha.7 remain: ELK is the default for its supported

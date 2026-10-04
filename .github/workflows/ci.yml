@@ -496,7 +496,7 @@ jobs:
 
       - name: Check committed Rustdoc fragments before documentation
         if: matrix.parity
-        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+        run: cargo run --locked -p merman-cli --features rustdoc -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
 
       - name: Test architecture compile-fail contracts
         if: matrix.parity
