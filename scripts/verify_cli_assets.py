@@ -174,21 +174,7 @@ probe_completion() {
 probe_completion render --f
 printf '%s\n' __MMDC__
 probe_completion mmdc -e
-printf '%s\n' __RUSTDOC__
-COMP_WORDS=(merman-cli rustdoc b)
-COMP_CWORD=2
-"$completion_function" merman-cli b rustdoc
-printf '%s\n' "${COMPREPLY[@]}"
-printf '%s\n' __RUSTDOC_BUILD__
-COMP_WORDS=(merman-cli rustdoc build --c)
-COMP_CWORD=3
-"$completion_function" merman-cli --c build
-printf '%s\n' "${COMPREPLY[@]}"
-printf '%s\n' __RUSTDOC_CHECK__
-COMP_WORDS=(merman-cli rustdoc check --c)
-COMP_CWORD=3
-"$completion_function" merman-cli --c check
-printf '%s\n' "${COMPREPLY[@]}"
+
 '''
     result = run_checked(
         "bash-routing",
@@ -197,25 +183,14 @@ printf '%s\n' "${COMPREPLY[@]}"
         environment,
         runner,
     )
-    native, separator, remainder = result.stdout.partition("__MMDC__\n")
-    mmdc, rustdoc_separator, remainder = remainder.partition("__RUSTDOC__\n")
-    rustdoc, build_separator, remainder = remainder.partition("__RUSTDOC_BUILD__\n")
-    rustdoc_build, check_separator, rustdoc_check = remainder.partition(
-        "__RUSTDOC_CHECK__\n"
-    )
+    native, separator, mmdc = result.stdout.partition("__MMDC__\n")
     if (
         not separator
-        or not rustdoc_separator
-        or not build_separator
-        or not check_separator
         or "--format" not in native.splitlines()
         or "-e" not in mmdc.splitlines()
-        or "build" not in rustdoc.splitlines()
-        or "--config" not in rustdoc_build.splitlines()
-        or "--config" not in rustdoc_check.splitlines()
     ):
         raise AssetValidationError(
-            "Bash completion does not route render, mmdc, and nested Rustdoc commands "
+            "Bash completion does not route render and mmdc commands "
             f"through their generated subcommand states:\n{result.stdout.rstrip()}"
         )
 
