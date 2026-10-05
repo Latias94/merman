@@ -1,14 +1,10 @@
-# Upgrading from 0.8.0-alpha.7 to 0.8.0 (unreleased)
+# Upgrading from 0.8.0-alpha.7 to 0.8.0
 
-This guide describes the development target as of 2026-10-02. **Merman `0.8.0` is not released.**
-Implementation, reference-artifact refresh, and validation are in progress; this document does not
-claim that every release gate has passed or that any package channel has published. Keep using the
-[alpha.7 guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) and matching tagged documentation for the published
-release. Earlier upgrades are listed in the [versioned index](README.md).
+This guide covers the changes from alpha.7 to `0.8.0`. The Rust crates are published; use the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) to check independent package channels. Earlier upgrades are listed in the [versioned index](README.md).
 
 ## Selected compatibility graph
 
-| Upstream component | Alpha.7 baseline | Unreleased target |
+| Upstream component | Alpha.7 baseline | 0.8.0 baseline |
 | --- | --- | --- |
 | Mermaid | `12.0.0`, commit `98a0945418c76238f15df2afaddbba4272656c3b` | `12.1.0`, commit `21f72f07ea22c0af48a3149c550654e80d8e40cb` |
 | Mermaid parser | `@mermaid-js/parser@2.0.0` | `@mermaid-js/parser@2.0.1` |

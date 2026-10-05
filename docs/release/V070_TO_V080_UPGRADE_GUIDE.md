@@ -1,12 +1,12 @@
-# Upgrading from 0.7.0 to the 0.8.0 candidate
+# Upgrading from 0.7.0 to 0.8.0
 
-This guide compares the stable `v0.7.0` tag, published on 2026-06-09, with the source candidate for the next stable release, `0.8.0`. The latest published workspace release at this checkpoint is `0.8.0-alpha.7` (2026-09-30); this guide does not announce a `0.8.0` publication. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) records measured revisions, evidence, and remaining release checks. The approximately four-month interval includes breaking API and default changes; upgrading the version alone is insufficient for custom integrations.
+This guide compares the stable `v0.7.0` tag, published on 2026-06-09, with `v0.8.0`. The Rust crates are published; check the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) for other package channels. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) records measured revisions, evidence, and comparison limits. The approximately four-month interval includes breaking API and default changes; upgrading the version alone is insufficient for custom integrations.
 
 ## Rust applications
 
 The workspace still requires Rust 1.95 and edition 2024, as v0.7.0 did. The compatibility breaks below concern APIs and dependency selection, not a newly raised compiler floor.
 
-| Previous integration | Candidate action |
+| Previous integration | 0.8.0 action |
 | --- | --- |
 | Parser-only default `merman` dependency | Disable defaults and select `all-diagrams` or the required `diagram-*` features, or use `merman-core` with an explicit family selection. Facade defaults now build a complete SVG product. |
 | `render`, `raster`, `ratex-math` features | Use `svg`; independently select `png`, `jpeg`, or `pdf`; use `math` for mathematical labels. Select languages separately. |
@@ -26,25 +26,25 @@ Start with the [Rust embedding guide](../rendering/RUST_EMBEDDING.md) for a runn
 
 ### Choose the dependency by purpose
 
-These are source-candidate examples for a consumer checked out beside Merman. Use the published version only after that channel releases 0.8.0. Do not enable every new crate or feature just to repair one missing import.
+These examples use the published `0.8.0` Rust crate. Do not enable every new crate or feature just to repair one missing import.
 
 ```toml
 # Parser-only, retaining the broad language surface of the old default.
-merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams"] }
+merman = { version = "0.8.0", default-features = false, features = ["all-diagrams"] }
 ```
 
 ```toml
 # SVG for a two-family allowlist; no optional layout engines or math.
-merman = { path = "../merman/crates/merman", default-features = false, features = ["diagram-flowchart", "diagram-sequence", "svg"] }
+merman = { version = "0.8.0", default-features = false, features = ["diagram-flowchart", "diagram-sequence", "svg"] }
 ```
 
 For all families with SVG, Cytoscape, and math but without compiled ELK, disable defaults and select both `all-diagrams` and `complete-svg`:
 
 ```toml
-merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { version = "0.8.0", default-features = false, features = ["all-diagrams", "complete-svg"] }
 ```
 
-Add `layout-elk` only if it belongs in the distributed product. Confirm the final application with `cargo tree -e features -i merman-elk-layered`: Cargo feature unification can re-enable ELK through another dependency. Use a published version instead of the example path only after that version becomes available.
+Add `layout-elk` only if it belongs in the distributed product. Confirm the final application with `cargo tree -e features -i merman-elk-layered`: Cargo feature unification can re-enable ELK through another dependency.
 
 ### Understand the crate split
 
@@ -63,7 +63,7 @@ The crate split does not itself require changing a facade dependency into multip
 
 ## Presentation and snapshots
 
-The source candidate selects Mermaid `12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`, compared with `11.15.0` in `0.7.0`; published alpha.7 follows `12.0.0`. Final release checks must match the exact source selected for publication. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) covers feedback-edge orientation, line hops, Packet/XYChart policies, and direct low-level ELK constructor changes. Mermaid 12 introduces ELK defaults for supported graph families, Redux themes, and Neo appearance. Use top-level layout configuration rather than the removed family `defaultRenderer` settings. To retain Dagre and the earlier theme/look choices, put this frontmatter in the diagram:
+`0.8.0` selects Mermaid `12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`, compared with `11.15.0` in `0.7.0`; published alpha.7 follows `12.0.0`. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) covers feedback-edge orientation, line hops, Packet/XYChart policies, and direct low-level ELK constructor changes. Mermaid 12 introduces ELK defaults for supported graph families, Redux themes, and Neo appearance. Use top-level layout configuration rather than the removed family `defaultRenderer` settings. To retain Dagre and the earlier theme/look choices, put this frontmatter in the diagram:
 
 ```text
 ---
@@ -95,7 +95,7 @@ The refactor adds dedicated analysis and editor owners. Hosts retain document st
 
 ## Bindings and package channels
 
-| Candidate contract inherited from alpha.7 | Upgrade requirement |
+| 0.8.0 contract inherited from alpha.7 | Upgrade requirement |
 | --- | --- |
 | C/Flutter ABI 3 | Replace the native artifact and matching facade/header together; reject incompatible ABI probes. |
 | UniFFI API 7, including Python and Apple | Regenerate wrappers and replace the matching library or XCFramework together. |
@@ -130,4 +130,4 @@ Query the installed artifact's runtime catalog before enabling optional operatio
 
 Build the actual dependency declaration outside the Merman workspace, then exercise every host-accepted family with the selected layout and output. Verify explicit rejection of an omitted family, cancellation, resource limits, and unavailable or denied backends. Run the final CSS/font/raster/DOM path and refresh snapshots only after reviewing output changes. Bind performance and size reports to the final reviewed source commit; rerun them if production code, compiler, profile, features, or lockfile changes.
 
-The reusable theme refactor remains deferred beyond this release. The stable candidate's theme compatibility and targeted correctness fixes should not be read as completion of that separate design effort. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) keeps product growth, comparable measurements, and unmeasured surfaces distinct.
+The reusable theme refactor remains deferred beyond this release. The stable release's theme compatibility and targeted correctness fixes should not be read as completion of that separate design effort. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) keeps product growth, comparable measurements, and unmeasured surfaces distinct.

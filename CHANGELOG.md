@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.8.0] - 2026-10-06
 
-This `0.8.0` source candidate summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas. It covers the final Rust, CLI, editor, and SDK contracts rather than intermediate prerelease APIs. The candidate targets Mermaid `12.1.0`; **`0.8.0` is not yet published**. Final release checks must run against the exact source selected for publication.
+`0.8.0` summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas, and targets Mermaid `12.1.0`. Rust crates are published; other package channels publish independently. Start with the upgrade path and three checks below, then read the sections relevant to your integration.
 
 ### Choose your upgrade path
 
@@ -17,7 +17,7 @@ This `0.8.0` source candidate summarizes changes since **0.7.0 (2026-06-09)**, i
 | Already using alpha.7 | [Alpha.7-to-0.8.0 guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for the remaining changes, including low-level ELK initializers. |
 | Earlier alpha, browser, or native SDK | [Versioned upgrade index](docs/release/README.md) and the [package-specific contracts](docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels). |
 
-Published alpha sections below remain historical records. Their intermediate feature names, APIs, measurements, and publication status do not override the stable candidate's contracts below.
+Published alpha sections below remain historical records. Their intermediate feature names, APIs, measurements, and publication status do not override the stable release's contracts below.
 
 ### First things to check
 
@@ -82,9 +82,9 @@ Published alpha sections below remain historical records. Their intermediate fea
 
 ### Availability and known limitations
 
-- 0.8.0 is not yet released. Cargo crates, CLI/LSP archives, Web, Node, Flutter, Python, Android, and Apple publish through separate channels; a workspace tag does not certify all of them. Follow [package surfaces](docs/release/PACKAGE_SURFACES.md) and the matching package changelog. Node remains experimental, and Typst / Tree-sitter / VS Code versions are independent.
+- Rust crates are available at `0.8.0`; see the [publication snapshot](docs/release/PUBLISH_ORDER.md#080-publication-snapshot). CLI/LSP archives, Web, Node, Flutter, Python, Android, and Apple publish through separate channels; a workspace tag does not certify all of them. Follow [package surfaces](docs/release/PACKAGE_SURFACES.md) and the matching package changelog. Node remains experimental, and Typst / Tree-sitter / VS Code versions are independent.
 - Deterministic text measurement does not load the final display font; browser metrics, HTML labels, and hand-drawn rendering retain documented parity boundaries. Hosts needing exact display-font measurement should provide their own callback. The broader reusable-theme refactor remains deferred beyond 0.8.0.
-- Performance observations cover selected native operations, not every family, scale, or transport; unresolved signals remain recorded in the [performance backlog](docs/performance/PERF_PLAN.md). Final release admission is tied to the exact tagged source, including documentation changes.
+- Performance observations cover selected native operations, not every family, scale, or transport; unresolved signals remain recorded in the [performance backlog](docs/performance/PERF_PLAN.md).
 
 ### Contributors
 

@@ -21,13 +21,18 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This README describes the **`0.8.0` source candidate**, aligned with Mermaid `12.1.0` at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. The latest published workspace release is **`0.8.0-alpha.7`** (Mermaid `12.0.0`); `0.8.0` is not yet available from package registries. Start with the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) when coming from `0.7.0`, the [alpha.7 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) when already on the prerelease, or the [versioned index](docs/release/README.md) for earlier alphas. The [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) covers measured changes and their limits.
+This README describes **`0.8.0`**, published on crates.io with Mermaid `12.1.0` compatibility at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Other package channels publish independently; check the [publication snapshot](docs/release/PUBLISH_ORDER.md#080-publication-snapshot) for availability. Start with the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) when coming from `0.7.0`, the [alpha.7 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) when already on the prerelease, or the [versioned index](docs/release/README.md) for earlier alphas. The [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) covers measured changes and their limits.
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
 ## Quick start
 
-For the published release, add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies and use its [tagged documentation](https://github.com/Latias94/merman/blob/v0.8.0-alpha.7/README.md). The examples below target this source checkout; upgrade coupled Merman crates together when `0.8.0` becomes available.
+Add the published Rust crate to your `Cargo.toml`; upgrade coupled Merman crates together:
+
+```toml
+[dependencies]
+merman = "0.8.0"
+```
 
 Run the maintained SVG example from a source checkout:
 
@@ -114,14 +119,14 @@ built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Di
 include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
 terminal output, binary export, and ambient system adapters remain opt-in.
 
-To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**, use this declaration in a consumer checked out beside this repository:
+To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**, use this dependency declaration:
 
 ```toml
 [dependencies]
-merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "complete-svg"] }
+merman = { version = "0.8.0", default-features = false, features = ["all-diagrams", "complete-svg"] }
 ```
 
-`all-diagrams` retains every built-in parser; `complete-svg` selects outputs and engines, not languages. Replace the path with a version only after that version is published. Cargo features are additive: another dependency can re-enable ELK, so inspect the final application graph with `cargo tree -e features -i merman-elk-layered`.
+`all-diagrams` retains every built-in parser; `complete-svg` selects outputs and engines, not languages. Cargo features are additive: another dependency can re-enable ELK, so inspect the final application graph with `cargo tree -e features -i merman-elk-layered`.
 
 To **keep ELK available but render a diagram with Dagre**, set the top-level layout in Mermaid source (`theme` and `look` are optional):
 
