@@ -358,6 +358,14 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/cynefin_medium.mmd"),
         ),
         ("error_basic", include_str!("fixtures/error_basic.mmd")),
+        (
+            "agentflow_basic",
+            include_str!("../../../fixtures/agentflow/basic.mmd"),
+        ),
+        (
+            "usecase_basic",
+            include_str!("../../../fixtures/usecase/basic.mmd"),
+        ),
     ]
 }
 
