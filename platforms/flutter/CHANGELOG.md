@@ -2,13 +2,31 @@
 
 ## [0.8.0] - Unreleased
 
+This is the cumulative migration from the 0.7.0 package to the 0.8.0 candidate, including changes introduced during the alphas. It does not announce pub.dev publication; keep the Dart facade and native artifacts together.
+
+### Breaking changes
+
+- Replace the legacy plugin integration with `package_ffi` and Native Assets. Requires Dart 3.10 / Flutter 3.38; package platform minima are Android 24, iOS 13, and macOS 11. Remove plugin registrars and `openMermanLibrary()`; use `Merman.open()`.
+- Replace `MermanReusableEngine`, engine-owning facade instances, and `dispose()` with a directly constructed `MermanEngine` and `close()`. Supply immutable text-measurement/icon services at construction; mutable callback installation is removed.
+- The native contract is C ABI 3 with Options JSON schema 2, analysis facts schema 2, and ASCII report schema 3. Upgrade custom FFI/JSON decoders as well as the library; an unchanged ABI does not freeze payload schemas. Rename viewport fields to `container_width` / `container_height` and adopt requested/effective ASCII layout and structured-text fallback metadata.
+
+### Added
+
+- Added operation controls with cooperative cancellation/deadlines, structured diagnostic/resource details, capability catalogs, richer terminal plans, and bounded `auto` layout. Same-isolate timers cannot interrupt a synchronous call.
+
+### Changed
+
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
+
 ### Fixed
 
-- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+- Corrected C4 and ELK relationship routing/layering, Packet/XYChart presentation, partial theme overrides, and diagnostic locations; restored Usecase/ER styles and prevented malformed Unicode colors from panicking.
+- Native Assets replaces legacy platform-wrapper loading and Apple relocation/symlink paths; keep the generated package and all bundled slices aligned.
 
-### Upgrade
+### Further reading
 
-- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+- Follow the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels) and [root changelog](../../CHANGELOG.md). Published alpha sections below remain historical contracts; native Rust timings do not measure Dart/Flutter transport performance.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 

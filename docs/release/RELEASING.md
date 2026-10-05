@@ -242,6 +242,9 @@ Keep the target Changelog entry marked `Unreleased` during ordinary preparation.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
 
+For a stable release following several prereleases, make the pending stable entry cumulative from the previous stable version and label that comparison explicitly. Lead with an upgrade-path table and final breaking contracts, then group new capabilities, changes/fixes, security, measurement evidence, and availability by user impact. Keep published alpha entries unchanged; use the versioned upgrade guides for incremental alpha-to-alpha actions. Do not carry superseded intermediate API names or alpha-only benchmark claims into the final contract. The stable upgrade guide owns detailed old-to-new instructions and examples; the embedding guide owns runnable Rust recipes. Package projections must use their own publication boundary (for example, Node has no 0.7.0 package), final schema/API versions, and actual capability recipe.
+
+
 | Surface | Registry or audience behavior | Changelog source |
 | --- | --- | --- |
 | Node | The root loader tarball includes the user-facing changelog for the seven-package group | `platforms/node/CHANGELOG.md` |

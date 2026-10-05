@@ -1,0 +1,1321 @@
+{
+  "schema_version": 1,
+  "evidence_class": "descriptive-native-library-release-observation",
+  "date": "2026-10-05",
+  "source": {
+    "base_product": "00a2f291025913d612b6ca1ce9b6df6daf5bef94",
+    "head_product": "01cc4562f74abaa1c7d31a44881db69296cacb3f",
+    "base_observation_harness": "dcd4e9d9ea2abc4c279e5f66c59bb7af58a7bb8e",
+    "head_control_harness": "48eb201e3c1d4dbdc96e2260c319a5f73e5201d8",
+    "base_control_harness": "01d02d5433d91ba92afc11fad25a6a9d4c9fada0"
+  },
+  "recipe": {
+    "question": "How does reused-process merman crate SVG rendering change from v0.7.0 to merged 01cc4562f, excluding CLI startup?",
+    "evidence_class": "release-product diagnostic, not equal-output implementation admission",
+    "registered_at": "2026-10-05T00:05:36.478311+08:00",
+    "base": {
+      "revision": "00a2f291025913d612b6ca1ce9b6df6daf5bef94",
+      "checkout": "F:\\SourceCodes\\Rust\\merman\\target\\w\\v070-library-benchmark",
+      "features": "render",
+      "default_features": false,
+      "lock_sha256": "375b94fc4f6d99873c39e96101e4a9145705ac25d9398809b6c1846b4d0cda5f",
+      "benchmark_commit": "dcd4e9d9ea2abc4c279e5f66c59bb7af58a7bb8e",
+      "benchmark_sha256": "c0ca36e82f5621080176bc8f889bae1b52331633823b7520e2e1ec23fbae117c"
+    },
+    "head": {
+      "revision": "01cc4562f74abaa1c7d31a44881db69296cacb3f",
+      "checkout": "F:\\SourceCodes\\Rust\\merman\\target\\w\\stable-library-checkpoint",
+      "features": "all-diagrams,svg,layout-cytoscape,layout-elk,math",
+      "default_features": false,
+      "lock_sha256": "d295b344e621350191c982679f15f452414767d9173a6a6776dfa0e6dfb20fdc"
+    },
+    "toolchain": "1.95.0-x86_64-pc-windows-msvc",
+    "profile": "bench (release optimization, both revisions)",
+    "host": {
+      "os": "Windows-11-10.0.26200-SP0",
+      "cpu": "Intel Core i9-13900KF",
+      "logical_cpus": 32
+    },
+    "cargo_jobs": 1,
+    "target_directory": "F:\\SourceCodes\\Rust\\merman\\target",
+    "fixtures": {
+      "flowchart_small": {
+        "path": "crates/merman/benches/fixtures/flowchart_small.mmd",
+        "sha256": "478e33d6d0184a544f28c52382b524c9c3bbd04f44f136b1dee85262a547a94c",
+        "bytes": 216
+      },
+      "flowchart_medium": {
+        "path": "crates/merman/benches/fixtures/flowchart_medium.mmd",
+        "sha256": "b65d43d4c67df71bc188829344583b977b3c2a805e5649d711d849a7a56d6572",
+        "bytes": 1474
+      },
+      "flowchart_nested_clusters": {
+        "path": "crates/merman/benches/fixtures/flowchart_nested_clusters.mmd",
+        "sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1",
+        "bytes": 725
+      },
+      "sequence_medium": {
+        "path": "crates/merman/benches/fixtures/sequence_medium.mmd",
+        "sha256": "1e5132d50777a0f768646d4dbd06fc79b7ca05827ecee78ff8e296b57cfaebe9",
+        "bytes": 550
+      },
+      "class_medium": {
+        "path": "crates/merman/benches/fixtures/class_medium.mmd",
+        "sha256": "e99fac382b50d6499b96c5793deeb833d0bb92283127bfe17fffc8bbc909b637",
+        "bytes": 995
+      },
+      "state_medium": {
+        "path": "crates/merman/benches/fixtures/state_medium.mmd",
+        "sha256": "f578b7b8f8a16734ce2ffa9d6a5781e5d6ad1a8cae024d966240fa5c8774e6ca",
+        "bytes": 304
+      },
+      "gantt_medium": {
+        "path": "crates/merman/benches/fixtures/gantt_medium.mmd",
+        "sha256": "276c8474274911fad28e9e3695137a760f89f3429a5dac0180a9a475f62222f7",
+        "bytes": 250
+      },
+      "mindmap_medium": {
+        "path": "crates/merman/benches/fixtures/mindmap_medium.mmd",
+        "sha256": "a0fe4aa2a0ef2fb356ffbb627026d88c3bf86ea4c3ba17c01e6575bc8e22a8bc",
+        "bytes": 182
+      }
+    },
+    "measurement": {
+      "stages": [
+        "parse",
+        "layout",
+        "render",
+        "end_to_end"
+      ],
+      "criterion_samples": 30,
+      "warmup_seconds": 2,
+      "measurement_seconds": 3,
+      "diagnostic_pairs": 2,
+      "pair_order": [
+        "base,head",
+        "head,base"
+      ],
+      "minimum_followup_pairs": 8,
+      "threshold": "flag diagnostic public e2e changes >10% AND >50000ns; no automatic admission",
+      "followup": "Review output changes and independently repeat flagged public operations; A/A controls before any confirmation claim"
+    },
+    "controls": [
+      "byte-identical inputs",
+      "locked production sources/dependencies",
+      "each operation must succeed, never time an error",
+      "pre/post stable nonempty SVG XML within each executable",
+      "output byte count, XML element count, SHA-256 outside timing",
+      "known stage ownership changes and Criterion 0.5/0.8 recorded",
+      "two releases can intentionally produce different SVG; classify product-cost changes, not same-output code regressions"
+    ],
+    "limits": [
+      "Windows native reused-engine only; no CLI/browser/WASM/Node claim",
+      "no same-output regression pass where outputs differ",
+      "dependency versions intentionally remain each original Cargo.lock",
+      "Historical headless defaults use vendored font metrics; current deterministic environment uses heuristic text metrics. Main lane follows each product API defaults, not a controlled text-metric implementation ablation.",
+      "Historical render borrows persistent layout; current render consumes a batched prepared artifact; private stages have different ownership/destruction boundaries and are attribution only.",
+      "Historical Criterion 0.5.1 and current 0.8.2 are retained from locked dependencies; public loop bodies both perform one reused-engine SVG render and drop output."
+    ],
+    "hypothesis": "Broader crate code does not imply proportionate rendering latency; locate movement by stage and family before attributing."
+  },
+  "executables": {
+    "base": {
+      "executable": "F:\\SourceCodes\\Rust\\merman\\target\\bench\\experiments\\stable-library-2026-10-05\\bin\\base-pipeline.exe",
+      "sha256": "d4c9e8eee2aa2ccc4457f9b09503c732f9fe153e621f9101c48041eb37f49ed1",
+      "source": "F:\\SourceCodes\\Rust\\merman\\target\\w\\v070-library-benchmark\\crates\\merman\\benches\\pipeline.rs",
+      "bench_sha256": "c0ca36e82f5621080176bc8f889bae1b52331633823b7520e2e1ec23fbae117c",
+      "git": "dcd4e9d9ea2abc4c279e5f66c59bb7af58a7bb8e",
+      "dirty": "",
+      "criterion": "0.5.1"
+    },
+    "head": {
+      "executable": "F:\\SourceCodes\\Rust\\merman\\target\\bench\\experiments\\stable-library-2026-10-05\\bin\\head-pipeline.exe",
+      "sha256": "f0aa48f50f7723055efa24f637e0386b89b2d3925eabcdcbc9e0a0da4d7713ea",
+      "source": "F:\\SourceCodes\\Rust\\merman\\target\\w\\stable-library-checkpoint\\crates\\merman\\benches\\pipeline.rs",
+      "bench_sha256": "44b21f42cf666cbe63142b3b94981e8385c23ae1b54141a352d646d26d89b994",
+      "git": "01cc4562f74abaa1c7d31a44881db69296cacb3f",
+      "dirty": "",
+      "criterion": "0.8.2"
+    }
+  },
+  "control_executables": {
+    "base": {
+      "executable": "F:\\SourceCodes\\Rust\\merman\\target\\bench\\experiments\\stable-library-2026-10-05\\bin\\base-control-pipeline.exe",
+      "sha256": "b21d6487ddbef8d57aa9aaf4c0fa5e6beb99008468f18ca037aca9e7d74d5d04",
+      "git": "01d02d5433d91ba92afc11fad25a6a9d4c9fada0",
+      "bench_sha256": "4779c043b1570167bd9f87db9cd5d1ba0d85ecaaed70774b302c230450be3f2d"
+    },
+    "head": {
+      "executable": "F:\\SourceCodes\\Rust\\merman\\target\\bench\\experiments\\stable-library-2026-10-05\\bin\\head-control-pipeline.exe",
+      "sha256": "98414b678b430fd60c70a4607f42446c1becd73066b960db289668af26fedd4b",
+      "git": "48eb201e3c1d4dbdc96e2260c319a5f73e5201d8",
+      "bench_sha256": "312aae29800211d0a3baf2178bf03aadd2875ce7b854abd32eee7e93d459d97a"
+    }
+  },
+  "end_to_end": {
+    "flowchart_small": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 716550.0,
+          "head_ns": 442130.0,
+          "head_over_base": 0.6170260274928476,
+          "delta_ns": -274420.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 654510.0,
+          "head_ns": 431920.0,
+          "head_over_base": 0.6599135230936121,
+          "delta_ns": -222590.0
+        }
+      ],
+      "base_median_ns": 685530.0,
+      "head_median_ns": 437025.0,
+      "paired_ratio_median": 0.6384697752932298,
+      "paired_delta_median_ns": -248505.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 21775,
+          "output_sha256": "93afde4f3de5a30eb84b487a6aa441d8595ad30e1a895239adf45d3d4bd038e8",
+          "svg_elements": 172
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/flowchart_small",
+          "output_kind": "svg",
+          "output_bytes": 39635,
+          "output_sha256": "666068a1704a72e87876268e24bc24a1feace337190fc16b90518c3af912f822",
+          "svg_elements": 127
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "flowchart_medium": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 4604500.0,
+          "head_ns": 1675700.0,
+          "head_over_base": 0.36392659354978824,
+          "delta_ns": -2928800.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 4676400.000000001,
+          "head_ns": 1679800.0,
+          "head_over_base": 0.35920793772987764,
+          "delta_ns": -2996600.000000001
+        }
+      ],
+      "base_median_ns": 4640450.0,
+      "head_median_ns": 1677750.0,
+      "paired_ratio_median": 0.36156726563983294,
+      "paired_delta_median_ns": -2962700.0000000005,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 74334,
+          "output_sha256": "9fc7a78e0b764416dfdc8ab29167048e0494bff46156c533d7fe89c4d50327f6",
+          "svg_elements": 683
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/flowchart_medium",
+          "output_kind": "svg",
+          "output_bytes": 77530,
+          "output_sha256": "df10c9f209aa59fa3d7c450b618a285f5e746992796aeb5bffcdd72402890f00",
+          "svg_elements": 463
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "flowchart_nested_clusters": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 2672000.0,
+          "head_ns": 1276700.0,
+          "head_over_base": 0.4778068862275449,
+          "delta_ns": -1395300.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 2714500.0,
+          "head_ns": 1283199.9999999998,
+          "head_over_base": 0.47272057469147166,
+          "delta_ns": -1431300.0000000002
+        }
+      ],
+      "base_median_ns": 2693250.0,
+      "head_median_ns": 1279950.0,
+      "paired_ratio_median": 0.4752637304595083,
+      "paired_delta_median_ns": -1413300.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 35431,
+          "output_sha256": "cbd794ac910deac7b2bdfba7da1ee333a177f4755972090aac4b65a956d318a6",
+          "svg_elements": 269
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/flowchart_nested_clusters",
+          "output_kind": "svg",
+          "output_bytes": 59432,
+          "output_sha256": "c7913ab696b1f955aada965e066311c241c95c95118d7e48300accf8972bc81b",
+          "svg_elements": 209
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "sequence_medium": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 445320.0,
+          "head_ns": 419720.0,
+          "head_over_base": 0.9425132488996677,
+          "delta_ns": -25600.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 466190.0,
+          "head_ns": 429840.0,
+          "head_over_base": 0.9220274995173642,
+          "delta_ns": -36350.0
+        },
+        {
+          "pair": 2,
+          "base_ns": 459680.0,
+          "head_ns": 416630.0,
+          "head_over_base": 0.9063478941872607,
+          "delta_ns": -43050.0
+        },
+        {
+          "pair": 3,
+          "base_ns": 458740.0,
+          "head_ns": 420050.0,
+          "head_over_base": 0.9156602868727384,
+          "delta_ns": -38690.0
+        },
+        {
+          "pair": 4,
+          "base_ns": 465210.0,
+          "head_ns": 418560.0,
+          "head_over_base": 0.8997227058747662,
+          "delta_ns": -46650.0
+        },
+        {
+          "pair": 5,
+          "base_ns": 460560.0,
+          "head_ns": 420150.0,
+          "head_over_base": 0.9122589890568004,
+          "delta_ns": -40410.0
+        },
+        {
+          "pair": 6,
+          "base_ns": 453200.0,
+          "head_ns": 420620.0,
+          "head_over_base": 0.9281112091791703,
+          "delta_ns": -32580.0
+        },
+        {
+          "pair": 7,
+          "base_ns": 463200.0,
+          "head_ns": 413310.0,
+          "head_over_base": 0.8922927461139897,
+          "delta_ns": -49890.0
+        }
+      ],
+      "base_median_ns": 460120.0,
+      "head_median_ns": 419885.0,
+      "paired_ratio_median": 0.9139596379647694,
+      "paired_delta_median_ns": -39550.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 32105,
+          "output_sha256": "0e90d94334181f40ddd0ccd0b12ce05f90721f0a21a92f574d8b57821cb475ae",
+          "svg_elements": 126
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/sequence_medium",
+          "output_kind": "svg",
+          "output_bytes": 33738,
+          "output_sha256": "785b5b07585b9d329885114465b920a4785fb48ff1e28633bbb5ff1fbc361ac5",
+          "svg_elements": 129
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "class_medium": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 1282600.0,
+          "head_ns": 1016500.0,
+          "head_over_base": 0.7925307968189614,
+          "delta_ns": -266100.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 1323000.0,
+          "head_ns": 1022000.0,
+          "head_over_base": 0.7724867724867724,
+          "delta_ns": -301000.0
+        }
+      ],
+      "base_median_ns": 1302800.0,
+      "head_median_ns": 1019250.0,
+      "paired_ratio_median": 0.7825087846528669,
+      "paired_delta_median_ns": -283550.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 66715,
+          "output_sha256": "1bbc29391506d18bad134016978aacab35594dc57d4060e6b70e52434e15cebd",
+          "svg_elements": 576
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/class_medium",
+          "output_kind": "svg",
+          "output_bytes": 77444,
+          "output_sha256": "d3c416e4722dd17a5401085673061d29b49d9d3c907f5e5052dc998dae7a1ee9",
+          "svg_elements": 576
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "gantt_medium": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 199170.0,
+          "head_ns": 52101.0,
+          "head_over_base": 0.2615906009941256,
+          "delta_ns": -147069.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 198750.0,
+          "head_ns": 51545.0,
+          "head_over_base": 0.25934591194968554,
+          "delta_ns": -147205.0
+        }
+      ],
+      "base_median_ns": 198960.0,
+      "head_median_ns": 51823.0,
+      "paired_ratio_median": 0.2604682564719056,
+      "paired_delta_median_ns": -147137.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 9641,
+          "output_sha256": "799a8d9acd7cd590cc3b3ff418c01f8bf143c653462e5bdb985b0f86f7156113",
+          "svg_elements": 51
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/gantt_medium",
+          "output_kind": "svg",
+          "output_bytes": 10623,
+          "output_sha256": "9ccfb3c5f18cbd526f29ebd51745a8177958970e6a153251c1bcf6e986d0c083",
+          "svg_elements": 51
+        }
+      },
+      "classification": "faster-product-observation"
+    },
+    "mindmap_medium": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 340160.0,
+          "head_ns": 397840.0,
+          "head_over_base": 1.1695672624647224,
+          "delta_ns": 57680.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 345010.0,
+          "head_ns": 381850.0,
+          "head_over_base": 1.1067795136372858,
+          "delta_ns": 36840.0
+        },
+        {
+          "pair": 2,
+          "base_ns": 351970.0,
+          "head_ns": 413850.0,
+          "head_over_base": 1.1758104383896355,
+          "delta_ns": 61880.0
+        },
+        {
+          "pair": 3,
+          "base_ns": 353550.0,
+          "head_ns": 394370.0,
+          "head_over_base": 1.1154575024748974,
+          "delta_ns": 40820.0
+        },
+        {
+          "pair": 4,
+          "base_ns": 355190.0,
+          "head_ns": 402970.0,
+          "head_over_base": 1.1345195529153411,
+          "delta_ns": 47780.0
+        },
+        {
+          "pair": 5,
+          "base_ns": 356150.0,
+          "head_ns": 383080.0,
+          "head_over_base": 1.0756142074968411,
+          "delta_ns": 26930.0
+        },
+        {
+          "pair": 6,
+          "base_ns": 355970.0,
+          "head_ns": 385270.0,
+          "head_over_base": 1.0823103070483469,
+          "delta_ns": 29300.0
+        },
+        {
+          "pair": 7,
+          "base_ns": 349380.0,
+          "head_ns": 378900.0,
+          "head_over_base": 1.0844925296239052,
+          "delta_ns": 29520.0
+        }
+      ],
+      "base_median_ns": 352760.0,
+      "head_median_ns": 389820.0,
+      "paired_ratio_median": 1.1111185080560917,
+      "paired_delta_median_ns": 38830.0,
+      "output_identity": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 36516,
+          "output_sha256": "824b6b51d4ebcc74bd9db459be057c4d4bb69afdae9b6119c199b2a867be633b",
+          "svg_elements": 179
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/mindmap_medium",
+          "output_kind": "svg",
+          "output_bytes": 37585,
+          "output_sha256": "bf421a2d7080e742ad119b5da92741a7f35a1aaa265a1c6eb1ef11d4b6f81fcb",
+          "svg_elements": 179
+        }
+      },
+      "classification": "repeated-slower-product-observation"
+    }
+  },
+  "stages": {
+    "flowchart_small": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 179440.0,
+          "head_ns": 154640.0,
+          "head_over_base": 0.8617922425323228,
+          "delta_ns": -24800.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 178270.0,
+          "head_ns": 144840.0,
+          "head_over_base": 0.812475458574073,
+          "delta_ns": -33430.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 296580.0,
+          "head_ns": 102380.0,
+          "head_over_base": 0.3452019691145728,
+          "delta_ns": -194200.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 305060.0,
+          "head_ns": 102860.0,
+          "head_over_base": 0.3371795712318888,
+          "delta_ns": -202200.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 52463.0,
+          "head_ns": 85874.0,
+          "head_over_base": 1.6368488267922154,
+          "delta_ns": 33411.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 111970.0,
+          "head_ns": 191190.0,
+          "head_over_base": 1.7075109404304725,
+          "delta_ns": 79220.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 716550.0,
+          "head_ns": 442130.0,
+          "head_over_base": 0.6170260274928476,
+          "delta_ns": -274420.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 654510.0,
+          "head_ns": 431920.0,
+          "head_over_base": 0.6599135230936121,
+          "delta_ns": -222590.0
+        }
+      ]
+    },
+    "flowchart_medium": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 318450.0,
+          "head_ns": 369610.0,
+          "head_over_base": 1.1606531637619721,
+          "delta_ns": 51160.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 330290.0,
+          "head_ns": 366240.0,
+          "head_over_base": 1.1088437433770324,
+          "delta_ns": 35950.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 3900600.0,
+          "head_ns": 831200.0,
+          "head_over_base": 0.21309542121724862,
+          "delta_ns": -3069400.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 4152500.0,
+          "head_ns": 821460.0,
+          "head_over_base": 0.19782299819385912,
+          "delta_ns": -3331040.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 257500.0,
+          "head_ns": 302580.0,
+          "head_over_base": 1.1750679611650485,
+          "delta_ns": 45080.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 484820.0,
+          "head_ns": 618030.0,
+          "head_over_base": 1.274761767253826,
+          "delta_ns": 133210.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 4604500.0,
+          "head_ns": 1675700.0,
+          "head_over_base": 0.36392659354978824,
+          "delta_ns": -2928800.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 4676400.000000001,
+          "head_ns": 1679800.0,
+          "head_over_base": 0.35920793772987764,
+          "delta_ns": -2996600.000000001
+        }
+      ]
+    },
+    "flowchart_nested_clusters": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 204950.0,
+          "head_ns": 192750.0,
+          "head_over_base": 0.9404732861673579,
+          "delta_ns": -12200.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 204530.0,
+          "head_ns": 203370.0,
+          "head_over_base": 0.9943284603725615,
+          "delta_ns": -1160.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 2297600.0,
+          "head_ns": 739370.0,
+          "head_over_base": 0.32180100974930365,
+          "delta_ns": -1558230.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 4424400.000000001,
+          "head_ns": 1148700.0,
+          "head_over_base": 0.2596284241931109,
+          "delta_ns": -3275700.000000001
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 103270.0,
+          "head_ns": 225970.0,
+          "head_over_base": 2.1881475743197445,
+          "delta_ns": 122700.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 215130.0,
+          "head_ns": 425780.0,
+          "head_over_base": 1.979175382326965,
+          "delta_ns": 210650.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 2672000.0,
+          "head_ns": 1276700.0,
+          "head_over_base": 0.4778068862275449,
+          "delta_ns": -1395300.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 2714500.0,
+          "head_ns": 1283199.9999999998,
+          "head_over_base": 0.47272057469147166,
+          "delta_ns": -1431300.0000000002
+        }
+      ]
+    },
+    "sequence_medium": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 160840.0,
+          "head_ns": 143830.0,
+          "head_over_base": 0.8942427256901269,
+          "delta_ns": -17010.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 170550.0,
+          "head_ns": 146870.0,
+          "head_over_base": 0.8611550864849018,
+          "delta_ns": -23680.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 156750.0,
+          "head_ns": 125670.0,
+          "head_over_base": 0.8017224880382775,
+          "delta_ns": -31080.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 294710.0,
+          "head_ns": 231760.0,
+          "head_over_base": 0.7864001900173051,
+          "delta_ns": -62950.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 70514.0,
+          "head_ns": 103110.0,
+          "head_over_base": 1.4622628130583997,
+          "delta_ns": 32596.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 136950.0,
+          "head_ns": 193390.0,
+          "head_over_base": 1.412121212121212,
+          "delta_ns": 56440.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 460850.0,
+          "head_ns": 414650.0,
+          "head_over_base": 0.8997504611044809,
+          "delta_ns": -46200.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 458250.0,
+          "head_ns": 421550.0,
+          "head_over_base": 0.9199127114020731,
+          "delta_ns": -36700.0
+        }
+      ]
+    },
+    "class_medium": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 185660.0,
+          "head_ns": 208580.0,
+          "head_over_base": 1.123451470429818,
+          "delta_ns": 22920.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 194010.0,
+          "head_ns": 216910.0,
+          "head_over_base": 1.118035152827174,
+          "delta_ns": 22900.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 685300.0,
+          "head_ns": 395280.0,
+          "head_over_base": 0.5767984824164599,
+          "delta_ns": -290020.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 874660.0,
+          "head_ns": 467130.0,
+          "head_over_base": 0.5340703816340063,
+          "delta_ns": -407530.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 322300.0,
+          "head_ns": 304110.0,
+          "head_over_base": 0.9435618988520013,
+          "delta_ns": -18190.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 383320.0,
+          "head_ns": 637390.0,
+          "head_over_base": 1.6628143587603048,
+          "delta_ns": 254070.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 1282600.0,
+          "head_ns": 1016500.0,
+          "head_over_base": 0.7925307968189614,
+          "delta_ns": -266100.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 1323000.0,
+          "head_ns": 1022000.0,
+          "head_over_base": 0.7724867724867724,
+          "delta_ns": -301000.0
+        }
+      ]
+    },
+    "gantt_medium": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 148740.0,
+          "head_ns": 15663.0,
+          "head_over_base": 0.10530455828963292,
+          "delta_ns": -133077.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 151490.0,
+          "head_ns": 15629.0,
+          "head_over_base": 0.1031685259753119,
+          "delta_ns": -135861.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 17755.0,
+          "head_ns": 11483.0,
+          "head_over_base": 0.6467473950999718,
+          "delta_ns": -6272.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 18249.0,
+          "head_ns": 12057.0,
+          "head_over_base": 0.6606937366431037,
+          "delta_ns": -6192.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 17722.0,
+          "head_ns": 20727.0,
+          "head_over_base": 1.169563254711658,
+          "delta_ns": 3005.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 20405.0,
+          "head_ns": 24795.0,
+          "head_over_base": 1.215143347218819,
+          "delta_ns": 4390.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 199170.0,
+          "head_ns": 52101.0,
+          "head_over_base": 0.2615906009941256,
+          "delta_ns": -147069.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 198750.0,
+          "head_ns": 51545.0,
+          "head_over_base": 0.25934591194968554,
+          "delta_ns": -147205.0
+        }
+      ]
+    },
+    "mindmap_medium": {
+      "parse": [
+        {
+          "pair": 0,
+          "base_ns": 156170.0,
+          "head_ns": 188480.0,
+          "head_over_base": 1.2068899276429532,
+          "delta_ns": 32310.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 153190.0,
+          "head_ns": 185160.0,
+          "head_over_base": 1.2086950845355442,
+          "delta_ns": 31970.0
+        }
+      ],
+      "layout": [
+        {
+          "pair": 0,
+          "base_ns": 82783.0,
+          "head_ns": 76223.0,
+          "head_over_base": 0.920756677095539,
+          "delta_ns": -6560.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 179130.0,
+          "head_ns": 170030.0,
+          "head_over_base": 0.9491989058225869,
+          "delta_ns": -9100.0
+        }
+      ],
+      "render": [
+        {
+          "pair": 0,
+          "base_ns": 66170.0,
+          "head_ns": 80508.0,
+          "head_over_base": 1.2166842980202508,
+          "delta_ns": 14338.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 76489.0,
+          "head_ns": 84001.0,
+          "head_over_base": 1.0982102001595,
+          "delta_ns": 7512.0
+        }
+      ],
+      "end_to_end": [
+        {
+          "pair": 0,
+          "base_ns": 356360.0,
+          "head_ns": 382180.0,
+          "head_over_base": 1.0724548209675608,
+          "delta_ns": 25820.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 359170.0,
+          "head_ns": 395240.0,
+          "head_over_base": 1.1004259821254558,
+          "delta_ns": 36070.0
+        }
+      ]
+    }
+  },
+  "configuration_controls": {
+    "flowchart_medium_dagre_classic": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 4392900.0,
+          "head_ns": 2979500.0,
+          "head_over_base": 0.6782535454938651,
+          "delta_ns": -1413400.0
+        },
+        {
+          "pair": 1,
+          "base_ns": 4422300.0,
+          "head_ns": 3030300.0,
+          "head_over_base": 0.68523166677973,
+          "delta_ns": -1392000.0
+        }
+      ],
+      "base_median_ns": 4407600.0,
+      "head_median_ns": 3004900.0,
+      "paired_ratio_median": 0.6817426061367975,
+      "outputs": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 77990,
+          "output_sha256": "9557120af2c185f5ba3421b4a8357cbed8d90a53e15c6a59bd5fc94907b5404a",
+          "svg_elements": 683
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/flowchart_medium_dagre_classic",
+          "output_kind": "svg",
+          "output_bytes": 80751,
+          "output_sha256": "3c87be9414541fb44e44bf9f37530f7eb5d41b449bba26c88bb157af1f29d00f",
+          "svg_elements": 683
+        }
+      }
+    },
+    "flowchart_nested_clusters_dagre_classic": {
+      "pairs": [
+        {
+          "pair": 0,
+          "base_ns": 2622799.9999999995,
+          "head_ns": 1796899.9999999998,
+          "head_over_base": 0.6851075186823242,
+          "delta_ns": -825899.9999999998
+        },
+        {
+          "pair": 1,
+          "base_ns": 2628000.0,
+          "head_ns": 1767000.0,
+          "head_over_base": 0.6723744292237442,
+          "delta_ns": -861000.0
+        }
+      ],
+      "base_median_ns": 2625400.0,
+      "head_median_ns": 1781950.0,
+      "paired_ratio_median": 0.6787409739530342,
+      "outputs": {
+        "base": {
+          "output_kind": "svg",
+          "output_bytes": 37964,
+          "output_sha256": "4180941381ccc1c371c22df9e67fe452a552dca64375558570f2ca741fe1d2bb",
+          "svg_elements": 269
+        },
+        "head": {
+          "schema_version": 1,
+          "benchmark": "end_to_end/flowchart_nested_clusters_dagre_classic",
+          "output_kind": "svg",
+          "output_bytes": 40089,
+          "output_sha256": "a7412dafb7586a9d46fbac791c2ad7b5599d7b7ae6b4374e74a5aeff96be1bb3",
+          "svg_elements": 269
+        }
+      }
+    }
+  },
+  "aa_controls": {
+    "base": {
+      "pairs": [
+        {
+          "pair": 0,
+          "first_ns": 354360.0,
+          "second_ns": 343960.0,
+          "second_over_first": 0.970651315046845
+        },
+        {
+          "pair": 1,
+          "first_ns": 346300.0,
+          "second_ns": 352630.0,
+          "second_over_first": 1.018278948888247
+        },
+        {
+          "pair": 2,
+          "first_ns": 346250.0,
+          "second_ns": 353730.0,
+          "second_over_first": 1.0216028880866426
+        },
+        {
+          "pair": 3,
+          "first_ns": 353250.0,
+          "second_ns": 358080.0,
+          "second_over_first": 1.0136730360934183
+        },
+        {
+          "pair": 4,
+          "first_ns": 360230.0,
+          "second_ns": 356500.0,
+          "second_over_first": 0.9896455042611665
+        },
+        {
+          "pair": 5,
+          "first_ns": 352420.0,
+          "second_ns": 354050.0,
+          "second_over_first": 1.004625163157596
+        },
+        {
+          "pair": 6,
+          "first_ns": 346980.0,
+          "second_ns": 354070.0,
+          "second_over_first": 1.020433454377774
+        },
+        {
+          "pair": 7,
+          "first_ns": 346270.0,
+          "second_ns": 352290.0,
+          "second_over_first": 1.0173852773846999
+        }
+      ],
+      "median_ratio": 1.015529156739059
+    },
+    "head": {
+      "pairs": [
+        {
+          "pair": 0,
+          "first_ns": 385790.0,
+          "second_ns": 390990.0,
+          "second_over_first": 1.0134788356359679
+        },
+        {
+          "pair": 1,
+          "first_ns": 386860.0,
+          "second_ns": 396240.0,
+          "second_over_first": 1.0242464974409347
+        },
+        {
+          "pair": 2,
+          "first_ns": 391280.0,
+          "second_ns": 397360.0,
+          "second_over_first": 1.0155387446329993
+        },
+        {
+          "pair": 3,
+          "first_ns": 382360.0,
+          "second_ns": 402000.0,
+          "second_over_first": 1.0513652055654357
+        },
+        {
+          "pair": 4,
+          "first_ns": 396120.0,
+          "second_ns": 390390.0,
+          "second_over_first": 0.985534686458649
+        },
+        {
+          "pair": 5,
+          "first_ns": 387050.0,
+          "second_ns": 381460.0,
+          "second_over_first": 0.9855574215217672
+        },
+        {
+          "pair": 6,
+          "first_ns": 394080.0,
+          "second_ns": 386790.0,
+          "second_over_first": 0.9815012180267966
+        },
+        {
+          "pair": 7,
+          "first_ns": 393240.0,
+          "second_ns": 392600.0,
+          "second_over_first": 0.998372495168345
+        }
+      ],
+      "median_ratio": 1.0059256654021564
+    }
+  },
+  "invalid_lanes": [
+    {
+      "side": "head",
+      "stage": "parse",
+      "fixture": "state_medium",
+      "error": "1012-head-parse-state_medium exited 101: Gnuplot not found, using plotters backend\n[bench][preflight] {\"schema_version\":1,\"benchmark\":\"parse/state_medium\",\"output_kind\":\"typed_render_model\",\"output_bytes\":32014,\"output_sha256\":\"4bdd091ddc39ddce9824c6fb1a6d7f0d1460f84f573520443bb7221890946d7e\",\"svg_elements\":null}\nTesting parse/state_medium\nSuccess\n\nthread 'main' (42684) panicked at crates\\merman\\benches\\pipeline.rs:123:5:\nassertion `left == right` failed: parse/state_medium output identity changed after timed iterations\n  left: OutputIdentity { output_kind: \"typed_render_model\", output_bytes: 32014, output_sha256: \"be0b0f0b189b85eb8fbcf158abcc54b55223e6a71a931e7109c416a4f100a022\", svg_elements: None }\n right: OutputIdentity { output_kind: \"typed_render_model\", output_bytes: 32014, output_sha256: \"4bdd091ddc39ddce9824c6fb1a6d7f0d1460f84f573520443bb7221890946d7e\", svg_elements: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n"
+    },
+    {
+      "side": "base",
+      "stage": "end_to_end",
+      "fixture": "state_medium",
+      "error": "Cross-process SVG identity changed in first timed base run; see interrupted-first-pair.log"
+    },
+    {
+      "side": "head",
+      "stage": "parse",
+      "fixture": "state_medium",
+      "error": "1076-head-parse-state_medium exited 101: Gnuplot not found, using plotters backend\n[bench][preflight] {\"schema_version\":1,\"benchmark\":\"parse/state_medium\",\"output_kind\":\"typed_render_model\",\"output_bytes\":32014,\"output_sha256\":\"a0058a393dffc931582f88411b899949a1a28d6180271e7110ab00396824f55d\",\"svg_elements\":null}\nTesting parse/state_medium\nSuccess\n\nthread 'main' (40192) panicked at crates\\merman\\benches\\pipeline.rs:123:5:\nassertion `left == right` failed: parse/state_medium output identity changed after timed iterations\n  left: OutputIdentity { output_kind: \"typed_render_model\", output_bytes: 32014, output_sha256: \"c9fcd385aafdcbbb01861782838da014509c26e26125c2df3fbd674dff23f6e2\", svg_elements: None }\n right: OutputIdentity { output_kind: \"typed_render_model\", output_bytes: 32014, output_sha256: \"a0058a393dffc931582f88411b899949a1a28d6180271e7110ab00396824f55d\", svg_elements: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n"
+    },
+    {
+      "side": "base",
+      "stage": "layout",
+      "fixture": "state_medium",
+      "error": "layout/state_medium output changed in base"
+    },
+    {
+      "side": "base",
+      "stage": "render",
+      "fixture": "state_medium",
+      "error": "render/state_medium output changed in base"
+    }
+  ],
+  "compiled_list": {
+    "original": {
+      "status": "failed",
+      "reason": "compiled Criterion benchmarks differ from the corpus/lane product: missing=['compatibility_json_parse/agentflow_basic', 'compatibility_json_parse/usecase_basic', 'end_to_end/agentflow_basic', 'end_to_end/usecase_basic', 'layout/agentflow_basic', 'layout/usecase_basic', 'parse/agentflow_basic', 'parse/usecase_basic', 'parse_cold_engine/agentflow_basic', 'parse_cold_engine/usecase_basic', 'render/agentflow_basic', 'render/usecase_basic'], unexpected=[]"
+    },
+    "with_controls": {
+      "status": "failed",
+      "reason": "compiled Criterion benchmarks differ from the corpus/lane product: missing=['compatibility_json_parse/agentflow_basic', 'compatibility_json_parse/usecase_basic', 'end_to_end/agentflow_basic', 'end_to_end/usecase_basic', 'layout/agentflow_basic', 'layout/usecase_basic', 'parse/agentflow_basic', 'parse/usecase_basic', 'parse_cold_engine/agentflow_basic', 'parse_cold_engine/usecase_basic', 'render/agentflow_basic', 'render/usecase_basic'], unexpected=[]"
+    },
+    "new_control_coverage": {
+      "status": "passed",
+      "added_benchmarks": [
+        "compatibility_json_parse/flowchart_medium_dagre_classic",
+        "compatibility_json_parse/flowchart_nested_clusters_dagre_classic",
+        "end_to_end/flowchart_medium_dagre_classic",
+        "end_to_end/flowchart_nested_clusters_dagre_classic",
+        "layout/flowchart_medium_dagre_classic",
+        "layout/flowchart_nested_clusters_dagre_classic",
+        "parse/flowchart_medium_dagre_classic",
+        "parse/flowchart_nested_clusters_dagre_classic",
+        "parse_cold_engine/flowchart_medium_dagre_classic",
+        "parse_cold_engine/flowchart_nested_clusters_dagre_classic",
+        "render/flowchart_medium_dagre_classic",
+        "render/flowchart_nested_clusters_dagre_classic"
+      ]
+    }
+  },
+  "raw_artifacts": {
+    "experiment.yaml": {
+      "sha256": "930c601dce5ceba83ab02dc63770ff01d38a0bfc270c8fc21225fe7f0b55c056",
+      "bytes": 6219
+    },
+    "stage-results.json": {
+      "sha256": "54fc48534c8b5394a98071220946662b21a843b231d8cb0521eec476cdace677",
+      "bytes": 231440
+    },
+    "followup-results.json": {
+      "sha256": "c74ccad4211c5e188985f43014a5e49b3fa6f3b757965d148e9f36b6e0befab6",
+      "bytes": 107413
+    },
+    "executables.json": {
+      "sha256": "83d52219e3ad9da34ee7fda13f40e9d04f3bee19c04ee3795fb1763eeefb408b",
+      "bytes": 1094
+    },
+    "control-executables.json": {
+      "sha256": "7cc24983d20f78dfc848da3ca2da6dd0a8403b6b28afe8a22ef64755ef46a781",
+      "bytes": 775
+    },
+    "base-build.jsonl": {
+      "sha256": "5c0ce741e5d0f347933729b89635904351fcf83eb84d24ac6c921da2bb026178",
+      "bytes": 260343
+    },
+    "head-build.jsonl": {
+      "sha256": "5b588bb6ae0b0f4ce19947376f41bdbee7132407353a1f5eac45f8a9df09a988",
+      "bytes": 273073
+    },
+    "base-control-build.jsonl": {
+      "sha256": "118f9874d31a56b1b833a902503bfc1dc5f6f5a5e06ffb1e119fc3ee41d33ada",
+      "bytes": 260096
+    },
+    "head-control-build.jsonl": {
+      "sha256": "fb5f6e6883f04fd90684e7b523155561141d6539467a317a7e8aa8c35826dba8",
+      "bytes": 272981
+    },
+    "measure.py": {
+      "sha256": "f9a260ce39c982082d9c73a23dbf6d90bf5f6d92e876b52fc940f37664bd6b27",
+      "bytes": 7357
+    },
+    "followup.py": {
+      "sha256": "88284fc51d9d495c975ed310bf237ee3c1890359700a83571ae9ace8a51fc7a9",
+      "bytes": 3770
+    },
+    "base-benchmark.patch": {
+      "sha256": "369266d69009b27493d6368c23abf25bf71c64aca56fbc605941a7928c45a539",
+      "bytes": 29372
+    },
+    "head-benchmark.patch": {
+      "sha256": "f235d96e56d086f511b8958372db91607c4a0638e8ff700be9753521b1fe9a6e",
+      "bytes": 3980
+    },
+    "compiled-list-result.json": {
+      "sha256": "2f446cb067dcad151f0bcf42f8675de3fd10ac8712c281354d5767393b0aec6c",
+      "bytes": 1837
+    },
+    "contracts.log": {
+      "sha256": "6851604b77376969c0a712d2d1042e14d2cfcfabdb08c9ff7ff1d75fee7e04e6",
+      "bytes": 5337
+    },
+    "additional-checks.json": {
+      "sha256": "dcd81ef3182cd1d860ca6ee1f0c3f44418184cd976e86707cf0515f86285d42a",
+      "bytes": 242
+    },
+    "test_perf_baseline_manifest.log": {
+      "sha256": "d4513cbe08c851a58f58c94cd3d7e439de57ce7bec07708c98992b2b6b368739",
+      "bytes": 121
+    },
+    "test_native_memory_contracts.log": {
+      "sha256": "c8a056891717e4b3c99d25040e1ea9fb59b2ab141d19a865104a27131c7753a4",
+      "bytes": 155
+    },
+    "test_native_memory_driver_contracts.log": {
+      "sha256": "aa2df0f4a34fdfa9362a26305c1c214236fd6647abf76b5ea5145b7d4cd79afd",
+      "bytes": 240
+    }
+  },
+  "limits": [
+    "Different Mermaid versions, SVG bytes, default layout/theme/text policies and Criterion versions: not byte-identical comparator confirmation.",
+    "All SVG output checks are nonempty XML and stable within accepted observations; no new image/parity certification.",
+    "Two pairs are exploratory for broad stage/configuration observations; the followup has eight pairs but is not power-sized matched-output admission.",
+    "The default 10 percent AND 50 microsecond materiality gate was not exceeded by the followup Mindmap median; that does not erase its reproducible slowdown.",
+    "Later private-stage observations show shared host drift; preserve per-round estimates and avoid summing stages or attributing a code cause.",
+    "Only Windows x86_64 native reused-engine rendering; six requested families, State excluded, not all-family or large-scale release admission."
+  ],
+  "validation": {
+    "python_contract_tests": {
+      "performance": 121,
+      "baseline_manifest": 16,
+      "native_memory": 51,
+      "native_memory_driver": 29,
+      "total": 217,
+      "status": "passed"
+    },
+    "cargo_fmt_all_check": "passed",
+    "git_diff_check": "passed",
+    "compiled_full_corpus": "failed with the same twelve missing selectors before and after new controls; see compiled_list",
+    "production_changes": false
+  }
+}

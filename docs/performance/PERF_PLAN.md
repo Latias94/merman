@@ -114,6 +114,14 @@ Before implementation:
 5. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
 6. Profile only after the slow stage is known.
 
+## 2026-10-05 native release follow-up
+
+The active release comparison is [v0.7.0 Dagre versus current Dagre](library_dagre_v070_to_01cc4562f_2026-10-05.md), measuring complete reused-engine crate SVG calls without CLI startup. Both sides explicitly select Dagre/classic, the default theme, and matching Flowchart settings. All six selected controls have lower current estimates in both recorded pairs: about 15%-33% lower paired-median time. Five controls are measured in the scoped investigation; the nested-cluster control retains its earlier receipt. These are descriptive observations: both same-executable A/A calibrations failed the registered noise gate, so no speedup or blanket non-regression is statistically confirmed. ELK has no v0.7.0 Flowchart implementation baseline; neither ELK nor alpha.7 is included in this release comparison.
+
+The [initial observation](library_rendering_v070_to_01cc4562f_2026-10-05.md) and [expanded native corpus observation](library_rendering_expanded_2026-10-05.md) retain their original default-product evidence and unresolved findings. Their aggregate counts are not the current release-performance headline. In particular, changed defaults prevent assigning the four earlier Flowchart weave, ports, fanout, and long-label slowdowns to a Dagre implementation regression: the matched-Dagre observations have 15%-21% lower current costs. This does not resolve every previously recorded signal or establish a cause.
+
+Retain LIBPERF-01 (Mindmap), LIBPERF-02 (SVG-emission ownership boundaries), and LIBPERF-03 (State plus historical Requirement/Gitgraph identity instability) as deferred findings under their original contracts. LIBPERF-04 remains resolved by restoring the twelve AgentFlow/Usecase selectors. LIBPERF-05 records coverage of the earlier native corpus; memory, additional scales, cold-engine, and other transports remain outside this comparison. For LIBPERF-06, the four matched-Dagre controls do not reproduce the prior slowdown direction; parallel-merges and backedges/subgraphs have not received matched-backend confirmation. LIBPERF-07 retains the smaller/noisy historical signals. A stronger release claim requires a new preregistered stable-runner campaign with A/A calibration and fresh balanced pairs; do not retry the failed schedule until favorable. No production fix or alpha bisect is part of this checkpoint. The older priorities below retain their original revision/host scope.
+
 ## Priorities
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |

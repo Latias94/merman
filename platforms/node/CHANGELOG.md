@@ -4,13 +4,25 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.8.0] - Unreleased
 
-### Fixed
+This entry summarizes the candidate package since its introduction during the 0.8 alphas; there was no 0.7.0 Node package. It prepares 0.8.0 and does not announce npm publication. The package group remains experimental and requires Node.js 22 or newer.
 
-- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+### Added
+
+- Choose native `@mermanjs/node` with its exact-version platform package or the explicit `@mermanjs/node-wasm` transport. Both provide deterministic SVG/layout operations; neither silently switches transport or uses browser WASM as a fallback.
+- The current diagram surface includes Agentflow and Usecase. Agentflow follows upstream beta syntax; the package does not add ASCII, analysis, math, binary export, or host text-measurement callbacks.
 
 ### Upgrade
 
-- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+- Keep the loader and selected transport artifacts on one package version. Native load failures carry typed ABI/platform diagnostics; resolve these rather than substituting a browser package.
+- Relative to early 0.8 alphas, the candidate selects Mermaid 12.1.0 with Mermaid 12 ELK and Redux/Neo defaults. Review SVG snapshots and explicit top-level layout/theme/look settings. Node rendering is not browser DOM admission.
+
+### Fixed
+
+- Corrected C4 and ELK relationship routing/layering, Packet/XYChart presentation, partial theme overrides, and diagnostic locations; restored Usecase/ER styles and prevented malformed Unicode colors from panicking.
+
+### Further reading
+
+- Use the [package guide](README.md), [stable migration guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md) for the final candidate contract. Native Rust benchmark observations are not Node transport measurements.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 

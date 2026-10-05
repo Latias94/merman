@@ -6,13 +6,31 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.8.0] - Unreleased
 
+This entry consolidates the 0.7.0-to-0.8.0 migration across the alphas. It prepares a matching Swift facade and XCFramework candidate; it does not announce artifact publication.
+
+### Breaking changes
+
+- Replace hand-written C bindings, raw callback pointers, and C ABI checks with generated UniFFI API 7 records and objects. Upgrade the source facade and every XCFramework slice together; use `MermanEngine(optionsJson:services:)` instead of `MermanReusableEngine` or old facade factories.
+- Supply immutable text-measurement/icon services at engine construction. The Swift facade owns generated transport objects rather than public raw FFI structs; preserve typed busy/reentrant/cancellation errors.
+- Adopt Options JSON schema 2, analysis facts schema 2, and ASCII report schema 3. Rename viewport fields to `container_width` / `container_height`, move text/math selection under `environment`, and update layout/encoding/fallback payload consumers.
+- Use Swift 5.9 and iOS 14 / macOS 12 or newer. Follow the package guide for Xcode, local SwiftPM, and matching generated-source requirements.
+
+### Added
+
+- Added generic reusable operations, cooperative operation controls, runtime/presentation catalogs, typed resource/diagnostic details, and richer terminal plans.
+
+### Changed
+
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
+
 ### Fixed
 
-- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+- Corrected C4 and ELK relationship routing/layering, Packet/XYChart presentation, partial theme overrides, and diagnostic locations; restored Usecase/ER styles and prevented malformed Unicode colors from panicking.
 
-### Upgrade
+### Further reading
 
-- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+- Use the [package guide](README.md), [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md). Native Rust benchmark observations do not establish Swift transport performance.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 

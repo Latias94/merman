@@ -205,8 +205,7 @@ explicit SVG pipeline. The complete set of copyable task examples lives in
 merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg"] }
 ```
 
-If an input requires a compiled-out layout engine or math renderer, the operation returns a typed
-`missing-capability` error. It does not silently substitute a different semantic result.
+Optional layout loaders retain their family-specific fallback rules: without compiled ELK, graph requests can resolve to Dagre; Mindmap can also use its registered fallback. Architecture requires Cytoscape for its rendering path and reports a typed missing-capability error when it is unavailable. A compiled backend denied by runtime policy reports a policy error, and an execution failure in the selected backend does not trigger fallback. Missing required math capability also reports a typed error. See the [embedding guide](rendering/RUST_EMBEDDING.md#example-an-editor-with-a-family-allowlist) and test the actual family/backend combination.
 
 ### Analysis and editor support
 
