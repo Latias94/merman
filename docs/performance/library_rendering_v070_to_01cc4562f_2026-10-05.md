@@ -1,5 +1,7 @@
 # Native library release observation: v0.7.0 to 01cc4562f
 
+> **Scope update, 2026-10-05:** The active release comparison is [v0.7.0 Dagre versus current Dagre](library_dagre_v070_to_01cc4562f_2026-10-05.md). The measurements below preserve the earlier release-default exploration; changed backends and appearance settings prevent treating its Flowchart ratios as like-for-like Dagre regressions. ELK and alpha.7 are excluded from the active comparison.
+
 Measured on 2026-10-05 (Asia/Shanghai). This checkpoint measures the `merman` crate's reused-engine SVG calls inside a native Criterion process. It excludes CLI process launch, argument parsing, filesystem output, and network icon acquisition.
 
 **Result:** six of seven valid selected inputs rendered faster than v0.7.0. Mindmap was consistently slower in eight fresh alternating pairs: the paired median increased 11.1%, or 38.83 microseconds. Both explicit Dagre/classic configuration controls were about 32% faster. These are release-product observations, not a claim that every family, input scale, or same-output implementation improved.
