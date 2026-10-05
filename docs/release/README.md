@@ -1,6 +1,6 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0-alpha.7` was published on 2026-09-30 and is planned as the final alpha in the 0.8.0 cycle. The development branch targets Mermaid `12.1.0` while preparing stabilization changes; `0.8.0` remains unreleased and its validation is in progress.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0-alpha.7` was published on 2026-09-30. The `main` branch targets Mermaid `12.1.0` for the `0.8.0` source candidate; `0.8.0` remains unpublished until final-source release checks and the relevant package channels complete publication.
 
 ## Reading the 0.8.0 release notes
 
@@ -17,7 +17,7 @@ Package-local changelogs project that same candidate onto each SDK's actual APIs
 | `0.8.0-alpha.4` | `0.8.0-alpha.5` | Runtime contracts are unchanged; alpha.5 follows up the incomplete alpha.4 distribution. See the [alpha.5 changelog](../../CHANGELOG.md#080-alpha5---2026-08-09). |
 | `0.8.0-alpha.5` | `0.8.0-alpha.6` | [Upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md) and [detailed symbol mapping](UNRELEASED_UPGRADE_GUIDE.md): operation-scoped rendering, analysis/editor, and binding changes |
 | `0.8.0-alpha.6` | `0.8.0-alpha.7` | [Upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md): Mermaid 12 defaults, explicit family features, Agentflow/Usecase, and ASCII/native contract changes |
-| `0.8.0-alpha.7` | `0.8.0` **(unreleased target)** | [Upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md): Mermaid 12.1 semantics, ELK routing/labels, and low-level Rust initializer changes; validation is in progress |
+| `0.8.0-alpha.7` | `0.8.0` **(unreleased target)** | [Upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md): Mermaid 12.1 semantics, ELK routing/labels, and low-level Rust initializer changes |
 
 Apply the intervening guides in order when skipping prereleases. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. Published-version guides are historical release contracts: their examples target that version, not the current branch. The explicitly marked unreleased guides describe work in progress; the stable upgrade guide consolidates consumer actions across the 0.8 prereleases. For another earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
 

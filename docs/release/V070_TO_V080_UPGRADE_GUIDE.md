@@ -38,7 +38,13 @@ merman = { path = "../merman/crates/merman", default-features = false, features 
 merman = { path = "../merman/crates/merman", default-features = false, features = ["diagram-flowchart", "diagram-sequence", "svg"] }
 ```
 
-For all families with SVG, Cytoscape, and math but without compiled ELK, select `all-diagrams,complete-svg` with defaults disabled. Add `layout-elk` only if it belongs in the distributed product. Confirm the final application with `cargo tree -e features`: Cargo feature unification can re-enable a capability through another dependency.
+For all families with SVG, Cytoscape, and math but without compiled ELK, disable defaults and select both `all-diagrams` and `complete-svg`:
+
+```toml
+merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "complete-svg"] }
+```
+
+Add `layout-elk` only if it belongs in the distributed product. Confirm the final application with `cargo tree -e features -i merman-elk-layered`: Cargo feature unification can re-enable ELK through another dependency. Use a published version instead of the example path only after that version becomes available.
 
 ### Understand the crate split
 
@@ -57,7 +63,20 @@ The crate split does not itself require changing a facade dependency into multip
 
 ## Presentation and snapshots
 
-The source candidate selects Mermaid `12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`, compared with `11.15.0` in `0.7.0`; published alpha.7 follows `12.0.0`. The final stable baseline must be verified against the pinned source and refreshed receipts; selection does not certify that transition validation is complete. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) covers feedback-edge orientation, line hops, Packet/XYChart policies, and direct low-level ELK constructor changes. Mermaid 12 introduces ELK defaults for supported graph families, Redux themes, and Neo appearance. Use top-level layout configuration rather than the removed family `defaultRenderer` settings. Explicit `layout: dagre`, `theme: default`, and `look: classic` preserve the chosen presentation policy, not every historical pixel or SVG byte.
+The source candidate selects Mermaid `12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`, compared with `11.15.0` in `0.7.0`; published alpha.7 follows `12.0.0`. Final release checks must match the exact source selected for publication. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) covers feedback-edge orientation, line hops, Packet/XYChart policies, and direct low-level ELK constructor changes. Mermaid 12 introduces ELK defaults for supported graph families, Redux themes, and Neo appearance. Use top-level layout configuration rather than the removed family `defaultRenderer` settings. To retain Dagre and the earlier theme/look choices, put this frontmatter in the diagram:
+
+```text
+---
+config:
+  layout: dagre
+  theme: default
+  look: classic
+---
+flowchart TD
+  A[Start] --> B[Done]
+```
+
+`layout: dagre` selects the runtime layout; `theme` and `look` are optional. It does not remove compiled ELK dependencies or preserve every historical pixel or SVG byte. Use the Cargo declaration above when the distributed artifact must omit ELK.
 
 Refresh SVG IDs, DOM selectors, viewBox/geometry snapshots, fonts, and CSS or resvg checks. Default deterministic text measurement no longer ships vendored font metrics. HTML labels and browser measurement remain separate from the headless path. Review ASCII layout, viewport, encoding, and structured-text fallback metadata independently from SVG support; new SVG families do not automatically gain ASCII support.
 
