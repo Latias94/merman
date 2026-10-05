@@ -6,7 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This guide and its dependency examples target the unpublished `0.8.0` candidate. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available.
+> This guide and its dependency examples target the published `merman-rustdoc 0.8.0` release.
 
 > The offline resource defaults and resource-budget options documented below are new in `0.8.0`. Published `0.8.0-alpha.7` uses the interactive 800,000-unit budget and does not expose these options.
 
@@ -109,7 +109,7 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-The `0.8.0` candidate defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
+The `0.8.0` release defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
 `layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
 Math is opt-in; add `math` when diagrams contain mathematical labels, or select `complete-svg-elk`
 for SVG, both layouts, and math together. Users of alpha.6's math-enabled default must enable

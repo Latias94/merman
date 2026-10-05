@@ -185,7 +185,7 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples target the unpublished `0.8.0` candidate, including Auto layout and schema-3 ASCII reports. The latest published version is `0.8.0-alpha.7`; use its tagged examples until `0.8.0` is available. Use the dependency below after publication, or a path dependency on the matching source checkout.
+These examples target the published `merman 0.8.0` release, including Auto layout and schema-3 ASCII reports. Use the dependency below, or a path dependency on the matching source checkout.
 
 The release-facing dependency for the SVG examples is:
 
