@@ -4,7 +4,7 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-05
 
 This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. It prepares the stable candidate and does not announce PyPI publication.
 

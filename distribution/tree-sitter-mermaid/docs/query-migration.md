@@ -4,13 +4,19 @@ The `tree-sitter-mermaid` CST and canonical query captures are experimental befo
 must pin a released version or immutable repository commit and compile their queries against that
 exact generated parser.
 
+## 0.2.0 to 0.3.0 (candidate)
+
+Version 0.3.0 accepts sequence actor-menu names (`link`, `links`, `properties`, and `details`) as message endpoints, following the Mermaid 12.1 lexer fix. Sequence actor metadata uses the `keyword` field for `sequence_statement_keyword`; custom queries that select the historical `kind` field must select `keyword` instead. No diagram family is removed, and the language ABI remains 15.
+
+The generator and verified Rust runtime advance from 0.26.12 to 0.27.0. The Web runtime remains 0.27.0 and the native Node runtime remains 0.25.x. Rebuild native bindings and keep parser, language WASM, and query files from the same package version.
+
 ## 0.1.0 to 0.2.0
 
 Version 0.2.0 adds Mermaid 12 Agentflow and Usecase syntax, increasing the public family set from 35 to 37. The original 35-family syntax baseline remains Mermaid 11.16.1 and ZenUML Core remains 3.50.1; the package does not claim a wholesale Mermaid 12 grammar migration. The language ABI stays at 15.
 
 The new named family roots are `agentflow_diagram` and `usecase_diagram`; their structured child nodes and portable captures are part of the same parser/query package. No named node from 0.1.0 is removed. Recompile custom queries against the new `src/node-types.json`, update any exhaustive family-root dispatch, and install the parser and query files from the same version.
 
-The verified generator, Rust runtime, and Web runtime advance to 0.27.0; the native Node runtime contract stays on 0.25.x. The independent grammar version, language ABI, and runtime package versions are distinct contracts.
+The verified Web runtime advances to `web-tree-sitter` 0.27.0; the generator and Rust runtime stay on 0.26.12 and the native Node runtime contract stays on 0.25.x. The independent grammar version, language ABI, and runtime package versions are distinct contracts.
 
 ## Query ownership
 

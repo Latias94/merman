@@ -305,6 +305,28 @@ jobs:
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
 
+      - name: Prepare ARM64 system resource probes
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          set -euo pipefail
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes ca-certificates openssl fontconfig fonts-dejavu-core poppler-utils strace
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj '/CN=merman-resource-probe-CA' \
+            -addext 'basicConstraints=critical,CA:TRUE' \
+            -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+            -keyout "$RUNNER_TEMP/merman-resource-ca.key" -out "$RUNNER_TEMP/merman-resource-ca.crt"
+          openssl req -newkey rsa:2048 -nodes -subj '/CN=localhost' \
+            -keyout "$RUNNER_TEMP/merman-resource.key" -out "$RUNNER_TEMP/merman-resource.csr"
+          printf 'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n' > "$RUNNER_TEMP/merman-resource.ext"
+          openssl x509 -req -in "$RUNNER_TEMP/merman-resource.csr" \
+            -CA "$RUNNER_TEMP/merman-resource-ca.crt" -CAkey "$RUNNER_TEMP/merman-resource-ca.key" \
+            -CAcreateserial -days 1 -extfile "$RUNNER_TEMP/merman-resource.ext" \
+            -out "$RUNNER_TEMP/merman-resource.crt"
+          sudo install -m 0644 "$RUNNER_TEMP/merman-resource-ca.crt" /usr/local/share/ca-certificates/merman-resource-ca.crt
+          sudo update-ca-certificates
+          openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$RUNNER_TEMP/merman-resource.crt"
+
       - name: Build and execute final native archives
         run: |
           set -euo pipefail
@@ -314,13 +336,17 @@ jobs:
             --artifacts=local \
             --target="$TARGET" \
             --output-format=json > native-dist-manifest.json
+          resource_args=()
+          if [[ "$TARGET" == 'aarch64-unknown-linux-gnu' ]]; then
+            resource_args=(--resource-certificate "$RUNNER_TEMP/merman-resource.crt" --resource-key "$RUNNER_TEMP/merman-resource.key")
+          fi
           python3 scripts/verify_cli_release_archive.py \
             "target/distrib/merman-cli-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-cli-$TARGET.tar.xz.sha256" \
             --target "$TARGET" \
             --version "$VERSION" \
             --repo-root . \
-            --execute
+            --execute "${resource_args[@]}"
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \

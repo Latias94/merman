@@ -1,6 +1,6 @@
 # Gap Backlog
 
-Baseline evidence remains Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`; the unreleased comparison target is Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Do not treat the target as admitted until generated references and gates are refreshed.
+The selected reference and refreshed upstream SVG manifests use Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Do not transfer parity results from a prior source commit to the final release commit; verify the strict gates on that exact revision.
 
 This document tracks **known gaps vs “perfect” Mermaid parity** and a plan to systematically
 eliminate them without regressing the global parity gates.

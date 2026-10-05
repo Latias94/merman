@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 project(tree-sitter-mermaid
-        VERSION "0.2.0"
+        VERSION "0.3.0"
         DESCRIPTION "Tolerant Tree-sitter grammar and editor queries for Mermaid"
         HOMEPAGE_URL "https://github.com/Latias94/merman"
         LANGUAGES C)

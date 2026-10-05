@@ -2,6 +2,14 @@
 
 This record governs evidence required to admit precompiled `merman-cli` and `merman-lsp` targets. Admission requires both native execution of the final archives and proof of the platform resource contract. A successful cross-build or a completed publication does not replace those checks. Dated records distinguish shipped artifacts from any admission evidence still outstanding.
 
+## 2026-10-05: 0.8.0 candidate resource admission verified
+
+The ARM64 `release-preflight.yml` archive job now checks the final CLI's resource paths on `ubuntu-24.04-arm`. A loopback HTTPS icon fixture must reject an untrusted certificate, then load the expected icon using a temporary CI certificate installed in Ubuntu's system trust store. No CA-path override or insecure TLS option is used. `strace` must observe successful opens of the installed DejaVu Sans font during PNG, JPEG, and PDF exports; `pdftotext` and `pdffonts` additionally verify actual PDF text and the selected font. These probes establish system-resource discovery on this runner, not pixel identity, font availability on other hosts, or an older glibc floor.
+
+**Admission status:** native final-archive execution and platform-resource checks passed for candidate `0.8.0` on `ubuntu-24.04-arm`. The complete [immutable preflight](https://github.com/Latias94/merman/actions/runs/37289458526) succeeded for source `fc16f3297481e55d3e34ba8a1b38b6189e4a10cc`. The [ARM64 job](https://github.com/Latias94/merman/actions/runs/37289458526/job/111696360021) records rejection of an untrusted HTTPS certificate, successful icon loading through system trust, and DejaVu Sans discovery during PNG/JPEG/PDF exports with verified PDF text. This closes the resource-evidence gap from alpha.7 for this runner scope.
+
+The final CLI/LSP archives and build evidence are retained in artifact `preflight-cli-lsp-aarch64-unknown-linux-gnu` (ID `11336365690`, artifact SHA-256 `4aba38d6dbc71edf0ef266df8c17010bb501c02d21b2b4fcf90edda473b2e44d`). This records the tested source; later candidate commits require their own successful immutable preflight before shipping. The private test key remains in the ephemeral runner and is not uploaded with archive evidence.
+
 ## 2026-09-30: Linux ARM64 archives verified and published
 
 **Admission status:** native archive execution verified; platform-resource admission remains pending. The published alpha.7 archives establish availability and the execution results below. Publication does not satisfy or waive the outstanding HTTPS/system-certificate and system-font discovery gates. Before the next release for this target, complete those checks and record the run, source identity, and supported platform scope.

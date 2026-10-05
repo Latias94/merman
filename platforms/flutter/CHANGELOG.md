@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-05
 
 This is the cumulative migration from the 0.7.0 package to the 0.8.0 candidate, including changes introduced during the alphas. It does not announce pub.dev publication; keep the Dart facade and native artifacts together.
 

@@ -894,11 +894,19 @@ def verify_release_archive(
     repo_root: Path,
     verified_output: Path | None = None,
     execute: bool = False,
+    resource_certificate: Path | None = None,
+    resource_key: Path | None = None,
     limits: ExtractionLimits = DEFAULT_LIMITS,
     runner: CommandRunner = subprocess.run,
     host_target_checker: HostTargetChecker = target_matches_host,
 ) -> VerificationReport:
     """Verify one archive and optionally persist its checksum-bound bytes."""
+    if (resource_certificate is None) != (resource_key is None):
+        raise ArchiveVerificationError("resource certificate and key must be supplied together")
+    if resource_certificate is not None and (
+        not execute or target != "aarch64-unknown-linux-gnu"
+    ):
+        raise ArchiveVerificationError("system resource admission requires native Linux ARM64 --execute")
     archive = Path(archive)
     checksum = Path(checksum)
     repo_root = require_repository_root(Path(repo_root))
@@ -926,6 +934,16 @@ def verify_release_archive(
                 runner=runner,
                 host_target_checker=host_target_checker,
             )
+            if resource_certificate is not None:
+                if __package__:
+                    from .verify_cli_system_resources import verify_system_resources
+                else:
+                    from verify_cli_system_resources import verify_system_resources
+                verify_system_resources(
+                    archive_member_path(extracted.root, extracted.binary_path),
+                    resource_certificate.resolve(),
+                    resource_key.resolve(),
+                )
         persisted = (
             persist_verified_archive(extracted, verified_output, limits=limits)
             if verified_output is not None
@@ -967,6 +985,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="execute the binary after structural verification when TARGET matches the host",
     )
+    parser.add_argument("--resource-certificate", type=Path, help="CI certificate trusted by the system CA store")
+    parser.add_argument("--resource-key", type=Path, help="private key for the loopback HTTPS probe")
     return parser.parse_args(argv)
 
 
@@ -981,6 +1001,8 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=args.repo_root,
         verified_output=args.verified_output,
         execute=args.execute,
+        resource_certificate=args.resource_certificate,
+        resource_key=args.resource_key,
     )
     print(f"verified {report.archive}")
     return 0

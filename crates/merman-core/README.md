@@ -6,8 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide documents the current unreleased `0.8.0` development line. For published alpha.7 APIs,
-use the matching tagged release documentation and dependency versions in the examples below.
+This guide targets `0.8.0`, which is not yet published. For the currently published `0.8.0-alpha.7`, use its tagged documentation and version-pinned dependencies.
 
 ## Source Feature Migration
 
@@ -27,10 +26,10 @@ suppression, and Cargo feature-unification rules.
 
 ## Quick Start
 
-Add the exact alpha.7 prerelease with all built-in parsers:
+After publication, add the stable release with all built-in parsers:
 
 ```sh
-cargo add merman-core@=0.8.0-alpha.7 --features all-diagrams
+cargo add merman-core@0.8.0 --features all-diagrams
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:
