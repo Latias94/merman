@@ -609,7 +609,7 @@ jobs:
             $winget = Get-Command winget.exe -ErrorAction Stop
           }
           & $winget.Source validate `
-            --manifest (Join-Path $output "winget") `
+            --manifest (Join-Path $output "winget/manifests/l/Latias94/MermanCLI/$env:RELEASE_VERSION") `
             --disable-interactivity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload stable registry candidates
