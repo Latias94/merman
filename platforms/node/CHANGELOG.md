@@ -2,7 +2,7 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-05
 
 This entry summarizes the candidate package since its introduction during the 0.8 alphas; there was no 0.7.0 Node package. It prepares 0.8.0 and does not announce npm publication. The package group remains experimental and requires Node.js 22 or newer.
 

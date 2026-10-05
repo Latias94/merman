@@ -2,6 +2,12 @@
 
 This record governs evidence required to admit precompiled `merman-cli` and `merman-lsp` targets. Admission requires both native execution of the final archives and proof of the platform resource contract. A successful cross-build or a completed publication does not replace those checks. Dated records distinguish shipped artifacts from any admission evidence still outstanding.
 
+## 0.8.0 candidate: resource probes configured, native result pending
+
+The ARM64 `release-preflight.yml` archive job now checks the final CLI's resource paths on `ubuntu-24.04-arm`. A loopback HTTPS icon fixture must reject an untrusted certificate, then load the expected icon using a temporary CI certificate installed in Ubuntu's system trust store. No CA-path override or insecure TLS option is used. `strace` must observe successful opens of the installed DejaVu Sans font during PNG, JPEG, and PDF exports; `pdftotext` and `pdffonts` additionally verify actual PDF text and the selected font. These probes establish system-resource discovery on this runner, not pixel identity, font availability on other hosts, or an older glibc floor.
+
+Configuration alone does not close admission. Record the successful immutable preflight run and its source identity before shipping Linux ARM64 again. The private test key remains in the ephemeral runner and is not uploaded with archive evidence.
+
 ## 2026-09-30: Linux ARM64 archives verified and published
 
 **Admission status:** native archive execution verified; platform-resource admission remains pending. The published alpha.7 archives establish availability and the execution results below. Publication does not satisfy or waive the outstanding HTTPS/system-certificate and system-font discovery gates. Before the next release for this target, complete those checks and record the run, source identity, and supported platform scope.

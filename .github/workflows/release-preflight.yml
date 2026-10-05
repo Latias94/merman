@@ -305,6 +305,18 @@ jobs:
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
 
+      - name: Prepare ARM64 system resource probes
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          set -euo pipefail
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes ca-certificates openssl fontconfig fonts-dejavu-core poppler-utils strace
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj '/CN=merman-resource-probe' -addext 'subjectAltName=IP:127.0.0.1' \
+            -keyout "$RUNNER_TEMP/merman-resource.key" -out "$RUNNER_TEMP/merman-resource.crt"
+          sudo install -m 0644 "$RUNNER_TEMP/merman-resource.crt" /usr/local/share/ca-certificates/merman-resource.crt
+          sudo update-ca-certificates
+
       - name: Build and execute final native archives
         run: |
           set -euo pipefail
@@ -314,13 +326,17 @@ jobs:
             --artifacts=local \
             --target="$TARGET" \
             --output-format=json > native-dist-manifest.json
+          resource_args=()
+          if [[ "$TARGET" == 'aarch64-unknown-linux-gnu' ]]; then
+            resource_args=(--resource-certificate "$RUNNER_TEMP/merman-resource.crt" --resource-key "$RUNNER_TEMP/merman-resource.key")
+          fi
           python3 scripts/verify_cli_release_archive.py \
             "target/distrib/merman-cli-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-cli-$TARGET.tar.xz.sha256" \
             --target "$TARGET" \
             --version "$VERSION" \
             --repo-root . \
-            --execute
+            --execute "${resource_args[@]}"
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \

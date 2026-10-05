@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-05
 
 0.8.0 is the next stable release, covering the accumulated changes since **0.7.0 (2026-06-09)**, including the work shipped across seven alphas. It expands Merman from a rendering library into a configurable rendering and authoring stack, with breaking Rust APIs, build features, presentation defaults, and binding contracts. This entry describes the final candidate rather than the intermediate alpha APIs. Mermaid 12.1 alignment and release validation remain in progress; 0.8.0 is not yet published.
 
