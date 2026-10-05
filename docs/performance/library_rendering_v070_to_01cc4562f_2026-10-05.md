@@ -6,6 +6,8 @@ Measured on 2026-10-05 (Asia/Shanghai). This checkpoint measures the `merman` cr
 
 The machine-readable [receipt](baselines/library-v070-to-01cc4562f-2026-10-05.json) retains independent estimates, output identities, executable digests, recipes, excluded cases, and raw-artifact digests. No production rendering code was changed. The follow-up items below are recorded for later investigation at the maintainer's request.
 
+**Coverage update:** the [expanded native corpus observation](library_rendering_expanded_2026-10-05.md) extends this checkpoint to all 72 registered SVG fixtures and three preprocessing controls, resolves the missing AgentFlow/Usecase registrations, and records additional slower cases and historical identity blockers. The selected-input conclusions below retain their original scope and evidence; they are not a whole-corpus performance pass.
+
 ## Frozen sources and measurement
 
 | Item | Recipe |
