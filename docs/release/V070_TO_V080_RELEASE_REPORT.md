@@ -16,7 +16,7 @@ Status: preparation checkpoint, 2026-10-04. This report compares the previous st
 | Terminal and editor workflows | Earlier ASCII and embedding APIs | Richer ASCII layouts/viewport/encoding reports; dedicated analysis, editor, and LSP owners | Review report schema 3 and strict decoders; hosts own scheduling and document lifecycle. Follow the versioned migration guides. |
 | Distribution | Earlier CLI and native/Web contracts | Separate Web/Node/native package recipes, transport versions, notices, and independent grammar/Typst versions | Upgrade coupled wrappers and artifacts together and query the installed catalog. A workspace tag is not evidence that every channel published. See [Package Surfaces](PACKAGE_SURFACES.md). |
 
-These are consumer-visible consequences, not commit-count claims. The root changelog retains the published alpha sections and credits; its unshipped `0.8.0` section describes stabilization since alpha.7. The larger reusable theme refactor remains deferred.
+These are consumer-visible consequences, not commit-count claims. The root changelog summarizes the cumulative stable-to-stable migration and retains the published alpha sections and credits as history. The alpha.7-to-0.8.0 guide isolates the remaining prerelease delta. The larger reusable theme refactor remains deferred.
 
 ## Evidence and comparison boundaries
 

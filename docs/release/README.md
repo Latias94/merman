@@ -2,6 +2,12 @@
 
 Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0-alpha.7` was published on 2026-09-30 and is planned as the final alpha in the 0.8.0 cycle. The development branch targets Mermaid `12.1.0` while preparing stabilization changes; `0.8.0` remains unreleased and its validation is in progress.
 
+## Reading the 0.8.0 release notes
+
+The [root 0.8.0 changelog](../../CHANGELOG.md#080---unreleased) is cumulative from stable 0.7.0: choose your upgrade path, handle the breaking changes, then review new capabilities, fixes, and bounded performance evidence. Published alpha sections remain unchanged for users tracing an intermediate version. A direct stable upgrade starts with [one consolidated migration guide](V070_TO_V080_UPGRADE_GUIDE.md); it does not require applying superseded alpha APIs in sequence. Users already on alpha.7 should instead start with the [remaining delta](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+Package-local changelogs project that same candidate onto each SDK's actual APIs, payloads, capabilities, and publication track. Benchmarks retain the exact measured code revision and are not transferred between Rust, CLI, browser, and native binding surfaces.
+
 ## Workspace upgrades
 
 | Installed version | Target version | Migration reference |
