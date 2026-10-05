@@ -312,10 +312,20 @@ jobs:
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes ca-certificates openssl fontconfig fonts-dejavu-core poppler-utils strace
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-            -subj '/CN=merman-resource-probe' -addext 'subjectAltName=IP:127.0.0.1' \
-            -keyout "$RUNNER_TEMP/merman-resource.key" -out "$RUNNER_TEMP/merman-resource.crt"
-          sudo install -m 0644 "$RUNNER_TEMP/merman-resource.crt" /usr/local/share/ca-certificates/merman-resource.crt
+            -subj '/CN=merman-resource-probe-CA' \
+            -addext 'basicConstraints=critical,CA:TRUE' \
+            -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+            -keyout "$RUNNER_TEMP/merman-resource-ca.key" -out "$RUNNER_TEMP/merman-resource-ca.crt"
+          openssl req -newkey rsa:2048 -nodes -subj '/CN=localhost' \
+            -keyout "$RUNNER_TEMP/merman-resource.key" -out "$RUNNER_TEMP/merman-resource.csr"
+          printf 'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n' > "$RUNNER_TEMP/merman-resource.ext"
+          openssl x509 -req -in "$RUNNER_TEMP/merman-resource.csr" \
+            -CA "$RUNNER_TEMP/merman-resource-ca.crt" -CAkey "$RUNNER_TEMP/merman-resource-ca.key" \
+            -CAcreateserial -days 1 -extfile "$RUNNER_TEMP/merman-resource.ext" \
+            -out "$RUNNER_TEMP/merman-resource.crt"
+          sudo install -m 0644 "$RUNNER_TEMP/merman-resource-ca.crt" /usr/local/share/ca-certificates/merman-resource-ca.crt
           sudo update-ca-certificates
+          openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$RUNNER_TEMP/merman-resource.crt"
 
       - name: Build and execute final native archives
         run: |

@@ -8,6 +8,7 @@ publication without the protected release environment and maintainer credentials
 
 - Package root: `distribution/tree-sitter-mermaid`
 - Published version: `0.2.0` (2026-09-30)
+- Prepared candidate: `0.3.0` (unpublished; required by Merman LSP `0.8.0`)
 - Immutable release tag: `tree-sitter-mermaid-v0.2.0`
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
@@ -63,7 +64,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.2.0.crate` for crates.io;
+- `tree-sitter-mermaid-0.3.0.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;

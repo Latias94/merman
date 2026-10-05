@@ -29,7 +29,7 @@ Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts
 
 | Contract | Reference | Version boundary |
 | --- | --- | --- |
-| Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md#010-to-020) | `tree-sitter-mermaid` / `@mermanjs/tree-sitter-mermaid` `0.1.0` → `0.2.0`; separate from the workspace version and Tree-sitter language ABI |
+| Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md) | Published `0.2.0` → candidate `0.3.0`; separate from the workspace version and Tree-sitter language ABI |
 | C and Flutter native integration | [ABI 3 migration](../bindings/ABI3_MIGRATION.md) and [FFI protocol](../bindings/FFI_PROTOCOL.md) | Rolling source protocol; use generated headers and documentation from the same Merman release |
 | Typst package | [Package README](../../distribution/typst/merman/README.md) | Independent Typst Universe version; a new workspace plugin crate does not publish a new wrapper |
 | VS Code extension | [Extension README](../../tools/vscode-extension/README.md) | Independent extension version and artifact channel |

@@ -7,6 +7,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -67,6 +68,12 @@ def probe_https(binary: Path, certificate: Path, key: Path, *, trusted: bool) ->
         thread.start()
         try:
             url = f"probe#https://127.0.0.1:{server.server_port}/icons.json"
+            if trusted:
+                with socket.create_connection(("127.0.0.1", server.server_port), timeout=5) as connection:
+                    with ssl.create_default_context().wrap_socket(
+                        connection, server_hostname="127.0.0.1",
+                    ):
+                        pass
             result = subprocess.run(
                 [str(binary), "render", "--format", "svg", "--allow-network",
                  "--allow-private-network", "--icon-pack-source", url, "-"],
