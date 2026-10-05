@@ -131,6 +131,22 @@ fn verify_postflight(
 fn fixtures() -> Vec<(&'static str, &'static str)> {
     vec![
         (
+            "flowchart_weave_dagre_classic",
+            include_str!("fixtures/flowchart_weave_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_ports_heavy_dagre_classic",
+            include_str!("fixtures/flowchart_ports_heavy_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_fanout_returns_dagre_classic",
+            include_str!("fixtures/flowchart_fanout_returns_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_long_edge_labels_dagre_classic",
+            include_str!("fixtures/flowchart_long_edge_labels_dagre_classic.mmd"),
+        ),
+        (
             "flowchart_medium_dagre_classic",
             include_str!("fixtures/flowchart_medium_dagre_classic.mmd"),
         ),
