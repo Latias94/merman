@@ -241,9 +241,16 @@ fn starts_with_frontmatter_opening_line(text: &str) -> bool {
     first_line.trim_start() == "---"
 }
 
+fn parser_available(diagram_type: &str) -> bool {
+    merman_core::diagram_family_capabilities()
+        .iter()
+        .any(|family| family.diagram_type == diagram_type && family.has_semantic_parser)
+}
+
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
     diagram_header_facts()
         .iter()
+        .filter(|fact| parser_available(fact.diagram_type))
         .map(|fact| {
             keyword_completion(
                 fact.label,
@@ -362,7 +369,7 @@ fn direction_candidates(kind: EditorExpectedSyntaxKind) -> &'static [CompletionC
 }
 
 fn shape_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
-    merman_core::diagrams::flowchart::flowchart_public_shape_names()
+    merman_core::editor::flowchart_shape_names()
         .map(|shape| shape_completion(shape, &format!("{shape} shape"), query))
         .collect()
 }
@@ -556,50 +563,56 @@ fn snippet_completion(
 }
 
 fn template_items(range: Option<Range>) -> Vec<CompletionItem> {
-    vec![
-        snippet_completion(
+    let flowchart = parser_available("flowchart-v2");
+    let sequence = parser_available("sequence");
+    let any_parser = merman_core::diagram_family_capabilities()
+        .iter()
+        .any(|family| family.has_semantic_parser && family.logical_family_kind != "error");
+    let candidates = [
+        (
+            flowchart,
             "flowchart template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "flowchart ${1|TD,TB,BT,LR,RL|}\n  ${2:A}[${3:Start}] --> ${4:B}[${5:Next}]",
-            CompletionDataKind::Template,
         ),
-        snippet_completion(
+        (
+            sequence,
             "sequence template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "sequenceDiagram\n  participant ${1:A} as ${2:Alice}\n  participant ${3:B} as ${4:Bob}\n  ${1:A}->>${3:B}: ${5:Message}",
-            CompletionDataKind::Template,
         ),
-        snippet_completion(
+        (
+            flowchart,
             "icon node template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "${1:A}@{ icon: \"${2:logos:github-icon}\", form: \"${3|square,rounded,circle|}\", label: \"${4:Label}\" }",
-            CompletionDataKind::Template,
         ),
-        snippet_completion(
+        (
+            any_parser,
             "accessibility template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "accTitle: ${1:Diagram title}\naccDescr: ${2:Diagram description}",
-            CompletionDataKind::Template,
         ),
-        snippet_completion(
+        (
+            flowchart,
             "frontmatter config template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "---\nconfig:\n  theme: ${1|default,dark,forest,neutral,base|}\n---\n${2:flowchart TD}\n  ${3:A} --> ${4:B}",
-            CompletionDataKind::Template,
         ),
-        snippet_completion(
+        (
+            flowchart,
             "themeCSS frontmatter template",
-            COMMON_TEMPLATE_DETAIL,
-            range,
             "---\nconfig:\n  themeCSS: |\n    ${1:.node rect { filter: drop-shadow(1px 1px 1px #999); }}\n---\n${2:flowchart TD}\n  ${3:A} --> ${4:B}",
-            CompletionDataKind::Template,
         ),
-    ]
+    ];
+    candidates
+        .into_iter()
+        .filter(|(available, _, _)| *available)
+        .map(|(_, label, snippet)| {
+            snippet_completion(
+                label,
+                COMMON_TEMPLATE_DETAIL,
+                range,
+                snippet,
+                CompletionDataKind::Template,
+            )
+        })
+        .collect()
 }
 
 fn shape_completion(value: &str, detail: &str, query: &CompletionQuery<'_>) -> CompletionItem {

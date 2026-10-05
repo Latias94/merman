@@ -1,7 +1,7 @@
 use super::SequenceLayoutCheckpoints;
 use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::block_geometry::{frame_x_from_actors, resolved_block_frame_x};
-use super::constants::sequence_actor_popup_panel_height;
+use super::constants::{sequence_actor_popup_panel_height, sequence_actor_popup_rect_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use crate::Result;
@@ -22,11 +22,8 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
-    pub(super) actor_left_x: &'a [f64],
-    pub(super) actor_widths: &'a [f64],
     pub(super) actor_popup_widths: &'a HashMap<String, f64>,
-    pub(super) actor_box: &'a [Option<usize>],
-    pub(super) box_margins: &'a [f64],
+    pub(super) box_layouts: &'a [super::SequenceBoxLayout],
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
     pub(super) bottom_box_top_y: f64,
@@ -78,7 +75,8 @@ pub(super) fn prepare_sequence_root_geometry(
 ) -> Result<SequenceRootGeometry> {
     let mut content = sequence_content_bounds(&ctx)?;
 
-    include_actor_popup_bounds(&mut content, &ctx)?;
+    include_actor_popup_bottoms(&mut content, &ctx)?;
+    include_actor_popup_widths(&mut content, &ctx)?;
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
@@ -262,7 +260,13 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> Result<Conten
                 content.include_y(p.y);
             }
             if let Some(label) = e.label.as_ref() {
-                content.include_y(label.y + label.height / 2.0);
+                let margin = crate::config::config_f64(
+                    ctx.math_config.as_value(),
+                    &["sequence", "wrapPadding"],
+                )
+                .unwrap_or(10.0);
+                let first_y = super::sequence_drawn_text_y(label.y, margin, 0.0);
+                content.include_y(first_y + label.height / 2.0);
             }
         }
     }
@@ -297,30 +301,68 @@ fn include_footer_row_height(
     Ok(())
 }
 
-fn include_actor_popup_bounds(
+fn include_actor_popup_widths(
     content: &mut ContentBounds,
     ctx: &SequenceRootBoundsContext<'_>,
 ) -> Result<()> {
-    // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
-    // present, even when they are emitted hidden by default. Account for the measured menu width
-    // and panel bottom so root bounds follow the same ActorLabel typography as terminal SVG.
-    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(actor_index)?;
+    let node_prefix = if ctx.mirror_actors {
+        "actor-bottom-"
+    } else {
+        "actor-top-"
+    };
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        let Some(actor_id) = node.id.strip_prefix(node_prefix) else {
+            continue;
+        };
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
         if actor.links.is_empty() {
             continue;
         }
-        let panel_left = ctx.actor_left_x.get(actor_index).copied().unwrap_or(0.0);
         let panel_width = ctx
             .actor_popup_widths
             .get(actor_id)
             .copied()
-            .or_else(|| ctx.actor_widths.get(actor_index).copied())
-            .unwrap_or(ctx.actor_width_min);
-        content.include_x(panel_left, panel_left + panel_width);
-        let popup_bottom = ctx.actor_height + sequence_actor_popup_panel_height(actor.links.len());
+            .unwrap_or(node.width);
+        let left = node.x - node.width / 2.0;
+        content.include_x(left, left + panel_width);
+    }
+    Ok(())
+}
+
+fn include_actor_popup_bottoms(
+    content: &mut ContentBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) -> Result<()> {
+    // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
+    // present, even when they are emitted hidden by default. Account for the menu panel bottom so
+    // root height stays aligned with upstream for link-only fixtures.
+    let is_neo = crate::config::config_diagram_look(ctx.math_config.as_value()).is_neo();
+    let node_prefix = if ctx.mirror_actors {
+        "actor-bottom-"
+    } else {
+        "actor-top-"
+    };
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        let Some(actor_id) = node.id.strip_prefix(node_prefix) else {
+            continue;
+        };
+        let Some(actor) = ctx.model.actors.get(actor_id) else {
+            continue;
+        };
+        if actor.links.is_empty() {
+            continue;
+        }
+        let popup_bottom = sequence_actor_popup_rect_height(
+            &actor.actor_type,
+            node.height,
+            ctx.actor_height,
+            is_neo,
+            ctx.mirror_actors,
+        ) + sequence_actor_popup_panel_height(actor.links.len());
         let popup_content_bottom = if ctx.mirror_actors {
             popup_bottom - ctx.diagram_margin_y - if ctx.has_boxes { ctx.box_margin } else { 0.0 }
         } else {
@@ -433,17 +475,11 @@ impl ActorHorizontalBounds {
     }
 
     fn include_actor_boxes(&mut self, ctx: &SequenceRootBoundsContext<'_>) -> Result<()> {
-        // Mermaid's bounds box includes the per-box inner margins (`box.margin`) when boxes exist.
-        // Approximate this by extending actor bounds by their enclosing box margin.
-        for i in 0..ctx.model.actor_order.len() {
-            ctx.checkpoints.checkpoint_loop(i)?;
-            let left = ctx.actor_left_x[i];
-            let right = left + ctx.actor_widths[i];
-            if let Some(bi) = ctx.actor_box[i] {
-                let m = ctx.box_margins[bi];
-                self.include(left - m, right + m);
-            } else {
-                self.include(left, right);
+        // addActorRenderingData records box coordinates before created-actor spacing.
+        for (index, box_layout) in ctx.box_layouts.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(index)?;
+            if let Some(x) = box_layout.x {
+                self.include(x, x + box_layout.width);
             }
         }
         Ok(())

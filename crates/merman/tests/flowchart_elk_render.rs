@@ -53,22 +53,26 @@ fn renderer_uses_flowchart_elk_svg_contract() {
 }
 
 #[test]
-fn renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
+fn renderer_keeps_flowchart_elk_stadium_departure_straight() {
     let svg = render_svg(
         "flowchart-elk-straight-cutter",
         "flowchart-elk TD\nA([Start]) ==> B[Step 1]",
     );
 
     let d = edge_path_attr(&svg, "L_A_B_0", "d");
+    // Mermaid 12 removes the polygon intersection bias that created a terminal jog.
     assert!(
-        d.contains('Q'),
-        "expected ELK cutter points to preserve a rounded corner for the stadium endpoint: {d}"
+        d.contains('L') && !d.contains(['Q', 'C']),
+        "expected a straight departure from the stadium endpoint: {d}"
     );
+    let points = data_points(&edge_path_attr(&svg, "L_A_B_0", "data-points"));
     assert_eq!(
-        data_points_len(&edge_path_attr(&svg, "L_A_B_0", "data-points")),
-        3,
-        "expected Mermaid-style ELK cutter data-points to keep start intersection, jog, and end"
+        points.len(),
+        2,
+        "a straight edge must not acquire a cutter jog"
     );
+    assert_eq!(points[0]["x"], points[1]["x"]);
+    assert!(points[0]["y"].as_f64().unwrap() < points[1]["y"].as_f64().unwrap());
 }
 
 #[test]
@@ -268,12 +272,11 @@ fn has_marker_kind(svg: &str, kind: &str) -> bool {
     })
 }
 
-fn data_points_len(payload: &str) -> usize {
+fn data_points(payload: &str) -> Vec<serde_json::Value> {
     use base64::Engine as _;
 
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.as_bytes())
         .expect("data-points base64");
-    let points: Vec<serde_json::Value> = serde_json::from_slice(&bytes).expect("data-points json");
-    points.len()
+    serde_json::from_slice(&bytes).expect("data-points json")
 }

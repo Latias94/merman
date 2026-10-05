@@ -71,8 +71,7 @@ impl ThemeColorValue {
 // perform HSL conversion, without inheriting Khroma's negative-hue channel behavior.
 fn native_functional_color_css(value: &str, format: ColorSourceFormat) -> Option<String> {
     let body = value.split_once('(')?.1.strip_suffix(')')?;
-    let mut input = cssparser::ParserInput::new(body);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(body);
     let first = native_color_component(&mut parser)?;
     let _ = parser.try_parse(cssparser::Parser::expect_comma);
     let second = native_color_component(&mut parser)?;
@@ -133,7 +132,7 @@ fn native_functional_color_css(value: &str, format: ColorSourceFormat) -> Option
     })
 }
 
-fn native_color_component<'i>(parser: &mut cssparser::Parser<'i, '_>) -> Option<(f64, &'i str)> {
+fn native_color_component<'i>(parser: &mut cssparser::Parser<'i>) -> Option<(f64, &'i str)> {
     let start = parser.position();
     let unit_length = match parser.next().ok()? {
         cssparser::Token::Number { .. } => 0,

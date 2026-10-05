@@ -15,7 +15,7 @@ use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::svg::parity::edge_label_geometry::position_edge_label;
-use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle};
 use base64::Engine as _;
 use std::fmt::Write as _;
 
@@ -29,6 +29,9 @@ const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
+    pub missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
+    pub line_hop_paths: &'a std::collections::HashMap<&'a str, String>,
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub diagram_marker_class: &'a str,
@@ -45,24 +48,15 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
+    pub uses_elk_adapter_dom: bool,
     pub edge_paths_class: &'static str,
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub emit: ClassEmitCheckpoint<'a>,
 }
 
+pub(super) use crate::class::class_arrow_type_for_relation_end;
 pub(super) type ClassEdgeLabelCenters = FxHashMap<String, LayoutPoint>;
-
-fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
-    match ty {
-        0 => Some("aggregation"),
-        1 => Some("extension"),
-        2 => Some("composition"),
-        3 => Some("dependency"),
-        4 => Some("lollipop"),
-        _ => None,
-    }
-}
 
 pub(super) fn class_line_with_marker_offset_points_into(
     input: &[LayoutPoint],
@@ -183,6 +177,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
     let mut edge_curve_points: Vec<LayoutPoint> = Vec::new();
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
+    let mut edge_style_buf = String::new();
 
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
@@ -192,15 +187,17 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
     out.checkpoint()?;
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
-        if e.points.len() < 2 {
+        let missing_section = ctx.missing_section_points.get(e.id.as_str());
+        let source_points = missing_section.map(Vec::as_slice).unwrap_or(&e.points);
+        if source_points.is_empty() || (missing_section.is_none() && source_points.len() < 2) {
             continue;
         }
 
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
 
         edge_raw_points.clear();
-        edge_raw_points.reserve(e.points.len());
-        for p in &e.points {
+        edge_raw_points.reserve(source_points.len());
+        for p in source_points {
             edge_raw_points.push(LayoutPoint {
                 x: p.x + ctx.content_tx,
                 y: p.y + ctx.content_ty,
@@ -226,17 +223,35 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
             relation.and_then(|relation| class_marker_name(relation.relation.type1, true));
         let end_marker_name =
             relation.and_then(|relation| class_marker_name(relation.relation.type2, false));
-        let start_marker_paint =
-            relation.and_then(|rel| class_marker_paint_spec(rel.relation.type1, true));
-        let end_marker_paint =
-            relation.and_then(|rel| class_marker_paint_spec(rel.relation.type2, false));
-        class_line_with_marker_offset_points_into(
-            &edge_raw_points,
-            relation,
-            &mut edge_marker_points,
-        );
+        let start_marker_paint = relation
+            .and_then(|rel| class_marker_paint_spec(rel.relation.type1, true, ctx.look == "neo"));
+        let end_marker_paint = relation
+            .and_then(|rel| class_marker_paint_spec(rel.relation.type2, false, ctx.look == "neo"));
+        if ctx.uses_elk_adapter_dom && missing_section.is_none() {
+            // ELK selects rounded routing after clipping and offsets only the endpoints.
+            edge_marker_points = super::super::edge_path::rounded_line_with_marker_offsets_points(
+                &edge_raw_points,
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
+            );
+        } else {
+            class_line_with_marker_offset_points_into(
+                &edge_raw_points,
+                relation,
+                &mut edge_marker_points,
+            );
+        }
         let edge_curve_source = edge_marker_points.as_slice();
-        let (d, d_pb) = if edge_curve_source.len() == 2 {
+        let (d, d_pb) = if missing_section.is_some() {
+            super::super::curve::curve_linear_path_d_and_bounds(edge_curve_source)
+        } else if ctx.uses_elk_adapter_dom {
+            super::super::curve::curve_rounded_path_d_and_bounds(
+                edge_curve_source,
+                5.0,
+                false,
+                None,
+            )
+        } else if edge_curve_source.len() == 2 {
             edge_curve_points.clear();
             let a = &edge_curve_source[0];
             let b = &edge_curve_source[1];
@@ -258,18 +273,30 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         } else {
             None
         };
-        let render_d = rough_d.as_deref().unwrap_or(&d);
+        let paint_d = rough_d.as_deref().unwrap_or(&d);
+        let hopped_d = ctx.line_hop_paths.get(e.id.as_str());
+        let render_d = hopped_d.map(String::as_str).unwrap_or(paint_d);
         if let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
                 e.id.to_string(),
-                class_edge_label_center(
-                    &edge_raw_points,
-                    render_d,
-                    e.from_cluster.is_some() || e.to_cluster.is_some(),
-                    lbl,
-                    ctx.content_tx,
-                    ctx.content_ty,
-                ),
+                if missing_section.is_some() {
+                    let first = &edge_raw_points[0];
+                    let last = &edge_raw_points[edge_raw_points.len() - 1];
+                    LayoutPoint {
+                        x: (first.x + last.x) / 2.0,
+                        y: (first.y + last.y) / 2.0,
+                    }
+                } else {
+                    class_edge_label_center(
+                        Some(&edge_raw_points),
+                        &edge_raw_points,
+                        paint_d,
+                        e.from_cluster.is_some() || e.to_cluster.is_some(),
+                        lbl,
+                        ctx.content_tx,
+                        ctx.content_ty,
+                    )
+                },
             );
         }
         let path_bounds_start = ctx.timing.start();
@@ -290,6 +317,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         };
         let path_paint_outset = stroke_outset.max(rough_marker_outset);
         if rough_d.is_none()
+            && hopped_d.is_none()
             && let Some(pb) = d_pb.as_ref()
         {
             include_path_bounds_with_outset(
@@ -404,9 +432,10 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
             ctx.emit.checkpoint()?;
             let _ = write!(
                 out,
-                r#"_{}-{})""#,
+                r#"_{}-{}{})""#,
                 escape_attr_display(ctx.diagram_marker_class),
                 name,
+                if ctx.look == "neo" { "-margin" } else { "" },
             );
         }
         if let Some(name) = end_marker_name {
@@ -415,13 +444,41 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
             ctx.emit.checkpoint()?;
             let _ = write!(
                 out,
-                r#"_{}-{})""#,
+                r#"_{}-{}{})""#,
                 escape_attr_display(ctx.diagram_marker_class),
                 name,
+                if ctx.look == "neo" { "-margin" } else { "" },
             );
         }
-        let base_style = class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn");
-        let mut terminal_style = base_style.to_string();
+        edge_style_buf.clear();
+        if ctx.look == "neo"
+            && let Some(length) = super::super::svg_path_length_from_d(paint_d)
+        {
+            super::super::edge_path::write_neo_edge_mask(
+                &mut edge_style_buf,
+                length,
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
+                edge_class_buf
+                    .split_whitespace()
+                    .any(|class| class == "edge-pattern-dashed"),
+                false,
+            );
+        }
+        edge_style_buf.push_str(class_edge_path_style(
+            e.id.as_str(),
+            ctx.look == "handDrawn",
+        ));
+        let mut terminal_style = if let Some(hopped_d) = hopped_d {
+            super::super::line_hops::rewrite_style_after_line_hop(
+                &edge_style_buf,
+                hopped_d,
+                ctx.work_meter,
+            )?
+            .into_owned()
+        } else {
+            edge_style_buf.clone()
+        };
         if let Some((_, stroke)) = typed_stroke {
             if !terminal_style.ends_with(';') {
                 terminal_style.push(';');
@@ -491,6 +548,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
+    // ELK awaits each edge label and its terminals; Dagre inserts center labels concurrently.
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
@@ -498,6 +556,18 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         let label_text = relation
             .map(|relation| relation.title.as_str())
             .unwrap_or("");
+
+        // The common registered-layout renderer only inserts labels for edges with
+        // center or terminal text. Dagre still inserts an empty center wrapper.
+        let has_terminal_label = ctx.relations_by_id.get(e.id.as_str()).is_some_and(|rel| {
+            [&rel.relation_title_1, &rel.relation_title_2]
+                .into_iter()
+                .flatten()
+                .any(|text| !text.is_empty() && text != "none")
+        });
+        if ctx.uses_elk_adapter_dom && label_text.is_empty() && !has_terminal_label {
+            continue;
+        }
 
         let label_center = e.label.as_ref().map(|lbl| {
             edge_label_centers
@@ -545,97 +615,32 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         {
             receipt.record_edge_label(e.id.as_str(), typography);
         }
-    }
-    for e in ordered_edges.iter().copied() {
-        ctx.emit.checkpoint()?;
-        let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
-        let start_text = relation
-            .and_then(|rel| rel.relation_title_1.as_deref())
-            .unwrap_or_default();
-        for (slot, lbl) in [&e.start_label_left, &e.start_label_right]
-            .into_iter()
-            .enumerate()
-        {
-            let mut typography = crate::class::ClassTextTerminalFacts::default();
-            if let Some(lbl) = lbl.as_ref() {
-                let (terminal_w, terminal_h) = class_terminal_box_size(start_text);
-                if terminal_w > 0.0 && terminal_h > 0.0 {
-                    include_xywh(
-                        content_bounds,
-                        lbl.x + ctx.content_tx + ctx.bounds_dx,
-                        lbl.y + ctx.content_ty + ctx.bounds_dy,
-                        terminal_w,
-                        terminal_h,
-                    );
-                    typography = render_class_edge_terminal_group(
-                        out,
-                        lbl.x + ctx.content_tx,
-                        lbl.y + ctx.content_ty,
-                        start_text,
-                        true,
-                        ctx,
-                    );
-                    out.checkpoint()?;
-                }
-            }
-            if relation.is_some()
-                && let Some(receipt) = typography_receipt.as_mut()
-            {
-                receipt.record_cardinality(e.id.as_str(), slot, typography);
-            }
+        if ctx.uses_elk_adapter_dom {
+            render_class_edge_terminals(out, e, true, content_bounds, ctx, typography_receipt)?;
+            render_class_edge_terminals(out, e, false, content_bounds, ctx, typography_receipt)?;
         }
     }
-    let mut ordered_end_edges = ordered_edges
-        .iter()
-        .copied()
-        .enumerate()
-        .collect::<Vec<_>>();
-    // Mermaid inserts terminal labels asynchronously. End-only cardinalities regularly land in
-    // front of two-sided edges once the DOM settles, so prefer edges without a start terminal
-    // before preserving the original render order.
-    ordered_end_edges.sort_by_key(|(idx, edge)| {
-        (
-            edge.start_label_left.is_some() || edge.start_label_right.is_some(),
-            *idx,
-        )
-    });
-    for (_, e) in ordered_end_edges {
-        ctx.emit.checkpoint()?;
-        let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
-        let end_text = relation
-            .and_then(|rel| rel.relation_title_2.as_deref())
-            .unwrap_or_default();
-        for (slot, lbl) in [&e.end_label_left, &e.end_label_right]
-            .into_iter()
+    if !ctx.uses_elk_adapter_dom {
+        for e in ordered_edges.iter().copied() {
+            ctx.emit.checkpoint()?;
+            render_class_edge_terminals(out, e, true, content_bounds, ctx, typography_receipt)?;
+        }
+        // Dagre starts all insertEdgeLabel futures together. End-only labels precede
+        // labels whose start terminal adds another await before their end terminal.
+        let mut ordered_end_edges = ordered_edges
+            .iter()
+            .copied()
             .enumerate()
-        {
-            let mut typography = crate::class::ClassTextTerminalFacts::default();
-            if let Some(lbl) = lbl.as_ref() {
-                let (terminal_w, terminal_h) = class_terminal_box_size(end_text);
-                if terminal_w > 0.0 && terminal_h > 0.0 {
-                    include_xywh(
-                        content_bounds,
-                        lbl.x + ctx.content_tx + ctx.bounds_dx,
-                        lbl.y + ctx.content_ty + ctx.bounds_dy,
-                        terminal_w,
-                        terminal_h,
-                    );
-                    typography = render_class_edge_terminal_group(
-                        out,
-                        lbl.x + ctx.content_tx,
-                        lbl.y + ctx.content_ty,
-                        end_text,
-                        false,
-                        ctx,
-                    );
-                    out.checkpoint()?;
-                }
-            }
-            if relation.is_some()
-                && let Some(receipt) = typography_receipt.as_mut()
-            {
-                receipt.record_cardinality(e.id.as_str(), slot + 2, typography);
-            }
+            .collect::<Vec<_>>();
+        ordered_end_edges.sort_by_key(|(idx, edge)| {
+            (
+                edge.start_label_left.is_some() || edge.start_label_right.is_some(),
+                *idx,
+            )
+        });
+        for (_, e) in ordered_end_edges {
+            ctx.emit.checkpoint()?;
+            render_class_edge_terminals(out, e, false, content_bounds, ctx, typography_receipt)?;
         }
     }
     out.push_str("</g>");
@@ -647,6 +652,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
 }
 
 pub(super) fn class_edge_label_center(
+    original_path_points: Option<&[LayoutPoint]>,
     label_path_points: &[LayoutPoint],
     rendered_d: &str,
     points_were_explicitly_updated: bool,
@@ -659,6 +665,7 @@ pub(super) fn class_edge_label_center(
             x: label.x + content_tx,
             y: label.y + content_ty,
         },
+        original_path_points,
         label_path_points,
         rendered_d,
         points_were_explicitly_updated,
@@ -676,7 +683,12 @@ fn render_class_edge_label_group(
     receipt: &mut crate::class::ClassRelationThemeReceipt,
     relation_index: Option<usize>,
 ) -> (crate::class::ClassTextTerminalFacts, bool) {
-    let decoded = decode_entities_minimal_cow(label_text);
+    let normalized = if ctx.uses_elk_adapter_dom {
+        crate::text::mermaid_html_breaks_to_newlines(label_text)
+    } else {
+        std::borrow::Cow::Borrowed(label_text)
+    };
+    let decoded = decode_entities_minimal_cow(&normalized);
     let trimmed = decoded.trim();
     let background_visible =
         !trimmed.is_empty() && label.is_some_and(|label| label.width > 0.0 && label.height > 0.0);
@@ -833,74 +845,86 @@ fn render_class_edge_label_group(
     (typography, background_visible)
 }
 
-pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {
+fn render_class_edge_terminals(
+    out: &mut impl SvgOutput,
+    edge: &LayoutEdge,
+    is_start: bool,
+    content_bounds: &mut Option<Bounds>,
+    ctx: &ClassEdgeGroupsRenderContext<'_>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+) -> crate::Result<()> {
+    let Some(relation) = ctx.relations_by_id.get(edge.id.as_str()).copied() else {
+        return Ok(());
+    };
+    let (text, labels) = if is_start {
+        (
+            relation.relation_title_1.as_deref().unwrap_or_default(),
+            [&edge.start_label_left, &edge.start_label_right],
+        )
+    } else {
+        (
+            relation.relation_title_2.as_deref().unwrap_or_default(),
+            [&edge.end_label_left, &edge.end_label_right],
+        )
+    };
     let decoded = decode_entities_minimal_cow(text);
-    let trimmed = decoded.trim();
-    if trimmed.is_empty() {
-        return (0.0, 0.0);
+    let text = decoded.trim();
+    for (slot, label) in labels.into_iter().enumerate() {
+        let mut typography = crate::class::ClassTextTerminalFacts::default();
+        if let Some(label) = label
+            .as_ref()
+            .filter(|label| !text.is_empty() && label.width > 0.0 && label.height > 0.0)
+        {
+            // setTerminalWidth retains the legacy CSS width floor, but never clips the
+            // measured text width or replaces its measured height with a fixed 12px box.
+            let visible_width = if ctx.edge_use_html_labels {
+                label.width.max(text.encode_utf16().count() as f64 * 9.0)
+            } else {
+                label.width
+            };
+            include_xywh(
+                content_bounds,
+                label.x - label.width / 2.0 + ctx.content_tx + ctx.bounds_dx,
+                label.y - label.height / 2.0 + ctx.content_ty + ctx.bounds_dy,
+                visible_width,
+                label.height,
+            );
+            typography = render_class_edge_terminal_group(out, label, text, visible_width, ctx);
+            out.checkpoint()?;
+        }
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_cardinality(&edge.id, slot + if is_start { 0 } else { 2 }, typography);
+        }
     }
-    (trimmed.encode_utf16().count() as f64 * 9.0, 12.0)
+    Ok(())
 }
 
-fn render_class_edge_terminal_group(
-    out: &mut impl SvgOutput,
-    x: f64,
-    y: f64,
+fn render_class_edge_terminal_group<O: SvgOutput>(
+    out: &mut O,
+    label: &LayoutLabel,
     text: &str,
-    is_start_terminal: bool,
+    style_width: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
 ) -> crate::class::ClassTextTerminalFacts {
-    let decoded = decode_entities_minimal_cow(text);
-    let trimmed = decoded.trim();
+    let trimmed = text.trim();
     if trimmed.is_empty() {
         return crate::class::ClassTextTerminalFacts::default();
     }
-    let (style_width, style_height) = class_terminal_box_size(trimmed);
-    let measured = match (ctx.mermaid_config, ctx.math_renderer) {
-        (Some(config), Some(renderer)) if crate::math::contains_delimited_math(trimmed) => {
-            crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
-                measurer: ctx.text_measurer,
-                raw_label: trimmed,
-                style: ctx.terminal_text_style,
-                max_width_px: None,
-                wrap_mode: WrapMode::HtmlLike,
-                config,
-                math_renderer: Some(renderer),
-            })
-            .unwrap_or_else(|| {
-                crate::text::measure_markdown_with_inline_styles(
-                    ctx.text_measurer,
-                    trimmed,
-                    ctx.terminal_text_style,
-                    None,
-                    WrapMode::HtmlLike,
-                )
-            })
-        }
-        _ => ctx.text_measurer.measure_wrapped(
-            trimmed,
-            ctx.terminal_text_style,
-            None,
-            WrapMode::HtmlLike,
-        ),
-    };
-    let foreign_width = measured.width.max(0.0);
-    let foreign_height = measured.height.max(0.0);
-    let inner_tx = -foreign_width / 2.0;
-    let inner_ty = -foreign_height / 2.0;
+    let x = label.x + ctx.content_tx;
+    let y = label.y + ctx.content_ty;
     let emitted_style;
-    if is_start_terminal {
+    if ctx.edge_use_html_labels {
         let _ = write!(
             out,
             r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
             fmt(x),
             fmt(y),
-            fmt(inner_tx),
-            fmt(inner_ty),
-            fmt(foreign_width),
-            fmt(foreign_height),
+            fmt(-label.width / 2.0),
+            fmt(-label.height / 2.0),
+            fmt(label.width),
+            fmt(label.height),
             fmt(style_width),
-            fmt(style_height),
+            fmt(label.height)
         );
         emitted_style = super::label::open_class_cardinality_label(
             out,
@@ -909,26 +933,30 @@ fn render_class_edge_terminal_group(
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
+        let bbox_y = ctx
+            .text_measurer
+            .measure_svg_create_text_bbox_y_offset_px(text, ctx.terminal_text_style);
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, {})"><g><rect class="background" style="stroke: none"/>"#,
             fmt(x),
             fmt(y),
-            fmt(inner_tx),
-            fmt(inner_ty),
-            fmt(foreign_width),
-            fmt(foreign_height),
-            fmt(style_width),
-            fmt(style_height),
+            fmt(-(bbox_y + label.height / 2.0))
         );
-        emitted_style = super::label::open_class_cardinality_label(
-            out,
-            ctx.text_paint.map(|paint| paint.style()),
-        );
-        render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
-        out.push_str("</span></div></foreignObject></g>");
+        emitted_style = ctx
+            .text_paint
+            .map(|paint| paint.style())
+            .filter(|style| !style.is_empty());
+        if let Some(style) = emitted_style {
+            let _ = write!(out, r#"<g style="{}">"#, escape_attr_display(style));
+        }
+        write_class_svg_edge_text(out, text, false);
+        if emitted_style.is_some() {
+            out.push_str("</g>");
+        }
+        out.push_str("</g></g></g>");
     }
-    let facts = if crate::math::contains_delimited_math(trimmed) {
+    let facts = if ctx.edge_use_html_labels && crate::math::contains_delimited_math(trimmed) {
         crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
     } else {
         crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed)
@@ -1076,8 +1104,13 @@ mod tests {
             LayoutPoint { x: 100.0, y: 0.0 },
         ];
 
-        // Mermaid positions labels from `paths.updatedPath`, before marker offsets and D3 curves.
+        let original_path_points = [
+            LayoutPoint { x: -20.0, y: 0.0 },
+            LayoutPoint { x: 100.0, y: 0.0 },
+        ];
+        // Preserve the provider's offset from the original midpoint when clipping moves it.
         let center = class_edge_label_center(
+            Some(&original_path_points),
             &label_path_points,
             "M17.25,0L30,0L100,0",
             true,
@@ -1086,7 +1119,7 @@ mod tests {
             0.0,
         );
 
-        assert_eq!((center.x, center.y), (50.0, 0.0));
+        assert_eq!((center.x, center.y), (22.0, 8.0));
     }
 
     #[test]
@@ -1099,6 +1132,7 @@ mod tests {
         let label = label_at(4.0, 5.0);
 
         let unchanged = class_edge_label_center(
+            Some(&label_path_points),
             &label_path_points,
             "M0,0L10,0L20,0",
             false,
@@ -1109,6 +1143,7 @@ mod tests {
         assert_eq!((unchanged.x, unchanged.y), (104.0, 205.0));
 
         let rough_path = class_edge_label_center(
+            Some(&label_path_points),
             &label_path_points,
             "M1.25,2.5C3.5,4.5,5.5,6.5,7.5,8.5",
             false,
@@ -1116,6 +1151,6 @@ mod tests {
             100.0,
             200.0,
         );
-        assert_eq!((rough_path.x, rough_path.y), (10.0, 0.0));
+        assert_eq!((rough_path.x, rough_path.y), (104.0, 205.0));
     }
 }

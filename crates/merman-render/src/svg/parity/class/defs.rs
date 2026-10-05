@@ -9,38 +9,26 @@ const CLASS_EXTENSION_END_MARKER_PATH: &str = "M 1,1 V 13 L18,7 Z";
 const CLASS_DEPENDENCY_START_MARKER_PATH: &str = "M 5,7 L9,13 L1,7 L9,1 Z";
 const CLASS_DEPENDENCY_END_MARKER_PATH: &str = "M 18,7 L9,13 L14,7 L9,1 Z";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ClassMarkerCoordinateUnits {
-    StrokeWidth,
-    UserSpaceOnUse,
-}
-
 #[derive(Clone, Copy, Debug)]
 enum ClassMarkerPaintShape {
     Path(&'static str),
     Circle { cx: f64, cy: f64, radius: f64 },
 }
 
-/// Paint geometry for the ordinary marker referenced by a Class relation path.
+/// Paint geometry for the marker referenced by a Class relation path.
 ///
-/// The serialized marker declaration is profile-specific: Mermaid 11.17.2's host helper uses
-/// `userSpaceOnUse` for ordinary markers, while the selected ELK helper relies on SVG's default
-/// `strokeWidth` units. The `units` field is the coordinate scale used by the conservative bounds
-/// model; emitted attributes are checked separately for each [`ClassMarkerProfile`].
+/// Mermaid 12 shares marker coordinates and user-space units across layout engines.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ClassMarkerPaintSpec {
     ref_x: f64,
     ref_y: f64,
-    units: ClassMarkerCoordinateUnits,
     shape: ClassMarkerPaintShape,
+    stroke_outset: f64,
 }
 
 impl ClassMarkerPaintSpec {
-    pub(super) fn coordinate_scale(self, relation_stroke_width: f64) -> f64 {
-        match self.units {
-            ClassMarkerCoordinateUnits::StrokeWidth => relation_stroke_width.max(0.0),
-            ClassMarkerCoordinateUnits::UserSpaceOnUse => 1.0,
-        }
+    pub(super) fn coordinate_scale(self, _relation_stroke_width: f64) -> f64 {
+        1.0
     }
 
     pub(super) fn reference_point(self) -> (f64, f64) {
@@ -48,31 +36,20 @@ impl ClassMarkerPaintSpec {
     }
 
     pub(super) fn local_paint_bounds(self) -> SvgPathBounds {
-        let (mut bounds, stroke_outset) = match self.shape {
-            ClassMarkerPaintShape::Path(d) => {
-                // Marker CSS uses stroke-width 1 and the SVG defaults retain miter joins with a
-                // miter limit of 4. One full stroke times that limit conservatively covers the
-                // complete join extent for every path marker corner before viewport clipping.
-                (
-                    svg_path_bounds_from_d(d)
-                        .expect("static Class marker paths must have bounded SVG geometry"),
-                    4.0,
-                )
-            }
-            ClassMarkerPaintShape::Circle { cx, cy, radius } => (
-                SvgPathBounds {
-                    min_x: cx - radius,
-                    min_y: cy - radius,
-                    max_x: cx + radius,
-                    max_y: cy + radius,
-                },
-                0.5,
-            ),
+        let mut bounds = match self.shape {
+            ClassMarkerPaintShape::Path(d) => svg_path_bounds_from_d(d)
+                .expect("static Class marker paths must have bounded SVG geometry"),
+            ClassMarkerPaintShape::Circle { cx, cy, radius } => SvgPathBounds {
+                min_x: cx - radius,
+                min_y: cy - radius,
+                max_x: cx + radius,
+                max_y: cy + radius,
+            },
         };
-        bounds.min_x -= stroke_outset;
-        bounds.min_y -= stroke_outset;
-        bounds.max_x += stroke_outset;
-        bounds.max_y += stroke_outset;
+        bounds.min_x -= self.stroke_outset;
+        bounds.min_y -= self.stroke_outset;
+        bounds.max_x += self.stroke_outset;
+        bounds.max_y += self.stroke_outset;
         bounds
     }
 
@@ -92,62 +69,55 @@ impl ClassMarkerPaintSpec {
     }
 }
 
-pub(super) fn class_marker_paint_spec(ty: i32, is_start: bool) -> Option<ClassMarkerPaintSpec> {
-    use ClassMarkerCoordinateUnits::{StrokeWidth, UserSpaceOnUse};
-
-    let (ref_x, ref_y, units, shape) = match (ty, is_start) {
+pub(super) fn class_marker_paint_spec(
+    ty: i32,
+    is_start: bool,
+    margin: bool,
+) -> Option<ClassMarkerPaintSpec> {
+    let (mut ref_x, ref_y, mut shape) = match (ty, is_start) {
         (0, true) => (
             18.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
         ),
         (0, false) => (
             1.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
         ),
         (1, true) => (
             18.0,
             7.0,
-            UserSpaceOnUse,
             ClassMarkerPaintShape::Path(CLASS_EXTENSION_START_MARKER_PATH),
         ),
         (1, false) => (
             1.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_EXTENSION_END_MARKER_PATH),
         ),
         (2, true) => (
             18.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
         ),
         (2, false) => (
             1.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
         ),
         (3, true) => (
             6.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
         ),
         (3, false) => (
             13.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
         ),
         (4, true) => (
             13.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Circle {
                 cx: 7.0,
                 cy: 7.0,
@@ -157,7 +127,6 @@ pub(super) fn class_marker_paint_spec(ty: i32, is_start: bool) -> Option<ClassMa
         (4, false) => (
             1.0,
             7.0,
-            StrokeWidth,
             ClassMarkerPaintShape::Circle {
                 cx: 7.0,
                 cy: 7.0,
@@ -167,11 +136,40 @@ pub(super) fn class_marker_paint_spec(ty: i32, is_start: bool) -> Option<ClassMa
         _ => return None,
     };
 
+    // Bound the full miter join for path strokes, and half the width for circles.
+    let mut stroke_outset = if ty == 4 { 0.5 } else { 4.0 };
+    if margin {
+        match ty {
+            0 => {
+                ref_x = if is_start { 15.0 } else { 1.0 };
+                stroke_outset = 8.0;
+            }
+            1 => {
+                ref_x = if is_start { 18.0 } else { 9.0 };
+                shape = ClassMarkerPaintShape::Path(if is_start {
+                    "M10,7 L18,13 L18,1 Z"
+                } else {
+                    "M10,1 L10,13 L18,7 Z"
+                });
+                stroke_outset = 8.0;
+            }
+            2 => {
+                ref_x = if is_start { 15.0 } else { 3.5 };
+                stroke_outset = 0.0;
+            }
+            3 => {
+                ref_x = if is_start { 4.0 } else { 16.0 };
+                stroke_outset = 0.0;
+            }
+            4 => stroke_outset = 1.0,
+            _ => unreachable!("validated Class marker type"),
+        }
+    }
     Some(ClassMarkerPaintSpec {
         ref_x,
         ref_y,
-        units,
         shape,
+        stroke_outset,
     })
 }
 
@@ -208,17 +206,27 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
-const CLASS_RELATION_MARKER_ORDER: [&str; 10] = [
+const CLASS_RELATION_MARKER_ORDER: [&str; 20] = [
     "aggregationStart",
     "aggregationEnd",
+    "aggregationStart-margin",
+    "aggregationEnd-margin",
     "extensionStart",
     "extensionEnd",
+    "extensionStart-margin",
+    "extensionEnd-margin",
     "compositionStart",
     "compositionEnd",
+    "compositionStart-margin",
+    "compositionEnd-margin",
     "dependencyStart",
     "dependencyEnd",
+    "dependencyStart-margin",
+    "dependencyEnd-margin",
     "lollipopStart",
     "lollipopEnd",
+    "lollipopStart-margin",
+    "lollipopEnd-margin",
 ];
 
 fn class_marker_fill_follows_stroke(marker_name: &str) -> bool {
@@ -227,13 +235,14 @@ fn class_marker_fill_follows_stroke(marker_name: &str) -> bool {
 
 fn class_marker_has_transparent_terminal_fill(marker_name: &str) -> bool {
     matches!(
-        marker_name,
+        marker_name.strip_suffix("-margin").unwrap_or(marker_name),
         "aggregationStart" | "aggregationEnd" | "extensionStart" | "extensionEnd"
     )
 }
 
 pub(super) fn class_marker_terminal_expectations(
     relations: &[ClassSvgRelation],
+    include_margin_markers: bool,
 ) -> Vec<crate::class::ClassMarkerTerminalExpectation> {
     let referenced = relations
         .iter()
@@ -248,7 +257,11 @@ pub(super) fn class_marker_terminal_expectations(
         .collect::<BTreeSet<_>>();
     CLASS_RELATION_MARKER_ORDER
         .into_iter()
-        .filter(|name| referenced.contains(name))
+        .filter(|name| {
+            let ordinary = name.strip_suffix("-margin");
+            (ordinary.is_none() || include_margin_markers)
+                && referenced.contains(ordinary.unwrap_or(name))
+        })
         .map(|name| {
             crate::class::ClassMarkerTerminalExpectation::new(
                 name,
@@ -258,14 +271,6 @@ pub(super) fn class_marker_terminal_expectations(
         .collect()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ClassMarkerProfile {
-    /// Mermaid 11.17.2's host marker helper used by the Dagre renderer.
-    Mermaid1172,
-    /// The marker helper bundled into the selected `@mermaid-js/layout-elk@0.2.3` release.
-    LayoutElk023,
-}
-
 pub(super) fn class_markers<I: SvgDiagramIdValue>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -273,7 +278,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     include_margin_markers: bool,
     relation_theme: &crate::class::ClassRelationThemePlan,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    profile: ClassMarkerProfile,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a, O: SvgOutput, I: SvgDiagramIdValue> {
@@ -286,7 +290,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
 
     enum MarkerShape<'a> {
         Path(&'a str),
-        PathWithViewBox(&'a str, &'a str),
+        StyledPath {
+            d: &'a str,
+            view_box: Option<&'a str>,
+            stroke_width: &'a str,
+        },
         Polygon(&'a str),
         Circle {
             stroke: Option<&'a str>,
@@ -306,13 +314,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
         wrap_defs: bool,
         shape: MarkerShape<'a>,
     }
-
-    // This value is profile-dependent but the nested generic marker helper cannot capture the
-    // outer function's `profile` parameter. Compute it once before entering the helper.
-    let ordinary_marker_units = match profile {
-        ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
-        ClassMarkerProfile::LayoutElk023 => None,
-    };
 
     fn marker<O: SvgOutput, I: SvgDiagramIdValue>(
         ctx: &mut MarkerContext<'_, O, I>,
@@ -338,7 +339,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ctx.out.checkpoint()?;
         }
         match spec.shape {
-            MarkerShape::Path(d) | MarkerShape::PathWithViewBox(d, _) => {
+            MarkerShape::Path(d) | MarkerShape::StyledPath { d, .. } => {
                 let _ = write!(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
@@ -358,17 +359,22 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 if let Some(view_box) = spec.view_box {
                     let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
                 }
-                if let MarkerShape::PathWithViewBox(_, path_view_box) = spec.shape {
-                    let _ = write!(
-                        ctx.out,
-                        r#"><path d="{}" viewBox="{}""#,
-                        escape_xml_display(d),
-                        path_view_box
-                    );
-                } else {
-                    let _ = write!(ctx.out, r#"><path d="{}""#, escape_xml_display(d));
-                }
-                if let Some(style) = terminal_style.as_deref() {
+                let _ = write!(ctx.out, r#"><path d="{}""#, escape_xml_display(d));
+                if let MarkerShape::StyledPath {
+                    view_box,
+                    stroke_width,
+                    ..
+                } = spec.shape
+                {
+                    if let Some(view_box) = view_box {
+                        let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
+                    }
+                    let _ = write!(ctx.out, r#" style="stroke-width: {};"#, stroke_width);
+                    if let Some(style) = terminal_style.as_deref() {
+                        let _ = write!(ctx.out, "{}", escape_xml_display(style));
+                    }
+                    ctx.out.push('"');
+                } else if let Some(style) = terminal_style.as_deref() {
                     let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
                 }
                 ctx.out.push_str("/></marker>");
@@ -398,9 +404,12 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                     r#"><polygon points="{}""#,
                     escape_xml_display(points)
                 );
+                ctx.out
+                    .push_str(r#" style="stroke-width: 2; stroke-dasharray: 0;"#);
                 if let Some(style) = terminal_style.as_deref() {
-                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
+                    let _ = write!(ctx.out, "{}", escape_xml_display(style));
                 }
+                ctx.out.push('"');
                 ctx.out.push_str("/></marker>");
             }
             MarkerShape::Circle {
@@ -472,7 +481,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -487,7 +496,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -506,7 +515,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "2",
+                },
             },
         )?;
         marker(
@@ -521,17 +534,15 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "2",
+                },
             },
         )?;
     }
 
-    let (extension_start_marker_w, extension_start_marker_h, extension_start_marker_units) =
-        if include_margin_markers {
-            ("20", "28", Some("userSpaceOnUse"))
-        } else {
-            ("190", "240", None)
-        };
     marker(
         &mut ctx,
         MarkerSpec {
@@ -539,9 +550,9 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             kind: "extension",
             ref_x: "18",
             ref_y: "7",
-            marker_w: extension_start_marker_w,
-            marker_h: extension_start_marker_h,
-            marker_units: extension_start_marker_units,
+            marker_w: "20",
+            marker_h: "28",
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_EXTENSION_START_MARKER_PATH),
@@ -556,10 +567,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: match profile {
-                ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
-                ClassMarkerProfile::LayoutElk023 => None,
-            },
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_EXTENSION_END_MARKER_PATH),
@@ -607,7 +615,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -622,7 +630,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -641,7 +649,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::PathWithViewBox(CLASS_DIAMOND_MARKER_PATH, "0 0 15 15"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: Some("0 0 15 15"),
+                    stroke_width: "0",
+                },
             },
         )?;
         marker(
@@ -656,7 +668,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         )?;
     }
@@ -670,7 +686,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
@@ -685,7 +701,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
@@ -704,7 +720,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
+                shape: MarkerShape::StyledPath {
+                    d: "M 5,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         )?;
         marker(
@@ -719,7 +739,11 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L14,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         )?;
     }
@@ -733,7 +757,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -751,7 +775,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -802,25 +826,6 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     Ok(())
 }
 
-pub(super) fn push_class_shadow_defs<I: SvgDiagramIdValue>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config_value: &serde_json::Value,
-) -> Result<()> {
-    let flood_color = effective_config_value
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id, flood_color, diagram_id, flood_color
-    );
-    out.checkpoint()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -830,10 +835,7 @@ mod tests {
     #[test]
     fn relation_marker_paint_specs_match_the_emitted_coordinate_contract() {
         let relation_theme = crate::class::ClassRelationThemePlan::default();
-        for profile in [
-            ClassMarkerProfile::Mermaid1172,
-            ClassMarkerProfile::LayoutElk023,
-        ] {
+        {
             let mut svg = String::new();
             let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
             class_markers(
@@ -843,14 +845,28 @@ mod tests {
                 true,
                 &relation_theme,
                 &mut receipt,
-                profile,
             )
             .expect("render Class markers");
 
-            for (ty, is_start) in (0..=4).flat_map(|ty| [(ty, true), (ty, false)]) {
-                let marker_name = class_marker_name(ty, is_start).expect("Class marker name");
+            let mut previous_marker = None;
+            for name in CLASS_RELATION_MARKER_ORDER {
+                let offset = svg.find(&format!(r#"id="diagram_class-{name}""#)).unwrap();
+                assert!(previous_marker.is_none_or(|previous| previous < offset));
+                previous_marker = Some(offset);
+            }
+
+            for (ty, is_start, margin) in (0..=4).flat_map(|ty| {
+                [
+                    (ty, true, false),
+                    (ty, false, false),
+                    (ty, true, true),
+                    (ty, false, true),
+                ]
+            }) {
+                let ordinary = class_marker_name(ty, is_start).expect("Class marker name");
+                let marker_name = format!("{ordinary}{}", if margin { "-margin" } else { "" });
                 let marker =
-                    class_marker_paint_spec(ty, is_start).expect("Class marker paint spec");
+                    class_marker_paint_spec(ty, is_start, margin).expect("Class marker paint spec");
                 let marker_id = format!(r#"id="diagram_class-{marker_name}""#);
                 let marker_start = svg.find(&marker_id).expect("emitted Class marker");
                 let marker_opening = &svg[marker_start..];
@@ -858,17 +874,12 @@ mod tests {
                     .find('>')
                     .expect("complete Class marker opening tag")];
                 let (ref_x, ref_y) = marker.reference_point();
-                let expects_user_space_units = match profile {
-                    ClassMarkerProfile::Mermaid1172 => true,
-                    ClassMarkerProfile::LayoutElk023 => marker_name == "extensionStart",
-                };
 
                 assert!(marker_opening.contains(&format!(r#"refX="{ref_x}""#)));
                 assert!(marker_opening.contains(&format!(r#"refY="{ref_y}""#)));
-                assert_eq!(
+                assert!(
                     marker_opening.contains(r#"markerUnits="userSpaceOnUse""#),
-                    expects_user_space_units,
-                    "profile={profile:?} marker={marker_name} opening={marker_opening}"
+                    "marker={marker_name} opening={marker_opening}"
                 );
                 assert!(
                     marker.local_paint_bounds().min_x.is_finite(),
@@ -950,7 +961,6 @@ mod tests {
             true,
             &relation_theme,
             &mut receipt,
-            ClassMarkerProfile::Mermaid1172,
         )
         .expect_err("the rejecting sink must stop Class marker rendering");
 
@@ -960,43 +970,4 @@ mod tests {
             "Class marker rendering must stop at the first failed sink checkpoint"
         );
     }
-}
-
-pub(super) fn push_class_gradient<I: SvgDiagramIdValue>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config_value: &serde_json::Value,
-) -> Result<()> {
-    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return Ok(());
-    }
-
-    let gradient_start =
-        config_string(effective_config_value, &["themeVariables", "gradientStart"])
-            .or_else(|| {
-                config_string(
-                    effective_config_value,
-                    &["themeVariables", "primaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config_value,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
-    let _ = write!(
-        out,
-        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
-    );
-    out.checkpoint()
 }

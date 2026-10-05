@@ -992,11 +992,23 @@ pub(super) fn curve_bump_y_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
     let mut b = BoundsBuilder::default();
-    let d = curve_bump_y_path_d_impl(points, Some(&mut b));
+    let d = curve_bump_path_d_impl(points, Some(&mut b), true);
     (d, b.bounds)
 }
 
-fn curve_bump_y_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
+pub(super) fn curve_bump_x_path_d_and_bounds(
+    points: &[LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_bump_path_d_impl(points, Some(&mut b), false);
+    (d, b.bounds)
+}
+
+fn curve_bump_path_d_impl(
+    points: &[LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+    vertical: bool,
+) -> String {
     let mut bounds = bounds;
     let mut out = String::new();
     let Some(first) = points.first() else {
@@ -1008,15 +1020,23 @@ fn curve_bump_y_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
 
     for p in points.iter().skip(1) {
         let point = PathPoint::from_layout(p);
-        let y_mid = (previous.y + point.y) / 2.0;
+        let (c1, c2) = if vertical {
+            let mid = (previous.y + point.y) / 2.0;
+            (
+                PathPoint::new(previous.x, mid),
+                PathPoint::new(point.x, mid),
+            )
+        } else {
+            let mid = (previous.x + point.x) / 2.0;
+            (
+                PathPoint::new(mid, previous.y),
+                PathPoint::new(mid, point.y),
+            )
+        };
         emit_cmd_cubic_impl(
             &mut out,
             bounds.as_deref_mut(),
-            PathCubic::new(
-                PathPoint::new(previous.x, y_mid),
-                PathPoint::new(point.x, y_mid),
-                point,
-            ),
+            PathCubic::new(c1, c2, point),
         );
         previous = point;
     }

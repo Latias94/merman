@@ -24,12 +24,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     );
 
     let p = ctx.node_padding;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
     // Mermaid creates this shape once during the DOM-backed measurement pass, then Dagre uses the
     // resulting `getBBox()` as `node.width/height`. Re-feeding those bbox dimensions into our
     // separate render pass would inflate the wave geometry a second time.
-    let w = (metrics.width + 2.0 * p).max(0.0);
-    let h = (metrics.height + 2.0 * p).max(0.0);
-    let wave_amplitude = h / 8.0;
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + 2.0 * padding_y).max(0.0);
+    let wave_amplitude = if common.look_is_neo() {
+        h / 4.0
+    } else {
+        h / 8.0
+    };
     let final_h = h + wave_amplitude;
 
     // Mermaid keeps a minimum width (14px) for wave edged rectangles.
@@ -83,8 +89,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_svg_path(
                     &path_data,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,

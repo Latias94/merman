@@ -342,20 +342,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
 
     fn roughjs_block_paths(
         path_data: &str,
-        fill: &str,
-        stroke: &str,
         stroke_width: f32,
         randomness: &roughr::core::RoughRandomness,
     ) -> Option<(String, String)> {
-        let fill = parse_hex_color_to_srgba(fill)?;
-        let stroke = parse_hex_color_to_srgba(stroke)?;
         let mut stroke_options = roughr::core::OptionsBuilder::default()
             .randomness(randomness.clone())
             .roughness(0.0)
             .bowing(1.0)
-            .fill(fill)
             .fill_style(roughr::core::FillStyle::Solid)
-            .stroke(stroke)
             .stroke_width(stroke_width)
             .stroke_line_dash(vec![0.0, 0.0])
             .stroke_line_dash_offset(0.0)
@@ -478,13 +472,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         path_data: &str,
         options: RoughPathRenderOptions<'_>,
     ) -> bool {
-        if let Some((fill_d, stroke_d)) = roughjs_block_paths(
-            path_data,
-            options.fill,
-            options.stroke,
-            options.stroke_width,
-            options.randomness,
-        ) {
+        if let Some((fill_d, stroke_d)) =
+            roughjs_block_paths(path_data, options.stroke_width, options.randomness)
+        {
             if let Some((tx, ty)) = options.transform {
                 let _ = write!(
                     out,
@@ -714,6 +704,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
         out.checkpoint()?;
+        super::palette::write_palette_css(out, diagram_id, effective_config, options)?;
         let _ = write!(
             out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
@@ -777,7 +768,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
+            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
             diagram_id,
             cluster_bkg,
             cluster_border,
@@ -788,8 +779,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             title_color,
             diagram_id,
             text_color,
+        );
+        let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
+            out,
             diagram_id,
-            font_family
+            &crate::config::config_root_font_family_css(effective_config),
         );
         out.checkpoint()?;
         write_block_class_css(out, diagram_id, class_defs, options)?;
@@ -800,6 +794,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     }
 
     let diagram_id = options.diagram_id_or("merman");
+    let palette_size = super::palette::palette_size(effective_config);
+    let look = crate::config::config_diagram_look(effective_config);
     let hand_drawn_seed = options.rough_randomness(
         effective_config
             .get("handDrawnSeed")
@@ -880,6 +876,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
+    super::super::look_defs::push_look_shadow_defs(&mut out, diagram_id, effective_config)?;
+    super::super::look_defs::push_look_gradient(&mut out, diagram_id, effective_config)?;
     let mut marker_paint_receipt = marker_paint_theme.begin_terminal_receipt();
     if let Some(receipt) = marker_paint_receipt.as_mut() {
         for (index, definition) in marker_paint_theme.definitions().iter().enumerate() {
@@ -969,12 +967,19 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
-            r#"<g class="node {}"{} transform="translate({}, {})">"#,
+            r#"<g class="node {}"{} transform="translate({}, {})" data-look="{}""#,
             escape_attr(&class_str),
             id_attr,
             fmt(geometry.allocated.x),
-            fmt(geometry.allocated.y)
+            fmt(geometry.allocated.y),
+            escape_attr(look.as_str())
         );
+        if palette_size > 0
+            && let Some(index) = node.color_index
+        {
+            let _ = write!(out, r#" data-color-id="color-{}""#, index % palette_size);
+        }
+        out.push('>');
 
         let shell_kinds: &[BlockNodeShellKind];
         match &geometry.boundary {

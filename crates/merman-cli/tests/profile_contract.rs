@@ -45,27 +45,6 @@ const DEFAULT_CAPABILITIES: &[&str] = &[
     "icons",
     "jpeg",
     "layout-cytoscape",
-    "markdown",
-    "math",
-    "network-icons",
-    "parallel-markdown",
-    "pdf",
-    "png",
-    "rustdoc",
-    "shell-completions",
-    "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
-    "system-timing",
-];
-
-const RELEASE_CAPABILITIES: &[&str] = &[
-    "analysis",
-    "ascii",
-    "icons",
-    "jpeg",
-    "layout-cytoscape",
     "layout-elk",
     "markdown",
     "math",
@@ -206,7 +185,7 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "system-random" => vec!["system-random"],
         "system-timing" => vec!["system-timing"],
         "default" => DEFAULT_CAPABILITIES.to_vec(),
-        "release" => RELEASE_CAPABILITIES.to_vec(),
+        "release" => DEFAULT_CAPABILITIES.to_vec(),
         "auto" => compiled_capabilities_for_auto_detection(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }
@@ -303,7 +282,7 @@ fn sorted_objects_by_id(values: impl Iterator<Item = Value>) -> Vec<Value> {
 fn assert_capability_document(case: &str, payload: &Value) {
     let root = repo_root();
     let surface = read_json(root.join("capabilities/feature-surface-v1.json"));
-    let profiles = read_json(root.join("capabilities/artifact-profiles-v1.json"));
+    let profiles = read_json(root.join("capabilities/artifact-profiles-v2.json"));
     let expected_ids = expected_capabilities(case);
     let expected_id_set = expected_ids.iter().copied().collect::<BTreeSet<_>>();
     let expected_commands = expected_commands(&expected_ids);
@@ -352,7 +331,11 @@ fn assert_capability_document(case: &str, payload: &Value) {
         }),
         "runtime provenance must match the artifact-profile authority"
     );
-    assert_eq!(payload["commands"], json!(expected_commands));
+    assert_eq!(
+        payload["commands"],
+        json!(expected_commands),
+        "compiled commands drifted for matrix case {case} with capabilities {expected_ids:?}"
+    );
 
     let expected_capability_objects = sorted_objects_by_id(
         surface["capabilities"]
@@ -459,6 +442,10 @@ fn assert_capability_document(case: &str, payload: &Value) {
             release["expected"]["capabilities"],
             json!(expected_ids),
             "the release feature matrix must follow cli-release"
+        );
+        assert_eq!(
+            release["expected"]["diagram_families"],
+            payload["diagram_families"]
         );
         assert_eq!(
             release["expected"]["outputs"],
@@ -634,9 +621,26 @@ fn workflow_base() {
     assert_eq!(detect.stdout, b"flowchart-v2\n");
 
     let parse = run(&["parse", "-"], SIMPLE_SOURCE.as_bytes(), None);
-    assert_success(&parse, "parse stdin");
-    let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
-    assert!(payload.is_object());
+    #[cfg(feature = "all-diagrams")]
+    {
+        assert_success(&parse, "parse stdin");
+        let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
+        assert!(payload.is_object());
+    }
+    #[cfg(not(feature = "all-diagrams"))]
+    {
+        assert_eq!(
+            parse.status.code(),
+            Some(1),
+            "parse should reject an uncompiled diagram family"
+        );
+        assert!(
+            String::from_utf8_lossy(&parse.stderr)
+                .contains("Unsupported diagram type: flowchart-v2"),
+            "unexpected base parse error: {}",
+            String::from_utf8_lossy(&parse.stderr)
+        );
+    }
 }
 
 fn workflow_analysis() {
@@ -1252,7 +1256,7 @@ fn parse_with_adapter(adapter_args: &[&str], source: &[u8], environment: &[(&str
     serde_json::from_slice(&output.stdout).expect("adapter parse JSON")
 }
 
-fn workflow_release() {
+fn workflow_standard_cli() {
     workflow_base();
     workflow_analysis();
     workflow_svg();
@@ -1266,32 +1270,6 @@ fn workflow_release() {
     workflow_batch("pdf", Some("2"));
     workflow_cytoscape();
     workflow_elk();
-    workflow_math();
-    workflow_rustdoc();
-    workflow_completions();
-    for flag in [
-        "--system-clock",
-        "--system-timezone",
-        "--system-random",
-        "--system-timing",
-    ] {
-        workflow_adapter(flag);
-    }
-}
-
-fn workflow_default() {
-    workflow_base();
-    workflow_analysis();
-    workflow_svg();
-    workflow_ascii();
-    workflow_local_icons();
-    workflow_batch("svg", None);
-    workflow_network_icons();
-    workflow_raster("png", b"\x89PNG\r\n\x1a\n");
-    workflow_raster("jpg", &[0xff, 0xd8, 0xff]);
-    workflow_raster("pdf", b"%PDF-");
-    workflow_batch("pdf", Some("2"));
-    workflow_cytoscape();
     workflow_math();
     workflow_rustdoc();
     workflow_completions();
@@ -1373,8 +1351,7 @@ fn execute_primary_workflow(case: &str) {
         "system-timezone" => workflow_adapter("--system-timezone"),
         "system-random" => workflow_adapter("--system-random"),
         "system-timing" => workflow_adapter("--system-timing"),
-        "default" => workflow_default(),
-        "release" => workflow_release(),
+        "default" | "release" => workflow_standard_cli(),
         "auto" => workflow_auto(),
         other => panic!("unknown {CASE_ENV} value {other:?}"),
     }

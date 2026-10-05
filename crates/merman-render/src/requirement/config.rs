@@ -344,4 +344,28 @@ mod tests {
         assert_eq!(settings.calculation_font_family, "Trebuchet MS,sans-serif");
         assert_eq!(settings.calculation_font_size, 10.0);
     }
+    #[test]
+    fn requirement_html_label_modes_follow_node_and_edge_source_precedence() {
+        for (config, node_html, edge_html) in [
+            (
+                json!({"htmlLabels": false, "flowchart": {"htmlLabels": true}}),
+                false,
+                false,
+            ),
+            (
+                json!({"htmlLabels": true, "flowchart": {"htmlLabels": false}}),
+                true,
+                true,
+            ),
+            (json!({"flowchart": {"htmlLabels": false}}), true, false),
+        ] {
+            let view = RequirementConfigView::new(&config);
+            let layout = view.layout_settings();
+            let render = view.render_settings();
+            assert_eq!(layout.html_labels, node_html);
+            assert_eq!(render.html_labels, node_html);
+            assert_eq!(layout.edge_html_labels, edge_html);
+            assert_eq!(render.edge_html_labels, edge_html);
+        }
+    }
 }

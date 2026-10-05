@@ -3928,6 +3928,9 @@ mod tests {
             ry: Some(10.0),
             shape: "rect".to_string(),
             position: None,
+            color_index: None,
+            wrapping_width: None,
+            min_width: None,
         }
     }
 

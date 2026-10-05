@@ -34,7 +34,7 @@ LINUX_TARGET = "x86_64-unknown-linux-gnu"
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATHS = (
-    "capabilities/artifact-profiles-v1.json",
+    "capabilities/artifact-profiles-v2.json",
     "capabilities/feature-surface-v1.json",
     "tools/upstreams/REPOS.lock.json",
     "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json",
@@ -167,7 +167,7 @@ def valid_capabilities_payload(
     *,
     version: str = VERSION,
 ) -> dict[str, object]:
-    profiles = read_json(repo_root, "capabilities/artifact-profiles-v1.json")
+    profiles = read_json(repo_root, "capabilities/artifact-profiles-v2.json")
     profile = next(
         profile
         for profile in profiles["profiles"]
@@ -238,7 +238,11 @@ def valid_capabilities_payload(
             "schema_version": surface["schema_version"],
             "digest": semantic_surface_digest(surface),
         },
-        "commands": CLI_RELEASE_COMMANDS,
+        "commands": sorted(
+            command for command in CLI_RELEASE_COMMANDS
+            if command != "rustdoc" or "rustdoc" in runtime_ids
+        ),
+        "diagram_families": profile["expected"]["diagram_families"],
         "capabilities": capabilities,
         "outputs": outputs,
         "ascii": valid_ascii_capabilities_payload(),
@@ -384,6 +388,22 @@ def write_repo_assets(
         cwd=root,
         check=True,
     )
+
+
+def disable_rustdoc_profile(repo_root: Path) -> None:
+    path = repo_root / "capabilities/artifact-profiles-v2.json"
+    descriptor = json.loads(path.read_text(encoding="utf-8"))
+    profile = next(
+        profile for profile in descriptor["profiles"] if profile["id"] == "cli-release"
+    )
+    for values in (
+        profile["cargo"]["features"],
+        profile["expected"]["capabilities"],
+        profile["expected"]["runtime_ids"],
+    ):
+        values.remove("rustdoc")
+        values.sort()
+    path.write_text(json.dumps(descriptor) + "\n", encoding="utf-8")
 
 
 def verify_archive(
@@ -1350,6 +1370,15 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_ascii_contract_covers_every_release_diagram_family(self) -> None:
+        contract = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        aliases = {"gitGraph": "gitgraph", "quadrantChart": "quadrantchart"}
+        expected = sorted(aliases.get(family, family) for family in contract["diagram_families"])
+        actual = canonical_ascii_capabilities()
+        self.assertEqual([family["family"] for family in actual["families"]], expected)
+        mappings = {mapping["family"] for mapping in actual["detected_type_mappings"]}
+        self.assertEqual(mappings, set(expected) - {"swimlane"})
+
     def test_pdf_validator_accepts_pdf_token_spacing_without_matching_pages_tree(self) -> None:
         for page_type in (b"/Type/Page", b"/Type /Page", b"/Type\t/Page"):
             with self.subTest(page_type=page_type):
@@ -1407,6 +1436,7 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
     def test_runtime_contract_can_be_verified_with_an_injected_runner(self) -> None:
+        repo_root = PROJECT_ROOT
         calls: list[tuple[list[str], bytes]] = []
 
         def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -1416,7 +1446,7 @@ class RuntimeContractTests(unittest.TestCase):
             if command[-1] == "--version":
                 stdout = f"merman-cli {VERSION}\n".encode()
             elif command[-2:] == ["capabilities", "--json"]:
-                stdout = json.dumps(valid_capabilities_payload()).encode()
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
             elif command[-2:] == ["completion", "bash"]:
                 stdout = required_files(LINUX_TARGET)[
                     "completions/merman-cli.bash"
@@ -1447,11 +1477,14 @@ class RuntimeContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive, checksum = write_tar(root)
+            repo_root = root / "repo"
+            write_repo_assets(repo_root, required_files(LINUX_TARGET))
             verify_archive(
                 archive,
                 checksum,
                 target=LINUX_TARGET,
                 version=VERSION,
+                repo_root=repo_root,
                 execute=True,
                 runner=runner,
                 host_target_checker=lambda _target: True,
@@ -1490,7 +1523,45 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(calls[8][1], b"")
         self.assertEqual(calls[7][0][4], calls[8][0][4])
 
+    def test_runtime_skips_rustdoc_when_an_explicit_profile_omits_it(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            calls.append(command)
+            if command[-1] == "--version":
+                stdout = f"merman-cli {VERSION}\n".encode()
+            elif command[-2:] == ["capabilities", "--json"]:
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
+            elif command[-2:] == ["completion", "bash"]:
+                stdout = (repo_root / "crates/merman-cli/assets/completions/merman-cli.bash").read_bytes()
+            elif "png" in command:
+                stdout = VALID_PNG
+            elif "jpg" in command:
+                stdout = VALID_JPEG
+            elif "pdf" in command:
+                stdout = VALID_PDF
+            else:
+                stdout = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
+            return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            write_repo_assets(repo_root, required_files(LINUX_TARGET))
+            disable_rustdoc_profile(repo_root)
+            verifier.verify_runtime_contract(
+                Path("/synthetic/merman-cli"),
+                target=LINUX_TARGET,
+                version=VERSION,
+                repo_root=repo_root,
+                runner=runner,
+                host_target_checker=lambda _target: True,
+            )
+        self.assertEqual(len(calls), 7)
+        self.assertTrue(all("rustdoc" not in command for command in calls))
+
     def test_runtime_rejects_rustdoc_build_without_managed_outputs(self) -> None:
+        repo_root = PROJECT_ROOT
+
         def runner(
             command: list[str],
             **kwargs: object,
@@ -1498,7 +1569,7 @@ class RuntimeContractTests(unittest.TestCase):
             if command[-1] == "--version":
                 stdout = f"merman-cli {VERSION}\n".encode()
             elif command[-2:] == ["capabilities", "--json"]:
-                stdout = json.dumps(valid_capabilities_payload()).encode()
+                stdout = json.dumps(valid_capabilities_payload(repo_root)).encode()
             elif command[-2:] == ["completion", "bash"]:
                 stdout = required_files(LINUX_TARGET)[
                     "completions/merman-cli.bash"
@@ -1632,6 +1703,9 @@ class RuntimeContractTests(unittest.TestCase):
             repo_root = Path(temp_dir)
             write_repo_assets(repo_root, required_files(LINUX_TARGET))
             mutations = (
+                ("diagram_families", lambda value: value.pop("diagram_families")),
+                ("diagram_families", lambda value: value["diagram_families"].pop()),
+                ("diagram_families", lambda value: value["diagram_families"].append("error")),
                 ("missing", lambda value: value.pop("cli_contract_version")),
                 ("extra", lambda value: value.__setitem__("unknown", None)),
                 (
@@ -1880,7 +1954,7 @@ class RuntimeContractTests(unittest.TestCase):
             repo_root = Path(temp_dir)
             write_repo_assets(repo_root, required_files(LINUX_TARGET))
             surface_path = repo_root / "capabilities/feature-surface-v1.json"
-            profiles_path = repo_root / "capabilities/artifact-profiles-v1.json"
+            profiles_path = repo_root / "capabilities/artifact-profiles-v2.json"
             bundle_path = (
                 repo_root / "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json"
             )
@@ -1903,7 +1977,7 @@ class RuntimeContractTests(unittest.TestCase):
             digest = semantic_surface_digest(surface)
             profiles = read_json(
                 repo_root,
-                "capabilities/artifact-profiles-v1.json",
+                "capabilities/artifact-profiles-v2.json",
             )
             profiles["capability_authority"]["digest"] = digest
             profiles_path.write_text(

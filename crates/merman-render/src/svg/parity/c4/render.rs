@@ -438,25 +438,14 @@ fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
 
 fn c4_hand_drawn_paths(
     path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, String)> {
-    roughjs_paths_for_hand_drawn_svg_path(
-        path_data,
-        fill,
-        stroke,
-        stroke_width,
-        "0 0",
-        work_meter,
-        randomness,
-    )
-    .ok_or_else(|| crate::Error::InvalidModel {
-        message: "c4: handDrawn shape colors must be representable by the RoughJS adapter"
-            .to_string(),
-    })
+    roughjs_paths_for_hand_drawn_svg_path(path_data, stroke_width, "0 0", work_meter, randomness)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "c4: handDrawn shape geometry generation failed".to_string(),
+        })
 }
 
 fn c4_hand_drawn_stroke(
@@ -509,7 +498,7 @@ fn c4_write_unified_shape(
         match node_shape {
             crate::c4::C4NodeShape::Rounded => {
                 let path = c4_rounded_rect_path_d(width, height, 12.0);
-                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, work_meter, randomness)?;
+                let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
@@ -518,7 +507,7 @@ fn c4_write_unified_shape(
             }
             crate::c4::C4NodeShape::Framed => {
                 let path = c4_rounded_rect_path_d(width, height, 12.0);
-                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, work_meter, randomness)?;
+                let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
                 let frame_path = format!(
                     "M{} {} L{} {} M{} {} L{} {}",
@@ -559,16 +548,12 @@ fn c4_write_unified_shape(
                 // after generation instead of baking the offset into the shape's layout box.
                 let body_pair = c4_hand_drawn_paths(
                     &c4_rounded_rect_path_d(width, body_height, body_radius),
-                    fill,
-                    stroke,
                     2.0,
                     work_meter,
                     randomness,
                 )?;
                 let head_pair = roughjs_paths_for_circle(
                     head_radius * 2.0,
-                    fill,
-                    stroke,
                     2.0,
                     "0 0",
                     true,
@@ -576,9 +561,7 @@ fn c4_write_unified_shape(
                     randomness,
                 )
                 .ok_or_else(|| crate::Error::InvalidModel {
-                    message:
-                        "c4: handDrawn person colors must be representable by the RoughJS adapter"
-                            .to_string(),
+                    message: "c4: handDrawn person geometry generation failed".to_string(),
                 })?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
@@ -615,7 +598,7 @@ fn c4_write_unified_shape(
                     fmt(width),
                     fmt(-body_height)
                 );
-                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, work_meter, randomness)?;
+                let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(
                     out,
@@ -648,7 +631,7 @@ fn c4_write_unified_shape(
                     fmt(h),
                     fmt(width),
                 );
-                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, work_meter, randomness)?;
+                let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container" transform="translate("#);
                 let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
                 out.checkpoint()?;

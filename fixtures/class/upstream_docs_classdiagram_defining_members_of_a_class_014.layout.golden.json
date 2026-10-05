@@ -5,20 +5,20 @@
       "nodes": [
         {
           "id": "BankAccount",
-          "x": 102.682,
-          "y": 96.0,
-          "width": 205.363,
-          "height": 192.0,
+          "x": 103.344,
+          "y": 100.5,
+          "width": 182.688,
+          "height": 177.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 205.363,
-        "max_y": 192.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 194.688,
+        "max_y": 189.0
       }
     }
   }

@@ -23,8 +23,8 @@
   .split("<" + "text")
   .last()
 #assert(
-  issue-89-user-text-tag.contains("font-size:16px") or issue-89-user-text-tag.contains("font-size: 16px"),
-  message: "Typst export should keep the source 16px class fallback metric",
+  issue-89-user-text-tag.contains("font-size:14px") or issue-89-user-text-tag.contains("font-size: 14px"),
+  message: "Typst export should keep the Mermaid 12 redux-color source 14px class fallback metric",
 )
 
 ```mermaid-issue

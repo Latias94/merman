@@ -68,8 +68,7 @@ fn static_font_weight(value: &str) -> bool {
 }
 
 fn static_font_size_px(value: &str) -> Option<f64> {
-    let mut input = cssparser::ParserInput::new(value);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(value);
     match parser.next().ok()? {
         cssparser::Token::Number { value, .. } if *value == 0.0 => {}
         cssparser::Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("px") => {}

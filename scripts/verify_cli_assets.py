@@ -157,12 +157,18 @@ def verify_bash_routing(
     probe = r'''
 set -eo pipefail
 source "$MERMAN_COMPLETION_PATH"
+registration="$(complete -p merman-cli)"
+if [[ ! "$registration" =~ -F[[:space:]]+([^[:space:]]+) ]]; then
+    printf '%s\n' 'merman-cli has no registered completion function' >&2
+    exit 1
+fi
+completion_function="${BASH_REMATCH[1]}"
 probe_completion() {
     local subcommand="$1"
     local current="$2"
     COMP_WORDS=(merman-cli "$subcommand" "$current")
     COMP_CWORD=2
-    _merman__cli merman-cli "$current" "$subcommand"
+    "$completion_function" merman-cli "$current" "$subcommand"
     printf '%s\n' "${COMPREPLY[@]}"
 }
 probe_completion render --f
@@ -171,17 +177,17 @@ probe_completion mmdc -e
 printf '%s\n' __RUSTDOC__
 COMP_WORDS=(merman-cli rustdoc b)
 COMP_CWORD=2
-_merman__cli merman-cli b rustdoc
+"$completion_function" merman-cli b rustdoc
 printf '%s\n' "${COMPREPLY[@]}"
 printf '%s\n' __RUSTDOC_BUILD__
 COMP_WORDS=(merman-cli rustdoc build --c)
 COMP_CWORD=3
-_merman__cli merman-cli --c build
+"$completion_function" merman-cli --c build
 printf '%s\n' "${COMPREPLY[@]}"
 printf '%s\n' __RUSTDOC_CHECK__
 COMP_WORDS=(merman-cli rustdoc check --c)
 COMP_CWORD=3
-_merman__cli merman-cli --c check
+"$completion_function" merman-cli --c check
 printf '%s\n' "${COMPREPLY[@]}"
 '''
     result = run_checked(

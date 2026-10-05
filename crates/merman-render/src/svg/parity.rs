@@ -3,17 +3,33 @@ use super::pipeline::{
 };
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
-use crate::model::{
-    BlockDiagramLayout, Bounds, ClassDiagramLayout, CynefinDiagramLayout, ErDiagramLayout,
-    ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
-    IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
-    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RailroadDiagramLayout,
-    SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout, TimelineDiagramLayout,
-    TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
-};
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+use crate::model::ArchitectureDiagramLayout;
+use crate::model::*;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use base64::Engine as _;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use indexmap::IndexMap;
 use merman_core::OperationPhase;
 use std::fmt::Write as _;
@@ -21,69 +37,265 @@ use std::fmt::Write as _;
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
 pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 mod architecture;
+#[cfg(feature = "diagram-block")]
 mod block;
+#[cfg(feature = "diagram-block")]
 pub(crate) use block::block_edge_path_data;
+#[cfg(feature = "diagram-c4")]
 mod c4;
+#[cfg(feature = "diagram-class")]
 mod class;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod css;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod curve;
+#[cfg(feature = "diagram-cynefin")]
 mod cynefin;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod edge_label_geometry;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod edge_path;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod emitted_bounds;
+#[cfg(feature = "diagram-er")]
 mod er;
 mod error;
+#[cfg(feature = "diagram-event-modeling")]
 mod eventmodeling;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod flowchart;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) use flowchart::FlowchartEdgeStylePlan;
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 pub(crate) use flowchart::write_flowchart_svg_label_plan_for_test;
+#[cfg(feature = "diagram-gantt")]
 mod gantt;
+#[cfg(feature = "diagram-git-graph")]
 mod gitgraph;
+#[cfg(feature = "diagram-info")]
 mod info;
+#[cfg(feature = "diagram-ishikawa")]
 mod ishikawa;
+#[cfg(feature = "diagram-journey")]
 mod journey;
+#[cfg(feature = "diagram-kanban")]
 mod kanban;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod label;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod layout_debug;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod line_hops;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod look_defs;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod markers;
 pub(crate) use markers::BaseEdgeMarkerKind;
+#[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 mod output;
+#[cfg(feature = "diagram-packet")]
 mod packet;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod path_bounds;
+#[cfg(feature = "diagram-pie")]
 mod pie;
+#[cfg(feature = "diagram-quadrant-chart")]
 mod quadrantchart;
+#[cfg(feature = "diagram-radar")]
 mod radar;
+#[cfg(feature = "diagram-railroad")]
 mod railroad;
+#[cfg(feature = "diagram-requirement")]
 mod requirement;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod root_svg;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod roughjs_common;
+#[cfg(feature = "diagram-sankey")]
 mod sankey;
+#[cfg(feature = "diagram-sequence")]
 mod sequence;
 mod shadow;
+#[cfg(feature = "diagram-state")]
 mod state;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod style;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 pub(crate) mod theme;
+#[cfg(feature = "diagram-timeline")]
 mod timeline;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod timing;
+#[cfg(feature = "diagram-tree-view")]
 mod tree_view;
+#[cfg(feature = "diagram-treemap")]
 mod treemap;
+#[cfg(feature = "diagram-usecase")]
+mod usecase;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod util;
+#[cfg(feature = "diagram-venn")]
 mod venn;
+#[cfg(feature = "diagram-wardley")]
 mod wardley;
+#[cfg(feature = "diagram-xychart")]
 mod xychart;
+#[cfg(feature = "diagram-zenuml")]
 mod zenuml;
+#[cfg(feature = "diagram-gantt")]
+use css::gantt_css_with_overrides;
+#[cfg(feature = "diagram-xychart")]
+use css::push_xychart_css;
+#[cfg(feature = "diagram-pie")]
+use css::write_pie_css_with_theme_overrides_and_font_family;
+#[cfg(feature = "diagram-sankey")]
+use css::write_sankey_css_with_font_family;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use css::{
-    MermaidBaseCss, gantt_css_with_overrides, info_css_parts_with_config,
-    info_css_parts_with_font_family, info_css_parts_with_resolved_typography, push_xychart_css,
-    write_info_css_with_font_family, write_mermaid_base_css_prefix_with_font_emission,
+    MermaidBaseCss, info_css_parts_with_config, info_css_parts_with_font_family,
+    info_css_parts_with_resolved_typography, write_info_css_with_font_family,
+    write_mermaid_base_css_prefix_with_font_emission,
     write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
-    write_pie_css_with_theme_overrides_and_font_family, write_sankey_css_with_font_family,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
+#[cfg(feature = "diagram-mindmap")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
@@ -91,10 +303,45 @@ pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
-use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect};
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
+use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use theme::MermaidThemeAdapter;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Common SVG imports are consumed by the selected family emitters."
+    )
+)]
 use util::{
     SvgTheme, config_bool, config_diagram_look, config_f64, config_f64_css_px, config_string,
     css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
@@ -634,6 +881,13 @@ impl SvgDebugOptions {
     }
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared SVG execution support is used by the selected family emitters."
+    )
+)]
 pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
     family: FamilyExecutionView<'a>,
@@ -678,6 +932,13 @@ impl std::fmt::Display for RootThemeAppliedSvg {
     }
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared SVG execution support is used by the selected family emitters."
+    )
+)]
 impl<'a> SvgExecution<'a> {
     fn new(
         request: &'a SvgRenderOptions,
@@ -755,6 +1016,7 @@ impl<'a> SvgExecution<'a> {
         self.family.resolved_theme()
     }
 
+    #[cfg(feature = "diagram-state")]
     pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
         self.family.style_plan().and_then(|plan| plan.state())
     }
@@ -954,7 +1216,7 @@ pub(crate) fn render_builtin_family_artifact(
     })
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
     artifact: &crate::family::ArchitectureFamilyArtifact,
@@ -992,6 +1254,10 @@ pub(crate) fn render_architecture_family_artifact(
     })
 }
 
+#[allow(
+    unused_variables,
+    reason = "Dispatch inputs depend on the selected diagram families."
+)]
 fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
@@ -1007,12 +1273,11 @@ fn render_builtin_family_artifact_raw(
     match family {
         BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
             artifact.pair().layout(),
-            artifact.pair().semantic(),
             effective_config_value,
             artifact.typography_theme(),
             options,
         ),
-        #[cfg(feature = "layout-cytoscape")]
+        #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
         BuiltinFamilyArtifact::Architecture(artifact) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
                 artifact.pair().layout(),
@@ -1022,12 +1287,19 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
         }
+        #[cfg(feature = "diagram-agentflow")]
+        BuiltinFamilyArtifact::Agentflow { flow, .. } => {
+            flowchart::render_flowchart_svg_artifact(flow, metadata, options)
+        }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
         }
+        #[cfg(feature = "diagram-cynefin")]
         BuiltinFamilyArtifact::Cynefin(artifact) => cynefin::render_cynefin_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1036,6 +1308,7 @@ fn render_builtin_family_artifact_raw(
             artifact.typography_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-wardley")]
         BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1044,6 +1317,7 @@ fn render_builtin_family_artifact_raw(
             artifact.typography_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-railroad")]
         BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1051,6 +1325,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
+        #[cfg(feature = "diagram-mindmap")]
         BuiltinFamilyArtifact::Mindmap(artifact) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
                 artifact.pair().layout(),
@@ -1060,6 +1335,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-state")]
         BuiltinFamilyArtifact::State(artifact) => state::render_state_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1070,6 +1346,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
+        #[cfg(feature = "diagram-class")]
         BuiltinFamilyArtifact::Class(artifact) => {
             class::render_class_diagram_svg_model_with_config(
                 artifact.pair().layout(),
@@ -1083,6 +1360,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-sequence")]
         BuiltinFamilyArtifact::Sequence(pair) => {
             sequence::render_sequence_diagram_svg_model_with_config(
                 pair.layout(),
@@ -1092,6 +1370,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-zenuml")]
         BuiltinFamilyArtifact::Zenuml(artifact) => zenuml::render_zenuml_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1100,9 +1379,11 @@ fn render_builtin_family_artifact_raw(
             artifact.title_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-kanban")]
         BuiltinFamilyArtifact::Kanban(pair) => {
             kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
         }
+        #[cfg(feature = "diagram-gantt")]
         BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1110,6 +1391,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
+        #[cfg(feature = "diagram-pie")]
         BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_diagram_svg_model_with_paint_plan(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1117,6 +1399,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
+        #[cfg(feature = "diagram-packet")]
         BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1125,6 +1408,7 @@ fn render_builtin_family_artifact_raw(
             title,
             options,
         ),
+        #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),
             artifact.event_theme(),
@@ -1133,6 +1417,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
+        #[cfg(feature = "diagram-journey")]
         BuiltinFamilyArtifact::Journey(artifact) => journey::render_journey_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1144,6 +1429,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
+        #[cfg(feature = "diagram-requirement")]
         BuiltinFamilyArtifact::Requirement(artifact) => {
             requirement::render_requirement_diagram_svg_model(
                 artifact.pair().layout(),
@@ -1155,6 +1441,16 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-usecase")]
+        BuiltinFamilyArtifact::Usecase(pair) => usecase::render_usecase_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
+        #[cfg(feature = "diagram-sankey")]
         BuiltinFamilyArtifact::Sankey(artifact) => sankey::render_sankey_diagram_svg(
             artifact.pair().layout(),
             artifact.node_palette(),
@@ -1162,6 +1458,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
+        #[cfg(feature = "diagram-radar")]
         BuiltinFamilyArtifact::Radar(artifact) => {
             radar::render_radar_diagram_svg_model_with_theme_plans(
                 artifact.pair().layout(),
@@ -1176,12 +1473,14 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-info")]
         BuiltinFamilyArtifact::Info(artifact) => info::render_info_diagram_svg(
             artifact.pair().layout(),
             effective_config_value,
             artifact.typography_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
             artifact.pair().layout(),
             effective_config_value,
@@ -1189,6 +1488,7 @@ fn render_builtin_family_artifact_raw(
             artifact.typography_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-venn")]
         BuiltinFamilyArtifact::Venn(artifact) => {
             venn::render_venn_diagram_svg_model_with_title_theme(
                 artifact.pair().layout(),
@@ -1200,6 +1500,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-block")]
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1212,6 +1513,7 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
+        #[cfg(feature = "diagram-er")]
         BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1221,6 +1523,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
+        #[cfg(feature = "diagram-quadrant-chart")]
         BuiltinFamilyArtifact::QuadrantChart(artifact) => {
             quadrantchart::render_quadrantchart_diagram_svg(
                 artifact.pair().layout(),
@@ -1231,9 +1534,11 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-xychart")]
         BuiltinFamilyArtifact::XyChart(artifact) => {
             xychart::render_xychart_diagram_svg(artifact, options)
         }
+        #[cfg(feature = "diagram-git-graph")]
         BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1245,6 +1550,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
+        #[cfg(feature = "diagram-tree-view")]
         BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1252,6 +1558,7 @@ fn render_builtin_family_artifact_raw(
             effective_config,
             options,
         ),
+        #[cfg(feature = "diagram-ishikawa")]
         BuiltinFamilyArtifact::Ishikawa(artifact) => {
             ishikawa::render_ishikawa_diagram_svg_with_theme(
                 artifact.pair().layout(),
@@ -1260,6 +1567,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-event-modeling")]
         BuiltinFamilyArtifact::EventModeling(artifact) => {
             eventmodeling::render_eventmodeling_diagram_svg_with_text_theme(
                 artifact.pair().layout(),
@@ -1269,6 +1577,7 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-c4")]
         BuiltinFamilyArtifact::C4(artifact) => c4::render_c4_diagram_svg_typed(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -1311,10 +1620,24 @@ fn apply_theme_css(
         .map(|svg| (svg, true))
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared SVG execution support is used by the selected family emitters."
+    )
+)]
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_basis_path_d(points)
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared SVG execution support is used by the selected family emitters."
+    )
+)]
 fn compute_layout_bounds(
     clusters: &[LayoutCluster],
     nodes: &[LayoutNode],

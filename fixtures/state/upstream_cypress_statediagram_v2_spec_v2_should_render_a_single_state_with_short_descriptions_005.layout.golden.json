@@ -5,28 +5,28 @@
       "nodes": [
         {
           "id": "long1",
-          "x": 70.4,
-          "y": 28.0,
-          "width": 124.8,
-          "height": 40.0,
+          "x": 80.0,
+          "y": 30.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "longlonglongid",
-          "x": 195.6,
-          "y": 28.0,
-          "width": 25.6,
-          "height": 40.0,
+          "x": 256.0,
+          "y": 30.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 208.4,
-        "max_y": 48.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 324.0,
+        "max_y": 49.0
       }
     }
   }

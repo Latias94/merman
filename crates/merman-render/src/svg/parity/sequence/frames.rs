@@ -2,13 +2,15 @@ use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use crate::sequence::sequence_text_dimensions_height_px;
 use merman_core::diagrams::sequence::{SequenceControlKind, SequenceControlRole};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SequenceFrameRenderOptions<'a> {
-    pub(super) actor_label_font_size: f64,
+    pub(super) actor_text_style: &'a TextStyle,
+    pub(super) box_layouts: &'a [crate::sequence::SequenceBoxLayout],
+    pub(super) box_title_height: f64,
+    pub(super) box_height: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) rect_default_fill: &'a str,
@@ -26,84 +28,29 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     let typography_receipt = label_ctx.typography_receipt;
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
-    let mut has_box_titles = false;
-    for (box_index, sequence_box) in model.boxes.iter().enumerate() {
-        checkpoints.checkpoint_loop(box_index)?;
-        if sequence_box
-            .name
-            .as_deref()
-            .is_some_and(|name| !name.trim().is_empty())
-        {
-            has_box_titles = true;
-            break;
-        }
-    }
-    let max_box_title_height = if has_box_titles {
-        // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
-        // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
-        let line_h = sequence_text_dimensions_height_px(options.actor_label_font_size);
-        let mut max_height = 0.0_f64;
-        for (box_index, sequence_box) in model.boxes.iter().enumerate() {
-            checkpoints.checkpoint_loop(box_index)?;
-            if let Some(name) = sequence_box.name.as_deref() {
-                max_height = max_height
-                    .max(crate::text::split_html_br_lines(name).len().max(1) as f64 * line_h);
-            }
-        }
-        max_height
-    } else {
-        0.0
-    };
+    let max_box_title_height = options.box_title_height;
 
     checkpoints.checkpoint()?;
-    for (box_index, b) in model.boxes.iter().rev().enumerate() {
-        checkpoints.checkpoint_loop(box_index)?;
-        let pad_x = (options.box_margin * 2.0 + options.box_text_margin).max(0.0);
-        let pad_top =
-            (options.box_margin + options.box_text_margin + max_box_title_height).max(0.0);
-        let pad_bottom = (options.box_margin * 2.0).max(0.0);
-
-        let mut min_x = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut min_top_y = f64::INFINITY;
-        let mut max_bottom_y = f64::NEG_INFINITY;
-
-        for (actor_index, actor_key) in b.actor_keys.iter().enumerate() {
-            checkpoints.checkpoint_loop(actor_index)?;
-            let top_id = format!("actor-top-{actor_key}");
-            let bottom_id = format!("actor-bottom-{actor_key}");
-            let Some(top) = nodes_by_id.get(top_id.as_str()).copied() else {
-                continue;
-            };
-            let Some(bottom) = nodes_by_id.get(bottom_id.as_str()).copied() else {
-                continue;
-            };
-
-            let (top_x, top_y) = node_left_top(top);
-            min_x = min_x.min(top_x);
-            max_x = max_x.max(top_x + top.width);
-            min_top_y = min_top_y.min(top_y);
-
-            let (_bottom_x, bottom_y) = node_left_top(bottom);
-            max_bottom_y = max_bottom_y.max(bottom_y + bottom.height);
-        }
-
-        if !min_x.is_finite()
-            || !max_x.is_finite()
-            || !min_top_y.is_finite()
-            || !max_bottom_y.is_finite()
-        {
+    for (emission_index, (b, box_layout)) in model
+        .boxes
+        .iter()
+        .zip(options.box_layouts)
+        .rev()
+        .enumerate()
+    {
+        checkpoints.checkpoint_loop(emission_index)?;
+        let Some(box_x) = box_layout.x else {
             if b.name.is_some() {
                 typography_receipt
                     .record_missing_text_effect(crate::sequence::SequenceTextSurface::BoxTitle);
             }
             continue;
-        }
-
-        let x = min_x - pad_x;
-        let w = (max_x - min_x) + pad_x * 2.0;
-        let y = min_top_y - pad_top;
-        let h = (max_bottom_y - min_top_y) + pad_top + pad_bottom;
+        };
+        let padding = options.box_margin * 2.0;
+        let x = box_x - padding;
+        let w = box_layout.width + padding * 2.0;
+        let y = -padding * 0.25;
+        let h = options.box_height + padding * 0.75;
 
         out.push_str("<g>");
         let _ = write!(
@@ -115,44 +62,56 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             h = fmt(h),
             fill = escape_xml_display(&b.fill),
         );
-        if let Some(name) = b.name.as_deref() {
+        if let Some(name) = box_layout.label.as_deref().filter(|name| !name.is_empty()) {
             let cx = x + (w / 2.0);
             // Mermaid's `drawBox(...)` places the title at `box.y + boxTextMargin + textMaxHeight/2`.
             // In upstream, `box.y` is the `verticalPos` passed to `addActorRenderingData`, i.e. 0.
-            let box_y = min_top_y - (options.box_margin + max_box_title_height);
-            let text_y = box_y + options.box_text_margin + max_box_title_height / 2.0;
-            let application = label_ctx.write_shadow(
-                out,
-                name,
-                cx,
-                text_y,
-                16.0,
-                super::text_effect::TextShadowBaseline::Middle,
-            )?;
-            let filter = application
-                .as_ref()
-                .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
-                .unwrap_or_default();
-            let style = actor_typography.terminal_style(
-                "text-anchor: middle",
-                "text-anchor: middle; font-size: 16px; font-weight: 400;".to_string(),
-            );
-            let _ = write!(
-                out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"{filter}><tspan x="{x}" dy="0">{text}</tspan></text>"#,
-                x = fmt(cx),
-                y = fmt(text_y),
-                style = escape_attr_display(&style),
-                text = escape_xml_display(name)
-            );
-            out.checkpoint()?;
-            label_ctx.record_shadow(
-                application.as_ref(),
-                name,
-                crate::sequence::SequenceTextSurface::BoxTitle,
-                0.0,
-            );
-            typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::BoxTitle);
+            let text_y = options.box_text_margin + max_box_title_height / 2.0;
+            let lines = crate::text::split_html_br_lines(name);
+            let count = lines.len().max(1) as f64;
+            for (index, raw) in lines.into_iter().enumerate() {
+                checkpoints.checkpoint_loop(index)?;
+                let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+                let name = decoded.as_ref();
+                let dy = (index as f64 - (count - 1.0) / 2.0) * options.actor_text_style.font_size;
+                let application = label_ctx.write_shadow(
+                    out,
+                    name,
+                    cx,
+                    text_y + dy,
+                    options.actor_text_style.font_size,
+                    super::text_effect::TextShadowBaseline::Middle,
+                )?;
+                let filter = application
+                    .as_ref()
+                    .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
+                    .unwrap_or_default();
+                let style = actor_typography.terminal_style(
+                    "text-anchor: middle",
+                    format!(
+                        "text-anchor: middle; {}",
+                        super::settings::sequence_text_style_attribute(options.actor_text_style)
+                    ),
+                );
+                let _ = write!(
+                    out,
+                    r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"{filter}><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+                    x = fmt(cx),
+                    y = fmt(text_y),
+                    dy = fmt(dy),
+                    style = escape_attr_display(&style),
+                    text = escape_xml_display(name)
+                );
+                out.checkpoint()?;
+                label_ctx.record_shadow(
+                    application.as_ref(),
+                    name,
+                    crate::sequence::SequenceTextSurface::BoxTitle,
+                    0.0,
+                );
+                typography_receipt
+                    .record_terminal_text(crate::sequence::SequenceTextSurface::BoxTitle);
+            }
         }
         out.push_str("</g>");
     }

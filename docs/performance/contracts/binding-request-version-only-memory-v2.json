@@ -9,7 +9,7 @@
     "package": "merman-bindings-core",
     "package_manifest": "crates/merman-bindings-core/Cargo.toml",
     "bench": "request_overlay_memory",
-    "features": ["analysis", "ascii", "svg"],
+    "features": ["all-diagrams", "analysis", "ascii", "svg"],
     "default_features": false
   },
   "scale": {

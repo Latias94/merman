@@ -955,7 +955,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 23);
+    assert_eq!(descriptors.len(), 26);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);

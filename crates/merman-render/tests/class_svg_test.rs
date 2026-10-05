@@ -1225,11 +1225,11 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
         ),
         (
             "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\n",
-            "class",
+            "classDiagram",
         ),
         (
             "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\nnote for Animal \"classDiagram-v2 is note text\"\n",
-            "class",
+            "classDiagram",
         ),
     ] {
         let engine = Engine::new();
@@ -1240,7 +1240,7 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
         assert_eq!(
             parsed.metadata().diagram_type,
             expected_role,
-            "Class detection must follow Mermaid's renderer-aware detector contract for {source:?}"
+            "Class detection must follow Mermaid 12's syntax-only detector contract for {source:?}"
         );
         assert_eq!(
             class_model(&parsed).diagram_type,
@@ -1323,7 +1323,7 @@ class Animal
 }
 
 #[test]
-fn class_stylesheet_matches_signed_mermaid_11_16_css_contract() {
+fn class_stylesheet_matches_signed_mermaid_12_css_contract() {
     const FIXTURE: &str = "stress_class_many_relations_labels_020";
     let local_svg = render_class_fixture(
         &format!("{FIXTURE}.mmd"),
@@ -1349,7 +1349,7 @@ fn class_stylesheet_matches_signed_mermaid_11_16_css_contract() {
     );
     assert!(
         local_css.starts_with(
-            r#"#class-contract{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}"#
+            r#"#class-contract{font-family:"Recursive Variable",arial,sans-serif;font-size:14px;fill:#28253D;}"#
         ),
         "the public root fill must use textColor rather than classText"
     );
@@ -1413,9 +1413,9 @@ namespace Company.Project.Module {
 "#,
     );
 
-    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="neo""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
@@ -1445,11 +1445,11 @@ fn class_svg_scopes_text_color_for_html_labels() {
         "expected class SVG to reset HTML label paragraph margins"
     );
     assert!(
-        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#131300;}"#),
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#28253D;}"#),
         "expected class SVG to make HTML labels self-contained instead of inheriting host page color"
     );
     assert!(
-        svg.contains(r#"#merman .label text{fill:#131300;}"#),
+        svg.contains(r#"#merman .label text{fill:#28253D;}"#),
         "expected class SVG text labels to get an explicit fill color"
     );
 }
@@ -1525,26 +1525,23 @@ Animal --> Keeper
 fn class_svg_hand_drawn_basic_node_uses_rough_wrapper_and_hachure_paths() {
     let svg = render_class_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
+        r##"%%{init: {"layout": "dagre", "look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
 classDiagram
   class Class10
 "##,
     );
 
-    assert!(
-        svg.contains(
-            r#"<g class="rough-node default" id="merman-classId-Class10-0" data-look="handDrawn""#
-        ),
-        "hand-drawn class node should use Mermaid's rough-node wrapper class: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"<g class="node default" id="merman-classId-Class10-0""#),
-        "hand-drawn class node should not keep the classic node wrapper class: {svg}"
-    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-classId-Class10-0"))
+        .expect("hand-drawn Class10 node");
+    assert_eq!(node.attribute("class"), Some("rough-node default"));
+    assert_eq!(node.attribute("data-look"), Some("handDrawn"));
     assert!(
         svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
-                r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+                r##"stroke="#f8fafc" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && svg.contains(
                 r##"stroke="#ef4444" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##
@@ -1573,7 +1570,6 @@ classDiagram
         "lollipopStart-margin",
         "lollipopEnd-margin",
     ];
-    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
     let diagram_role = document
         .root_element()
         .attribute("aria-roledescription")
@@ -1597,7 +1593,7 @@ classDiagram
     let marker_positions = marker_ids.map(|marker_id| {
         let marker_attr = format!(r#"id="merman_{diagram_role}-{marker_id}""#);
         svg.find(&marker_attr)
-            .unwrap_or_else(|| panic!("missing Mermaid 11.16 class marker {marker_id}: {svg}"))
+            .unwrap_or_else(|| panic!("missing Dagre class marker {marker_id}: {svg}"))
     });
     assert!(
         marker_positions.windows(2).all(|pair| pair[0] < pair[1]),
@@ -1630,7 +1626,7 @@ classDiagram
 
     assert!(
         svg.contains(r#"class="rough-node default""#)
-            && svg.contains(r##"stroke="#f9f" stroke-width="4" fill="none""##)
+            && svg.contains(r##"stroke="#f9f" stroke-width="1.5" fill="none""##)
             && svg.contains(r##"stroke="#333" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:#f9f;stroke:#333;stroke-width:4px;color:white""##)
             && svg.contains(r##"style="fill:#f9f;stroke:#333;stroke-width:4px;color:white"><p>Class10</p>"##),
         "inline style should reach hand-drawn class rough paths and label span: {svg}"
@@ -1653,7 +1649,7 @@ classDiagram
     assert!(
         svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
-                r##"stroke="#fff5ad" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+                r##"stroke="#fff5ad" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && svg.contains(
                 r##"stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
@@ -3081,6 +3077,150 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn class_elk_missing_section_with_short_cardinality_path_reports_source_error() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: elk.box\n---\nclassDiagram\nA \"1\" --> \"many\" B\n",
+            ParseOptions::default(),
+        )
+        .unwrap()
+        .unwrap();
+    let result = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    );
+    assert!(
+        matches!(result, Err(merman_render::Error::InvalidModel { message })
+        if message.contains("Could not find a suitable point for the given distance"))
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_and_er_elk_missing_sections_paint_clipped_linear_edges_and_centered_labels() {
+    use base64::Engine as _;
+    use merman_render::model::{LayoutEdge, LayoutNode, LayoutPoint};
+
+    for algorithm in ["elk.box", "elk.rectpacking"] {
+        for (diagram, projection) in [
+            (
+                "classDiagram\nclass A\nclass B\nclass C\nclass D\nclass E\nclass F\nclass G\nclass H\nA \"1\" --> \"many\" H : a deliberately wide relationship label\n",
+                "ClassDiagramV2",
+            ),
+            (
+                "erDiagram\nA ||--o{ WiderTarget : \"a deliberately wide relationship label\"\n",
+                "ErDiagram",
+            ),
+        ] {
+            let text = format!("---\nconfig:\n  layout: {algorithm}\n---\n{diagram}");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&text, ParseOptions::default())
+                .expect("parse diagram")
+                .expect("diagram detected");
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::default(), session).expect("layout");
+            let json = artifact.layout_json().expect("layout projection");
+            let layout = &json["layout"][projection];
+            let nodes: Vec<LayoutNode> = serde_json::from_value(layout["nodes"].clone()).unwrap();
+            let edges: Vec<LayoutEdge> = serde_json::from_value(layout["edges"].clone()).unwrap();
+            assert_eq!(edges.len(), 1);
+            let edge = &edges[0];
+            if projection == "ClassDiagramV2" {
+                assert!(
+                    edge.start_label_right.is_some(),
+                    "{algorithm}: start cardinality missing: {nodes:?}"
+                );
+                assert!(
+                    edge.end_label_left.is_some(),
+                    "end cardinality must survive missing sections"
+                );
+            }
+            assert!(
+                edge.points.is_empty(),
+                "{algorithm} must preserve absent provider sections"
+            );
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("SVG")
+                .svg()
+                .to_owned();
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            if projection == "ClassDiagramV2" {
+                let terminals: Vec<_> = document
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("edgeTerminals")
+                    })
+                    .collect();
+                assert_eq!(terminals.len(), 2, "both cardinalities must be painted");
+                for terminal in terminals {
+                    assert!(terminal.attribute("transform").is_some());
+                }
+            }
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .expect("visible edge");
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(points.len(), 2);
+            for (point, id) in points.iter().zip([&edge.from, &edge.to]) {
+                let node = nodes.iter().find(|node| &node.id == id).unwrap();
+                let dx = (point.x - node.x).abs();
+                let dy = (point.y - node.y).abs();
+                assert!(dx <= node.width / 2.0 + 1e-5 && dy <= node.height / 2.0 + 1e-5);
+                assert!(
+                    (dx - node.width / 2.0).abs() < 1e-5 || (dy - node.height / 2.0).abs() < 1e-5
+                );
+            }
+            let d = path.attribute("d").unwrap();
+            assert!(
+                d.contains('L') && !d.contains('C') && !d.contains('Q'),
+                "{d}"
+            );
+            let label = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("edgeLabel")
+                        && node.attribute("transform").is_some()
+                })
+                .expect("positioned label");
+            let transform = label.attribute("transform").unwrap();
+            let center: Vec<f64> = transform
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split(',')
+                .map(|part| part.trim().parse().unwrap())
+                .collect();
+            assert!((center[0] - (points[0].x + points[1].x) / 2.0).abs() < 1e-5);
+            assert!((center[1] - (points[0].y + points[1].y) / 2.0).abs() < 1e-5);
+            let viewbox: Vec<f64> = document
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_ascii_whitespace()
+                .map(|part| part.parse().unwrap())
+                .collect();
+            let measured_label = edge.label.as_ref().expect("measured label");
+            assert!(center[0] - measured_label.width / 2.0 >= viewbox[0] - 1e-5);
+            assert!(center[0] + measured_label.width / 2.0 <= viewbox[0] + viewbox[2] + 1e-5);
+            assert!(center[1] - measured_label.height / 2.0 >= viewbox[1] - 1e-5);
+            assert!(center[1] + measured_label.height / 2.0 <= viewbox[1] + viewbox[3] + 1e-5);
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
     let svg = render_class_svg_from_text_with_engine(
         Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
@@ -3108,13 +3248,27 @@ style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
 "##,
     );
 
-    assert!(
-        svg.contains(r#"id="merman-Platform" data-look="classic""#)
-            && svg.contains(r#"data-look="classic" xlink:href="https://example.com/service""#)
-            && svg.contains(r#"id="merman-classId-Service-0""#)
-            && svg.contains(r#"id="merman-classId-Client-"#),
-        "Class ELK layout should still render namespaces and class nodes through the Class SVG renderer: {svg}"
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let namespace = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-Platform"))
+        .expect("Platform namespace");
+    assert_eq!(namespace.attribute("data-look"), Some("neo"));
+    let service = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-classId-Service-0"))
+        .expect("Service class node");
+    let service_link = service.parent_element().expect("Service link wrapper");
+    assert!(service_link.has_tag_name("a"));
+    assert_eq!(service_link.attribute("data-look"), Some("neo"));
+    assert_eq!(
+        service_link.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.com/service")
     );
+    assert!(document.descendants().any(|node| {
+        node.attribute("id")
+            .is_some_and(|id| id.starts_with("merman-classId-Client-"))
+    }));
     assert!(
         svg.contains(r#"xlink:href="https://example.com/service""#)
             && svg.contains(r#"title="Open Service""#),
@@ -3156,7 +3310,7 @@ Animal <|-- Duck
         .find(r#"<g class="nodes""#)
         .expect("Class ELK nodes group");
     let edges = svg
-        .find(r#"<g class="edges edgePath""#)
+        .find(r#"<g class="edges edgePaths""#)
         .expect("Class ELK edge paths group");
     let labels = svg
         .find(r#"<g class="edgeLabels""#)
@@ -3164,12 +3318,54 @@ Animal <|-- Duck
     let clusters = svg
         .find(r#"<g class="clusters""#)
         .expect("Class ELK clusters group");
-    assert!(root < edges && edges < clusters && clusters < labels && labels < nodes);
+    assert!(root < clusters && clusters < edges && edges < labels && labels < nodes);
 }
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn class_svg_elk_layout_uses_layout_elk_023_marker_profile() {
+fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
+    use base64::Engine as _;
+
+    let source = include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
+    let straight = render_class_svg_from_text(source);
+    let original = render_class_svg_from_text(&format!(
+        "---\nconfig:\n  elk:\n    straightenEdges: false\n---\n{source}"
+    ));
+    let edge_points = |svg: &str, edge_id: &str| {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(edge_id))
+            .expect("Class relation path");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(edge.attribute("data-points").unwrap())
+            .unwrap();
+        let points: Vec<merman_render::model::LayoutPoint> =
+            serde_json::from_slice(&decoded).unwrap();
+        points.into_iter().map(|p| (p.x, p.y)).collect::<Vec<_>>()
+    };
+
+    // Mermaid 12 moves the whole terminal channel onto the port row. Both source and
+    // target staircases occur in this graph; the endpoint coordinates must stay fixed.
+    for (edge_id, source_terminal) in [("id_B_D_4", true), ("id_A_C_2", false)] {
+        let mut before = edge_points(&original, edge_id);
+        let mut after = edge_points(&straight, edge_id);
+        assert_eq!(after.first(), before.first());
+        assert_eq!(after.last(), before.last());
+        assert_eq!(after.len() + 2, before.len(), "{edge_id}");
+        if !source_terminal {
+            before.reverse();
+            after.reverse();
+        }
+        assert!((before[0].1 - before[2].1).abs() > 0.01);
+        assert_eq!(after[0].1, after[1].1);
+        assert_eq!(after[0].1, after[2].1);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_svg_elk_layout_uses_shared_mermaid12_markers() {
     let svg = render_class_svg_from_text(
         r#"---
 config:
@@ -3202,8 +3398,8 @@ class C1["One"]
     ] {
         assert_eq!(
             marker_units(marker),
-            None,
-            "ELK 0.2.3 ordinary marker {marker}"
+            Some("userSpaceOnUse"),
+            "Mermaid 12 shared ordinary marker {marker}"
         );
     }
     assert_eq!(marker_units("extensionStart"), Some("userSpaceOnUse"));
@@ -3230,8 +3426,8 @@ namespace Platform.Core {
     );
 
     assert!(
-        svg.contains(r#"#merman .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}"#),
-        "expected class namespace cluster CSS to provide the upstream yellow fill: {svg}"
+        svg.contains(r#"#merman .cluster rect{fill:#F9F9FB;stroke:#BDBCCC;stroke-width:1px;}"#),
+        "expected class namespace cluster CSS to provide the Mermaid 12 default theme fill: {svg}"
     );
     assert!(
         !svg.contains(r#"style="fill:none !important;stroke:black !important""#),
@@ -3315,21 +3511,21 @@ classDiagram
 }
 
 #[test]
-fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() {
+fn class_svg_namespaces_use_hierarchical_labels_and_keep_relation_label() {
     let svg = render_class_fixture(
         "upstream_namespaces_and_generics.mmd",
         &LayoutOptions::default(),
         &SvgRenderOptions::default(),
     );
 
-    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="neo""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
             && svg.contains("<p>Module</p>"),
-        "expected dotted namespace labels to use Mermaid 11.15 path segments"
+        "expected dotted namespace labels to use Mermaid path segments"
     );
     let company_pos = svg
         .find(r#"id="merman-Company""#)
@@ -3445,8 +3641,13 @@ fn class_svg_nested_namespace_relation_endpoints_share_node_coordinate_frame() {
 
 #[test]
 fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
-    let svg = render_class_fixture(
-        "stress_class_comments_inside_namespaces_024.mmd",
+    let text = std::fs::read_to_string(
+        workspace_root().join("fixtures/class/stress_class_comments_inside_namespaces_024.mmd"),
+    )
+    .expect("fixture");
+    let svg = render_class_svg_from_text_with_engine_and_options(
+        Engine::new(),
+        &format!("%%{{init: {{\"layout\": \"dagre\"}}}}%%\n{text}"),
         &LayoutOptions::default(),
         &SvgRenderOptions {
             diagram_id: Some("stress_class_comments_inside_namespaces_024".to_string()),
@@ -3485,7 +3686,8 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
 #[test]
 fn class_svg_namespace_extraction_depends_on_cross_boundary_edges() {
     let extracted = render_class_svg_from_text(
-        r#"classDiagram
+        r#"%%{init: {"layout": "dagre"}}%%
+classDiagram
 namespace Internal {
   class A
   note for A "inside"
@@ -3557,7 +3759,8 @@ X --> Y
     }
 
     let retained = render_class_svg_from_text(
-        r#"classDiagram
+        r#"%%{init: {"layout": "dagre"}}%%
+classDiagram
 namespace Internal {
   class A
 }
@@ -3615,11 +3818,13 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
         },
     );
 
+    assert!(
+        svg.contains(
+            r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="neo""#
+        )
+    );
     assert!(svg.contains(
-        r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="classic""#
-    ));
-    assert!(svg.contains(
-        r#"id="stress_class_nested_namespaces_many_levels_021-Root.B.B1" data-look="classic""#
+        r#"id="stress_class_nested_namespaces_many_levels_021-Root.B.B1" data-look="neo""#
     ));
     assert!(
         svg.contains("<p>A</p>") && svg.contains("<p>B1</p>"),
@@ -3735,11 +3940,12 @@ classDiagram
 }
 
 #[test]
-fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
-    let svg = render_class_fixture(
-        "stress_class_parallel_edges_and_cardinality_004.mmd",
-        &LayoutOptions::headless_svg_defaults(),
-        &SvgRenderOptions::default(),
+fn class_svg_dagre_edge_labels_precede_terminals_in_edge_labels_group() {
+    let svg = render_class_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+        }))),
+        include_str!("../../../fixtures/class/stress_class_parallel_edges_and_cardinality_004.mmd"),
     );
 
     let edge_labels_start = svg
@@ -3809,17 +4015,16 @@ classDiagram
 "##,
     );
 
+    let css = embedded_stylesheet(&svg);
+    let root_rule = css.split_once('}').expect("root stylesheet rule").0;
+    assert!(root_rule.starts_with("#merman{"), "{root_rule}");
     assert!(
-        svg.contains(
-            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24;fill:"#
-        ),
-        "numeric themeVariables.fontSize should be emitted like Mermaid's raw CSS value"
+        root_rule.contains("font-size:24;"),
+        "numeric themeVariables.fontSize should be emitted like Mermaid's raw CSS value: {root_rule}"
     );
     assert!(
-        !svg.contains(
-            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:"#
-        ),
-        "numeric themeVariables.fontSize must not be rewritten as a px string"
+        !root_rule.contains("font-size:24px;"),
+        "numeric themeVariables.fontSize must not be rewritten as a px string: {root_rule}"
     );
 }
 
@@ -5385,6 +5590,463 @@ fn class_generic_text_partially_shadowed_rule_keeps_its_winning_fill() {
                     error.incomplete_family_theme(),
                     Some((DiagramFamilyId::CLASS, 2, 1))
                 );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_and_dagre_labels_follow_the_requested_dom_mode() {
+    for layout in ["elk", "dagre"] {
+        for html in [false, true] {
+            let svg = render_class_svg_from_text(&format!(
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {}\n---\nclassDiagram\nnamespace NamespaceTitle {{\nclass ServiceClass {{\n+completeOperation()\n}}\n}}\nServiceClass --() ProvidedInterface\n",
+                !html
+            ));
+            let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+            if !html {
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    "SVG label mode must cover every label owner: {layout}"
+                );
+            }
+            for (id, expected_text) in [
+                ("merman-NamespaceTitle", "NamespaceTitle"),
+                ("merman-classId-ServiceClass-0", "ServiceClass"),
+                ("merman-interface0", "ProvidedInterface"),
+            ] {
+                let owner = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .expect("label owner");
+                let label = owner
+                    .descendants()
+                    .find(|node| node.has_tag_name(if html { "foreignObject" } else { "text" }))
+                    .expect("label in the requested DOM mode");
+                let text = label
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert!(
+                    text.contains(expected_text),
+                    "missing complete label {expected_text}: {text}"
+                );
+            }
+            let visible = document
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert!(visible.contains("completeOperation()"));
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_interface_padding_is_measured_before_layout_and_matches_painted_rect() {
+    for look in ["classic", "neo"] {
+        for html in [false, true] {
+            for font_size in [14, 23] {
+                let source = format!(
+                    "---\nconfig:\n  layout: elk\n  look: {look}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA --() CompleteInterface\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .unwrap()
+                    .unwrap();
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::headless_svg_defaults(),
+                    RenderEnvironment::deterministic().begin_session().unwrap(),
+                )
+                .unwrap();
+                let projection = artifact.layout_json().unwrap();
+                let layout: merman_render::model::ClassDiagramLayout =
+                    serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+                let node = layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "interface0")
+                    .unwrap();
+                let (padding_x, padding_y) = if look == "neo" {
+                    (32.0, 24.0)
+                } else {
+                    (0.0, 0.0)
+                };
+                let svg = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(svg.svg()).unwrap();
+                let owner = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-interface0"))
+                    .unwrap();
+                let rect = owner
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                let number = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+                assert!((number("width") - node.width).abs() < 1e-3);
+                assert!((number("height") - node.height).abs() < 1e-3);
+                if html {
+                    let label = owner
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .unwrap();
+                    let label_width = label.attribute("width").unwrap().parse::<f64>().unwrap();
+                    let label_height = label.attribute("height").unwrap().parse::<f64>().unwrap();
+                    assert!((number("width") - label_width - padding_x).abs() < 1e-3);
+                    assert!((number("height") - label_height - padding_y).abs() < 1e-3);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_line_hops_only_change_crossing_paths() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA --> X : ax\nA --> Y\nA --> Z\nB --> X\nB --> Y : by\nB --> Z\nC --> X\nC --> Y\nC --> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| (node.attribute("data-id").unwrap(), node))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths[0].len(), 9);
+    let mut rewritten = 0;
+    let mut visible_hops = 0;
+    let mut unchanged = 0;
+    for (id, base) in &paths[0] {
+        let arc = paths[1][id];
+        let gap = paths[2][id];
+        if base.attribute("d") != arc.attribute("d") {
+            rewritten += 1;
+            assert_ne!(base.attribute("d"), gap.attribute("d"));
+            // Crossings still trigger source path normalization when every hop is clamped.
+            // Require a separate surviving hop to prove that arc and gap modes both render.
+            if arc.attribute("d") != gap.attribute("d") {
+                visible_hops += 1;
+                assert!(arc.attribute("d").unwrap().contains('A'));
+                assert!(gap.attribute("d").unwrap().matches('M').count() > 1);
+            }
+        } else {
+            unchanged += 1;
+            assert_eq!(base.attribute("d"), gap.attribute("d"));
+        }
+        for attr in ["marker-start", "marker-end", "data-points"] {
+            assert_eq!(
+                base.attribute(attr),
+                arc.attribute(attr),
+                "arc changed {attr} for {id}"
+            );
+            assert_eq!(
+                base.attribute(attr),
+                gap.attribute(attr),
+                "gap changed {attr} for {id}"
+            );
+        }
+    }
+    assert!(rewritten > 0, "K3,3 must exercise a crossing rewrite");
+    assert!(
+        visible_hops > 0,
+        "labelled K3,3 must retain a visible hop in both enabled modes"
+    );
+    assert!(unchanged > 0, "noncrossing paths must remain unchanged");
+    let label_positions = documents
+        .iter()
+        .map(|document| {
+            let group = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("edgeLabels"))
+                .unwrap();
+            group
+                .descendants()
+                .filter_map(|node| node.attribute("transform"))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert!(!label_positions[0].is_empty());
+    assert_eq!(label_positions[0], label_positions[1]);
+    assert_eq!(label_positions[0], label_positions[2]);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_neo_hops_rewrite_the_original_dashed_marker_mask() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA ..> X\nA ..> Y\nA ..> Z\nB ..> X\nB ..> Y\nB ..> Z\nC ..> X\nC ..> Y\nC ..> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  look: neo\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| (node.attribute("data-id").unwrap(), node))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    let dash_values = |style: &str| {
+        style
+            .split("stroke-dasharray:")
+            .nth(1)
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>()
+    };
+    for hopped in &paths[1..] {
+        let mut changed = 0;
+        for (id, original) in &paths[0] {
+            let rewritten = hopped[id];
+            let original_style = original.attribute("style").unwrap();
+            let rewritten_style = rewritten.attribute("style").unwrap();
+            if original.attribute("d") != rewritten.attribute("d") {
+                changed += 1;
+                let before = dash_values(original_style);
+                let after = dash_values(rewritten_style);
+                assert!(
+                    before.len() > 4,
+                    "original mask contains repeated 2 2 dashes"
+                );
+                assert_eq!(
+                    after.len(),
+                    4,
+                    "afterPaint collapses the original mask to one on interval"
+                );
+                assert_eq!((after[0], after[1], after[3]), (0.0, before[1], before[3]));
+                assert_eq!(
+                    after[3], 2.0,
+                    "Mermaid reads the original mask's fourth number as its tail"
+                );
+                assert!(after[2] > 2.0);
+                assert!(!rewritten_style.contains(";;"));
+            } else {
+                assert_eq!(original_style, rewritten_style);
+            }
+            assert_eq!(
+                original.attribute("marker-end"),
+                rewritten.attribute("marker-end")
+            );
+        }
+        assert!(changed > 0, "dashed K3,3 must exercise an actual crossing");
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_svg_interface_wraps_long_words_without_wrapping_namespace_titles() {
+    let label = "ProvidedInterfaceWithALongLabel";
+    let dimensions = [40, 400].map(|width| {
+        let source = format!(
+            "---\nconfig:\n  layout: elk\n  htmlLabels: false\n  flowchart:\n    wrappingWidth: {width}\n---\nclassDiagram\nnamespace NamespaceTitleMustRemainUnwrapped {{\nclass A\n}}\nA --() {label}\n"
+        );
+        let svg = render_class_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let owner = document.descendants().find(|node| node.attribute("id") == Some("merman-interface0")).unwrap();
+        let rect = owner.children().find(|node| node.has_tag_name("rect")).unwrap();
+        let rows = |owner: roxmltree::Node<'_, '_>| {
+            owner.descendants().filter(|node| node.attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| class == "text-outer-tspan")
+            })).count()
+        };
+        let visible = owner.descendants().filter(|node| node.is_text()).filter_map(|node| node.text()).collect::<String>();
+        assert_eq!(visible, label, "wrapping must retain every character");
+        let namespace = document.descendants().find(|node| node.attribute("id") == Some("merman-NamespaceTitleMustRemainUnwrapped")).unwrap();
+        assert_eq!(rows(namespace), 1, "ELK ordinary namespace titles stay unwrapped");
+        (rect.attribute("width").unwrap().parse::<f64>().unwrap(),
+            rect.attribute("height").unwrap().parse::<f64>().unwrap(), rows(owner))
+    });
+    assert!(dimensions[0].0 < dimensions[1].0);
+    assert!(dimensions[0].1 > dimensions[1].1);
+    assert!(dimensions[0].2 > dimensions[1].2);
+    assert_eq!(dimensions[1].2, 1);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_rewrites_detected_crossings_even_when_hops_are_squeezed_out() {
+    use std::collections::BTreeMap;
+    let source = "classDiagram\nA --> X\nA --> Y\nA --> Z\nB --> X\nB --> Y\nB --> Z\nC --> X\nC --> Y\nC --> Z\n";
+    let svgs = ["false", "true", "gap"].map(|mode| {
+        render_class_svg_from_text(&format!(
+            "---\nconfig:\n  layout: elk\n  look: neo\n  elk:\n    lineHops: {mode}\n---\n{source}"
+        ))
+    });
+    let documents = svgs
+        .iter()
+        .map(|svg| roxmltree::Document::parse(svg).unwrap())
+        .collect::<Vec<_>>();
+    let paths = documents
+        .iter()
+        .map(|document| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .map(|node| {
+                    (
+                        node.attribute("data-id").unwrap(),
+                        node.attribute("d").unwrap(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+    let rewritten_without_a_visible_hop = paths[0]
+        .iter()
+        .filter(|(id, original)| **original != paths[1][*id] && paths[1][*id] == paths[2][*id])
+        .count();
+    assert!(
+        rewritten_without_a_visible_hop > 0,
+        "Mermaid still normalizes crossing paths when corner and adjacency limits suppress every hop"
+    );
+}
+
+#[test]
+fn class_cardinality_terminals_share_measured_bounds_and_centered_inner_in_both_layouts() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n---\nclassDiagram\nA \"WWWWideStartCardinality\" --> \"LongEndCardinality\" B\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .unwrap();
+            let json = artifact.layout_json().unwrap();
+            let headless: merman_render::model::ClassDiagramLayout =
+                serde_json::from_value(json["layout"]["ClassDiagramV2"].clone()).unwrap();
+            let edge = &headless.edges[0];
+            let expected = [
+                edge.start_label_right.as_ref().unwrap(),
+                edge.end_label_left.as_ref().unwrap(),
+            ];
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+                .svg()
+                .to_owned();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let terminals: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("edgeTerminals"))
+                .collect();
+            assert_eq!(terminals.len(), 2);
+            for ((terminal, metrics), text) in terminals
+                .into_iter()
+                .zip(expected)
+                .zip(["WWWWideStartCardinality", "LongEndCardinality"])
+            {
+                let inner = terminal
+                    .children()
+                    .find(|node| node.attribute("class") == Some("inner"))
+                    .unwrap();
+                let content: String = inner
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect();
+                assert_eq!(
+                    content, text,
+                    "{layout}/{html}: terminal content must stay inside its centered inner group"
+                );
+                assert!(metrics.width > 50.0 && metrics.height > 0.0);
+                let transform = inner.attribute("transform").unwrap();
+                assert!(transform.starts_with("translate("));
+                if html {
+                    let foreign = inner
+                        .children()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .unwrap();
+                    let width: f64 = foreign.attribute("width").unwrap().parse().unwrap();
+                    let height: f64 = foreign.attribute("height").unwrap().parse().unwrap();
+                    assert!((width - metrics.width).abs() < 0.002);
+                    assert!((height - metrics.height).abs() < 0.002);
+                    assert!(
+                        height > 12.0,
+                        "11px terminal text has a measured 1.5 line height"
+                    );
+                    let style = foreign.attribute("style").unwrap();
+                    let css_number = |name: &str| {
+                        style
+                            .split(';')
+                            .find_map(|part| part.trim().strip_prefix(name))
+                            .unwrap()
+                            .trim()
+                            .trim_end_matches("px")
+                            .parse::<f64>()
+                            .unwrap()
+                    };
+                    assert!((css_number("height:") - height).abs() < 0.002);
+                    assert!(
+                        (css_number("width:")
+                            - width.max(text.encode_utf16().count() as f64 * 9.0))
+                        .abs()
+                            < 0.002
+                    );
+                    let coordinates = transform
+                        .strip_prefix("translate(")
+                        .unwrap()
+                        .trim_end_matches(')')
+                        .split(',')
+                        .map(|value| value.trim().parse::<f64>().unwrap())
+                        .collect::<Vec<_>>();
+                    assert!((coordinates[0] + width / 2.0).abs() < 0.002);
+                    assert!((coordinates[1] + height / 2.0).abs() < 0.002);
+                } else {
+                    assert!(
+                        !inner
+                            .descendants()
+                            .any(|node| node.has_tag_name("foreignObject"))
+                    );
+                    assert!(inner.descendants().any(|node| node.has_tag_name("text")));
+                }
             }
         }
     }

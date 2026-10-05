@@ -17,6 +17,7 @@ import {
   ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
 } from "./root-viewport-oracle.ts";
 import {
+  filteredTitleFontAuditSha256,
   matchingRootViewportResidual,
   parseRootViewportResidualCatalog,
   ROOT_VIEWPORT_RESIDUAL_COMPARISON_REVISION,
@@ -41,10 +42,18 @@ if (localFiles.length === 0) {
 }
 
 const browser = await chromium.launch({ headless: true });
-let browserVersion = "unknown";
+const environment = {
+  playwright: packageJson.version,
+  browser: `Chromium ${browser.version()}`,
+  locale: "en-US",
+  timezone: "UTC",
+  platform: `${process.platform}-${process.arch}`,
+  localPaintAudit: "transparent Chromium screenshot alpha",
+  upstreamPaintAudit:
+    "collected after any local overflow or indeterminate evidence; otherwise omitted",
+};
 const entries = [];
 try {
-  browserVersion = browser.version();
   const page = await browser.newPage({ locale: "en-US", timezoneId: "UTC" });
   for (const relativePath of localFiles) {
     const localPath = path.join(localRoot, relativePath);
@@ -73,17 +82,23 @@ try {
       upstream,
       baseContainmentClassification,
     );
-    const residual =
-      baseContainmentClassification === "blocking" &&
-      exactRootViewportResidualEvidenceIsEligible(local, upstream)
-        ? matchingRootViewportResidual(
-            residualCatalog,
-            fixture,
-            localSha256,
-            upstreamSha256,
-            auditEvidenceSha256,
-          )
-        : null;
+    const localReport = reportAudit(local);
+    const upstreamReport = upstream === null ? null : reportAudit(upstream);
+    let residual = null;
+    if (baseContainmentClassification === "blocking") {
+      if (exactRootViewportResidualEvidenceIsEligible(local, upstream)) {
+        residual = matchingRootViewportResidual(
+          residualCatalog, fixture, localSha256, upstreamSha256, auditEvidenceSha256,
+        );
+      } else {
+        const auditSha256 = filteredTitleFontAuditSha256(environment, localReport, upstreamReport);
+        if (auditSha256 !== null) {
+          residual = matchingRootViewportResidual(
+            residualCatalog, fixture, localSha256, upstreamSha256, auditEvidenceSha256, auditSha256,
+          );
+        }
+      }
+    }
     if (residual !== null) usedResidualFixtures.add(residual.fixture);
     const containmentClassification =
       residual === null ? baseContainmentClassification : "exact-residual";
@@ -92,10 +107,11 @@ try {
       localSha256,
       upstreamSha256,
       auditEvidenceSha256,
+      baseContainmentClassification,
       containmentClassification,
       residualReason: residual?.reason ?? null,
-      local: reportAudit(local),
-      upstream: upstream === null ? null : reportAudit(upstream),
+      local: localReport,
+      upstream: upstreamReport,
     });
   }
 } finally {
@@ -115,16 +131,7 @@ const report = {
   paintGuardCssPx: ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
   maxCaptureDimensionCssPx: ROOT_VIEWPORT_MAX_CAPTURE_DIMENSION_CSS_PX,
   maxCaptureAreaCssPx: ROOT_VIEWPORT_MAX_CAPTURE_AREA_CSS_PX,
-  environment: {
-    playwright: packageJson.version,
-    browser: `Chromium ${browserVersion}`,
-    locale: "en-US",
-    timezone: "UTC",
-    platform: `${process.platform}-${process.arch}`,
-    localPaintAudit: "transparent Chromium screenshot alpha",
-    upstreamPaintAudit:
-      "collected after any local overflow or indeterminate evidence; otherwise omitted",
-  },
+  environment,
   summary: {
     fixtures: entries.length,
     localContainmentFailures: entries.filter(

@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v1.json"
+DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v2.json"
 CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
 EXACT_NATIVE_CARGO_PROFILES = frozenset({"native-distribution", "native-sdk"})
 PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -68,6 +68,7 @@ class ArtifactProfile:
     profile_id: str
     semantic_target: str
     cargo: CargoArtifactRecipe
+    diagram_families: tuple[str, ...]
 
     def report_projection(self) -> dict[str, Any]:
         build_target: dict[str, Any] = {"kind": self.cargo.build_target_kind}
@@ -76,6 +77,7 @@ class ArtifactProfile:
         return {
             "id": self.profile_id,
             "semantic_target": self.semantic_target,
+            "diagram_families": list(self.diagram_families),
             "cargo": {
                 "package": self.cargo.package,
                 "manifest": self.cargo.manifest,
@@ -286,8 +288,8 @@ def load_artifact_profiles(
 
     if not isinstance(document, dict):
         raise ArtifactProfileError("artifact profile descriptor must be a JSON object")
-    if document.get("schema_version") != 1:
-        raise ArtifactProfileError("artifact profile descriptor schema_version must be 1")
+    if document.get("schema_version") != 2:
+        raise ArtifactProfileError("artifact profile descriptor schema_version must be 2")
 
     profiles = document.get("profiles")
     if not isinstance(profiles, list):
@@ -320,9 +322,28 @@ def load_artifact_profiles(
                 profile_id=profile_id,
                 semantic_target=semantic_target,
                 cargo=_parse_cargo_recipe(profile, profile_id),
+                diagram_families=_parse_diagram_families(profile, profile_id),
             )
         )
     return tuple(parsed)
+
+
+def _parse_diagram_families(profile: dict[str, Any], profile_id: str) -> tuple[str, ...]:
+    expected = profile.get("expected")
+    if not isinstance(expected, dict):
+        raise ArtifactProfileError(f"artifact profile {profile_id!r} has no expected surface")
+    families = _required_string_list(
+        expected, "diagram_families", profile_id, allow_empty=True
+    )
+    if any(
+        not re.fullmatch(r"[a-z][A-Za-z0-9]*", family) or family == "error"
+        for family in families
+    ):
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} diagram_families must contain "
+            "logical family IDs excluding error"
+        )
+    return families
 
 
 def validate_artifact_profile_manifest(

@@ -71,9 +71,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         .filter(|c| (c.origin_x - origin_x).abs() <= 1e-9 && (c.origin_y - origin_y).abs() <= 1e-9)
         .map(|c| &c.geom);
 
-    // Trace collection recomputes the pre-line-hop geometry for diagnostics, but the emitted SVG
+    // Trace collection recomputes the geometry before graph-wide postprocessing for diagnostics, but the emitted SVG
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
+        if let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) {
+            ctx.work_meter.charge(layout_edge.points.len().max(2))?;
+        }
         flowchart_compute_edge_path_geom(
             FlowchartEdgePathGeomRequest {
                 ctx,
@@ -692,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn neo_solid_mask_uses_final_line_hop_length_and_marker_offsets() {
+    fn neo_solid_mask_uses_original_length_and_marker_offsets() {
         let mut style = String::new();
         let plan = neo_mask(40.0, &edge("arrow_point", "normal"), true);
         plan.write_to(&mut style)

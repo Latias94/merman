@@ -7,7 +7,7 @@ use super::block_text::{
 use crate::model::SequenceBlockLayout;
 use crate::sequence::{
     AltSection, SequenceBlockGeometry, resolved_block_frame_x, sequence_block_label_wrap_width,
-    sequence_block_section_geometry,
+    sequence_block_section_geometry, sequence_drawn_text_first_y, sequence_drawn_text_y,
 };
 use rustc_hash::FxHashMap;
 
@@ -20,6 +20,8 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_width: f64,
     pub(super) label_box_height: f64,
+    pub(super) box_margin: f64,
+    pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
@@ -28,6 +30,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint<'a>,
     pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint<'a>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -45,6 +48,8 @@ impl<'a> SequenceBlockRenderContext<'a> {
         LoopTextRenderContext {
             measurer: self.measurer,
             style: self.loop_text_style,
+            config: self.sanitize_config,
+            margin: self.box_text_margin,
             typography: self.loop_typography,
             typography_receipt: self.typography_receipt,
             math_sidecar: self.math_sidecar,
@@ -122,14 +127,24 @@ pub(super) fn write_block_label_box(
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
     let label_box_width = ctx.label_box_width;
-    let label_box_height = ctx.label_box_height;
+    let neo_height = if crate::config::mermaid_config_diagram_look(ctx.sanitize_config).is_neo() {
+        15.0
+    } else {
+        0.0
+    };
+    let label_box_height = ctx.label_box_height + neo_height;
+    let label_box_height = if label_box_height == 0.0 {
+        20.0
+    } else {
+        label_box_height
+    };
     let typography = ctx.loop_typography;
     let typography_receipt = ctx.typography_receipt;
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
     let y3 = y1 + label_box_height;
-    let y2 = (y3 - 7.0).max(y1);
+    let y2 = y3 - 7.0;
     let x3 = x2 - 8.4;
     let application = ctx.keyword_paint.begin_terminal(
         out,
@@ -157,12 +172,19 @@ pub(super) fn write_block_label_box(
     ctx.keyword_paint
         .finish_terminal(application.as_ref(), ctx.shadow_evidence);
     let label_cx = (x1 + label_box_width / 2.0).round();
-    let label_cy = y1 + (label_box_height / 2.0).max(13.0);
-    let style = typography.terminal_style("", "font-size: 16px; font-weight: 400;".to_string());
+    let label_cy = sequence_drawn_text_y(
+        sequence_drawn_text_first_y(y1 + label_box_height / 2.0, ctx.box_text_margin),
+        ctx.box_text_margin,
+        0.0,
+    );
+    let style = typography.terminal_style(
+        "",
+        super::settings::sequence_text_style_attribute(ctx.loop_text_style),
+    );
     let shadow = if ctx.text_shadow.needs_bounds() {
         let mut terminal_style = typography.terminal_text_style().clone();
         if !typography.requires_resolved_emission() {
-            terminal_style.font_size = 16.0;
+            terminal_style.font_size = ctx.loop_text_style.font_size;
         }
         ctx.text_shadow.write_definition(
             out,
@@ -232,7 +254,7 @@ pub(super) fn render_simple_sequence_block(
     write_block_label_box(out, frame_x1, frame_y1, block.block_label, ctx)?;
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
-    let text_y = frame_y1 + 18.0;
+    let text_y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
     let label =
         display_block_label(block.raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let max_w = ctx.label_wrap_width(block.label_id, Some((frame_x2 - label_box_right).max(0.0)));
@@ -341,7 +363,7 @@ pub(super) fn render_sectioned_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -360,7 +382,8 @@ pub(super) fn render_sectioned_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,
@@ -446,7 +469,7 @@ pub(super) fn render_critical_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -465,7 +488,8 @@ pub(super) fn render_critical_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,

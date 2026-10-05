@@ -4,7 +4,15 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.7] - Unreleased
+## [0.8.0] - Unreleased
+
+### Fixed
+
+- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+
+### Upgrade
+
+- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
 
 ### Breaking changes
 
@@ -14,6 +22,22 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 - Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
 - Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+
+## [0.8.0-alpha.7] - 2026-09-30
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
+
+### Breaking changes
+
+- Added opt-in `auto` ASCII layout for bounded Flowchart and Sequence output, with a Compact retry before overflow handling. ASCII output reports now use schema `3`; update custom decoders for requested/effective layout and Compact-attempt fields.
+- Ship the Kotlin classes and native slices from the same AAR. JNI transport API remains `2`; custom ASCII JSON consumers must still adopt the new report schema.
 
 ## [0.8.0-alpha.6] - 2026-09-02
 

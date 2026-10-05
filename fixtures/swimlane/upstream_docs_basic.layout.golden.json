@@ -13,10 +13,10 @@
           "top_lane_id": "Customer",
           "x": 36.0,
           "y": 0.0,
-          "width": 161.92,
-          "height": 54.0,
-          "label_width": 101.92,
-          "label_height": 24.0,
+          "width": 121.18,
+          "height": 45.0,
+          "label_width": 89.18,
+          "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
           "is_edge_label": false
@@ -28,12 +28,12 @@
           "shape": "squareRect",
           "parent_id": "Customer",
           "top_lane_id": "Customer",
-          "x": 1014.911,
+          "x": 704.923,
           "y": 0.0,
-          "width": 155.04,
-          "height": 54.0,
-          "label_width": 95.04,
-          "label_height": 24.0,
+          "width": 115.16,
+          "height": 45.0,
+          "label_width": 83.16,
+          "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
           "is_edge_label": false
@@ -46,11 +46,11 @@
           "parent_id": "Support",
           "top_lane_id": "Support",
           "x": 36.0,
-          "y": 258.48,
-          "width": 155.04,
-          "height": 54.0,
-          "label_width": 95.04,
-          "label_height": 24.0,
+          "y": 218.17,
+          "width": 115.16,
+          "height": 45.0,
+          "label_width": 83.16,
+          "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
           "is_edge_label": false
@@ -62,12 +62,12 @@
           "shape": "squareRect",
           "parent_id": "Support",
           "top_lane_id": "Support",
-          "x": 1014.911,
-          "y": 258.48,
-          "width": 142.4,
-          "height": 54.0,
-          "label_width": 82.4,
-          "label_height": 24.0,
+          "x": 704.923,
+          "y": 218.17,
+          "width": 104.1,
+          "height": 45.0,
+          "label_width": 72.1,
+          "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
           "is_edge_label": false
@@ -79,12 +79,12 @@
           "shape": "squareRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 530.605,
-          "y": 520.24,
-          "width": 168.48,
-          "height": 54.0,
-          "label_width": 108.48,
-          "label_height": 24.0,
+          "x": 374.569,
+          "y": 439.21,
+          "width": 126.92,
+          "height": 45.0,
+          "label_width": 94.92,
+          "label_height": 21.0,
           "layer": 1.0,
           "order": 0.0,
           "is_edge_label": false
@@ -96,12 +96,12 @@
           "shape": "squareRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 1014.911,
-          "y": 520.24,
-          "width": 134.4,
-          "height": 54.0,
-          "label_width": 74.4,
-          "label_height": 24.0,
+          "x": 704.923,
+          "y": 439.21,
+          "width": 97.1,
+          "height": 45.0,
+          "label_width": 65.1,
+          "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
           "is_edge_label": false
@@ -113,12 +113,12 @@
           "shape": "labelRect",
           "parent_id": "Support",
           "top_lane_id": "Support",
-          "x": 528.616,
-          "y": 258.48,
-          "width": 80.0,
-          "height": 24.0,
-          "label_width": 80.0,
-          "label_height": 24.0,
+          "x": 373.226,
+          "y": 218.17,
+          "width": 70.0,
+          "height": 21.0,
+          "label_width": 70.0,
+          "label_height": 21.0,
           "layer": 1.0,
           "order": 0.0,
           "is_edge_label": true
@@ -130,12 +130,12 @@
           "shape": "labelRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 241.183,
-          "y": 520.24,
-          "width": 116.48,
-          "height": 24.0,
-          "label_width": 116.48,
-          "label_height": 24.0,
+          "x": 173.555,
+          "y": 439.21,
+          "width": 101.92,
+          "height": 21.0,
+          "label_width": 101.92,
+          "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
           "is_edge_label": true
@@ -146,19 +146,19 @@
           "id": "Engineering",
           "title": "Engineering",
           "parent_id": null,
-          "x": 505.736,
-          "y": 486.3,
-          "width": 1193.391,
-          "height": 193.88,
+          "x": 350.956,
+          "y": 413.2,
+          "width": 843.093,
+          "height": 169.02,
           "padding": 8.0,
-          "title_label_width": 73.594,
-          "title_label_height": 24.0,
-          "content_top": 493.24,
+          "title_label_width": 64.406,
+          "title_label_height": 21.0,
+          "content_top": 416.71,
           "title_rect": {
-            "left": -90.96,
-            "right": -54.96,
-            "top": 389.36,
-            "bottom": 583.24
+            "left": -70.59,
+            "right": -34.59,
+            "top": 328.69,
+            "bottom": 497.71
           },
           "requested_dir": "LR"
         },
@@ -166,19 +166,19 @@
           "id": "Support",
           "title": "Support",
           "parent_id": null,
-          "x": 505.736,
-          "y": 259.3,
-          "width": 1193.391,
-          "height": 260.12,
+          "x": 350.956,
+          "y": 218.888,
+          "width": 843.093,
+          "height": 219.605,
           "padding": 8.0,
-          "title_label_width": 50.875,
-          "title_label_height": 24.0,
-          "content_top": 231.48,
+          "title_label_width": 44.516,
+          "title_label_height": 21.0,
+          "content_top": 195.67,
           "title_rect": {
-            "left": -90.96,
-            "right": -54.96,
-            "top": 129.24,
-            "bottom": 389.36
+            "left": -70.59,
+            "right": -34.59,
+            "top": 109.085,
+            "bottom": 328.69
           },
           "requested_dir": "LR"
         },
@@ -186,19 +186,19 @@
           "id": "Customer",
           "title": "Customer",
           "parent_id": null,
-          "x": 505.736,
-          "y": 33.12,
-          "width": 1193.391,
-          "height": 192.24,
+          "x": 350.956,
+          "y": 25.293,
+          "width": 843.093,
+          "height": 167.585,
           "padding": 8.0,
-          "title_label_width": 63.359,
-          "title_label_height": 24.0,
-          "content_top": -27.0,
+          "title_label_width": 55.438,
+          "title_label_height": 21.0,
+          "content_top": -22.5,
           "title_rect": {
-            "left": -90.96,
-            "right": -54.96,
-            "top": -63.0,
-            "bottom": 129.24
+            "left": -70.59,
+            "right": -34.59,
+            "top": -58.5,
+            "bottom": 109.085
           },
           "requested_dir": "LR"
         }
@@ -211,11 +211,11 @@
           "points": [
             {
               "x": 36.0,
-              "y": 27.0
+              "y": 22.5
             },
             {
               "x": 36.0,
-              "y": 231.48
+              "y": 195.67
             }
           ],
           "label_node_id": null,
@@ -228,12 +228,12 @@
           "to": "answer",
           "points": [
             {
-              "x": 113.52,
-              "y": 258.48
+              "x": 93.58,
+              "y": 218.17
             },
             {
-              "x": 943.711,
-              "y": 258.48
+              "x": 652.873,
+              "y": 218.17
             }
           ],
           "label_node_id": "edge-label-triage-answer-L_triage_answer_0",
@@ -247,23 +247,23 @@
           "points": [
             {
               "x": 36.0,
-              "y": 285.48
+              "y": 240.67
             },
             {
               "x": 36.0,
-              "y": 285.48
+              "y": 240.67
             },
             {
               "x": 36.0,
-              "y": 520.24
+              "y": 439.21
             },
             {
-              "x": 446.365,
-              "y": 520.24
+              "x": 311.109,
+              "y": 439.21
             },
             {
-              "x": 446.365,
-              "y": 520.24
+              "x": 311.109,
+              "y": 439.21
             }
           ],
           "label_node_id": "edge-label-triage-investigate-L_triage_investigate_0",
@@ -276,12 +276,12 @@
           "to": "fix",
           "points": [
             {
-              "x": 614.845,
-              "y": 520.24
+              "x": 438.029,
+              "y": 439.21
             },
             {
-              "x": 947.711,
-              "y": 520.24
+              "x": 656.373,
+              "y": 439.21
             }
           ],
           "label_node_id": null,
@@ -294,12 +294,12 @@
           "to": "answer",
           "points": [
             {
-              "x": 1014.911,
-              "y": 493.24
+              "x": 704.923,
+              "y": 416.71
             },
             {
-              "x": 1014.911,
-              "y": 285.48
+              "x": 704.923,
+              "y": 240.67
             }
           ],
           "label_node_id": null,
@@ -312,12 +312,12 @@
           "to": "receive",
           "points": [
             {
-              "x": 1014.911,
-              "y": 231.48
+              "x": 704.923,
+              "y": 195.67
             },
             {
-              "x": 1014.911,
-              "y": 27.0
+              "x": 704.923,
+              "y": 22.5
             }
           ],
           "label_node_id": null,
@@ -326,10 +326,10 @@
         }
       ],
       "bounds": {
-        "min_x": -90.96,
-        "min_y": -63.0,
-        "max_x": 1102.431,
-        "max_y": 583.24
+        "min_x": -70.59,
+        "min_y": -58.5,
+        "max_x": 772.503,
+        "max_y": 497.71
       }
     }
   }

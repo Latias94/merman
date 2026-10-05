@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-09-15
+Last updated: 2026-10-05
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -22,6 +22,10 @@ Omitting `version` selects the current schema `3`; explicit legacy versions are 
 than translated implicitly.
 
 ## Full Shape
+
+This is a cross-operation field reference, not a request to copy in full. Omit `resources.limits`
+to inherit the selected profile; supply only intentional overrides supported by the operation.
+Query the loaded resource catalog instead of copying numerical profile defaults into host code.
 
 ```json
 {
@@ -74,7 +78,7 @@ than translated implicitly.
       "max_model_items": 32000,
       "max_model_text_bytes": 2097152,
       "max_model_nesting_depth": 256,
-      "max_layout_work_units": 800000,
+      "max_layout_work_units": 14100000,
       "max_svg_elements": 250000,
       "max_svg_bytes": 25165824,
       "max_document_diagrams": 256,
@@ -281,6 +285,11 @@ must use the Rust rendering API or native CLI host configuration. Binding consum
 typed `theme` schema for diagram styling and `svg.root_background_color` for the narrow root-canvas
 override.
 
+Official layout selection is independent of the typed theme. Under Mermaid 12's registered-loader
+resolution, an absent ELK loader falls back to Dagre for Flowchart, Class, and ER. A compiled
+backend denied by host policy remains an admission error; backend failures and missing math
+support do not trigger fallback.
+
 ## Diagram Theme
 
 The unreleased top-level `theme` field is an experimental closed selection for one complete
@@ -304,7 +313,12 @@ SVG pipeline, or a product profile.
 | `canvas` | Base paint, bounded layers, and bleed. |
 | `effects` | Tagged bounded filter graphs and semantic bindings. |
 | `requirements` | Required theme and text-layout capability IDs. |
-| `assets` | Embedded font catalog, aliases, generic-family mappings, sources, and embedding requirements. |
+| `assets` | Retained exchange schema for font catalogs, aliases, generic-family mappings, sources, and embedding requirements. Caller font resources are unsupported during compilation. |
+
+The `assets` wire shape is preserved so complete recipes can be exchanged without losing fields.
+Compilation rejects caller-provided font resources after ordinary validation and resource limits;
+it does not decode font formats, decompress WOFF2, or shape embedded fonts. Use typography
+`font_stack` names to select fonts supplied by the host.
 
 An effect graph contains its recipe-local `id`, ordered `primitives`, and optional `color_space`
 (`"linear-rgb"`, the default, or `"srgb"`). A semantic binding selects the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
@@ -619,11 +633,21 @@ batch job. `unbounded-for-trusted-input` must only be used inside an outer trust
 
 | Workload | Profile | Required host controls | Output guidance |
 | --- | --- | --- | --- |
-| Browser editor/Playground preview | `interactive` | Abort stale requests; cap concurrent renders | `parity` SVG for browser display |
+| Native or browser editor preview | `interactive` | Render off the UI thread; cancel stale operations; cap concurrency and retained images | Choose SVG policy for the host consumer |
 | Public upload or multi-tenant API | `constrained` | Timeout, memory, concurrency, and preemption/isolation | `resvg-safe` before raster/PDF conversion |
 | Local `merman-cli` export | `trusted-native` | Process-level cancellation for batch automation | Choose `parity` or `resvg-safe` per consumer |
 | Typst package transport | `constrained` | Typst host remains responsible for process limits | Package-owned SVG contract |
-| Large, fully trusted offline export | `unbounded-for-trusted-input` | Outer process/container isolation and explicit output quotas | Caller owns final output limits |
+| Library-based documentation/static export | `trusted-native` | Finite per-diagram policy; bound concurrent jobs | Choose SVG policy for the downstream consumer |
+| Exceptional fully trusted diagram | Finite override of the reported limit; unbounded only if deliberately required | Host owns deadlines, concurrency and outer process limits | Caller owns final output limits |
+
+The general `interactive` layout allowance is 14,100,000 work units; `trusted-native` allows
+15,000,000 and `constrained` 125,000. These are the current source defaults after alpha.7; published
+alpha.7 still carries the former interactive ceiling.
+The two general-purpose profiles retain different source/model/output capacities. `constrained` deliberately accepts
+a smaller workload; it is not a claim that every ordinary document fits that profile. Work units
+are not milliseconds, nodes, or bytes. Adding a deadline does not silently raise a work ceiling.
+See the [host integration guide](../integration/RESOURCE_POLICY.md) for complete Rust recipes and
+observed editor, document, SDK, and service use cases.
 
 These defaults are engineering admission baselines, not latency or memory SLOs. Hosts should
 measure their own diagrams and set explicit overrides only after observing peak memory and timeout
@@ -665,8 +689,11 @@ lengths, peak RSS, output, and raw report hashes in one summary. Darwin uses `/u
 Linux uses GNU `time -v`.
 Unsupported timing formats fail closed rather than silently omitting RSS.
 
-The current `interactive` calibration is recorded in
-[`interactive_layout_work_calibration_2026-08-07.md`](../performance/interactive_layout_work_calibration_2026-08-07.md).
+The [2026-08-07 interactive calibration](../performance/interactive_layout_work_calibration_2026-08-07.md)
+is historical evidence for its recorded backend and corpus. The current interactive decision is
+recorded in the [2026-10-01 interactive calibration](../performance/interactive_layout_work_calibration_2026-10-01.md);
+the [native calibration](../performance/native_layout_work_calibration_2026-10-01.md) records the
+separate CLI/rustdoc decision. Neither receipt creates a latency or memory SLO.
 
 For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
 peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.

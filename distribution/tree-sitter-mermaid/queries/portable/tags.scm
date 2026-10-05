@@ -180,3 +180,24 @@
 (zenuml_assignment
   assignee: (zenuml_assignee
     item: (zenuml_identifier) @name)) @definition.var
+
+; Agentflow.
+(agentflow_flow_statement
+  id: (agentflow_node_id) @name) @definition.module
+
+(agentflow_connector_statement
+  id: (agentflow_node_id) @name) @definition.var
+
+(agentflow_vertex
+  id: (agentflow_node_id) @name
+  shape: (_)) @definition.var
+
+; Usecase.
+(usecase_boundary_statement
+  id: (usecase_identifier) @name) @definition.module
+
+[
+  (usecase_actor id: (usecase_identifier) @name)
+  (usecase_node id: (usecase_identifier) @name label: (_))
+  (usecase_json_statement id: (usecase_identifier) @name)
+] @definition.var

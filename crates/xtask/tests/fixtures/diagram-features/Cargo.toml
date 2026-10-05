@@ -1,0 +1,23 @@
+[package]
+name = "diagram-feature-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+facade = ["dep:merman"]
+renderer = ["dep:merman-render"]
+ascii = ["dep:merman-ascii"]
+editor = ["dep:merman-editor-core", "dep:merman-analysis"]
+omitted-sequence = []
+
+[dependencies]
+merman = { path = "../../../../merman", default-features = false, optional = true }
+merman-core = { path = "../../../../merman-core", default-features = false }
+merman-render = { path = "../../../../merman-render", default-features = false, optional = true }
+merman-ascii = { path = "../../../../merman-ascii", default-features = false, optional = true }
+merman-editor-core = { path = "../../../../merman-editor-core", default-features = false, optional = true }
+merman-analysis = { path = "../../../../merman-analysis", default-features = false, optional = true }

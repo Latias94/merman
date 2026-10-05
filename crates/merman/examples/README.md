@@ -13,6 +13,8 @@ cargo run -p merman --example render_svg > diagram.svg
 | Your task | Start with | Why |
 | --- | --- | --- |
 | Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses `Renderer` with a typed `SvgRequest` and keeps the operation boundary explicit. |
+| Run a cancellable background preview | [`render_cancellable.rs`](render_cancellable.rs) | Keeps a host control handle and starts the deadline when the worker executes. |
+| Measure with an installed monospace font | [`render_svg_monospace.rs`](render_svg_monospace.rs) | Selects a system monospace face and shapes complete wrapping candidates with Rustybuzz. |
 | Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses typed SVG requests with caller-owned IDs that remain unique after normalization. |
 | Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `Renderer` across operations. |
 | Export a bounded PNG | [`render_png.rs`](render_png.rs) | Selects a fit box, scale, background, and allocation limits before rasterization. |
@@ -35,6 +37,7 @@ Render one standalone SVG or one HTML document containing multiple SVGs:
 
 ```sh
 cargo run -p merman --example render_svg > diagram.svg
+cargo run -p merman --example render_svg_monospace > monospace.svg
 cargo run -p merman --example embed_multiple_svgs > diagrams.html
 ```
 
@@ -81,6 +84,7 @@ These recipes compose existing APIs; they introduce no additional library preset
 | Agent pipe or log | Plain encoding, explicit width, fallback permission | `AsciiOutput::report()`; [`render_agent_log.rs`](render_agent_log.rs) | One JSON object including text and metadata | Hard failures remain errors, not retry instructions. |
 | Themed terminal | Explicit palette and supported color encoding | `AsciiTerminalPalette`; [`terminal_palette.rs`](terminal_palette.rs) | TrueColor text with the same logical layout | Palette detection and styled-to-plain retry belong to the host. |
 | Browser/editor preview | Host theme, Mermaid overrides, diagram ID, SVG policy | `HostTheme`, `SvgRequest`; [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | SVG artifact | Host performs DOM admission and insertion. |
+| Rust font integration | Final font and a function that measures complete strings | `DeterministicTextMeasurer::with_width_callback(...)`; [`render_svg_monospace.rs`](render_svg_monospace.rs) | SVG with Merman-owned wrapping | If measurement can fail or must vary by operation, use `HostTextMeasurer`. |
 | Image export | Fit box, scale, background, resource budget | `PngRequest`; [`render_png.rs`](render_png.rs) | Bytes and `RasterPlan` dimensions | Saving the example's file is application code after rendering. |
 
 The existing APIs cover these scenarios. SVG themes and ASCII palettes have separate semantics;
@@ -95,10 +99,10 @@ request. Use Canonical for supported families without Auto. Capability admission
 that every dense topology or feature will render; handle the returned typed error too.
 
 ```sh
-cargo run -p merman --no-default-features --features ascii --example render_terminal
-cargo run -p merman --no-default-features --features ascii --example render_terminal -- --ascii
-cargo run -p merman --no-default-features --features ascii --example render_agent_log -- 80
-cargo run -p merman --no-default-features --features ascii --example render_agent_log -- 40
+cargo run -p merman --no-default-features --features all-diagrams,ascii --example render_terminal
+cargo run -p merman --no-default-features --features all-diagrams,ascii --example render_terminal -- --ascii
+cargo run -p merman --no-default-features --features all-diagrams,ascii --example render_agent_log -- 80
+cargo run -p merman --no-default-features --features all-diagrams,ascii --example render_agent_log -- 40
 ```
 
 `render_agent_log` takes a width in display cells and writes one schema-3 JSON report to stdout.
@@ -132,7 +136,7 @@ promise to fit every diagram, bound the number of terminal rows, or wrap every e
 ### Terminal colors
 
 ```sh
-cargo run -p merman --no-default-features --features ascii --example terminal_palette
+cargo run -p merman --no-default-features --features all-diagrams,ascii --example terminal_palette
 ```
 
 This example supplies an application-owned palette, selects TrueColor, and rejects width overflow.
@@ -165,8 +169,8 @@ bytes in memory, or save them without adding file/viewer actions to the library.
 the export path; callers do not need to build a separate product rendering backend.
 
 ```sh
-cargo run -p merman --no-default-features --features svg --example custom_presentation_theme > custom-theme.svg
-cargo run -p merman --no-default-features --features png --example render_png -- target/diagram.png
+cargo run -p merman --no-default-features --features all-diagrams,svg --example custom_presentation_theme > custom-theme.svg
+cargo run -p merman --no-default-features --features all-diagrams,png --example render_png -- target/diagram.png
 ```
 
 For browser Workers, choose a [Web package](../../../platforms/web/README.md) with the required
@@ -181,21 +185,21 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples describe this source checkout. Auto layout and schema-3 ASCII reports are
-unreleased changes here; do not assume they are available in `0.8.0-alpha.6`. To run the new
-terminal examples in another crate, use a path dependency on this checkout:
+These examples target `0.8.0-alpha.7`, including Auto layout and schema-3 ASCII reports. Use the version-pinned dependency below, or a path dependency on the matching source checkout. For alpha.6, use examples from its matching release tag.
+
+The release-facing dependency for the SVG examples is:
 
 ```toml
 [dependencies]
-merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["ascii"] }
-serde_json = "1" # Needed by render_agent_log.
+merman = { version = "=0.8.0-alpha.7" }
 ```
 
-For the published alpha.6 API, use examples from its matching release tag and dependency:
+For terminal-only source development:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6" }
+merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["all-diagrams", "ascii"] }
+serde_json = "1" # Needed by render_agent_log.
 ```
 
 Copy the relevant `.rs` file into your application's `examples/` directory and run it by filename:
@@ -204,16 +208,20 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+
+`render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
 ## Minimize Features Later
 
-The commands above favor a successful first run. Once the workflow is known, disable defaults and compile only the observable capabilities it needs:
+The commands above favor a successful first run. Once the workflow is known, disable defaults,
+select the required `diagram-*` families (or `all-diagrams`), and add only the capabilities it needs.
+The table lists output and engine requirements in addition to that family selection:
 
-| Examples | Minimal selection |
+| Examples | Additional capability selection |
 | --- | --- |
-| `inspect_semantics`, `deterministic_gantt` | No Merman features |
-| `render_svg`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
+| `inspect_semantics`, `deterministic_gantt` | None beyond the required diagram families |
+| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
 | `presentation_profile` | `layout-elk` (also enables `svg`) |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |
@@ -221,10 +229,13 @@ The commands above favor a successful first run. Once the workflow is known, dis
 For example:
 
 ```sh
-cargo run -p merman --no-default-features --features svg --example render_svg > diagram.svg
-cargo run -p merman --no-default-features --example inspect_semantics
-cargo run -p merman --no-default-features --features png --example render_png
+cargo run -p merman --no-default-features --features all-diagrams,svg --example render_svg > diagram.svg
+cargo run -p merman --no-default-features --features all-diagrams --example inspect_semantics
+cargo run -p merman --no-default-features --features all-diagrams,png --example render_png
 ```
+
+Replace `all-diagrams` with the required `diagram-*` selectors when embedding only selected
+languages. These commands retain every family so the existing examples keep their behavior.
 
 A minimal SVG build returns a typed `missing-capability` error when an input needs an optional layout engine or math renderer. It never silently substitutes a different semantic result. See the [capability guide](../../../docs/FEATURES.md) for dependency declarations and feature forwarding.
 
@@ -237,7 +248,7 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
   --profile bench \
   -p merman \
   --no-default-features \
-  --features layout-cytoscape \
+  --features all-diagrams,layout-cytoscape \
   --example profile_render \
   -o target/bench/flamegraphs/profile_render_architecture_medium.svg \
   -- \

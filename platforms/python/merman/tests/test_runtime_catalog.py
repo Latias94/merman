@@ -91,7 +91,7 @@ def valid_catalog():
                 "embedded_images": None,
             },
         ],
-        "registry": {"diagram_family_count": 35},
+        "registry": {"diagram_family_count": 35, "diagram_families": ["flowchart"]},
         "resources": {
             "general_binding_default_profile": "interactive",
             "cli_default_profile": "trusted-native",
@@ -844,6 +844,20 @@ class RuntimeCatalogTest(unittest.TestCase):
 
         for catalog in [missing, without_svg, wrong_protocol, missing_deterministic]:
             with self.subTest(catalog=catalog):
+                with self.assertRaises(merman.MermanRuntimeCatalogError):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_registry_preserves_exact_logical_family_names(self):
+        catalog = valid_catalog()
+        catalog["registry"]["diagram_families"] = ["flowchart", "gitGraph", "treeView"]
+        result = merman.get_runtime_catalog(FakeEngine(catalog))
+        self.assertEqual(result["registry"]["diagram_families"], ["flowchart", "gitGraph", "treeView"])
+
+    def test_registry_rejects_invalid_family_sets(self):
+        for families in [None, ["flowchart", "flowchart"], ["sequence", "flowchart"], [42], [""]]:
+            with self.subTest(families=families):
+                catalog = valid_catalog()
+                catalog["registry"]["diagram_families"] = families
                 with self.assertRaises(merman.MermanRuntimeCatalogError):
                     merman.get_runtime_catalog(FakeEngine(catalog))
 

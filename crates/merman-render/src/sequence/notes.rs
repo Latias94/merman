@@ -313,13 +313,14 @@ pub(super) fn layout_sequence_note(
             &horizontal.effective_text,
             ctx.note_terminal_text_style,
             SequenceDrawnTextNode::Tspan,
+            ctx.math_config,
             ctx.checkpoints.text(),
         )?
     };
     let note_x = horizontal.start_x;
     let note_w = horizontal.width;
-    let note_h = (height + 2.0 * ctx.note_margin).round().max(1.0);
-    let note_y = (ctx.cursor_y + ctx.box_margin).round();
+    let note_h = (height.round() + 2.0 * ctx.note_margin).max(1.0);
+    let note_y = ctx.cursor_y + ctx.box_margin;
 
     Ok(Some(SequenceNoteLayout {
         node: LayoutNode {

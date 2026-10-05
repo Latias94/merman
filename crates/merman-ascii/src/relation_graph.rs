@@ -80,27 +80,83 @@ impl RelationResourceCheckpointCursor {
     }
 }
 
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::direction::{
     DirectionTransform, PhysicalPortSide, RelationDirection, RelationExtent, RelationPoint,
 };
 #[cfg(test)]
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::document::RelationDocumentPlan;
 #[cfg(test)]
 use self::document::relation_lines_extent;
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::document::{
     LayeredRelationPaintPlan, RelationBoxStripPlan, RelationRegionPlan, RelationRenderPlan,
     RelationSummaryPaintPlan, render_relation_document_with_summary,
 };
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::encode::render_lines_with_deferred_options_with_execution;
 #[cfg(test)]
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::encode::{
     render_lines_with_deferred_options, render_lines_with_deferred_probe, render_lines_with_options,
 };
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::horizontal::*;
 // Keep the inferred `source_port`/`target_port` return type reachable to
 // sibling family modules even though callers do not name it directly.
 #[allow(unused_imports)]
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::layered::LayeredRelationPhysicalPort;
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::layered::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteGeometry,
     LayeredRelationRouteProfile, LayeredRelationRouteStyle, LayeredRelationSummaryReason,
@@ -119,20 +175,55 @@ use self::layered::{
 use self::layered::{
     RelationGraphComponent, plan_layered_relation_component_ref_result, relation_components,
 };
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::model::{
     RelationGraphBox, RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan,
     RelationGraphLabelPlan, RelationGraphLine,
 };
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::self_loop::{
     RelationSelfLoopMetrics, RelationSelfLoopPlan, RelationSelfLoopRows,
 };
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::stack::{
     RelationParallelPlan, RelationStackPlan, centered_row_blocks_extent,
     render_stacked_boxes_with_deferred_options_with_execution, stacked_box_extent,
     stacked_box_lines, stacked_box_lines_ordered,
 };
 #[cfg(test)]
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::stack::{render_stacked_boxes, render_stacked_boxes_with_section};
+#[cfg_attr(
+    not(all(feature = "diagram-class", feature = "diagram-er")),
+    allow(
+        unused_imports,
+        reason = "Class and ER import different parts of the shared relation layout"
+    )
+)]
 pub(crate) use self::summary::*;
 
 pub(crate) trait RelationComponentAdapter<'text, R> {

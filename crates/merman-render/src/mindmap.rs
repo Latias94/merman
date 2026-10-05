@@ -1,5 +1,5 @@
 use crate::config::{config_f64_css_px, config_string};
-use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
@@ -10,6 +10,7 @@ use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::sync::Arc;
 
+mod registered;
 mod theme;
 mod tidy_tree;
 
@@ -26,8 +27,76 @@ pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
         .max(1.0)
 }
 
-pub(crate) fn uses_tidy_tree_layout(effective_config: &Value) -> bool {
-    config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree")
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MindmapLayoutBackend {
+    Cose,
+    TidyTree,
+    Swimlane,
+    Dagre,
+    #[cfg(feature = "layout-elk")]
+    Elk,
+}
+
+pub(crate) fn layout_backend(config: &Value) -> MindmapLayoutBackend {
+    let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
+    match requested {
+        "tidy-tree" => MindmapLayoutBackend::TidyTree,
+        "dagre" => MindmapLayoutBackend::Dagre,
+        "swimlane" => MindmapLayoutBackend::Swimlane,
+        #[cfg(feature = "layout-elk")]
+        _ if crate::layout_backend::resolve_graph_layout(config).backend
+            == crate::layout_backend::GraphLayoutBackend::Elk =>
+        {
+            MindmapLayoutBackend::Elk
+        }
+        _ if cfg!(feature = "layout-cytoscape") => MindmapLayoutBackend::Cose,
+        _ => MindmapLayoutBackend::Dagre,
+    }
+}
+
+pub(crate) fn required_layout_capability(
+    config: &MermaidConfig,
+) -> Option<crate::RenderCapability> {
+    match layout_backend(config.as_value()) {
+        MindmapLayoutBackend::Cose => Some(crate::RenderCapability::LayoutCytoscape),
+        #[cfg(feature = "layout-elk")]
+        MindmapLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
+        _ => None,
+    }
+}
+
+/// The Dagre renderer clips circular nodes along the endpoint-to-center ray.
+pub(crate) fn dagre_shape_points(
+    mut points: Vec<LayoutPoint>,
+    start: &LayoutNode,
+    end: &LayoutNode,
+    start_circle: bool,
+    end_circle: bool,
+) -> Vec<LayoutPoint> {
+    if points.len() < 2 {
+        return points;
+    }
+    let intersect = |node: &LayoutNode, point: &LayoutPoint| {
+        let dx = point.x - node.x;
+        let dy = point.y - node.y;
+        let length = dx.hypot(dy);
+        if length == 0.0 {
+            return point.clone();
+        }
+        let radius = node.width / 2.0;
+        LayoutPoint {
+            x: node.x + radius * dx / length,
+            y: node.y + radius * dy / length,
+        }
+    };
+    if start_circle {
+        points[0] = intersect(start, &points[1]);
+    }
+    if end_circle {
+        let last = points.len() - 1;
+        points[last] = intersect(end, &points[last - 1]);
+    }
+    points
 }
 
 type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
@@ -207,7 +276,7 @@ fn mindmap_node_dimensions_from_label_bbox(
     (w, h, bbox_w, bbox_h)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-mindmap"))]
 fn mindmap_node_dimensions_px(
     node: &MindmapNodeModel,
     measurer: &dyn TextMeasurer,
@@ -288,9 +357,10 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
+    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter);
-    let use_tidy_tree = uses_tidy_tree_layout(config.as_value());
+    let mut work_control = OperationLayoutWorkControl::new(work_meter.clone());
+    let use_tidy_tree = layout_backend(config.as_value()) == MindmapLayoutBackend::TidyTree;
     let adapter_work = mindmap_layout_adapter_work(model, use_tidy_tree, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     layout_mindmap_diagram_model(
@@ -300,6 +370,9 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
         text_measurer,
         math_renderer,
         &mut work_control,
+        work_meter,
+        #[cfg(feature = "layout-elk")]
+        operation_seed,
     )
 }
 
@@ -310,6 +383,8 @@ fn layout_mindmap_diagram_model(
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     _work_control: &mut OperationLayoutWorkControl,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
+    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
     let text_style = mindmap_text_style_with_font_family(font_family_css);
@@ -365,7 +440,27 @@ fn layout_mindmap_diagram_model(
         edge_indices.push((a, b));
     }
 
-    let use_tidy_tree = uses_tidy_tree_layout(effective_config);
+    let backend = layout_backend(effective_config);
+    match backend {
+        MindmapLayoutBackend::Swimlane => {
+            return registered::swimlane(model, nodes, config, work_meter);
+        }
+        MindmapLayoutBackend::Dagre => {
+            return registered::dagre(model, nodes, effective_config, _work_control);
+        }
+        #[cfg(feature = "layout-elk")]
+        MindmapLayoutBackend::Elk => {
+            return registered::elk(
+                model,
+                nodes,
+                effective_config,
+                _work_control,
+                operation_seed,
+            );
+        }
+        _ => {}
+    }
+    let use_tidy_tree = backend == MindmapLayoutBackend::TidyTree;
     let tidy_tree_edges = if use_tidy_tree {
         Some(tidy_tree::layout(
             &mut nodes,
@@ -470,13 +565,14 @@ fn layout_mindmap_diagram_model(
     };
     let bounds = compute_bounds(&nodes, &edges);
     Ok(MindmapDiagramLayout {
+        swimlane_lanes: Vec::new(),
         nodes,
         edges,
         bounds,
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
     struct FixedMeasurer;
 

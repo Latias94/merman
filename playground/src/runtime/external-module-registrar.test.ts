@@ -9,7 +9,7 @@ import { createExternalModuleRegistrar } from "./external-module-registrar.ts";
 
 test("registrar loads in parallel and registers canonical module order once", async () => {
   const events: string[] = [];
-  const pendingElk = Promise.withResolvers<readonly LayoutLoaderDefinition[]>();
+  const pendingTidyTree = Promise.withResolvers<readonly LayoutLoaderDefinition[]>();
   const registrar = createExternalModuleRegistrar({
     externalDiagramLoaders: {
       zenuml: async () => {
@@ -18,35 +18,30 @@ test("registrar loads in parallel and registers canonical module order once", as
       },
     },
     layoutModuleLoaders: {
-      elk: async () => {
-        events.push("load:elk");
-        return pendingElk.promise;
-      },
       "tidy-tree": async () => {
         events.push("load:tidy-tree");
-        return [layout("tidy-tree")];
+        return pendingTidyTree.promise;
       },
     },
   });
   const host = fakeHost(events);
   const registration = registrar.register(host, {
     externalDiagrams: ["zenuml"],
-    layoutModules: ["elk", "tidy-tree"],
+    layoutModules: ["tidy-tree"],
   });
   await Promise.resolve();
-  assert.deepEqual(events, ["load:zenuml", "load:elk", "load:tidy-tree"]);
-  pendingElk.resolve([layout("elk")]);
+  assert.deepEqual(events, ["load:zenuml", "load:tidy-tree"]);
+  pendingTidyTree.resolve([layout("tidy-tree")]);
   await registration;
   await registrar.register(host, {
     externalDiagrams: ["zenuml"],
-    layoutModules: ["elk", "tidy-tree"],
+    layoutModules: ["tidy-tree"],
   });
   assert.deepEqual(events, [
     "load:zenuml",
-    "load:elk",
     "load:tidy-tree",
     "register:diagrams:zenuml",
-    "register:layouts:elk,tidy-tree",
+    "register:layouts:tidy-tree",
   ]);
 });
 
@@ -62,7 +57,6 @@ test("registrar serializes host mutations and retries a rejected import", async 
       },
     },
     layoutModuleLoaders: {
-      elk: async () => [layout("elk")],
       "tidy-tree": async () => [layout("tidy-tree")],
     },
   });

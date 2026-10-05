@@ -20,7 +20,7 @@ from verify_cli_release_archive import (
 ROOT = Path(__file__).resolve().parents[1]
 CLI_MANIFEST = Path("crates/merman-cli/Cargo.toml")
 DIST_CONFIG = Path("dist-workspace.toml")
-ARTIFACT_PROFILES = Path("capabilities/artifact-profiles-v1.json")
+ARTIFACT_PROFILES = Path("capabilities/artifact-profiles-v2.json")
 CLI_RELEASE_PROFILE = "cli-release"
 
 _ARCHIVE_SUFFIXES = {"txz": ".tar.xz", "zip": ".zip"}
@@ -102,6 +102,8 @@ def _render_template(template: object, values: dict[str, str], label: str) -> st
 
 def _cli_release_profile(root: Path) -> dict:
     descriptor = _read_json(root, ARTIFACT_PROFILES)
+    if descriptor.get("schema_version") != 2:
+        raise InstallationContractError("artifact profiles schema_version must be 2")
     profiles = descriptor.get("profiles")
     if not isinstance(profiles, list):
         raise InstallationContractError("artifact profile descriptor has no profiles list")
@@ -240,10 +242,9 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
         raise InstallationContractError(
             "cli-release must retain explicit layout-elk for the complete release artifact"
         )
-    expected_default_features = release_features - {"layout-elk"}
-    if default_feature_set != expected_default_features:
+    if default_feature_set != release_features:
         raise InstallationContractError(
-            "CLI defaults must equal cli-release features minus explicit layout-elk"
+            "CLI defaults must equal cli-release features including layout-elk"
         )
 
     dist_table = dist_config.get("dist", {})

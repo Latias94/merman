@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": []
       },
@@ -38,8 +41,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": []
       },
@@ -58,8 +64,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -77,8 +86,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -88,48 +100,48 @@
         "start": "root_start",
         "end": "pkg_mod",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "pkg_mod",
         "end": "pkg_mod2",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "upgrade",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "pkg_mod2",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -138,24 +150,22 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "pkg_mod": {
-        "id": "pkg_mod",
+      "root_end": {
+        "id": "root_end",
         "type": "default",
-        "descriptions": [
-          "pkg.module/v1"
-        ],
+        "descriptions": [],
         "doc": null,
         "note": null,
         "classes": [],
         "styles": [],
         "textStyles": [],
-        "start": null
+        "start": false
       },
-      "pkg_mod2": {
-        "id": "pkg_mod2",
+      "pkg_mod": {
+        "id": "pkg_mod",
         "type": "default",
         "descriptions": [
-          "pkg.module/v2"
+          "pkg.module/v1"
         ],
         "doc": null,
         "note": null,
@@ -175,16 +185,18 @@
         "textStyles": [],
         "start": true
       },
-      "root_end": {
-        "id": "root_end",
+      "pkg_mod2": {
+        "id": "pkg_mod2",
         "type": "default",
-        "descriptions": [],
+        "descriptions": [
+          "pkg.module/v2"
+        ],
         "doc": null,
         "note": null,
         "classes": [],
         "styles": [],
         "textStyles": [],
-        "start": false
+        "start": null
       }
     },
     "relations": [

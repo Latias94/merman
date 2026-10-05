@@ -5,106 +5,106 @@
       "nodes": [
         {
           "id": "First",
-          "x": 139.04,
-          "y": 218.5,
-          "width": 104.24,
-          "height": 293.0,
+          "x": 216.0,
+          "y": 158.5,
+          "width": 184.0,
+          "height": 185.0,
           "is_cluster": true
         },
         {
           "id": "First_end",
-          "x": 139.04,
-          "y": 320.5,
+          "x": 216.0,
+          "y": 220.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "First_start",
-          "x": 139.04,
-          "y": 116.5,
+          "x": 216.0,
+          "y": 121.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "Second",
-          "x": 61.32,
-          "y": 561.5,
-          "width": 106.64,
-          "height": 293.0,
+          "x": 104.0,
+          "y": 383.5,
+          "width": 184.0,
+          "height": 185.0,
           "is_cluster": true
         },
         {
           "id": "Second_end",
-          "x": 61.32,
-          "y": 663.5,
+          "x": 104.0,
+          "y": 445.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "Second_start",
-          "x": 61.32,
-          "y": 459.5,
+          "x": 104.0,
+          "y": 346.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "Third",
-          "x": 216.76,
-          "y": 561.5,
-          "width": 104.24,
-          "height": 293.0,
+          "x": 328.0,
+          "y": 383.5,
+          "width": 184.0,
+          "height": 185.0,
           "is_cluster": true
         },
         {
           "id": "Third_end",
-          "x": 216.76,
-          "y": 663.5,
+          "x": 328.0,
+          "y": 445.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "Third_start",
-          "x": 216.76,
-          "y": 459.5,
+          "x": 328.0,
+          "y": 346.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "fir",
-          "x": 139.04,
-          "y": 218.5,
-          "width": 34.24,
-          "height": 40.0,
+          "x": 216.0,
+          "y": 170.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "root_start",
-          "x": 139.04,
-          "y": 15.0,
+          "x": 216.0,
+          "y": 19.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "sec",
-          "x": 61.32,
-          "y": 561.5,
-          "width": 36.64,
-          "height": 40.0,
+          "x": 104.0,
+          "y": 395.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "thi",
-          "x": 216.76,
-          "y": 561.5,
-          "width": 34.24,
-          "height": 40.0,
+          "x": 328.0,
+          "y": 395.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
@@ -114,19 +114,15 @@
           "from": "root_start",
           "to": "First",
           "from_cluster": null,
-          "to_cluster": null,
+          "to_cluster": "First",
           "points": [
             {
-              "x": 139.04,
-              "y": 22.0
+              "x": 216.0,
+              "y": 26.0
             },
             {
-              "x": 139.04,
-              "y": 47.0
-            },
-            {
-              "x": 139.04,
-              "y": 218.5
+              "x": 216.0,
+              "y": 66.0
             }
           ],
           "label": null,
@@ -142,20 +138,24 @@
           "id": "edge1",
           "from": "First",
           "to": "Second",
-          "from_cluster": null,
-          "to_cluster": null,
+          "from_cluster": "First",
+          "to_cluster": "Second",
           "points": [
             {
-              "x": 139.04,
-              "y": 218.5
+              "x": 188.667,
+              "y": 251.0
             },
             {
-              "x": 61.32,
-              "y": 390.0
+              "x": 188.667,
+              "y": 271.0
             },
             {
-              "x": 61.32,
-              "y": 561.5
+              "x": 104.0,
+              "y": 271.0
+            },
+            {
+              "x": 104.0,
+              "y": 291.0
             }
           ],
           "label": null,
@@ -171,20 +171,24 @@
           "id": "edge2",
           "from": "First",
           "to": "Third",
-          "from_cluster": null,
-          "to_cluster": null,
+          "from_cluster": "First",
+          "to_cluster": "Third",
           "points": [
             {
-              "x": 139.04,
-              "y": 218.5
+              "x": 243.333,
+              "y": 251.0
             },
             {
-              "x": 216.76,
-              "y": 390.0
+              "x": 243.333,
+              "y": 271.0
             },
             {
-              "x": 216.76,
-              "y": 561.5
+              "x": 328.0,
+              "y": 271.0
+            },
+            {
+              "x": 328.0,
+              "y": 291.0
             }
           ],
           "label": null,
@@ -204,16 +208,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 139.04,
-              "y": 123.5
+              "x": 216.0,
+              "y": 128.0
             },
             {
-              "x": 139.04,
-              "y": 161.0
-            },
-            {
-              "x": 139.54,
-              "y": 199.0
+              "x": 216.0,
+              "y": 152.0
             }
           ],
           "label": null,
@@ -233,16 +233,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 139.54,
-              "y": 239.0
+              "x": 216.0,
+              "y": 189.0
             },
             {
-              "x": 139.04,
-              "y": 276.0
-            },
-            {
-              "x": 139.04,
-              "y": 313.5
+              "x": 216.0,
+              "y": 213.0
             }
           ],
           "label": null,
@@ -262,16 +258,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 61.32,
-              "y": 466.5
+              "x": 104.0,
+              "y": 353.0
             },
             {
-              "x": 61.32,
-              "y": 504.0
-            },
-            {
-              "x": 61.82,
-              "y": 542.0
+              "x": 104.0,
+              "y": 377.0
             }
           ],
           "label": null,
@@ -291,16 +283,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 61.82,
-              "y": 582.0
+              "x": 104.0,
+              "y": 414.0
             },
             {
-              "x": 61.32,
-              "y": 619.0
-            },
-            {
-              "x": 61.32,
-              "y": 656.5
+              "x": 104.0,
+              "y": 438.0
             }
           ],
           "label": null,
@@ -320,16 +308,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 216.76,
-              "y": 466.5
+              "x": 328.0,
+              "y": 353.0
             },
             {
-              "x": 216.76,
-              "y": 504.0
-            },
-            {
-              "x": 217.26,
-              "y": 542.0
+              "x": 328.0,
+              "y": 377.0
             }
           ],
           "label": null,
@@ -349,16 +333,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 217.26,
-              "y": 582.0
+              "x": 328.0,
+              "y": 414.0
             },
             {
-              "x": 216.76,
-              "y": 619.0
-            },
-            {
-              "x": 216.76,
-              "y": 656.5
+              "x": 328.0,
+              "y": 438.0
             }
           ],
           "label": null,
@@ -374,18 +354,18 @@
       "clusters": [
         {
           "id": "First",
-          "x": 139.04,
-          "y": 218.5,
-          "width": 104.24,
-          "height": 293.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 216.0,
+          "y": 158.5,
+          "width": 184.0,
+          "height": 185.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "First",
           "title_label": {
-            "x": 139.04,
-            "y": 85.0,
-            "width": 34.72,
-            "height": 24.0
+            "x": 216.0,
+            "y": 76.5,
+            "width": 30.38,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -395,18 +375,18 @@
         },
         {
           "id": "Second",
-          "x": 61.32,
-          "y": 561.5,
-          "width": 106.64,
-          "height": 293.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 104.0,
+          "y": 383.5,
+          "width": 184.0,
+          "height": 185.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "Second",
           "title_label": {
-            "x": 61.32,
-            "y": 428.0,
-            "width": 44.0,
-            "height": 24.0
+            "x": 104.0,
+            "y": 301.5,
+            "width": 38.5,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -416,18 +396,18 @@
         },
         {
           "id": "Third",
-          "x": 216.76,
-          "y": 561.5,
-          "width": 104.24,
-          "height": 293.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 328.0,
+          "y": 383.5,
+          "width": 184.0,
+          "height": 185.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "Third",
           "title_label": {
-            "x": 216.76,
-            "y": 428.0,
-            "width": 34.72,
-            "height": 24.0
+            "x": 328.0,
+            "y": 301.5,
+            "width": 30.38,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -437,10 +417,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 268.88,
-        "max_y": 708.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 420.0,
+        "max_y": 476.0
       }
     }
   }

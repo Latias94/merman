@@ -265,7 +265,7 @@ flowchart LR
 "#;
 
 #[test]
-fn empty_subgraph_node_keeps_mermaid_bbox_measurement_after_svg_wrapping() {
+fn empty_subgraph_bbox_measurement_respects_backend_and_collapsed_group_semantics() {
     let source = r#"---
 config:
   htmlLabels: false
@@ -278,39 +278,74 @@ subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
 end
 "#;
 
-    for outcome in [HostOutcome::Success, HostOutcome::Missing] {
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .expect("parse empty subgraph")
-            .expect("detect flowchart");
-        let identity = TextMeasurementProfileIdentity::new(
-            MeasurementProfileId::new(format!("test.flowchart-empty-subgraph-{}", outcome.name()))
+    for (backend, collapsed, wrapped) in [
+        ("dagre", false, true),
+        #[cfg(feature = "layout-elk")]
+        ("elk", false, false),
+        #[cfg(feature = "layout-elk")]
+        ("elk", true, true),
+    ] {
+        let source = if collapsed {
+            format!("{source}\nEmpty@{{view: collapsed}}\n")
+        } else {
+            source.to_owned()
+        };
+        for outcome in [HostOutcome::Success, HostOutcome::Missing] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(
+                    serde_json::json!({ "layout": backend }),
+                ))
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse empty subgraph")
+                .expect("detect flowchart");
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new(format!(
+                    "test.flowchart-empty-subgraph-{backend}-{collapsed}-{}",
+                    outcome.name()
+                ))
                 .expect("profile id"),
-            "1",
-        )
-        .expect("profile identity");
-        let host = Arc::new(RecordingFlowchartHost::new(outcome));
-        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-            TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
-        );
-        let session = environment.begin_session().expect("render session");
-        let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
-            .expect("prepare empty subgraph");
-        let requests = host.snapshot();
-        let final_title_request = requests
-            .iter()
-            .rfind(|request| request.text.contains("alpha"))
-            .expect("empty subgraph title measurement");
+                "1",
+            )
+            .expect("profile identity");
+            let host = Arc::new(RecordingFlowchartHost::new(outcome));
+            let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ),
+            );
+            let session = environment.begin_session().expect("render session");
+            let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                .expect("prepare empty subgraph");
+            let requests = host.snapshot();
+            let final_title_request = requests
+                .iter()
+                .rfind(|request| request.text.contains("alpha"))
+                .expect("empty subgraph title measurement");
 
-        assert_eq!(
-            final_title_request.operation,
-            TextMeasurementOperation::Wrapped,
-            "Mermaid wraps the empty-subgraph node with flowchart.wrappingWidth, then sizes the final SVG text through getBBox(): {requests:#?}"
-        );
-        assert!(
-            final_title_request.text.contains('\n'),
-            "the configured width must wrap the title before the final bbox measurement: {requests:#?}"
-        );
+            let context = format!(
+                "backend={backend}, collapsed={collapsed}, host={}",
+                outcome.name()
+            );
+            assert_eq!(
+                final_title_request.operation,
+                TextMeasurementOperation::Wrapped,
+                "{context}: the final SVG title must still use getBBox measurement: {requests:#?}"
+            );
+            // FlowDB keeps an ordinary empty subgraph as isGroup=true for ELK; createGraph's
+            // unwrapGroupLabels therefore applies. Dagre renders the empty group as a node,
+            // and an explicitly collapsed ELK group is also a leaf: both retain configured wrapping.
+            assert_eq!(
+                final_title_request.text.contains('\n'),
+                wrapped,
+                "{context}: title wrapping must follow the measured node kind: {requests:#?}"
+            );
+            assert_eq!(
+                final_title_request.max_width_bits, None,
+                "{context}: measure the final SVG rows without wrapping them a second time"
+            );
+        }
     }
 }
 
@@ -530,6 +565,153 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
+    let backends = [
+        "dagre",
+        #[cfg(feature = "layout-elk")]
+        "elk",
+    ];
+    for backend in backends {
+        for html_labels in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: {backend}\n  look: classic\n  theme: default\n  htmlLabels: {html_labels}\n  flowchart:\n    minNodeWidth: 120\n    wrappingWidth: 200\n    padding: 10\n---\nflowchart LR\nA[X]\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse minimum width fixture")
+                .expect("detect flowchart");
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let nodes = projection["layout"]["FlowchartV2"]["nodes"]
+                .as_array()
+                .unwrap();
+            let node = nodes.iter().find(|node| node["id"] == "A").unwrap();
+            // A process rectangle adds horizontal padding four times to its label box.
+            assert_eq!(
+                node["width"].as_f64(),
+                Some(160.0),
+                "{backend}, HTML={html_labels}"
+            );
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if html_labels {
+                let label = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                assert_eq!(label.attribute("width"), Some("120"));
+                let div = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("div"))
+                    .unwrap();
+                let style = div.attribute("style").unwrap();
+                assert!(style.contains("display: table;"), "{style}");
+                assert!(style.contains("width: 120px;"), "{style}");
+            } else {
+                let text = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node.descendants().any(|child| child.text() == Some("X"))
+                    })
+                    .unwrap();
+                let label = text
+                    .ancestors()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap();
+                assert!(
+                    label
+                        .attribute("transform")
+                        .unwrap()
+                        .starts_with("translate(0,")
+                );
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject"))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
+    struct BboxYOffset(f64);
+    impl HostTextMeasurer for BboxYOffset {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(
+                (request.operation == TextMeasurementOperation::CreateTextBBoxYOffset)
+                    .then_some(HostTextMeasurement::Length(self.0)),
+            )
+        }
+    }
+
+    for shape in ["st-rect", "lin-rect", "brace", "brace-r", "braces"] {
+        for html in [false, true] {
+            let render_y = |offset| {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nA@{{ shape: {shape}, label: 'First **bold** </br>second line' }}\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let identity = TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.shape-label-bbox-y").unwrap(),
+                    "1",
+                )
+                .unwrap();
+                let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                    TextMeasurementPolicy::host_display(
+                        identity,
+                        Arc::new(BboxYOffset(offset)),
+                        TextMeasurementPhase::ALL,
+                    ),
+                );
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::default(),
+                    environment.begin_session().unwrap(),
+                )
+                .unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("label")
+                            && node.attribute("transform").is_some()
+                    })
+                    .unwrap();
+                let transform = label.attribute("transform").unwrap();
+                transform
+                    .strip_prefix("translate(")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap()
+                    .split([',', ' '])
+                    .filter(|value| !value.is_empty())
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            };
+            let delta = render_y(7.0) - render_y(0.0);
+            assert!(
+                (delta - if html { 0.0 } else { -7.0 }).abs() < 1e-6,
+                "{shape}, html={html}: label y delta={delta}"
+            );
         }
     }
 }

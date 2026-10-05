@@ -7,9 +7,11 @@ use crate::{
     },
 };
 use merman_core::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramFamilyId, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, MermaidConfig, diagram_type_family_id,
+    AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID, DiagramFamilyId,
+    DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    MermaidConfig, diagram_type_family_id,
     preprocess::{SourceConfigEvidence, SourceConfigOrigin},
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -532,6 +534,48 @@ const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE: RuleDescriptor = RuleDescriptor {
     origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
+const AGENTFLOW_SHAPE_REMOVED_RULE: RuleDescriptor = RuleDescriptor {
+    id: AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+    description: "Report Agentflow shapes removed by the upstream domain model.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/diagrams/agentflow/agentflowDb.ts",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Semantic,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+const AGENTFLOW_SHAPE_UNSUPPORTED_RULE: RuleDescriptor = RuleDescriptor {
+    id: AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
+    description: "Report Agentflow shapes that use the upstream fallback renderer.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/diagrams/agentflow/agentflowDb.ts",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Semantic,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+const AGENTFLOW_CONTAINMENT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor {
+    id: AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
+    description: "Report cyclic Agentflow container relationships omitted from rendering.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/diagrams/agentflow/agentflowDb.ts",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Semantic,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
     description: "Report duplicate gitGraph commit ids.",
@@ -569,6 +613,9 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
     FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
+    AGENTFLOW_SHAPE_REMOVED_RULE,
+    AGENTFLOW_SHAPE_UNSUPPORTED_RULE,
+    AGENTFLOW_CONTAINMENT_VIOLATION_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
 ];
 
@@ -1099,6 +1146,11 @@ fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
         BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
         FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_EXPLICIT_DIRECTION_RULE),
         FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID => Some(FLOWCHART_UNKNOWN_STYLE_TARGET_RULE),
+        AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID => Some(AGENTFLOW_SHAPE_REMOVED_RULE),
+        AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID => Some(AGENTFLOW_SHAPE_UNSUPPORTED_RULE),
+        AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID => {
+            Some(AGENTFLOW_CONTAINMENT_VIOLATION_RULE)
+        }
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
         _ => None,
     }

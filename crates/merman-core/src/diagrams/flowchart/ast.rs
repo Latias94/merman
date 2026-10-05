@@ -1,7 +1,16 @@
-use super::{Edge, LexError, Node, SubgraphHeader};
+use super::LexError;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use super::{Edge, Node, SubgraphHeader};
 use crate::{EditorExpectedSyntax, SourceSpan};
 
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct FlowchartDirectiveEditorEvidence {
     expected_syntax: [Option<EditorExpectedSyntax>; 3],
 }
@@ -17,6 +26,7 @@ impl FlowchartDirectiveEditorEvidence {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn iter(&self) -> impl Iterator<Item = EditorExpectedSyntax> + '_ {
         self.expected_syntax.iter().flatten().copied()
     }
@@ -84,6 +94,13 @@ pub(crate) enum ClickAction {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct ClickStmt {
     pub ids: Vec<String>,
     pub id_spans: Vec<SourceSpan>,
@@ -108,6 +125,7 @@ pub(crate) struct LinkStyleStmt {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct FlowchartAst {
     pub keyword: String,
     pub direction: Option<String>,
@@ -116,12 +134,14 @@ pub(crate) struct FlowchartAst {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct SubgraphBlock {
     pub header: SubgraphHeader,
     pub statements: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) enum Stmt {
     Chain {
         node_groups: Vec<Vec<Node>>,

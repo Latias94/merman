@@ -13,6 +13,7 @@ import {
   selectCurrentDiagramType,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
+import { normalizeMermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import {
   DIAGRAM_FONT_VALUES,
   isDiagramFont,
@@ -256,8 +257,11 @@ export function ToolbarControls() {
       <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
         value={diagramTheme}
-        onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
+        onValueChange={(v) => setDiagramTheme(normalizeMermaidThemeSelection(v))}
       >
+        <DropdownMenuRadioItem value="auto">
+          {t("themes.auto")}
+        </DropdownMenuRadioItem>
         {themeOptions.map((option) => (
           <DropdownMenuRadioItem key={option.value} value={option.value}>
             {option.label}

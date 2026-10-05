@@ -433,6 +433,15 @@ mod tests {
     const DOCUMENT_VERSION: i32 = 7;
 
     #[test]
+    fn unavailable_uri_digest_preserves_domain_and_leading_zeroes() {
+        let uri = Uri::from_str("file:///digest-contract-819.mmd").unwrap();
+        assert_eq!(
+            super::unavailable_uri_digest(&uri),
+            "00cf8cfa9e7f3b1ee86020f7fe38f827e55eca2c255758b2e461fbc063d5eb8e",
+        );
+    }
+
+    #[test]
     fn round_trip_accepts_only_the_exact_returned_diagnostic() {
         let (round_trip, profile, uri) = direction_round_trip();
         let diagnostic = direction_diagnostic(&round_trip, &profile);

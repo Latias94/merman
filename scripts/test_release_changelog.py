@@ -21,8 +21,9 @@ class ReleaseChangelogTests(unittest.TestCase):
 
     def test_current_repository_projections_match_workspace_version(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
-        verify.verify_repository(root, manifest["workspace"]["package"]["version"])
+        with (root / "Cargo.toml").open("rb") as manifest:
+            workspace = tomllib.load(manifest)
+        verify.verify_repository(root, workspace["workspace"]["package"]["version"])
 
     def test_python_uses_pep440_projection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

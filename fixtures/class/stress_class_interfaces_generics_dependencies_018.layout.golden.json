@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "IRepository",
-          "x": 94.88,
-          "y": 254.0,
-          "width": 128.641,
-          "height": 108.0,
+          "x": 96.52,
+          "y": 284.0,
+          "width": 115.563,
+          "height": 102.0,
           "is_cluster": false
         },
         {
           "id": "Service",
-          "x": 94.88,
-          "y": 63.0,
-          "width": 188.401,
-          "height": 126.0,
+          "x": 96.52,
+          "y": 72.0,
+          "width": 167.853,
+          "height": 120.0,
           "is_cluster": false
         },
         {
           "id": "SqlRepo",
-          "x": 94.88,
-          "y": 421.0,
-          "width": 189.76,
-          "height": 126.0,
+          "x": 96.52,
+          "y": 435.0,
+          "width": 169.04,
+          "height": 120.0,
           "is_cluster": false
         }
       ],
@@ -37,16 +37,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 94.88,
-              "y": 308.0
+              "x": 96.52,
+              "y": 335.0
             },
             {
-              "x": 94.88,
-              "y": 333.0
-            },
-            {
-              "x": 94.88,
-              "y": 358.0
+              "x": 96.52,
+              "y": 375.0
             }
           ],
           "label": null,
@@ -66,23 +62,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 94.88,
-              "y": 126.0
+              "x": 96.52,
+              "y": 132.0
             },
             {
-              "x": 94.88,
-              "y": 163.0
-            },
-            {
-              "x": 94.88,
-              "y": 200.0
+              "x": 96.52,
+              "y": 233.0
             }
           ],
           "label": {
-            "x": 94.88,
-            "y": 163.0,
-            "width": 48.16,
-            "height": 24.0
+            "x": 96.09,
+            "y": 182.5,
+            "width": 42.14,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -95,10 +87,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 189.76,
-        "max_y": 484.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 181.04,
+        "max_y": 495.0
       }
     }
   }

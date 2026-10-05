@@ -9,13 +9,15 @@ const PINNED_SEMANTIC_WITHOUT_EDITOR: &[&str] = &["error"];
 const PINNED_WITHOUT_SEMANTICS: &[&str] = &[];
 #[path = "registry_cases.rs"]
 mod cases;
-use cases::{CharacterizedCapabilities, FAMILY_CHARACTERIZATION_MATRIX, MalformedContract};
+use cases::{
+    CharacterizedCapabilities, FAMILY_CHARACTERIZATION_MATRIX, MALFORMED_SOURCE, MalformedContract,
+};
 
 #[test]
 fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
     let capabilities = diagram_family_capabilities();
-    assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 41);
-    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
+    assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 43);
+    assert_eq!(capabilities.len(), 43, "pinned Mermaid 12 catalog drift");
 
     let expected_ids = FAMILY_CHARACTERIZATION_MATRIX
         .iter()
@@ -29,10 +31,10 @@ fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
         .iter()
         .map(|row| row.logical_family)
         .collect::<BTreeSet<_>>();
-    assert_eq!(expected_ids.len(), 41, "matrix variant ids must be unique");
+    assert_eq!(expected_ids.len(), 43, "matrix variant ids must be unique");
     assert_eq!(
         logical_families.len(),
-        33,
+        35,
         "matrix logical families drifted"
     );
     assert_eq!(
@@ -355,7 +357,7 @@ fn pinned_baseline_uses_one_catalog_for_all_registry_projections() {
 #[test]
 fn canonical_catalog_admits_every_mermaid_family() {
     let capabilities = diagram_family_capabilities();
-    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
+    assert_eq!(capabilities.len(), 43, "pinned Mermaid 12 catalog drift");
 
     for capability in capabilities
         .iter()
@@ -446,6 +448,8 @@ fn canonical_header_facts_preserve_the_pinned_authoring_surface() {
             "wardley-beta",
             "cynefin-beta",
             "flowchart-elk TD",
+            "usecase-beta",
+            "agentflow-beta",
         ]
     );
     for header in diagram_header_facts() {
@@ -499,6 +503,8 @@ fn canonical_supported_diagrams_are_backed_by_typed_render_parsers() {
             "wardley",
             "xychart",
             "zenuml",
+            "agentflow",
+            "usecase",
         ]
     );
 
@@ -531,7 +537,7 @@ fn built_in_typed_render_family_catalog_is_canonical_and_concrete() {
         .map(|family| family.render_model_kind)
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(families.len(), 31);
+    assert_eq!(families.len(), 33);
     assert_eq!(model_kinds.len(), families.len());
     assert_eq!(
         diagram_types,
@@ -567,6 +573,8 @@ fn built_in_typed_render_family_catalog_is_canonical_and_concrete() {
             "wardley",
             "xychart",
             "zenuml",
+            "agentflow",
+            "usecase",
         ]
     );
     assert!(
@@ -964,4 +972,107 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
         crate::diagrams::mindmap::mindmap_syntax_construction_count(),
         1
     );
+}
+
+#[test]
+fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unknown() {
+    let mut engine = Engine::new();
+    *engine.diagram_registry_mut() = DiagramRegistry::new();
+    *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
+    let source = "flowchart-elk TD\nA-->B\n";
+    let metadata = engine.parse_metadata_sync(source).unwrap();
+    assert_eq!(metadata.diagram_type, "flowchart-elk");
+    assert_eq!(metadata.effective_config.get_str("layout"), Some("elk"));
+    assert!(matches!(
+        engine.parse_diagram_sync(source, crate::ParseOptions::strict()),
+        Err(crate::Error::UnsupportedDiagram { diagram_type }) if diagram_type == "flowchart-elk"
+    ));
+    assert!(matches!(
+        engine.parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict()),
+        Err(crate::Error::UnsupportedDiagram { diagram_type }) if diagram_type == "flowchart-elk"
+    ));
+    assert!(matches!(
+        engine.parse_diagram_sync(MALFORMED_SOURCE, crate::ParseOptions::strict()),
+        Err(crate::Error::DetectType(_))
+    ));
+    let suppressed = engine
+        .parse_diagram_sync(source, crate::ParseOptions::lenient())
+        .unwrap()
+        .unwrap();
+    assert_eq!(suppressed.meta.diagram_type, "error");
+    assert!(
+        engine
+            .parse_diagram_sync(MALFORMED_SOURCE, crate::ParseOptions::lenient())
+            .unwrap()
+            .is_none()
+    );
+
+    let control = crate::OperationControl::new();
+    control.cancel();
+    let cancelled = engine
+        .parse_diagram_for_render_model_controlled_sync(
+            source,
+            crate::ParseOptions::strict(),
+            &control,
+        )
+        .unwrap_err();
+    assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+}
+
+#[test]
+fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
+    let mut engine = Engine::new();
+    *engine.diagram_registry_mut() = DiagramRegistry::new();
+    *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", |_, meta, control| {
+            control.checkpoint()?;
+            Ok(Ok(
+                serde_json::json!({ "owner": "semantic", "diagramType": meta.diagram_type }),
+            ))
+        });
+    let source = "flowchart TD\nA-->B\n";
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let crate::RenderSemanticModel::CustomJson(model) = parsed.model() else {
+        panic!("custom semantic overlay must retain its custom JSON boundary");
+    };
+    assert_eq!(model.value()["owner"], "semantic");
+    assert_eq!(
+        model.provenance(),
+        crate::CustomJsonProvenance::SemanticRegistryOverlay
+    );
+    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
+    assert!(
+        engine
+            .parse_editor_semantic_facts_with_type_sync("flowchart-v2", source)
+            .unwrap()
+            .is_none()
+    );
+
+    engine
+        .render_diagram_registry_mut()
+        .insert("flowchart-v2", |_, _, control| {
+            control.checkpoint()?;
+            Ok(Ok(crate::CustomJsonRenderModel::new(
+                "flowchart-v2",
+                serde_json::json!({ "owner": "render" }),
+            )))
+        });
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let crate::RenderSemanticModel::CustomJson(model) = parsed.model() else {
+        panic!("explicit custom render overlay must take precedence");
+    };
+    assert_eq!(model.value()["owner"], "render");
+    assert_eq!(
+        model.provenance(),
+        crate::CustomJsonProvenance::RenderRegistryOverlay
+    );
+    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
 }

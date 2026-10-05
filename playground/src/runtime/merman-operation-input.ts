@@ -4,7 +4,7 @@ import {
 } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { sourceWithConfig } from "../lib/mermaid-config.ts";
+import { buildMermaidOperationInput, type MermaidConfigObject } from "../lib/mermaid-config.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -199,15 +199,16 @@ function freezeConfiguredInput(
 ): ConfiguredMermanOperationInput {
   let configuredSource = source;
   let configurationError: ErrorProjection | null = null;
+  let initializationConfig: Readonly<MermaidConfigObject> | undefined;
   try {
-    configuredSource = sourceWithConfig(source, theme, configJson, {
-      diagramFont: options.diagramFont,
-    });
+    ({ configuredSource, initializationConfig } = buildMermaidOperationInput(
+      source, theme, configJson, { diagramFont: options.diagramFont },
+    ));
   } catch (error) {
     configurationError = projectError(error);
   }
   return Object.freeze({
-    bindingOptions: bindingOptionsForRender(options),
+    bindingOptions: bindingOptionsForRender(options, initializationConfig),
     configurationError,
     configuredSource,
     source,
@@ -217,6 +218,7 @@ function freezeConfiguredInput(
 
 function bindingOptionsForRender(
   options: NormalizedMermanOptions,
+  initializationConfig: Readonly<MermaidConfigObject> | undefined,
 ): Readonly<HostTextMeasurerSvgBindingOptions> {
   const theme = options.themePresetId
     ? Object.freeze({ preset: options.themePresetId })
@@ -240,6 +242,7 @@ function bindingOptionsForRender(
   return Object.freeze({
     version: BINDING_OPTIONS_SCHEMA_VERSION,
     ...(theme ? { theme } : {}),
+    ...(initializationConfig ? { site_config: initializationConfig } : {}),
     ...(svg ? { svg } : {}),
     ...(layout ? { layout } : {}),
   });

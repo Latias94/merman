@@ -2,7 +2,15 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [0.8.0-alpha.7] - Unreleased
+## [0.8.0] - Unreleased
+
+### Fixed
+
+- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+
+### Upgrade
+
+- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
 
 ### Breaking changes
 
@@ -12,6 +20,21 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 - Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
 - Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
+
+## [0.8.0-alpha.7] - 2026-09-30
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
+
+### Compatibility
+
+- Native and Node-targeted WASM packages remain an experimental Node.js 22+ group. The existing SVG/layout capability recipe does not add ASCII, analysis, math, or raster/PDF export. Update the loader and all selected transport packages together.
 
 ## [0.8.0-alpha.6] - 2026-09-02
 

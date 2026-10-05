@@ -1488,3 +1488,55 @@ UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offset
     assert_eq!(line.attribute("stroke-width"), Some("1"));
     assert_eq!(line.attribute("style"), Some("fill: none;"));
 }
+
+#[test]
+fn c4_relationships_resolve_boundary_endpoints_and_prefer_shapes() {
+    let source = r#"C4Context
+System(outside, "Outside")
+Boundary(left, "Left") {
+  System(inside, "Inside")
+}
+Boundary(right, "Right") {
+  System(other, "Other")
+}
+Rel(outside, left, "Enters")
+Rel(left, outside, "Leaves")
+Rel(left, right, "Connects")
+"#;
+    let layout = layout_c4_with_options(source, &LayoutOptions::headless_svg_defaults());
+    assert_eq!(layout.rels.len(), 3);
+    for (alias, point) in [
+        ("left", &layout.rels[0].end_point),
+        ("left", &layout.rels[1].start_point),
+        ("left", &layout.rels[2].start_point),
+        ("right", &layout.rels[2].end_point),
+    ] {
+        let boundary = layout.boundaries.iter().find(|b| b.alias == alias).unwrap();
+        let on_vertical = (point.x - boundary.x).abs() < 1e-8
+            || (point.x - boundary.x - boundary.width).abs() < 1e-8;
+        let on_horizontal = (point.y - boundary.y).abs() < 1e-8
+            || (point.y - boundary.y - boundary.height).abs() < 1e-8;
+        assert!(
+            on_vertical || on_horizontal,
+            "endpoint must meet {alias}'s perimeter"
+        );
+        assert!(point.x >= boundary.x - 1e-8 && point.x <= boundary.x + boundary.width + 1e-8);
+        assert!(point.y >= boundary.y - 1e-8 && point.y <= boundary.y + boundary.height + 1e-8);
+    }
+    let svg = render_c4_svg_with_environment(source, &RenderEnvironment::deterministic());
+    assert!(svg.contains("Enters") && svg.contains("Leaves") && svg.contains("Connects"));
+
+    let shared_alias = source
+        .replace("System(outside,", "System(left,")
+        .replace("outside, left", "left, inside")
+        .replace("left, outside", "inside, left");
+    let layout = layout_c4_with_options(&shared_alias, &LayoutOptions::headless_svg_defaults());
+    let shape = layout
+        .shapes
+        .iter()
+        .find(|shape| shape.alias == "left")
+        .unwrap();
+    let endpoint = &layout.rels[0].start_point;
+    assert!(endpoint.x >= shape.x - 1e-8 && endpoint.x <= shape.x + shape.width + 1e-8);
+    assert!(endpoint.y >= shape.y - 1e-8 && endpoint.y <= shape.y + shape.height + 1e-8);
+}

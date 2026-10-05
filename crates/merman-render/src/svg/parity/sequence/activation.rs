@@ -20,6 +20,7 @@ struct SequenceActivationRect {
     width: f64,
     height: f64,
     class_idx: usize,
+    actor_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +30,8 @@ pub(super) struct SequenceActivationPlan<'a> {
     rect_count: usize,
     fill: String,
     stroke: String,
+    typed_fill: bool,
+    typed_stroke: bool,
     stroke_width: Option<f32>,
     radius: Option<f32>,
     effect: Option<crate::diagram_theme::SvgShadowEffect>,
@@ -43,12 +46,16 @@ impl SequenceActivationPlan<'_> {
 
     pub(super) fn prepare_paint(
         &mut self,
+        typed_fill: bool,
+        typed_stroke: bool,
         stroke_width: Option<f32>,
         radius: Option<f32>,
         effect: Option<crate::diagram_theme::SvgShadowEffect>,
         receipt: &mut SequenceStaticRectThemeReceipt,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
+        self.typed_fill = typed_fill;
+        self.typed_stroke = typed_stroke;
         self.stroke_width = stroke_width;
         self.radius = radius;
         self.effect = effect;
@@ -128,6 +135,13 @@ pub(super) fn build_sequence_activation_plan<'a>(
     let fill = "#EDF2AE".to_string();
     let stroke = "#666".to_string();
 
+    let mut actor_indexes =
+        FxHashMap::with_capacity_and_hasher(model.actor_order.len(), Default::default());
+    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_index)?;
+        actor_indexes.insert(actor_id.as_str(), actor_index);
+    }
+
     let mut last_line_y: Option<f64> = None;
     let mut activation_stacks: std::collections::BTreeMap<&str, Vec<SequenceActivationStart>> =
         std::collections::BTreeMap::new();
@@ -198,6 +212,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                     width: activation_width,
                     height: (vertical_pos - starty).max(0.0),
                     class_idx,
+                    actor_index: actor_indexes.get(actor_id).copied().unwrap_or(0),
                 };
                 if let Some(slot) = groups.get_mut(start.group_index) {
                     *slot = Some(rect);
@@ -217,6 +232,8 @@ pub(super) fn build_sequence_activation_plan<'a>(
         rect_count,
         fill,
         stroke,
+        typed_fill: false,
+        typed_stroke: false,
         stroke_width: None,
         radius: None,
         effect: None,
@@ -229,6 +246,7 @@ pub(super) fn render_sequence_activation_group(
     out: &mut impl SvgOutput,
     plan: &SequenceActivationPlan,
     message_id: &str,
+    config: &merman_core::MermaidConfig,
     theme_receipt: &mut SequenceStaticRectThemeReceipt,
     evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
 ) -> Result<()> {
@@ -240,6 +258,7 @@ pub(super) fn render_sequence_activation_group(
     // `<rect class="activation{0..2}">` once ACTIVE_END is encountered.
     out.push_str("<g>");
     if let Some(Some(a)) = plan.groups.get(group_index) {
+        let is_neo = crate::config::config_diagram_look(config.as_value()).is_neo();
         let shadow = plan
             .shadows
             .get(group_index)
@@ -250,7 +269,7 @@ pub(super) fn render_sequence_activation_group(
         });
         let _ = write!(
             out,
-            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}""##,
+            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
             x = fmt(a.startx),
             y = fmt(a.starty),
             w = fmt(a.width),
@@ -258,7 +277,17 @@ pub(super) fn render_sequence_activation_group(
             idx = a.class_idx,
             fill = escape_xml(&plan.fill),
             stroke = escape_xml(&plan.stroke),
+            look_attr = if is_neo { r#" data-look="neo""# } else { "" },
         );
+        let style = activation_palette_style(
+            config.as_value(),
+            a.actor_index,
+            plan.typed_fill,
+            plan.typed_stroke,
+        );
+        if !style.is_empty() {
+            let _ = write!(out, r#" style="{}""#, escape_attr(&style));
+        }
         if let Some(width) = plan.stroke_width {
             let _ = write!(out, r#" stroke-width="{}""#, fmt(f64::from(width)));
         }
@@ -280,6 +309,52 @@ pub(super) fn render_sequence_activation_group(
     }
     out.push_str("</g>");
     out.checkpoint()
+}
+
+fn activation_palette_style(
+    config: &serde_json::Value,
+    actor_index: usize,
+    typed_fill: bool,
+    typed_stroke: bool,
+) -> String {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return String::new();
+    }
+    let Some(theme) = config.get("themeVariables") else {
+        return String::new();
+    };
+    let palette_color = |key| {
+        theme
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .filter(|palette| !palette.is_empty())
+            .map(|palette| &palette[actor_index % palette.len()])
+    };
+    let stroke = palette_color("borderColorArray");
+    // Unlike actors, activations need an opaque fallback to cover the lifeline.
+    let fill = palette_color("bkgColorArray")
+        .filter(|color| !color.is_null())
+        .or_else(|| theme.get("mainBkg"));
+    let mut style = String::new();
+    for (property, value) in [("stroke", stroke), ("fill", fill)] {
+        if (property == "fill" && typed_fill) || (property == "stroke" && typed_stroke) {
+            continue;
+        }
+        if let Some(color) = value.and_then(serde_json::Value::as_str) {
+            let color = super::super::util::cssom_color_value(color);
+            if color.is_empty() {
+                continue;
+            }
+            if !style.is_empty() {
+                style.push(' ');
+            }
+            let _ = write!(style, "{property}: {color};");
+        }
+    }
+    style
 }
 
 fn actor_center_x(nodes_by_id: &FxHashMap<&str, &LayoutNode>, actor_id: &str) -> Option<f64> {

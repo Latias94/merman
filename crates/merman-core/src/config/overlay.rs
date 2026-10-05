@@ -372,7 +372,7 @@ impl PostDetectionConfigOverlay {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        config_before_overlay: &MermaidConfig,
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
         control: &OperationControl,
@@ -381,7 +381,7 @@ impl PostDetectionConfigOverlay {
             family,
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            config_before_overlay,
             effective_config,
             application,
             ConfigOverlayLane::Host,
@@ -395,7 +395,7 @@ impl PostDetectionConfigOverlay {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        config_before_overlay: &MermaidConfig,
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
         lane: ConfigOverlayLane,
@@ -409,7 +409,7 @@ impl PostDetectionConfigOverlay {
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            config_before_overlay,
         };
         for contribution in &family_overlay.contributions {
             control.checkpoint()?;
@@ -442,10 +442,11 @@ impl PostDetectionConfigOverlay {
 /// Unlike typed-default ownership, this checks surviving raw input values, not ownership
 /// propagated through theme calculations. The effective config and prior claims stay live
 /// so each assignment observes earlier host/fallback writes without retaining a snapshot.
+/// The baseline follows theme materialization; detector writes arrive as explicit claims.
 struct PostDetectionConfigDefaults<'a> {
     explicit_site_config: &'a MermaidConfig,
     explicit_source_config: &'a MermaidConfig,
-    config_before_detection: &'a MermaidConfig,
+    config_before_overlay: &'a MermaidConfig,
 }
 
 impl PostDetectionConfigDefaults<'_> {
@@ -458,8 +459,8 @@ impl PostDetectionConfigDefaults<'_> {
         application.claims_path(dotted_path)
             || owns_path(self.explicit_site_config, effective_config, dotted_path)
             || owns_path(self.explicit_source_config, effective_config, dotted_path)
-            || effective_config.path_was_mutated_after(self.config_before_detection, dotted_path)
-            || value_at_path(self.config_before_detection, dotted_path)
+            || effective_config.path_was_mutated_after(self.config_before_overlay, dotted_path)
+            || value_at_path(self.config_before_overlay, dotted_path)
                 != value_at_path(effective_config, dotted_path)
     }
 }
@@ -471,7 +472,7 @@ impl MermaidConfig {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        config_before_overlay: &MermaidConfig,
         application: &ConfigOverlayApplication,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
@@ -485,7 +486,7 @@ impl MermaidConfig {
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            config_before_overlay,
         };
         let mut decisions = Vec::with_capacity(paths.len());
         for path in paths.iter() {
@@ -543,10 +544,10 @@ impl ConfigOverlayApplication {
     fn claims_path(&self, path: &str) -> bool {
         self.claimed_paths
             .iter()
-            .any(|claimed| dotted_paths_overlap(claimed, path))
+            .any(|claimed| claimed.is_empty() || dotted_paths_overlap(claimed, path))
     }
 
-    fn claim_path(&mut self, path: Arc<str>) {
+    pub(crate) fn claim_path(&mut self, path: Arc<str>) {
         self.claimed_paths.insert(path);
     }
 
@@ -1018,7 +1019,7 @@ mod tests {
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config: &empty,
             explicit_source_config: &empty,
-            config_before_detection: &before_detect,
+            config_before_overlay: &before_detect,
         };
         let mut application = ConfigOverlayApplication::default();
         assert!(!defaults.blocks_path(&before_detect, &application, "custom.child"));

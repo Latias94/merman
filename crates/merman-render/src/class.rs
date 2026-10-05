@@ -1,5 +1,5 @@
 #[cfg(feature = "layout-elk")]
-use crate::config::{config_bool, config_string};
+use crate::elk_options::layout_options as class_elk_layout_options;
 use crate::entities::decode_entities_minimal;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -14,7 +14,7 @@ use crate::text::{
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -24,8 +24,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) mod config;
+#[cfg(feature = "layout-elk")]
+mod elk_terminals;
+mod measured;
 use self::config::{ClassConfigView, ClassLayoutSettings};
 mod theme;
+use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 pub(crate) use theme::{
@@ -104,9 +108,9 @@ pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
 
 /// Estimates the source-backed graph preparation work shared by Class Dagre and ELK layouts.
 ///
-/// Both backends build the same compound graph before dispatch. Namespace extraction walks the
-/// edge set while copying nested descendants, so charge that amplification in addition to the
-/// linear graph-construction baseline.
+/// Both backends share source measurements. The conservative family allowance also covers Dagre
+/// namespace extraction, which scans edges while copying nested descendants, in addition to the
+/// linear measurement and projection baseline.
 pub(crate) fn class_layout_work_units(
     model: &ClassDiagramModel,
     work_control: &OperationLayoutWorkControl,
@@ -132,27 +136,27 @@ pub(crate) fn class_layout_work_units(
     )
 }
 
+pub(crate) fn class_member_display_text(
+    member: &merman_core::models::class_diagram::ClassMember,
+) -> String {
+    // Mermaid ClassMember.parseMember preserves internal attribute whitespace in `text`;
+    // shapeUtil.addText passes that text directly to createText, including spaces around ':'.
+    member.display_text.trim().to_string()
+}
+
 pub(crate) fn class_member_create_text_input(
     member: &merman_core::models::class_diagram::ClassMember,
 ) -> String {
-    member
-        .display_text
-        .trim()
+    class_member_display_text(member)
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClassLayoutEngine {
-    Dagre,
-    CaptureDagreInput,
-    #[cfg(feature = "layout-elk")]
-    Elk(Option<elk::ElkOperationSeed>),
-}
-
-enum ClassLayoutResult {
-    Layout(ClassDiagramLayout),
-    DagreInput(Box<ClassLayoutGraph>),
+struct MeasuredClassDiagram {
+    graph: MeasuredGraph,
+    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    node_label_metrics_by_id: HashMap<String, (f64, f64)>,
+    namespace_label_metrics_by_id: HashMap<String, (f64, f64)>,
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -613,6 +617,10 @@ struct EdgeTerminalMetrics {
     end_right: Option<(f64, f64)>,
     start_marker: f64,
     end_marker: f64,
+    #[cfg(feature = "layout-elk")]
+    start_arrow_type: Option<&'static str>,
+    #[cfg(feature = "layout-elk")]
+    end_arrow_type: Option<&'static str>,
 }
 
 fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
@@ -643,6 +651,10 @@ fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
         end_right: get_pair("endRight"),
         start_marker,
         end_marker,
+        #[cfg(feature = "layout-elk")]
+        start_arrow_type: None,
+        #[cfg(feature = "layout-elk")]
+        end_arrow_type: None,
     }
 }
 
@@ -744,18 +756,29 @@ fn calc_terminal_label_position(
             -angle.cos() * d + (pts[0].y + center.y) / 2.0,
         ),
         TerminalPos::EndLeft => (
-            angle.sin() * d + (pts[0].x + center.x) / 2.0 - 5.0,
-            -angle.cos() * d + (pts[0].y + center.y) / 2.0 - 5.0,
+            angle.sin() * d + (pts[0].x + center.x) / 2.0,
+            -angle.cos() * d + (pts[0].y + center.y) / 2.0,
         ),
         TerminalPos::EndRight => {
             let a = angle - std::f64::consts::PI;
             (
-                a.sin() * d + (pts[0].x + center.x) / 2.0 - 5.0,
-                -a.cos() * d + (pts[0].y + center.y) / 2.0 - 5.0,
+                a.sin() * d + (pts[0].x + center.x) / 2.0,
+                -a.cos() * d + (pts[0].y + center.y) / 2.0,
             )
         }
     };
     Some((x, y))
+}
+
+pub(crate) fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
+    match ty {
+        0 => Some("aggregation"),
+        1 => Some("extension"),
+        2 => Some("composition"),
+        3 => Some("dependency"),
+        4 => Some("lollipop"),
+        _ => None,
+    }
 }
 
 fn intersect_segment_with_rect(
@@ -1755,11 +1778,14 @@ fn class_box_dimensions(
         let mut prepared_out = prepare_html_labels.then(|| Vec::with_capacity(rows.len()));
         let mut y_offset = 0.0;
         for row in rows {
-            let t = if use_html_labels {
+            let mut t = if use_html_labels {
                 class_member_create_text_input(row)
             } else {
-                row.display_text_for_render()
+                decode_entities_minimal(class_member_display_text(row).as_str())
             };
+            if !use_html_labels && t.starts_with('\\') {
+                t = t.trim_start_matches('\\').to_string();
+            }
             let (metrics, prepared, row_style_facts) = measure_label(&t, row.css_style.as_str());
             style_facts.merge(row_style_facts);
             if let Some(out) = metrics_out.as_mut() {
@@ -2253,18 +2279,17 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     typography_theme: &ClassTextThemePlan,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    match layout_class_diagram_typed_inner(
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         math_renderer,
-        ClassLayoutEngine::Dagre,
+        &settings,
+        false,
         typography_theme,
-        Some(work_control),
-    )? {
-        ClassLayoutResult::Layout(layout) => Ok(layout),
-        ClassLayoutResult::DagreInput(_) => unreachable!("Dagre layout returned its input graph"),
-    }
+    )?;
+    layout_class_diagram_dagre(model, measured, &settings, work_control)
 }
 
 #[cfg(feature = "layout-elk")]
@@ -2281,46 +2306,48 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     typography_theme: &ClassTextThemePlan,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    match layout_class_diagram_typed_inner(
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         math_renderer,
-        ClassLayoutEngine::Elk(Some(operation_seed)),
+        &settings,
+        true,
         typography_theme,
-        Some(work_control),
-    )? {
-        ClassLayoutResult::Layout(layout) => Ok(layout),
-        ClassLayoutResult::DagreInput(_) => unreachable!("ELK layout returned a Dagre input graph"),
-    }
+    )?;
+    layout_class_diagram_elk_from_measured(
+        model,
+        measured,
+        ClassElkLayoutSettings {
+            // ClassDB.getData assigns class.padding to namespaces, independently of ELK's
+            // fixed content inset and the legacy Dagre cluster settings.
+            namespace_padding: settings.class_padding,
+            title_margin_top: settings.title_margin_top,
+            title_margin_bottom: settings.title_margin_bottom,
+            effective_config: effective_config.as_value(),
+        },
+        operation_seed,
+        work_control,
+    )
 }
 
-fn layout_class_diagram_typed_inner(
+fn measure_class_diagram(
     model: &ClassDiagramModel,
     mermaid_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    engine: ClassLayoutEngine,
+    settings: &ClassLayoutSettings,
+    uses_elk_adapter: bool,
     typography_theme: &ClassTextThemePlan,
-    work_control: Option<&mut OperationLayoutWorkControl>,
-) -> Result<ClassLayoutResult> {
+) -> Result<MeasuredClassDiagram> {
     validate_class_namespace_hierarchy(model)?;
-    let diagram_dir = rank_dir_from(&model.direction);
-    let ClassLayoutSettings {
-        nodesep,
-        ranksep,
-        wrap_mode_node,
-        wrap_mode_label,
-        wrap_mode_note,
-        class_padding,
-        namespace_padding,
-        hide_empty_members_box,
-        mut text_style,
-        mut html_calc_text_style,
-        wrap_probe_font_size,
-        title_margin_top,
-        title_margin_bottom,
-    } = ClassConfigView::new(mermaid_config.as_value()).layout_settings();
+    let wrap_mode_node = settings.wrap_mode_node;
+    let wrap_mode_label = settings.wrap_mode_label;
+    let wrap_mode_note = settings.wrap_mode_note;
+    let class_padding = settings.class_padding;
+    let mut text_style = settings.text_style.clone();
+    let mut html_calc_text_style = settings.html_calc_text_style.clone();
     typography_theme.apply_layout_text_styles(&mut text_style, &mut html_calc_text_style);
     if !typography_theme.seal_layout_font_size(text_style.font_size) {
         return Err(crate::Error::InvalidModel {
@@ -2328,9 +2355,12 @@ fn layout_class_diagram_typed_inner(
         });
     }
     let cardinality_text_style = class_cardinality_text_style(&text_style);
+    let text_style = &text_style;
+    let html_calc_text_style = &html_calc_text_style;
+    let wrap_probe_font_size = settings.wrap_probe_font_size;
+    let hide_empty_members_box = settings.hide_empty_members_box;
     let contains_math = class_requires_math(model);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike) || contains_math;
-    let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike) || contains_math;
     let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike) || contains_math;
     let note_html_config = capture_note_label_metrics.then_some(mermaid_config);
     let mut class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>> =
@@ -2339,31 +2369,22 @@ fn layout_class_diagram_typed_inner(
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
     let namespace_ids = class_namespace_ids_in_decl_order(model);
 
-    let mut g = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
-        GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        },
-    ));
-    g.set_graph(GraphLabel {
-        rankdir: diagram_dir,
-        nodesep,
-        ranksep,
-        // Mermaid uses fixed graph margins in its Dagre wrapper for class diagrams, but our SVG
-        // renderer re-introduces that margin when computing the viewport. Keep layout coordinates
-        // margin-free here to avoid double counting.
-        marginx: 0.0,
-        marginy: 0.0,
-        ..Default::default()
-    });
+    let mut g = MeasuredGraph {
+        direction: normalize_dir(&model.direction),
+        nodesep: settings.nodesep,
+        ranksep: settings.ranksep,
+        nodes: IndexMap::new(),
+        parents: IndexMap::new(),
+        edges: IndexMap::new(),
+    };
+    let mut namespace_label_metrics_by_id = HashMap::new();
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
         mermaid_config,
         math_renderer,
-        text_style: &text_style,
-        html_calc_text_style: &html_calc_text_style,
+        text_style,
+        html_calc_text_style,
         wrap_probe_font_size,
         wrap_mode: wrap_mode_node,
         padding: class_padding,
@@ -2372,7 +2393,7 @@ fn layout_class_diagram_typed_inner(
     };
 
     let insert_class_node =
-        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        |g: &mut MeasuredGraph,
          c: &ClassNode,
          class_label_plans_by_id: &mut FxHashMap<String, Arc<ClassNodeLabelPlan>>,
          class_node_style_facts_by_id: &mut BTreeMap<Box<str>, ClassNodeLabelStyleFacts>| {
@@ -2383,7 +2404,7 @@ fn layout_class_diagram_typed_inner(
             class_node_style_facts_by_id.insert(c.id.as_str().into(), style_facts);
             g.set_node(
                 c.id.clone(),
-                NodeLabel {
+                MeasuredNode {
                     width: w,
                     height: h,
                     ..Default::default()
@@ -2392,13 +2413,13 @@ fn layout_class_diagram_typed_inner(
         };
 
     let insert_note_node =
-        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        |g: &mut MeasuredGraph,
          n: &ClassNote,
          node_label_metrics_by_id: &mut HashMap<String, (f64, f64)>| {
             let (w, h, metrics) = note_dimensions(
                 &n.text,
                 measurer,
-                &text_style,
+                text_style,
                 wrap_mode_note,
                 class_padding,
                 note_html_config,
@@ -2412,7 +2433,7 @@ fn layout_class_diagram_typed_inner(
             }
             g.set_node(
                 n.id.clone(),
-                NodeLabel {
+                MeasuredNode {
                     width: w.max(1.0),
                     height: h.max(1.0),
                     ..Default::default()
@@ -2423,7 +2444,28 @@ fn layout_class_diagram_typed_inner(
     for &id in &namespace_ids {
         // Mermaid's v3 `ClassDB.getData()` emits namespace groups before classes, notes, and
         // interfaces. Graphlib preserves that insertion order for Dagre's `initOrder`.
-        g.set_node(id.to_string(), NodeLabel::default());
+        g.set_node(
+            id.to_string(),
+            MeasuredNode {
+                is_namespace: true,
+                ..Default::default()
+            },
+        );
+        namespace_label_metrics_by_id.insert(
+            id.to_string(),
+            label_metrics(
+                class_namespace_label(model, id),
+                measurer,
+                text_style,
+                if ClassConfigView::new(mermaid_config.as_value()).render_edge_html_labels() {
+                    WrapMode::HtmlLike
+                } else {
+                    WrapMode::SvgLike
+                },
+                mermaid_config,
+                math_renderer,
+            ),
+        );
 
         if let Some(parent) = model
             .namespaces
@@ -2473,38 +2515,41 @@ fn layout_class_diagram_typed_inner(
         }
     }
 
-    // Interface nodes (lollipop syntax) follow notes in `ClassDB.getData()`.
+    // Interface nodes follow notes in `ClassDB.getData()` and remain at the root even when
+    // their related class belongs to a namespace. `squareRect` adds fixed Neo label padding;
+    // classic interfaces have no node padding.
+    let (interface_padding_x, interface_padding_y) =
+        if ClassConfigView::new(mermaid_config.as_value()).diagram_look() == "neo" {
+            (32.0, 24.0)
+        } else {
+            (0.0, 0.0)
+        };
     for iface in &model.interfaces {
         let label = decode_entities_minimal(iface.label.trim());
-        let (tw, th) = label_metrics(
-            &label,
-            measurer,
-            &text_style,
-            wrap_mode_label,
-            mermaid_config,
-            math_renderer,
+        let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
+            crate::graph_label::FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label: &label,
+                label_type: "text",
+                style: text_style,
+                max_width_px: Some(
+                    ClassConfigView::new(mermaid_config.as_value()).interface_wrapping_width(),
+                ),
+                wrap_mode: wrap_mode_node,
+                config: mermaid_config,
+                math_renderer,
+            },
         );
-        if capture_label_metrics {
-            node_label_metrics_by_id.insert(iface.id.clone(), (tw, th));
-        }
+        let (tw, th) = (metrics.width.max(0.0), metrics.height.max(0.0));
+        node_label_metrics_by_id.insert(iface.id.clone(), (tw, th));
         g.set_node(
             iface.id.clone(),
-            NodeLabel {
-                width: tw.max(1.0),
-                height: th.max(1.0),
+            MeasuredNode {
+                width: (tw + interface_padding_x).max(1.0),
+                height: (th + interface_padding_y).max(1.0),
                 ..Default::default()
             },
         );
-        if let Some(cls) = model.classes.get(iface.class_id.as_str())
-            && let Some(parent) = cls
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            && model.namespaces.contains_key(parent)
-        {
-            g.set_parent(iface.id.clone(), parent.to_string());
-        }
     }
 
     // Note attachments precede class relations in Mermaid's layout edge array. Their IDs use the
@@ -2516,28 +2561,28 @@ fn layout_class_diagram_typed_inner(
         if !model.classes.contains_key(class_id) {
             continue;
         }
-        let el = EdgeLabel {
-            width: 0.0,
-            height: 0.0,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        g.set_edge_named(
+        g.set_edge(
             note.id.clone(),
             class_id.clone(),
-            Some(format!("edgeNote{i}")),
-            Some(el),
+            format!("edgeNote{i}"),
+            MeasuredEdge {
+                width: 0.0,
+                height: 0.0,
+                terminals: None,
+            },
         );
     }
 
     for rel in &model.relations {
+        let title = if uses_elk_adapter {
+            crate::text::mermaid_html_breaks_to_newlines(&rel.title)
+        } else {
+            std::borrow::Cow::Borrowed(rel.title.as_str())
+        };
         let (lw, lh) = edge_title_metrics(
-            &rel.title,
+            &title,
             measurer,
-            &text_style,
+            text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2577,68 +2622,54 @@ fn layout_class_diagram_typed_inner(
             10.0
         };
 
-        let mut el = EdgeLabel {
-            width: lw,
-            height: lh,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        if srw > 0.0 && srh > 0.0 {
-            set_extras_label_metrics(&mut el.extras, "startRight", srw, srh);
-        }
-        if elw > 0.0 && elh > 0.0 {
-            set_extras_label_metrics(&mut el.extras, "endLeft", elw, elh);
-        }
-        el.extras
-            .insert("startMarker".to_string(), Value::from(start_marker));
-        el.extras
-            .insert("endMarker".to_string(), Value::from(end_marker));
-
-        g.set_edge_named(
+        g.set_edge(
             rel.id1.clone(),
             rel.id2.clone(),
-            Some(rel.id.clone()),
-            Some(el),
+            rel.id.clone(),
+            MeasuredEdge {
+                width: lw,
+                height: lh,
+                terminals: Some(EdgeTerminalMetrics {
+                    start_left: None,
+                    start_right: (srw > 0.0 && srh > 0.0).then_some((srw, srh)),
+                    end_left: (elw > 0.0 && elh > 0.0).then_some((elw, elh)),
+                    end_right: None,
+                    start_marker,
+                    end_marker,
+                    #[cfg(feature = "layout-elk")]
+                    start_arrow_type: class_arrow_type_for_relation_end(rel.relation.type1),
+                    #[cfg(feature = "layout-elk")]
+                    end_arrow_type: class_arrow_type_for_relation_end(rel.relation.type2),
+                }),
+            },
         );
     }
 
-    if engine == ClassLayoutEngine::CaptureDagreInput {
-        return Ok(ClassLayoutResult::DagreInput(g));
-    }
+    Ok(MeasuredClassDiagram {
+        graph: g,
+        class_label_plans_by_id,
+        node_label_metrics_by_id,
+        namespace_label_metrics_by_id,
+    })
+}
 
-    #[cfg(feature = "layout-elk")]
-    if let ClassLayoutEngine::Elk(operation_seed) = engine {
-        let work_control = work_control.ok_or_else(|| Error::InvalidModel {
-            message: "Class ELK layout requires an operation work control".to_string(),
-        })?;
-        return layout_class_diagram_elk_from_graph(
-            model,
-            *g,
-            namespace_ids,
-            class_label_plans_by_id,
-            ClassElkLayoutSettings {
-                namespace_padding,
-                title_margin_top,
-                title_margin_bottom,
-                text_style: &text_style,
-                wrap_mode_label,
-                mermaid_config,
-                math_renderer,
-                operation_seed,
-            },
-            measurer,
-            work_control,
-        )
-        .map(ClassLayoutResult::Layout);
-    }
-
-    let _ = engine;
-    let work_control = work_control.ok_or_else(|| Error::InvalidModel {
-        message: "Class Dagre layout requires an operation work control".to_string(),
-    })?;
+fn layout_class_diagram_dagre(
+    model: &ClassDiagramModel,
+    measured: MeasuredClassDiagram,
+    settings: &ClassLayoutSettings,
+    work_control: &mut OperationLayoutWorkControl,
+) -> Result<ClassDiagramLayout> {
+    let namespace_ids = class_namespace_ids_in_decl_order(model);
+    let namespace_padding = settings.namespace_padding;
+    let title_margin_top = settings.title_margin_top;
+    let title_margin_bottom = settings.title_margin_bottom;
+    let MeasuredClassDiagram {
+        graph,
+        class_label_plans_by_id,
+        node_label_metrics_by_id,
+        namespace_label_metrics_by_id,
+    } = measured;
+    let g = Box::new(graph.to_dagre());
     let mut prepared = prepare_graph(g)?;
     let mut render_roots = Vec::new();
     let (mut fragments, _bounds) = layout_prepared(
@@ -2657,63 +2688,15 @@ fn layout_class_diagram_typed_inner(
         let Some(meta) = terminal_meta.clone() else {
             continue;
         };
-        let (_from_rect, _to_rect, points) = if let (Some(from), Some(to)) = (
+        let points = if let (Some(from), Some(to)) = (
             node_rect_by_id.get(edge.from.as_str()).copied(),
             node_rect_by_id.get(edge.to.as_str()).copied(),
         ) {
-            (
-                Some(from),
-                Some(to),
-                terminal_path_for_edge(&edge.points, from, to),
-            )
+            terminal_path_for_edge(&edge.points, from, to)
         } else {
-            (None, None, edge.points.clone())
+            edge.points.clone()
         };
-
-        if let Some((w, h)) = meta.start_left
-            && let Some((x, y)) =
-                calc_terminal_label_position(meta.start_marker, TerminalPos::StartLeft, &points)
-        {
-            edge.start_label_left = Some(LayoutLabel {
-                x,
-                y,
-                width: w,
-                height: h,
-            });
-        }
-        if let Some((w, h)) = meta.start_right
-            && let Some((x, y)) =
-                calc_terminal_label_position(meta.start_marker, TerminalPos::StartRight, &points)
-        {
-            edge.start_label_right = Some(LayoutLabel {
-                x,
-                y,
-                width: w,
-                height: h,
-            });
-        }
-        if let Some((w, h)) = meta.end_left
-            && let Some((x, y)) =
-                calc_terminal_label_position(meta.end_marker, TerminalPos::EndLeft, &points)
-        {
-            edge.end_label_left = Some(LayoutLabel {
-                x,
-                y,
-                width: w,
-                height: h,
-            });
-        }
-        if let Some((w, h)) = meta.end_right
-            && let Some((x, y)) =
-                calc_terminal_label_position(meta.end_marker, TerminalPos::EndRight, &points)
-        {
-            edge.end_label_right = Some(LayoutLabel {
-                x,
-                y,
-                width: w,
-                height: h,
-            });
-        }
+        apply_class_terminal_labels(edge, &meta, &points)?;
     }
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
@@ -2730,14 +2713,7 @@ fn layout_class_diagram_typed_inner(
         let base_h = ns_node.height.max(1.0);
 
         let title = class_namespace_label(model, id).to_string();
-        let (tw, th) = label_metrics(
-            &title,
-            measurer,
-            &text_style,
-            wrap_mode_label,
-            mermaid_config,
-            math_renderer,
-        );
+        let (tw, th) = namespace_label_metrics_by_id[id];
         let min_title_w = (tw + namespace_padding).max(1.0);
         let width = if base_w <= min_title_w {
             min_title_w
@@ -2804,7 +2780,7 @@ fn layout_class_diagram_typed_inner(
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
 
-    Ok(ClassLayoutResult::Layout(ClassDiagramLayout {
+    Ok(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
@@ -2812,32 +2788,31 @@ fn layout_class_diagram_typed_inner(
         uses_elk_adapter_dom: false,
         class_label_plans_by_id,
         render_tree,
-    }))
+    })
 }
 
 /// Debug-only helper: builds the production Class Dagre graph and returns it before layout runs.
 ///
-/// The capture mode shares the complete production graph-construction path, including measured
-/// node and edge-label dimensions, declaration order, named multiedges, and namespace parents.
+/// Shares measurement and the Dagre projection with production, including source order,
+/// named multiedges, terminal-label metrics, and namespace parents.
 #[doc(hidden)]
 pub fn debug_build_class_diagram_dagre_graph(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
     let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
-    match layout_class_diagram_typed_inner(
+    let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         None,
-        ClassLayoutEngine::CaptureDagreInput,
+        &settings,
+        false,
         &typography_theme,
-        None,
-    )? {
-        ClassLayoutResult::DagreInput(graph) => Ok(*graph),
-        ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
-    }
+    )?;
+    Ok(measured.graph.to_dagre())
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
@@ -2920,143 +2895,196 @@ struct ClassElkLayoutSettings<'a> {
     namespace_padding: f64,
     title_margin_top: f64,
     title_margin_bottom: f64,
-    text_style: &'a TextStyle,
-    wrap_mode_label: WrapMode,
-    mermaid_config: &'a merman_core::MermaidConfig,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    operation_seed: Option<elk::ElkOperationSeed>,
+    effective_config: &'a Value,
 }
 
 #[cfg(feature = "layout-elk")]
-fn layout_class_diagram_elk_from_graph(
+fn layout_class_diagram_elk_from_measured(
     model: &ClassDiagramModel,
-    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    namespace_ids: Vec<&str>,
-    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    measured: MeasuredClassDiagram,
     settings: ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
+    operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    let elk_graph = class_graph_to_elk_graph(model, &graph, &namespace_ids, &settings, measurer);
-    let layout = match settings.operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
-            &elk_graph,
-            operation_seed,
-            work_control,
-        ),
-        None => elk::layout_with_work_control(&elk_graph, work_control),
-    }
+    let mut elk_graph = class_measured_to_elk_graph(&measured, &settings, &mut Some(work_control))?;
+    let orientation = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut elk_graph,
+        settings.effective_config,
+        &mut Some(work_control),
+    )?;
+    let mut layout = elk::layout_with_operation_seed_and_work_control(
+        orientation.graph(),
+        operation_seed,
+        work_control,
+    )
     .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
+    orientation.restore(&mut layout, &mut Some(work_control))?;
     class_layout_from_elk(
         model,
-        &graph,
+        measured,
         &elk_graph,
         layout,
-        namespace_ids,
-        class_label_plans_by_id,
         settings,
-        measurer,
+        &mut Some(work_control),
     )
 }
 
 #[cfg(feature = "layout-elk")]
-fn class_graph_to_elk_graph(
-    model: &ClassDiagramModel,
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    namespace_ids: &[&str],
+fn class_measured_to_elk_graph(
+    measured: &MeasuredClassDiagram,
     settings: &ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
-) -> elk::Graph {
-    let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
-    let direction = rank_dir_to_elk_direction(graph.graph().rankdir);
-    let mut nodes = Vec::with_capacity(graph.node_count());
-
-    for id in graph.node_ids() {
-        let label = graph.node(&id).cloned().unwrap_or_default();
-        let is_group = namespace_set.contains(id.as_str()) || !graph.children(&id).is_empty();
-        let namespace_label = is_group.then(|| {
-            let title = class_namespace_label(model, &id);
-            let (width, height) = label_metrics(
-                title,
-                measurer,
-                settings.text_style,
-                settings.wrap_mode_label,
-                settings.mermaid_config,
-                settings.math_renderer,
-            );
-            elk::Label {
-                width: width.max(1.0),
-                height: height.max(1.0),
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<elk::Graph> {
+    let graph = &measured.graph;
+    let options = class_elk_layout_options(settings.effective_config);
+    let direction = match graph.direction.as_str() {
+        "LR" => elk::Direction::Right,
+        "RL" => elk::Direction::Left,
+        "BT" => elk::Direction::Up,
+        _ => elk::Direction::Down,
+    };
+    let parents = graph
+        .parents
+        .values()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut nodes: Vec<_> = graph
+        .nodes
+        .iter()
+        .map(|(id, node)| {
+            let is_group = node.is_namespace || parents.contains(id.as_str());
+            let namespace_label =
+                measured
+                    .namespace_label_metrics_by_id
+                    .get(id)
+                    .map(|&(width, height)| elk::Label {
+                        width: width.max(1.0),
+                        height: height.max(1.0),
+                    });
+            elk::Node {
+                id: id.clone(),
+                container: elk::ContainerNodeOptions {
+                    padding: if is_group {
+                        settings.namespace_padding
+                    } else {
+                        0.0
+                    },
+                    ..Default::default()
+                },
+                label_text: is_group.then(|| id.clone()),
+                kind: if is_group {
+                    elk::NodeKind::Group
+                } else {
+                    elk::NodeKind::Leaf
+                },
+                width: node.width.max(if is_group { 0.0 } else { 1.0 }),
+                height: node.height.max(if is_group { 0.0 } else { 1.0 }),
+                parent: graph.parents.get(id).cloned(),
+                direction: is_group.then_some(direction),
+                hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
+                layer_constraint: None,
+                port_alignment: None,
+                label: namespace_label,
             }
-        });
-
-        nodes.push(elk::Node {
-            id: id.clone(),
-            kind: if is_group {
-                elk::NodeKind::Group
-            } else {
-                elk::NodeKind::Leaf
-            },
-            width: label.width.max(if is_group { 0.0 } else { 1.0 }),
-            height: label.height.max(if is_group { 0.0 } else { 1.0 }),
-            parent: graph.parent(&id).map(str::to_string),
-            direction: is_group.then_some(direction),
-            hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
-            layer_constraint: None,
-            label: namespace_label,
-        });
-    }
-
-    let edges = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|key| {
-            let label = graph.edge_by_key(&key)?;
-            Some(elk::Edge {
-                id: key
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("{}-{}", key.v, key.w)),
-                source: key.v,
-                target: key.w,
-                label: (label.width > 0.0 && label.height > 0.0).then_some(elk::Label {
-                    width: label.width,
-                    height: label.height,
-                }),
-                minlen: label.minlen.max(1),
-                inside_self_loops_yo: false,
-            })
         })
         .collect();
-
-    elk::Graph {
+    if let Some(work) = work.as_deref_mut() {
+        let terminal_work =
+            work.checked_mul(graph.edges.len(), elk::TerminalLabelKey::ALL.len())?;
+        work.charge_adapter(terminal_work)?;
+    }
+    let edges = graph
+        .edges
+        .iter()
+        .map(|((source, target, id), edge)| elk::Edge {
+            id: id.clone(),
+            source: source.clone(),
+            target: target.clone(),
+            label: (edge.width > 0.0 && edge.height > 0.0).then_some(elk::Label {
+                width: edge.width,
+                height: edge.height,
+            }),
+            terminal_labels: if options.algorithm == elk::Algorithm::Layered {
+                edge.terminals
+                    .as_ref()
+                    .map(|meta| {
+                        elk::TerminalLabelKey::ALL
+                            .into_iter()
+                            .filter_map(|key| {
+                                let (width, height) = class_terminal_metrics(meta, key)?;
+                                // Mermaid's class markers are 12px wide. Padding reserves half that
+                                // width on each side of the measured label beside a real marker.
+                                let marker = if key.at_start() {
+                                    meta.start_arrow_type
+                                } else {
+                                    meta.end_arrow_type
+                                };
+                                let padding = if marker.is_some() { 6.0 } else { 0.0 };
+                                Some(elk::TerminalLabel {
+                                    key,
+                                    label: elk::Label {
+                                        width: width + 2.0 * padding,
+                                        height: height + 2.0 * padding,
+                                    },
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+            minlen: 1,
+            inside_self_loops_yo: false,
+        })
+        .collect();
+    if settings
+        .effective_config
+        .pointer("/elk/keepEntryNodeOnTop")
+        .and_then(Value::as_bool)
+        != Some(false)
+    {
+        crate::elk_adapter::apply_cyclic_entry_constraints(
+            &mut nodes,
+            graph
+                .edges
+                .keys()
+                .map(|(source, target, _)| (source.as_str(), target.as_str())),
+            work,
+        )?;
+    }
+    Ok(elk::Graph {
         id: "classDiagram".to_string(),
         direction,
         nodes,
         edges,
         spacing: elk::Spacing {
-            node_node: graph.graph().nodesep,
-            layer_layer: graph.graph().ranksep,
+            node_node: graph.nodesep,
+            layer_layer: graph.ranksep,
             group_padding_x: settings.namespace_padding,
             group_padding_y: settings.namespace_padding,
             ..Default::default()
         },
-        options: class_elk_layout_options(settings.mermaid_config.as_value()),
-    }
+        options,
+    })
 }
 
 #[cfg(feature = "layout-elk")]
-#[allow(clippy::too_many_arguments)]
 fn class_layout_from_elk(
     model: &ClassDiagramModel,
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    measured: MeasuredClassDiagram,
     elk_graph: &elk::Graph,
     layout: elk::LayoutResult,
-    namespace_ids: Vec<&str>,
-    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
     settings: ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
+    work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<ClassDiagramLayout> {
+    let frames = crate::elk_adapter::drawing_group_frames(
+        elk_graph,
+        &layout,
+        |node| node.label.map_or(0.0, |label| label.width) + node.container.padding,
+        work,
+    )?;
+    let namespace_ids = class_namespace_ids_in_decl_order(model);
     let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
     let source_node_by_id: HashMap<&str, &elk::Node> = elk_graph
         .nodes
@@ -3086,15 +3114,21 @@ fn class_layout_from_elk(
                 message: format!("ELK layout returned unknown class node {}", node.id),
             });
         };
+        let frame = frames.get(node.id.as_str());
+        let label_metrics = measured
+            .node_label_metrics_by_id
+            .get(&node.id)
+            .copied()
+            .or_else(|| source.label.map(|label| (label.width, label.height)));
         nodes.push(LayoutNode {
             id: node.id,
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
+            x: frame.map_or(node.x, |frame| frame.x),
+            y: frame.map_or(node.y, |frame| frame.y),
+            width: frame.map_or(node.width, |frame| frame.width),
+            height: frame.map_or(node.height, |frame| frame.height),
             is_cluster: source.kind == elk::NodeKind::Group,
-            label_width: source.label.map(|label| label.width),
-            label_height: source.label.map(|label| label.height),
+            label_width: label_metrics.map(|(width, _)| width),
+            label_height: label_metrics.map(|(_, height)| height),
         });
     }
 
@@ -3108,26 +3142,30 @@ fn class_layout_from_elk(
         );
     }
 
-    let edge_label_by_id: HashMap<String, EdgeLabel> = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|key| {
-            let id = key
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("{}-{}", key.v, key.w));
-            graph.edge_by_key(&key).cloned().map(|edge| (id, edge))
-        })
-        .collect();
+    let edge_terminals_by_id = measured
+        .graph
+        .edges
+        .iter()
+        .filter_map(|((_, _, id), edge)| edge.terminals.as_ref().map(|meta| (id.as_str(), meta)))
+        .collect::<HashMap<_, _>>();
 
     let mut edges = Vec::with_capacity(layout.edges.len());
+    let mut placed_terminals = Vec::with_capacity(layout.edges.len());
     for edge in layout.edges {
         let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("ELK layout returned unknown class edge {}", edge.id),
             });
         };
-        let label_meta = edge_label_by_id.get(edge.id.as_str());
+        let terminal_meta = edge_terminals_by_id.get(edge.id.as_str());
+        if let Some(work) = work.as_deref_mut() {
+            work.charge_adapter(
+                edge.points
+                    .len()
+                    .saturating_add(edge.labels.len())
+                    .saturating_add(2),
+            )?;
+        }
         let points = edge
             .points
             .into_iter()
@@ -3138,7 +3176,8 @@ fn class_layout_from_elk(
             .collect::<Vec<_>>();
         let label = source.label.and_then(|source_label| {
             edge.labels
-                .first()
+                .iter()
+                .find(|label| label.terminal.is_none())
                 .map(|label| LayoutLabel {
                     x: label.x + label.width / 2.0,
                     y: label.y + label.height / 2.0,
@@ -3147,8 +3186,13 @@ fn class_layout_from_elk(
                 })
                 .or_else(|| class_elk_edge_label_position(&points, source_label))
         });
-        let terminal_meta = label_meta.map(edge_terminal_metrics_from_extras);
-        let terminal_points = if let (Some(from), Some(to)) = (
+        let terminal_points = if points.is_empty()
+            && let (Some(from), Some(to)) = (
+                node_by_id.get(source.source.as_str()),
+                node_by_id.get(source.target.as_str()),
+            ) {
+            crate::elk_geometry::missing_rect_section_points(from, to)
+        } else if let (Some(from), Some(to)) = (
             node_rect_by_id.get(source.source.as_str()).copied(),
             node_rect_by_id.get(source.target.as_str()).copied(),
         ) {
@@ -3157,6 +3201,45 @@ fn class_layout_from_elk(
             points.clone()
         };
 
+        let mut placed = elk_terminals::PlacedTerminals {
+            ports: points
+                .first()
+                .zip(points.last())
+                .map(|(start, end)| (start.clone(), end.clone())),
+            ..Default::default()
+        };
+        let routed_points = if !points.is_empty()
+            && let (Some(start), Some(end)) = (
+                node_by_id.get(source.source.as_str()),
+                node_by_id.get(source.target.as_str()),
+            ) {
+            use crate::elk_edge_geometry::{self as geometry, Outline, Shape};
+            let start_shape = Shape {
+                node: start,
+                outline: Outline::Rect,
+                intersection: None,
+            };
+            let end_shape = Shape {
+                node: end,
+                outline: Outline::Rect,
+                intersection: None,
+            };
+            let mut input = Vec::with_capacity(points.len() + 2);
+            input.push(LayoutPoint {
+                x: start.x,
+                y: start.y,
+            });
+            input.extend_from_slice(&points);
+            input.push(LayoutPoint { x: end.x, y: end.y });
+            let mut clipped = geometry::sanitize(&input, start_shape, end_shape);
+            if let Some(meta) = terminal_meta {
+                geometry::marker_segment(&mut clipped, end_shape, meta.end_arrow_type, false);
+                geometry::marker_segment(&mut clipped, start_shape, meta.start_arrow_type, true);
+            }
+            clipped
+        } else {
+            points
+        };
         let mut out_edge = LayoutEdge {
             id: edge.id,
             from: source.source.clone(),
@@ -3169,7 +3252,7 @@ fn class_layout_from_elk(
                 .get(source.target.as_str())
                 .filter(|node| node.is_cluster)
                 .map(|node| node.id.clone()),
-            points,
+            points: routed_points,
             label,
             start_label_left: None,
             start_label_right: None,
@@ -3180,10 +3263,72 @@ fn class_layout_from_elk(
             stroke_dasharray: None,
         };
         if let Some(meta) = terminal_meta {
-            apply_class_terminal_labels(&mut out_edge, &meta, &terminal_points);
+            for terminal in &edge.labels {
+                let Some(key) = terminal.terminal else {
+                    continue;
+                };
+                if terminal.x == 0.0 && terminal.y == 0.0 {
+                    continue;
+                }
+                let Some((width, height)) = class_terminal_metrics(meta, key) else {
+                    continue;
+                };
+                *elk_terminals::label_slot(&mut out_edge, key) = Some(LayoutLabel {
+                    x: terminal.x + terminal.width / 2.0,
+                    y: terminal.y + terminal.height / 2.0,
+                    width,
+                    height,
+                });
+                placed.keys.push(key);
+            }
+            apply_class_terminal_labels(&mut out_edge, meta, &terminal_points)?;
         }
         edges.push(out_edge);
+        placed_terminals.push(placed);
     }
+
+    let mut charge = |units| match work.as_deref_mut() {
+        Some(work) => work.charge_adapter(units),
+        None => Ok(()),
+    };
+    if settings
+        .effective_config
+        .pointer("/elk/straightenEdges")
+        .and_then(Value::as_bool)
+        != Some(false)
+    {
+        crate::elk_terminal_jogs::straighten_edge_terminals(&mut edges, &mut charge)?;
+    }
+    for (edge, placed) in edges.iter_mut().zip(&placed_terminals) {
+        charge(1)?;
+        elk_terminals::follow_moved_endpoints(edge, placed);
+        // Only unplaced/non-layered labels retain Mermaid's legacy path fallback.
+        if !edge.points.is_empty() {
+            for (key, position) in [
+                (elk::TerminalLabelKey::StartLeft, TerminalPos::StartLeft),
+                (elk::TerminalLabelKey::StartRight, TerminalPos::StartRight),
+                (elk::TerminalLabelKey::EndLeft, TerminalPos::EndLeft),
+                (elk::TerminalLabelKey::EndRight, TerminalPos::EndRight),
+            ] {
+                if !placed.keys.contains(&key) && elk_terminals::label(edge, key).is_some() {
+                    let (x, y) =
+                        required_terminal_label_position(&edge.id, 10.0, position, &edge.points)?;
+                    if let Some(label) = elk_terminals::label_slot(edge, key) {
+                        label.x = x;
+                        label.y = y;
+                    }
+                }
+            }
+        }
+    }
+    elk_terminals::slide_off_frames(&mut edges, &placed_terminals, &nodes, &mut charge)?;
+    elk_terminals::put_on_own_side(&mut edges, &placed_terminals, &nodes, &mut charge)?;
+    crate::elk_terminal_jogs::separate_opposite_edge_labels(
+        edges
+            .iter_mut()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str(), edge.label.as_mut())),
+        &mut charge,
+    )?;
 
     let mut clusters = Vec::new();
     for &id in &namespace_ids {
@@ -3194,31 +3339,17 @@ fn class_layout_from_elk(
             continue;
         };
         let title = class_namespace_label(model, id).to_string();
-        let (title_width, title_height) = label_metrics(
-            &title,
-            measurer,
-            settings.text_style,
-            settings.wrap_mode_label,
-            settings.mermaid_config,
-            settings.math_renderer,
-        );
+        let (title_width, title_height) = measured.namespace_label_metrics_by_id[id];
         let title_label = LayoutLabel {
             x: node.x,
             y: node.y - node.height / 2.0 + settings.title_margin_top + title_height / 2.0,
             width: title_width,
             height: title_height,
         };
-        let min_title_w = (title_width + settings.namespace_padding).max(1.0);
-        let width = if node.width <= min_title_w {
-            min_title_w
-        } else {
-            node.width
-        };
-        let diff = if node.width <= min_title_w {
-            (width - node.width) / 2.0 - settings.namespace_padding
-        } else {
-            -settings.namespace_padding
-        };
+        // The title minimum is reserved before layout and bounded by the provider frame.
+        // Reapplying it here would grow a contracted cluster without updating its node bounds.
+        let width = node.width;
+        let diff = -settings.namespace_padding;
         clusters.push(LayoutCluster {
             id: id.to_string(),
             x: node.x,
@@ -3277,7 +3408,7 @@ fn class_layout_from_elk(
         clusters,
         bounds,
         uses_elk_adapter_dom: true,
-        class_label_plans_by_id,
+        class_label_plans_by_id: measured.class_label_plans_by_id,
         render_tree,
     })
 }
@@ -3314,55 +3445,76 @@ fn validate_class_elk_output_ids<'a>(
 }
 
 #[cfg(feature = "layout-elk")]
+fn class_terminal_metrics(
+    meta: &EdgeTerminalMetrics,
+    key: elk::TerminalLabelKey,
+) -> Option<(f64, f64)> {
+    match key {
+        elk::TerminalLabelKey::StartLeft => meta.start_left,
+        elk::TerminalLabelKey::StartRight => meta.start_right,
+        elk::TerminalLabelKey::EndLeft => meta.end_left,
+        elk::TerminalLabelKey::EndRight => meta.end_right,
+    }
+}
+
+fn required_terminal_label_position(
+    edge_id: &str,
+    marker: f64,
+    position: TerminalPos,
+    points: &[LayoutPoint],
+) -> Result<(f64, f64)> {
+    // Mermaid's calculatePoint throws when the route cannot supply the sample distance.
+    calc_terminal_label_position(marker, position, points).ok_or_else(|| Error::InvalidModel {
+        message: format!(
+            "Class edge {edge_id}: Could not find a suitable point for the given distance"
+        ),
+    })
+}
+
 fn apply_class_terminal_labels(
     edge: &mut LayoutEdge,
     meta: &EdgeTerminalMetrics,
     points: &[LayoutPoint],
-) {
-    if let Some((w, h)) = meta.start_left
-        && let Some((x, y)) =
-            calc_terminal_label_position(meta.start_marker, TerminalPos::StartLeft, points)
-    {
-        edge.start_label_left = Some(LayoutLabel {
-            x,
-            y,
-            width: w,
-            height: h,
-        });
+) -> Result<()> {
+    for (slot, metrics, marker, position) in [
+        (
+            &mut edge.start_label_left,
+            meta.start_left,
+            meta.start_marker,
+            TerminalPos::StartLeft,
+        ),
+        (
+            &mut edge.start_label_right,
+            meta.start_right,
+            meta.start_marker,
+            TerminalPos::StartRight,
+        ),
+        (
+            &mut edge.end_label_left,
+            meta.end_left,
+            meta.end_marker,
+            TerminalPos::EndLeft,
+        ),
+        (
+            &mut edge.end_label_right,
+            meta.end_right,
+            meta.end_marker,
+            TerminalPos::EndRight,
+        ),
+    ] {
+        if slot.is_none()
+            && let Some((width, height)) = metrics
+        {
+            let (x, y) = required_terminal_label_position(&edge.id, marker, position, points)?;
+            *slot = Some(LayoutLabel {
+                x,
+                y,
+                width,
+                height,
+            });
+        }
     }
-    if let Some((w, h)) = meta.start_right
-        && let Some((x, y)) =
-            calc_terminal_label_position(meta.start_marker, TerminalPos::StartRight, points)
-    {
-        edge.start_label_right = Some(LayoutLabel {
-            x,
-            y,
-            width: w,
-            height: h,
-        });
-    }
-    if let Some((w, h)) = meta.end_left
-        && let Some((x, y)) =
-            calc_terminal_label_position(meta.end_marker, TerminalPos::EndLeft, points)
-    {
-        edge.end_label_left = Some(LayoutLabel {
-            x,
-            y,
-            width: w,
-            height: h,
-        });
-    }
-    if let Some((w, h)) = meta.end_right
-        && let Some((x, y)) =
-            calc_terminal_label_position(meta.end_marker, TerminalPos::EndRight, points)
-    {
-        edge.end_label_right = Some(LayoutLabel {
-            x,
-            y,
-            width: w,
-            height: h,
-        });
-    }
+    Ok(())
 }
 
 #[cfg(feature = "layout-elk")]
@@ -3381,85 +3533,6 @@ fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
         .windows(2)
         .map(|pair| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y))
         .sum::<f64>()
-}
-
-#[cfg(feature = "layout-elk")]
-fn rank_dir_to_elk_direction(rank_dir: RankDir) -> elk::Direction {
-    match rank_dir {
-        RankDir::LR => elk::Direction::Right,
-        RankDir::RL => elk::Direction::Left,
-        RankDir::BT => elk::Direction::Up,
-        RankDir::TB => elk::Direction::Down,
-    }
-}
-
-#[cfg(feature = "layout-elk")]
-fn class_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
-    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "NONE" => elk::ModelOrderStrategy::None,
-                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
-                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
-                _ => elk::ModelOrderStrategy::NodesAndEdges,
-            },
-        )
-        .unwrap_or_default();
-    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
-                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
-                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
-                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
-                _ => elk::CycleBreakingStrategy::Greedy,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "SIMPLE" => elk::NodePlacementStrategy::Simple,
-                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
-                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
-                _ => elk::NodePlacementStrategy::BrandesKoepf,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement_alignment =
-        config_string(effective_config, &["elk", "nodePlacementAlignment"])
-            .map(
-                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
-                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
-                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
-                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
-                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
-                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
-                    _ => elk::NodePlacementAlignment::None,
-                },
-            )
-            .unwrap_or_default();
-
-    elk::LayoutOptions {
-        layered: elk::LayeredOptions {
-            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
-            merge_hierarchy_edges: true,
-            unnecessary_bendpoints: true,
-            inside_self_loops_activate: config_bool(
-                effective_config,
-                &["elk", "insideSelfLoops", "activate"],
-            )
-            .unwrap_or(false),
-            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
-                .unwrap_or(false),
-            consider_model_order: model_order != elk::ModelOrderStrategy::None,
-            model_order,
-            cycle_breaking,
-            node_placement,
-            node_placement_alignment,
-            ..Default::default()
-        },
-    }
 }
 
 fn compute_bounds(
@@ -3549,6 +3622,45 @@ mod tests {
     }
 
     #[test]
+    fn class_member_display_preserves_authored_colon_spaces_and_classifiers() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Box {\n+left :String\n+right: String\n+both : String$\n+tight:String\n+convert(value: String) Result\n}",
+                ParseOptions::default(),
+            )
+            .expect("parse Class member whitespace")
+            .expect("detect Class diagram");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let class = &model.classes["Box"];
+        let members = class
+            .members
+            .iter()
+            .map(super::class_member_display_text)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            members,
+            [
+                "+left :String",
+                "+right: String",
+                "+both : String",
+                "+tight:String"
+            ]
+        );
+        assert_eq!(class.members[2].classifier, "$");
+        assert_eq!(class.members[2].css_style, "text-decoration:underline;");
+        assert_eq!(
+            super::class_member_display_text(&class.methods[0]),
+            "+convert(value: String) : Result"
+        );
+        assert_eq!(
+            super::class_member_create_text_input(&class.members[1]),
+            "+right: String"
+        );
+    }
+
+    #[test]
     fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
         let source =
             include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
@@ -3583,6 +3695,303 @@ mod tests {
     }
 
     #[cfg(feature = "layout-elk")]
+    fn class_elk_graph_for_test(source: &str) -> super::elk::Graph {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse Class source")
+            .expect("detect Class source");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let config = &parsed.metadata().effective_config;
+        let settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+        let measured = super::measure_class_diagram(
+            model,
+            config,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &settings,
+            true,
+            &super::ClassTextThemePlan::resolve(None, config),
+        )
+        .expect("measure Class diagram");
+        super::class_measured_to_elk_graph(
+            &measured,
+            &super::ClassElkLayoutSettings {
+                namespace_padding: settings.class_padding,
+                title_margin_top: settings.title_margin_top,
+                title_margin_bottom: settings.title_margin_bottom,
+                effective_config: config.as_value(),
+            },
+            &mut None,
+        )
+        .expect("Class ELK graph")
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_interfaces_remain_root_nodes_outside_nested_namespaces() {
+        for relation in ["A --() ProvidedInterface", "ProvidedInterface ()-- A"] {
+            let graph = class_elk_graph_for_test(&format!(
+                "classDiagram\nnamespace Outer {{\nnamespace Inner {{\nclass A\n}}\n}}\n{relation}\n"
+            ));
+            let node = |id: &str| graph.nodes.iter().find(|node| node.id == id).expect("node");
+            assert_eq!(node("A").parent.as_deref(), Some("Outer.Inner"));
+            assert_eq!(node("Outer.Inner").parent.as_deref(), Some("Outer"));
+            assert_eq!(node("interface0").parent, None);
+            assert!(graph.edges.iter().any(|edge| {
+                (edge.source == "A" && edge.target == "interface0")
+                    || (edge.source == "interface0" && edge.target == "A")
+            }));
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_cycle_entry_follows_relations_independently_of_node_declarations() {
+        for declarations in ["class B\nclass A\nclass C", "class C\nclass B\nclass A"] {
+            for enabled in [false, true] {
+                let graph = class_elk_graph_for_test(&format!(
+                    "---\nconfig:\n  elk:\n    keepEntryNodeOnTop: {enabled}\n    cycleBreakingStrategy: GREEDY_MODEL_ORDER\n---\nclassDiagram\n{declarations}\nA --> B\nB --> C\nC --> A\n"
+                ));
+                let constrained = graph
+                    .nodes
+                    .iter()
+                    .filter(|node| {
+                        node.layer_constraint == Some(super::elk::LayerConstraint::First)
+                    })
+                    .map(|node| node.id.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(constrained, if enabled { vec!["A"] } else { vec![] });
+            }
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_interface_padding_preserves_measured_label_bounds_in_both_modes() {
+        for look in ["classic", "neo"] {
+            for html in [false, true] {
+                for font_size in [14, 23] {
+                    let source = format!(
+                        "---\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  themeVariables:\n    fontSize: {font_size}px\n---\nclassDiagram\nA --() CompleteInterface\n"
+                    );
+                    let parsed = Engine::new()
+                        .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                        .unwrap()
+                        .unwrap();
+                    let RenderSemanticModel::Class(model) = parsed.model() else {
+                        panic!("Class model")
+                    };
+                    let config = &parsed.metadata().effective_config;
+                    let layout_settings =
+                        super::ClassConfigView::new(config.as_value()).layout_settings();
+                    let measured = super::measure_class_diagram(
+                        model,
+                        config,
+                        &DeterministicTextMeasurer::default(),
+                        None,
+                        &layout_settings,
+                        true,
+                        &super::ClassTextThemePlan::resolve(None, config),
+                    )
+                    .unwrap();
+                    let (label_width, label_height) =
+                        measured.node_label_metrics_by_id["interface0"];
+                    let (padding_x, padding_y) = if look == "neo" {
+                        (32.0, 24.0)
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    let settings = super::ClassElkLayoutSettings {
+                        namespace_padding: layout_settings.class_padding,
+                        title_margin_top: layout_settings.title_margin_top,
+                        title_margin_bottom: layout_settings.title_margin_bottom,
+                        effective_config: config.as_value(),
+                    };
+                    let graph = super::class_measured_to_elk_graph(&measured, &settings, &mut None)
+                        .unwrap();
+                    let interface = graph
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "interface0")
+                        .unwrap();
+                    assert!((interface.width - label_width - padding_x).abs() < 1e-6);
+                    assert!((interface.height - label_height - padding_y).abs() < 1e-6);
+                    let provider = super::elk::LayoutResult {
+                        nodes: graph
+                            .nodes
+                            .iter()
+                            .map(|node| super::elk::NodeLayout {
+                                id: node.id.clone(),
+                                x: 0.0,
+                                y: 0.0,
+                                width: node.width,
+                                height: node.height,
+                            })
+                            .collect(),
+                        edges: graph
+                            .edges
+                            .iter()
+                            .map(|edge| super::elk::EdgeLayout {
+                                id: edge.id.clone(),
+                                points: vec![
+                                    super::elk::Point { x: 0.0, y: 0.0 },
+                                    super::elk::Point { x: 40.0, y: 40.0 },
+                                ],
+                                labels: Vec::new(),
+                            })
+                            .collect(),
+                    };
+                    let layout = super::class_layout_from_elk(
+                        model, measured, &graph, provider, settings, &mut None,
+                    )
+                    .unwrap();
+                    let painted = layout
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "interface0")
+                        .unwrap();
+                    assert_eq!(painted.label_width, Some(label_width));
+                    assert_eq!(painted.label_height, Some(label_height));
+                    assert_eq!(
+                        (painted.width, painted.height),
+                        (interface.width, interface.height)
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_contracts_namespace_frame_without_rebasing_provider_routes() {
+        for title_width in [32.0, 300.0] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    "classDiagram\nnamespace Frame {\nclass A\n}\nA --> A : loop\n",
+                    ParseOptions::default(),
+                )
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Class(model) = parsed.model() else {
+                panic!("Class model")
+            };
+            let config = &parsed.metadata().effective_config;
+            let layout_settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+            let mut measured = super::measure_class_diagram(
+                model,
+                config,
+                &DeterministicTextMeasurer::default(),
+                None,
+                &layout_settings,
+                true,
+                &super::ClassTextThemePlan::resolve(None, config),
+            )
+            .unwrap();
+            measured
+                .namespace_label_metrics_by_id
+                .get_mut("Frame")
+                .unwrap()
+                .0 = title_width;
+            let settings = super::ClassElkLayoutSettings {
+                namespace_padding: layout_settings.class_padding,
+                title_margin_top: layout_settings.title_margin_top,
+                title_margin_bottom: layout_settings.title_margin_bottom,
+                effective_config: config.as_value(),
+            };
+            let graph =
+                super::class_measured_to_elk_graph(&measured, &settings, &mut None).unwrap();
+            let provider = super::elk::LayoutResult {
+                nodes: vec![
+                    super::elk::NodeLayout {
+                        id: "Frame".to_string(),
+                        x: 100.0,
+                        y: 74.0,
+                        width: 200.0,
+                        height: 148.0,
+                    },
+                    super::elk::NodeLayout {
+                        id: "A".to_string(),
+                        x: 90.0,
+                        y: 86.0,
+                        width: 100.0,
+                        height: 76.0,
+                    },
+                ],
+                edges: vec![super::elk::EdgeLayout {
+                    id: graph.edges[0].id.clone(),
+                    points: vec![
+                        super::elk::Point { x: 40.0, y: 60.0 },
+                        super::elk::Point { x: 140.0, y: 70.0 },
+                    ],
+                    labels: vec![super::elk::EdgeLabelLayout {
+                        terminal: None,
+                        x: 100.0,
+                        y: 20.0,
+                        width: 30.0,
+                        height: 20.0,
+                    }],
+                }],
+            };
+            let layout = super::class_layout_from_elk(
+                model, measured, &graph, provider, settings, &mut None,
+            )
+            .unwrap();
+            let frame = &layout.clusters[0];
+            let expected = if title_width < 200.0 {
+                (90.0, 74.0, 148.0, 148.0)
+            } else {
+                (100.0, 74.0, 200.0, 148.0)
+            };
+            assert_eq!((frame.x, frame.y, frame.width, frame.height), expected);
+            let node = layout.nodes.iter().find(|node| node.id == "Frame").unwrap();
+            assert_eq!((node.x, node.y, node.width, node.height), expected);
+            assert_eq!(
+                layout.edges[0]
+                    .points
+                    .iter()
+                    .map(|p| (p.x, p.y))
+                    .collect::<Vec<_>>(),
+                [(40.0, 60.0), (140.0, 70.0)]
+            );
+            let label = layout.edges[0].label.as_ref().unwrap();
+            assert_eq!((label.x, label.y), (115.0, 30.0));
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_terminal_provider_padding_only_reserves_real_markers() {
+        use super::elk::TerminalLabelKey;
+        let plain = class_elk_graph_for_test("classDiagram\nA \"many\" -- \"many\" B\n");
+        let marked = class_elk_graph_for_test("classDiagram\nA \"many\" <|-- \"many\" B\n");
+        assert_eq!(plain.edges[0].terminal_labels.len(), 2);
+        for key in [TerminalLabelKey::StartRight, TerminalLabelKey::EndLeft] {
+            let before = plain.edges[0]
+                .terminal_labels
+                .iter()
+                .find(|label| label.key == key)
+                .unwrap()
+                .label;
+            let after = marked.edges[0]
+                .terminal_labels
+                .iter()
+                .find(|label| label.key == key)
+                .unwrap()
+                .label;
+            let padding = if key.at_start() { 12.0 } else { 0.0 };
+            assert!((after.width - before.width - padding).abs() < 1e-9);
+            assert!((after.height - before.height - padding).abs() < 1e-9);
+            assert_eq!(before.height, 16.5, "measured terminal CSS font is 11px");
+        }
+        let non_layered = class_elk_graph_for_test(
+            "---\nconfig:\n  layout: elk.mrtree\n---\nclassDiagram\nA \"many\" --> \"one\" B\n",
+        );
+        assert!(non_layered.edges[0].terminal_labels.is_empty());
+    }
+
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn class_elk_keeps_the_source_default_nonzero_seed() {
         assert_eq!(
@@ -3598,57 +4007,33 @@ mod tests {
     fn class_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
         use std::num::NonZeroU64;
 
-        let model: super::ClassDiagramModel = serde_json::from_value(serde_json::json!({
-            "type": "classDiagram",
-            "direction": "TB",
-            "classes": {},
-            "constants": {
-                "lineType": { "line": 0, "dottedLine": 1 },
-                "relationType": {
-                    "none": 0,
-                    "aggregation": 1,
-                    "extension": 2,
-                    "composition": 3,
-                    "dependency": 4,
-                    "lollipop": 5
-                }
-            }
-        }))
-        .expect("minimal Class diagram model");
-        let mut class_graph = Graph::new(GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        });
-        class_graph.set_graph(GraphLabel::default());
-        class_graph.set_node("A", NodeLabel::default());
-        class_graph.set_node("B", NodeLabel::default());
-        class_graph.set_edge_named(
-            "A",
-            "B",
-            Some("A-B".to_string()),
-            Some(EdgeLabel::default()),
-        );
-
-        let text_style = default_style();
-        let mermaid_config = merman_core::MermaidConfig::from_value(serde_json::Value::Null);
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("classDiagram\nA --> B", ParseOptions::default())
+            .expect("parse Class source")
+            .expect("detect Class source");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let config = &parsed.metadata().effective_config;
+        let layout_settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+        let measured = super::measure_class_diagram(
+            model,
+            config,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &layout_settings,
+            true,
+            &super::ClassTextThemePlan::resolve(None, config),
+        )
+        .expect("measure Class diagram");
         let settings = super::ClassElkLayoutSettings {
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,
-            text_style: &text_style,
-            wrap_mode_label: WrapMode::default(),
-            mermaid_config: &mermaid_config,
-            math_renderer: None,
-            operation_seed: None,
+            effective_config: &serde_json::Value::Null,
         };
-        let mut graph = super::class_graph_to_elk_graph(
-            &model,
-            &class_graph,
-            &[],
-            &settings,
-            &DeterministicTextMeasurer::default(),
-        );
+        let mut graph = super::class_measured_to_elk_graph(&measured, &settings, &mut None)
+            .expect("Class ELK graph");
         graph.options.layered.random_seed = 0;
 
         assert!(super::elk::layout(&graph).is_err());

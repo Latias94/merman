@@ -77,13 +77,10 @@ impl<'a> ClassConfigView<'a> {
         let ranksep = self.layout_spacing("rankSpacing");
 
         let node_html_labels = self.root_bool("htmlLabels").unwrap_or(true);
-        let edge_html_labels = self
-            .root_bool("htmlLabels")
-            .or_else(|| self.flowchart_bool("htmlLabels"))
-            .unwrap_or(true);
+        let edge_html_labels = self.render_edge_html_labels();
         let wrap_mode_node = class_wrap_mode(node_html_labels);
         let wrap_mode_label = class_wrap_mode(edge_html_labels);
-        let text_style = self.text_style_for_wrap_mode(wrap_mode_node);
+        let text_style = self.render_text_style(self.render_font_size());
         let html_calc_text_style = self.html_calculate_text_style();
 
         ClassLayoutSettings {
@@ -127,15 +124,6 @@ impl<'a> ClassConfigView<'a> {
         .unwrap_or(50.0)
     }
 
-    fn text_style_for_wrap_mode(&self, wrap_mode: WrapMode) -> TextStyle {
-        TextStyle {
-            font_family: self.text_font_family(),
-            font_size: self.font_size_for_wrap_mode(wrap_mode),
-            font_weight: None,
-            font_style: None,
-        }
-    }
-
     pub(crate) fn html_calculate_text_style(&self) -> TextStyle {
         TextStyle {
             font_family: config_string(self.effective_config, &["fontFamily"])
@@ -148,6 +136,12 @@ impl<'a> ClassConfigView<'a> {
         }
     }
 
+    pub(crate) fn interface_wrapping_width(&self) -> f64 {
+        self.flowchart_compat_f64("wrappingWidth")
+            .filter(|width| width.is_finite() && *width > 0.0)
+            .unwrap_or(crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX)
+    }
+
     pub(crate) fn render_diagram_html_labels(&self) -> bool {
         self.root_bool("htmlLabels").unwrap_or(true)
     }
@@ -158,11 +152,8 @@ impl<'a> ClassConfigView<'a> {
             .unwrap_or(true)
     }
 
-    pub(crate) fn render_font_size(&self, diagram_use_html_labels: bool) -> f64 {
-        if diagram_use_html_labels {
-            return 16.0;
-        }
-
+    pub(crate) fn render_font_size(&self) -> f64 {
+        // HTML labels inherit the same root SVG theme font size as SVG labels.
         config_f64_explicit_css_px(self.effective_config, &["themeVariables", "fontSize"])
             .unwrap_or(16.0)
             .max(1.0)
@@ -233,16 +224,6 @@ impl<'a> ClassConfigView<'a> {
             DEFAULT_CLASS_FONT_FAMILY.to_string()
         } else {
             font_family
-        }
-    }
-
-    fn font_size_for_wrap_mode(&self, wrap_mode: WrapMode) -> f64 {
-        match wrap_mode {
-            WrapMode::HtmlLike => 16.0,
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-                config_f64_explicit_css_px(self.effective_config, &["themeVariables", "fontSize"])
-                    .unwrap_or(16.0)
-            }
         }
     }
 }
@@ -413,7 +394,12 @@ mod tests {
 
         assert!(!config.render_diagram_html_labels());
         assert!(!config.render_edge_html_labels());
-        assert_eq!(config.render_font_size(false), 24.0);
+        assert_eq!(config.render_font_size(), 24.0);
+        let typography = crate::class::theme::ClassTextThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::from_value(cfg.clone()),
+        );
+        assert_eq!(typography.font_size_css(), "24px");
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.render_class_padding(), 12.0);
         assert_eq!(config.render_viewport_padding(), 20.0);

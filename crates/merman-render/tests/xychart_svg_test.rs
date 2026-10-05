@@ -3502,3 +3502,88 @@ fn xychart_axis_label_glow_keeps_source_style_and_clear_semantics() {
         }
     }
 }
+
+#[test]
+fn xychart_svg_title_uses_plot_center_after_axis_and_legend_space() {
+    use kurbo::Shape;
+    for orientation in ["vertical", "horizontal"] {
+        for legend in [false, true] {
+            let source = include_str!("../../../fixtures/xychart/title_partial_theme.mmd")
+                .replace("xychart vertical", &format!("xychart {orientation}"))
+                .replace("showLegend: true", &format!("showLegend: {legend}"));
+            let svg = render_xychart_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let axis_name = if orientation == "horizontal" {
+                "top-axis"
+            } else {
+                "bottom-axis"
+            };
+            let axis = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(axis_name))
+                .unwrap();
+            let axis_line = axis
+                .descendants()
+                .find(|node| node.attribute("class") == Some("axis-line"))
+                .unwrap();
+            let path = axis_line
+                .descendants()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            let bounds = kurbo::BezPath::from_svg(path.attribute("d").unwrap())
+                .unwrap()
+                .bounding_box();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Plot title"))
+                .unwrap();
+            let title_x: f64 = title
+                .attribute("transform")
+                .unwrap()
+                .strip_prefix("translate(")
+                .unwrap()
+                .split_once(',')
+                .unwrap()
+                .0
+                .parse()
+                .unwrap();
+            assert!((title_x - (bounds.x0 + bounds.x1) / 2.0).abs() < 0.001);
+        }
+    }
+}
+
+#[test]
+fn xychart_svg_omits_title_when_plot_reservation_leaves_too_little_height() {
+    for (height, visible) in [(60, false), (100, true)] {
+        let source = format!(
+            r#"---
+config:
+  xyChart:
+    height: {height}
+---
+xychart
+  title "Fits when tall"
+  x-axis [a, b, c]
+  y-axis 0 --> 100
+  bar [10, 20, 30]
+"#
+        );
+        let svg = render_xychart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some("chart-title")),
+            visible
+        );
+        let bars = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("bar-plot-0"))
+            .unwrap();
+        for bar in bars.children().filter(|node| node.has_tag_name("rect")) {
+            let y: f64 = bar.attribute("y").unwrap().parse().unwrap();
+            let bar_height: f64 = bar.attribute("height").unwrap().parse().unwrap();
+            assert!(y + bar_height <= height as f64 + 0.001);
+        }
+    }
+}

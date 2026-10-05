@@ -1,13 +1,12 @@
 use super::*;
-use crate::model::{
-    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
-};
+use crate::model::SwimlaneLayout;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 
 mod cluster;
-pub(super) mod line_hops;
 
 pub(super) use cluster::render_swimlane_cluster;
 
@@ -69,6 +68,7 @@ pub(super) fn swimlane_terminal_geometry(
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
@@ -97,6 +97,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     )
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn adapt_swimlane_layout(
     model: &crate::flowchart::FlowchartModel,
     layout: &SwimlaneLayout,
@@ -228,12 +229,17 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     render_edges: &[super::render_input::FlowchartRenderEdge<'_>],
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
+    uses_elk_adapter_dom: bool,
 ) -> Result<()> {
-    use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+    use crate::svg::parity::line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
     let line_hops_value = effective_config
         .as_value()
-        .get("swimlane")
+        .get(if uses_elk_adapter_dom {
+            "elk"
+        } else {
+            "swimlane"
+        })
         .and_then(|value| value.get("lineHops"));
     if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
         return Ok(());
@@ -295,13 +301,17 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .map(|edge| LineHopEdge {
             id: edge.adapter_id.as_str(),
             points: &edge.points,
-            curve: edge.semantic.interpolate.as_deref(),
+            curve: if uses_elk_adapter_dom {
+                Some("rounded")
+            } else {
+                edge.semantic.interpolate.as_deref()
+            },
             arrow_type_start: edge.arrow_type_start,
             arrow_type_end: edge.arrow_type_end,
         })
         .collect();
 
-    let paths = line_hops::process_edges_with_line_hops(
+    let paths = crate::svg::parity::line_hops::process_edges_with_line_hops(
         &edges,
         LineHopConfig {
             enabled: true,
@@ -312,11 +322,13 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     )?;
 
     for path in paths {
-        if !path.has_hops
+        if !path.was_rewritten
             || !edges
                 .iter()
                 .find(|edge| edge.id == path.edge_id)
-                .is_some_and(|edge| line_hops::curve_supports_line_hops(edge.curve))
+                .is_some_and(|edge| {
+                    crate::svg::parity::line_hops::curve_supports_line_hops(edge.curve)
+                })
         {
             continue;
         }
@@ -350,6 +362,7 @@ pub(super) fn write_swimlane_css<DiagramId>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
@@ -418,7 +431,9 @@ mod tests {
                 original_path_length: path_length,
                 path_length,
                 line_hop_applied: false,
+                original_label_path_points: label_path_points.clone(),
                 label_path_points,
+                label_anchor: None,
                 label_path_was_explicitly_updated: false,
                 emitted_d_for_label: None,
                 bounds_skipped_for_viewbox: false,
@@ -468,6 +483,7 @@ mod tests {
             &render_edges,
             &merman_core::MermaidConfig::default(),
             &work_meter,
+            false,
         )
         .expect("apply line hops");
         assert_eq!(work_meter.used(), 17);
@@ -494,6 +510,79 @@ mod tests {
         );
         let bounds = horizontal.pb.expect("post-processed path bounds");
         assert!((bounds.min_y + 6.0).abs() < 1.0e-6, "{bounds:?}");
+    }
+
+    #[test]
+    fn clamped_crossing_still_rewrites_cached_paths_and_styles() {
+        for uses_elk_adapter_dom in [false, true] {
+            for mode in [serde_json::json!(true), serde_json::json!("gap")] {
+                let render_edges = ["vertical", "horizontal"]
+                    .into_iter()
+                    .enumerate()
+                    .map(
+                        |(index, id)| super::super::render_input::FlowchartRenderEdge {
+                            key: crate::flowchart::FlowchartEdgeKey::new(index),
+                            edge: Cow::Owned(semantic_edge(id)),
+                        },
+                    )
+                    .collect::<Vec<_>>();
+                let vertical_points = vec![point(0.0005, -1.0), point(0.0005, 1.0)];
+                let horizontal_points = vec![point(0.0, 0.0), point(10.0, 0.0)];
+                let mut cache = FxHashMap::default();
+                cache.insert(
+                    render_edges[0].key,
+                    cache_entry(
+                        "M0.0005,-1L0.0005,1",
+                        "vertical-points",
+                        vertical_points.clone(),
+                    ),
+                );
+                cache.insert(
+                    render_edges[1].key,
+                    cache_entry("M0,0L10,0", "horizontal-points", horizontal_points.clone()),
+                );
+                let work_meter = crate::resources::OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                );
+                let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                    "elk": { "lineHops": mode }, "swimlane": { "lineHops": mode }
+                }));
+                apply_line_hops_to_edge_geometries(
+                    &mut cache,
+                    &render_edges,
+                    &config,
+                    &work_meter,
+                    uses_elk_adapter_dom,
+                )
+                .unwrap();
+                let vertical = &cache[&render_edges[0].key].geom;
+                let horizontal = &cache[&render_edges[1].key].geom;
+                assert!(!vertical.line_hop_applied);
+                assert!(
+                    horizontal.line_hop_applied,
+                    "the crossing triggers after-paint processing even when the hop cannot fit"
+                );
+                assert_eq!(horizontal.d, "M0,0 L10,0");
+                assert!(!horizontal.d.contains('A'));
+                assert_eq!(horizontal.path_length, horizontal.original_path_length);
+                assert_points_eq(&horizontal.data_points, &horizontal_points);
+                assert_points_eq(&horizontal.label_path_points, &horizontal_points);
+                assert_eq!(horizontal.data_points_b64, "horizontal-points");
+                // This original dotted Neo mask has a 4px marker clearance, but the
+                // upstream rewrite takes its fourth number (2), even without a visible hop.
+                let original_style = "stroke-dasharray: 0 0 2 2 4; stroke-dashoffset: 0;";
+                let rewritten = crate::svg::parity::line_hops::rewrite_style_after_line_hop(
+                    original_style,
+                    &horizontal.d,
+                    &work_meter,
+                )
+                .unwrap();
+                assert_eq!(
+                    rewritten,
+                    "stroke-dasharray: 0 0 8 2; stroke-dashoffset: 0;"
+                );
+            }
+        }
     }
 
     #[test]
@@ -532,7 +621,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
 
-        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter)
+        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter, false)
             .expect("disabled line hops");
 
         assert_eq!(cache[&render_edges[1].key].geom.d, "M-10,0L10,0");

@@ -46,10 +46,22 @@ fn approx_eq(a: f64, b: f64) -> bool {
 }
 
 fn layout_flowchart(text: &str) -> FlowchartLayout {
+    layout_flowchart_with_engine(text, Engine::new())
+}
+
+fn layout_dagre_flowchart(text: &str) -> FlowchartLayout {
+    layout_flowchart_with_engine(
+        text,
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+            serde_json::json!({"layout": "dagre"}),
+        )),
+    )
+}
+
+fn layout_flowchart_with_engine(text: &str, engine: Engine) -> FlowchartLayout {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let engine = Engine::new();
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -130,20 +142,20 @@ fn rects_overlap(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), eps: f64) -> 
 
 #[test]
 fn flowchart_node_spacing_zero_falls_back_to_mermaid_default() {
-    let default = layout_flowchart(
+    let default = layout_dagre_flowchart(
         r#"flowchart TB
 A --> B
 A --> C
 "#,
     );
-    let zero = layout_flowchart(
+    let zero = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"nodeSpacing": 0}}}%%
 flowchart TB
 A --> B
 A --> C
 "#,
     );
-    let roomy = layout_flowchart(
+    let roomy = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"nodeSpacing": 100}}}%%
 flowchart TB
 A --> B
@@ -220,18 +232,18 @@ one@{ view: collapsed }
 
 #[test]
 fn flowchart_rank_spacing_zero_falls_back_to_mermaid_default() {
-    let default = layout_flowchart(
+    let default = layout_dagre_flowchart(
         r#"flowchart TB
 A --> B
 "#,
     );
-    let zero = layout_flowchart(
+    let zero = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"rankSpacing": 0}}}%%
 flowchart TB
 A --> B
 "#,
     );
-    let roomy = layout_flowchart(
+    let roomy = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"rankSpacing": 100}}}%%
 flowchart TB
 A --> B
@@ -371,7 +383,9 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         .join("upstream_subgraphs.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -655,7 +669,9 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
     )
     .expect("read fixture");
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -704,7 +720,9 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
     let text_no_margin = "flowchart TD\nsubgraph A\na-->b\nend\n";
     let text_with_margin = "%%{init: {\"flowchart\": {\"subGraphTitleMargin\": {\"top\": 10, \"bottom\": 5}}}}%%\nflowchart TD\nsubgraph A\na-->b\nend\n";
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
 
     let parsed_no_margin = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text_no_margin, ParseOptions::default()),
@@ -837,7 +855,7 @@ fn flowchart_subgraph_dir_does_not_override_parent_layout_for_external_cluster()
 
 #[test]
 fn flowchart_layout_merges_self_loop_segments_into_one_logical_edge() {
-    let layout = layout_flowchart("flowchart TB\nA -->|again| A\n");
+    let layout = layout_dagre_flowchart("flowchart TB\nA -->|again| A\n");
 
     assert_eq!(layout.edges.len(), 1);
     let edge = &layout.edges[0];
@@ -854,7 +872,7 @@ fn flowchart_layout_merges_self_loop_segments_into_one_logical_edge() {
 
 #[test]
 fn flowchart_safe_anchor_avoids_leaf_inside_extractable_sibling_cluster() {
-    let layout = layout_flowchart(
+    let layout = layout_dagre_flowchart(
         "flowchart TD\nsubgraph P\n  subgraph I\n    a\n  end\n  b\nend\nb --> x\nP --> y\n",
     );
 
@@ -896,8 +914,9 @@ fn flowchart_regular_edge_id_containing_cyclic_special_is_not_a_helper() {
 
 #[test]
 fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
-    let layout =
-        layout_flowchart("flowchart TD\nA first-loop@-->|first| A\nA second-loop@-->|second| A\n");
+    let layout = layout_dagre_flowchart(
+        "flowchart TD\nA first-loop@-->|first| A\nA second-loop@-->|second| A\n",
+    );
 
     assert_eq!(layout.edges.len(), 1);
     assert_eq!(layout.edges[0].id, "second-loop");
@@ -992,11 +1011,14 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    // The edge spans two different subgraphs; the label node should be assigned to the lowest
-    // common compound parent (the outer subgraph), so only the outer cluster must include it.
+    // Dagre assigns its edge-label node to the lowest common compound parent. ELK's
+    // evenGroupFrames instead retains route points, but does not include edge-label boxes.
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Left\n    a\n  end\n  subgraph Right\n    b\n  end\n  a -->|this is a very very very long cross-subgraph label| b\nend\n";
 
-    let engine = Engine::new();
+    // Keep the minimum node width from hiding the measured-label relationship.
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre", "flowchart": {"minNodeWidth": 0}}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1128,8 +1150,17 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
             ),
     )
     .expect("read signed upstream fixture");
+    // Keep the label identity regression independent of the release's default alignment.
+    let text = text.replace(
+        "securityLevel: loose",
+        "securityLevel: loose\n  elk:\n    nodePlacementAlignment: NONE",
+    );
 
-    let engine = Engine::new();
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default", "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -1161,8 +1192,11 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
 
     let lower_label = lower.label.as_ref().expect("l1 layout label");
     let upper_label = upper.label.as_ref().expect("l2 layout label");
-    assert!(approx_eq(lower_label.y, 108.5), "lower={lower:?}");
-    assert!(approx_eq(upper_label.y, 68.5), "upper={upper:?}");
+    // elkjs 0.9.3 with Mermaid 12 container options, explicit NONE alignment,
+    // 75.84 x 54 nodes and 13.44 x 24 labels: global label top-left y=117.1/72.1.
+    // Merman stores label centers, so add half the measured label height.
+    assert!(approx_eq(lower_label.y, 129.1), "lower={lower:?}");
+    assert!(approx_eq(upper_label.y, 84.1), "upper={upper:?}");
     assert!(
         lower_label.y > upper_label.y,
         "l1 must remain on the lower route and l2 on the upper route"
@@ -1300,7 +1334,13 @@ Y@{ shape: curved-trapezoid, label: "Label" }
 Z@{ shape: folder, label: "Label" }
 "#;
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1474,12 +1514,15 @@ Z@{ shape: folder, label: "Label" }
     // circle / doublecircle
     {
         let n = nodes_by_id["C"];
-        assert_close(n.width, tw + p, "circle width");
-        assert_close(n.height, tw + p, "circle height");
+        assert_close(n.width, tw.hypot(th) + p, "circle width");
+        assert_close(n.height, tw.hypot(th) + p, "circle height");
 
         let n = nodes_by_id["D"];
-        assert_close(n.width, tw + 2.0 * p, "doublecircle width");
-        assert_close(n.height, tw + 2.0 * p, "doublecircle height");
+        // Mermaid's doublecircle uses the label diagonal for the inner radius and a
+        // 5px classic ring gap around it.
+        let doublecircle_diameter = tw.hypot(th) + 2.0 * p + 10.0;
+        assert_close(n.width, doublecircle_diameter, "doublecircle width");
+        assert_close(n.height, doublecircle_diameter, "doublecircle height");
     }
 
     // diamond/question
@@ -1513,35 +1556,9 @@ Z@{ shape: folder, label: "Label" }
         let n = nodes_by_id["H"];
         let h = th + p;
         let w = tw + h / 4.0 + p;
-
-        // Flowchart-v2 stadium nodes are rendered via a roughjs path built from sampled arc points.
-        // Mermaid runs `updateNodeBounds(getBBox)` on that path and feeds the resulting bbox width
-        // into Dagre layout. Because the arc sampling (50 points over 180deg) does not include the
-        // exact extrema, the bbox is slightly narrower than `w`.
-        let radius = h / 2.0;
-        let mut min_x = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut include_x = |x: f64| {
-            min_x = min_x.min(x);
-            max_x = max_x.max(x);
-        };
-        include_x(-w / 2.0 + radius);
-        include_x(w / 2.0 - radius);
-        // `generateCirclePoints(...)` returns negated coordinates.
-        let step = std::f64::consts::PI / (50_f64 - 1.0); // 180deg / (n-1)
-        for i in 0..50 {
-            let angle = (std::f64::consts::FRAC_PI_2) + (i as f64) * step; // 90deg..270deg
-            let x = (-w / 2.0 + radius) + radius * angle.cos();
-            include_x(-x);
-        }
-        for i in 0..50 {
-            let angle = (std::f64::consts::FRAC_PI_2 * 3.0) + (i as f64) * step; // 270deg..450deg
-            let x = (w / 2.0 - radius) + radius * angle.cos();
-            include_x(-x);
-        }
-        let expected_w = (max_x - min_x).max(0.0);
-
-        assert_close(n.width, expected_w, "stadium width");
+        // The pinned stadium helper keeps the theoretical source dimensions; its
+        // sampled arc points are used for the outline and intersection geometry.
+        assert_close(n.width, w, "stadium width");
         assert_close(n.height, h, "stadium height");
     }
 
@@ -1678,20 +1695,19 @@ Z@{ shape: folder, label: "Label" }
     // delay / half-rounded rectangle
     {
         let n = nodes_by_id["V"];
-        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
-        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let label_w = merman_render::text::round_to_1_64_px(tw);
+        let label_h = merman_render::text::round_to_1_64_px(th);
+        let min_width = 15.0;
+        let min_height = 10.0;
+        let h = label_h.max(min_height) + 2.0 * p;
         let radius = h / 2.0;
-        let mut min_x = -w / 2.0;
-        let mut max_x = w / 2.0 - radius;
-        let step = std::f64::consts::PI / (50_f64 - 1.0);
-        for i in 0..50 {
-            let angle = std::f64::consts::FRAC_PI_2 + (i as f64) * step;
-            let x = (-w / 2.0 + radius) + radius * angle.cos();
-            min_x = min_x.min(-x);
-            max_x = max_x.max(-x);
-        }
-        assert_close(n.width, (max_x - min_x) as f32 as f64, "delay width");
-        assert_close(n.height, h as f32 as f64, "delay height");
+        let cap = radius
+            - (radius * radius - (label_h.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let w = (label_w.max(min_width) + 2.0 * cap) + 2.0 * p;
+        assert_close(n.width, w, "delay width");
+        assert_close(n.height, h, "delay height");
     }
 
     // lined document
@@ -1769,35 +1785,22 @@ Z@{ shape: folder, label: "Label" }
     // curved trapezoid / display
     {
         let n = nodes_by_id["Y"];
+        let label_w = merman_render::text::round_to_1_64_px(tw);
+        let label_h = merman_render::text::round_to_1_64_px(th);
         let min_width = 20.0;
         let min_height = 5.0;
-        let w = ((merman_render::text::round_to_1_64_px(tw) + 2.0 * p) * 1.25).max(min_width);
-        let h = (merman_render::text::round_to_1_64_px(th) + 2.0 * p).max(min_height);
+        let h = (label_h + 2.0 * p).max(min_height);
         let radius = h / 2.0;
-        let rw = w - radius;
-        let trapezoid_tw = h / 4.0;
-        let mut points = vec![
-            (rw, 0.0),
-            (trapezoid_tw, 0.0),
-            (0.0, h / 2.0),
-            (trapezoid_tw, h),
-            (rw, h),
-        ];
-        let step = -std::f64::consts::PI / (50_f64 - 1.0);
-        for i in 0..50 {
-            let angle = std::f64::consts::PI * 1.5 + (i as f64) * step;
-            let x = -rw + radius * angle.cos();
-            let y = -h / 2.0 + radius * angle.sin();
-            points.push((-x, -y));
-        }
-
-        let (expected_w, expected_h) = bbox_size(&points);
-        assert_close(n.width, expected_w as f32 as f64, "curved trapezoid width");
-        assert_close(
-            n.height,
-            expected_h as f32 as f64,
-            "curved trapezoid height",
-        );
+        let cap = radius
+            - (radius * radius - (label_h.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let side = (h / 4.0).max(cap);
+        let w = (label_w + 2.0 * p + 2.0 * side)
+            .max((label_w + 2.0 * p) * 1.25)
+            .max(min_width);
+        assert_close(n.width, w, "curved trapezoid width");
+        assert_close(n.height, h, "curved trapezoid height");
     }
 
     // subroutine
@@ -1891,7 +1894,15 @@ fn flowchart_fixed_radius_circles_use_source_defined_nominal_diameters() {
 #[test]
 fn flowchart_public_shape_aliases_use_their_source_geometry() {
     let layout = layout_flowchart(
-        r#"flowchart TB
+        r#"---
+config:
+  theme: default
+  look: classic
+  flowchart:
+    minNodeWidth: 0
+    padding: 15
+---
+flowchart TB
 R0@{ shape: rect, label: "same" }
 R1@{ shape: proc, label: "same" }
 R2@{ shape: process, label: "same" }
@@ -1945,7 +1956,13 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1981,7 +1998,7 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 }
 
 #[test]
-fn flowchart_empty_subgraph_node_uses_configured_svg_wrapping_width() {
+fn dagre_flowchart_empty_subgraph_node_uses_configured_svg_wrapping_width() {
     fn layout_for(wrapping_width: usize) -> FlowchartLayout {
         let text = format!(
             r#"%%{{init: {{"htmlLabels": false, "flowchart": {{"htmlLabels": false, "wrappingWidth": {wrapping_width}}}}}}}%%
@@ -1990,7 +2007,7 @@ subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
 end
 "#
         );
-        layout_flowchart(&text)
+        layout_dagre_flowchart(&text)
     }
 
     let narrow = layout_for(60);
@@ -2019,49 +2036,64 @@ end
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn flowchart_elk_subgraph_title_uses_configured_wrapping_width_for_layout() {
-    fn cluster_for(wrapping_width: usize) -> merman_render::model::LayoutCluster {
+fn flowchart_elk_group_titles_unwrap_plain_text_and_preserve_markdown_wrapping() {
+    fn layout_for(wrapping_width: usize, html_labels: bool, markdown: bool) -> FlowchartLayout {
+        let title = "alpha beta gamma delta epsilon zeta eta theta";
+        let title = if markdown {
+            format!("`{title}`")
+        } else {
+            title.to_owned()
+        };
         let text = format!(
             r#"---
 config:
   layout: elk
-  htmlLabels: false
+  htmlLabels: {html_labels}
   flowchart:
-    htmlLabels: false
+    htmlLabels: {html_labels}
     wrappingWidth: {wrapping_width}
 ---
 flowchart TB
-subgraph Group["alpha beta gamma delta epsilon zeta eta theta"]
+subgraph Group["{title}"]
   A[child]
 end
+Group --> Outside[out]
 "#
         );
-        let engine = Engine::new();
-        let parsed = futures::executor::block_on(
-            engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
-        )
-        .expect("parse ok")
-        .expect("diagram detected");
-        layout_flowchart_render_model(
-            &parsed,
-            &LayoutOptions::default(),
-            &RenderEnvironment::deterministic()
-                .begin_session()
-                .expect("render session"),
-        )
-        .expect("ELK layout")
-        .clusters
-        .into_iter()
-        .find(|cluster| cluster.id == "Group")
-        .expect("Group cluster")
+        layout_flowchart(&text)
     }
 
-    let narrow = cluster_for(60);
-    let wide = cluster_for(240);
-    assert!(
-        narrow.title_label.height > wide.title_label.height + 1e-6,
-        "ELK temporary subgraph labels must use configured wrapping width: narrow={narrow:?}, wide={wide:?}"
-    );
+    for html_labels in [false, true] {
+        for markdown in [false, true] {
+            let narrow = layout_for(60, html_labels, markdown);
+            let wide = layout_for(240, html_labels, markdown);
+            let context = format!("htmlLabels={html_labels}, markdown={markdown}");
+            if markdown {
+                let narrow_title = &narrow
+                    .clusters
+                    .iter()
+                    .find(|c| c.id == "Group")
+                    .unwrap()
+                    .title_label;
+                let wide_title = &wide
+                    .clusters
+                    .iter()
+                    .find(|c| c.id == "Group")
+                    .unwrap()
+                    .title_label;
+                assert!(
+                    narrow_title.height > wide_title.height + 1e-6,
+                    "{context}: Markdown must retain configured wrapping: narrow={narrow_title:?}, wide={wide_title:?}"
+                );
+            } else {
+                assert_eq!(
+                    serde_json::to_value(&narrow).unwrap(),
+                    serde_json::to_value(&wide).unwrap(),
+                    "{context}: ordinary title width must not change group geometry or routing"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -2073,7 +2105,13 @@ fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrappin
     // display-table min-content width may exceed `max-width`, while height remains single-line.
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": true}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2124,7 +2162,13 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
     // satisfy the width constraint, increasing height.
     let text = "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": false}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2232,7 +2276,14 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
     // with the default width=200).
     let text = format!("flowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n");
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -2281,7 +2332,14 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n"
     );
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -2326,7 +2384,10 @@ B[Same label]
 classDef small font-size:50%;
 "#;
 
-    let engine = Engine::new();
+    // Keep the minimum node width from hiding the measured-label relationship.
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"flowchart": {"minNodeWidth": 0}}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2363,7 +2424,15 @@ classDef small font-size:50%;
 #[test]
 fn flowchart_html_class_box_styles_follow_span_block_layout() {
     let layout = layout_flowchart(
-        r#"flowchart LR
+        r#"---
+config:
+  theme: default
+  look: classic
+  flowchart:
+    minNodeWidth: 0
+    padding: 15
+---
+flowchart LR
 Plain[same]
 Background[same]:::background
 Border[same]:::border
@@ -2487,11 +2556,6 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
         .unwrap();
     let cases = [
         (
-            "self-contained",
-            "flowchart TD\n  subgraph A\n    A\n  end",
-            "Setting A as parent of A would create a cycle",
-        ),
-        (
             "two-node cycle",
             "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    A\n  end",
             "Setting B as parent of A would create a cycle",
@@ -2547,6 +2611,32 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
 }
 
 #[test]
+fn repeated_subgraph_self_membership_flattens_and_lays_out() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram_for_render_model(
+        "flowchart TD\nsubgraph A[Outer]\n  A\n  B\nend\nsubgraph A[Later]\n  C\nend\nA --> B\nB --> C\n",
+        ParseOptions::default(),
+    ))
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("self membership is flattened by Mermaid 12.1");
+    assert_eq!(
+        layout
+            .clusters
+            .iter()
+            .filter(|cluster| cluster.id == "A")
+            .count(),
+        1
+    );
+    assert!(layout.nodes.iter().any(|node| node.id == "B"));
+    assert!(layout.nodes.iter().any(|node| node.id == "C"));
+}
+
+#[test]
 fn non_cyclic_subgraph_membership_chain_still_lays_out() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -2572,12 +2662,14 @@ fn non_cyclic_subgraph_membership_chain_still_lays_out() {
 }
 
 #[test]
-fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
+fn dagre_duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2641,4 +2733,49 @@ fn duplicate_subgraph_id_uses_first_definition_for_layout_presentation() {
             );
         }
     }
+}
+
+#[test]
+fn dagre_duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
+    let layout = layout_dagre_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn dagre_duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
+    let layout = layout_dagre_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn dagre_duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty() {
+    let layout = layout_dagre_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
 }

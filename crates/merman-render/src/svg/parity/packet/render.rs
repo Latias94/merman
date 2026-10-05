@@ -104,6 +104,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     } else {
         0
     };
+    let bit_order = crate::packet::PacketConfigView::new(effective_config).bit_order();
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -206,6 +207,10 @@ pub(crate) fn render_packet_diagram_svg_model(
                 );
                 continue;
             }
+            let (leading_bit, trailing_bit) = match bit_order {
+                crate::packet::PacketBitOrder::Ascending => (b.start, b.end),
+                crate::packet::PacketBitOrder::Descending => (b.end, b.start),
+            };
             let is_single_block = b.start == b.end;
             let bit_number_y = b.y - 2.0;
             let start_x = if is_single_block {
@@ -221,7 +226,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                 y = fmt(bit_number_y),
                 class = byte_start_role.class_attribute(),
                 anchor = start_anchor,
-                text = b.start
+                text = leading_bit
             );
             if !is_single_block {
                 let _ = write!(
@@ -230,7 +235,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                     x = fmt(b.x + b.width),
                     y = fmt(bit_number_y),
                     class = byte_end_role.class_attribute(),
-                    text = b.end
+                    text = trailing_bit
                 );
             }
             out.checkpoint()?;

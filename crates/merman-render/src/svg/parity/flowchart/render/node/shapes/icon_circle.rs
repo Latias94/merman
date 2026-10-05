@@ -4,7 +4,7 @@ use crate::svg::parity::flowchart::{escape_attr, flowchart_label_plain_text};
 use crate::svg::parity::{fmt, fmt_display};
 
 const FRAME_PADDING: f64 = 20.0;
-const HAND_DRAWN_FILL_WEIGHT: f64 = 4.0;
+const HAND_DRAWN_FILL_WEIGHT: f64 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -16,12 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     // Port of Mermaid `iconCircle.ts` (`icon-shape default`). A populated nested icon SVG has an
     // explicit square viewport, while an empty icon group has a zero-sized browser `getBBox()`.
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
-    let label_text_plain =
-        flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-    let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    );
+    let has_label = !label.text.is_empty();
     let label_padding = if has_label { 8.0 } else { 0.0 };
     let top_label = common.node_pos == Some("t");
 
@@ -39,6 +34,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
 
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
     let icon_bbox_size = if icon_name.is_some() { icon_size } else { 0.0 };
     let diameter = icon_bbox_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0;
     let outer_w = diameter.max(label_bbox_w);
@@ -53,8 +49,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
         match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_circle(
                 diameter,
-                common.fill_color,
-                common.fill_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.look_is_hand_drawn(),

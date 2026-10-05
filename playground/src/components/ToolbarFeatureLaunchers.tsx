@@ -86,6 +86,7 @@ function BenchLauncher() {
 
 function ExamplesLauncher() {
   const { t } = useTranslation();
+  const [activated, setActivated] = useState(false);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useCallback(() => triggerRef.current?.focus(), []);
@@ -98,7 +99,10 @@ function ExamplesLauncher() {
             ref={triggerRef}
             variant={open ? "secondary" : "ghost"}
             size="sm"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              setActivated(true);
+              setOpen(true);
+            }}
             aria-label={t("toolbar.examples")}
             className="size-10 px-0 sm:h-8 sm:w-auto sm:px-2.5"
           >
@@ -109,7 +113,7 @@ function ExamplesLauncher() {
         <TooltipContent>{t("toolbar.examples")}</TooltipContent>
       </Tooltip>
 
-      {open && (
+      {activated && (
         <LazyFeatureBoundary
           feature={t("toolbar.examples")}
           presentation={{

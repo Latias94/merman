@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -56,8 +62,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -75,8 +84,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -91,8 +103,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "right of"
+        "look": "neo",
+        "position": "right of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -103,12 +118,15 @@
         "cssCompiledStyles": [],
         "id": "A----note-3",
         "domId": "state-A----note-3",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "right of",
-        "parentId": "A----parent"
+        "parentId": "A----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -122,8 +140,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "left of"
+        "look": "neo",
+        "position": "left of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -134,12 +155,15 @@
         "cssCompiledStyles": [],
         "id": "B----note-4",
         "domId": "state-B----note-4",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "left of",
-        "parentId": "B----parent"
+        "parentId": "B----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -148,48 +172,48 @@
         "start": "root_start",
         "end": "A",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "A",
         "end": "B",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "go",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "B",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "A-A----note-3",
@@ -204,7 +228,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "B----note-4-B",
@@ -219,7 +243,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -239,19 +263,16 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "root_end": {
+        "id": "root_end",
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": {
-          "position": "right of",
-          "text": "Multi-line note<br/>\nwith an HTML break."
-        },
+        "note": null,
         "classes": [],
         "styles": [],
         "textStyles": [],
-        "start": null
+        "start": false
       },
       "B": {
         "id": "B",
@@ -267,16 +288,19 @@
         "textStyles": [],
         "start": null
       },
-      "root_end": {
-        "id": "root_end",
+      "A": {
+        "id": "A",
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": null,
+        "note": {
+          "position": "right of",
+          "text": "Multi-line note<br/>\nwith an HTML break."
+        },
         "classes": [],
         "styles": [],
         "textStyles": [],
-        "start": false
+        "start": null
       }
     },
     "relations": [

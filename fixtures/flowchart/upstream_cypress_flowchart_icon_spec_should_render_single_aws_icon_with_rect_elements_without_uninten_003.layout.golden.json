@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "Cloudwatch",
-          "x": 32.0,
-          "y": 32.0,
+          "x": 36.0,
+          "y": 36.0,
           "width": 48.0,
           "height": 48.0,
           "is_cluster": false
@@ -15,10 +15,10 @@
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 56.0,
-        "max_y": 56.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 60.0,
+        "max_y": 60.0
       }
     }
   }

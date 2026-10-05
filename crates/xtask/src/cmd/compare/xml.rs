@@ -522,23 +522,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            if diagram == "flowchart" {
-                let flowchart_layout_elk = semantic.metadata().diagram_type == "flowchart-elk"
-                    || semantic.metadata().effective_config.get_str("layout") == Some("elk")
-                    || semantic
-                        .metadata()
-                        .effective_config
-                        .get_str("flowchart.defaultRenderer")
-                        == Some("elk");
-                if flowchart_layout_elk
-                    && !crate::cmd::flowchart_elk_svg_parity_admitted(stem)
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    skipped.push((format!("{diagram}/{stem}"), reason));
-                    continue;
-                }
-            }
-
             if matches!(diagram.as_str(), "flowchart" | "sequence")
                 && source_requires_math(
                     &fixture_path,
@@ -992,7 +975,7 @@ mod tests {
     }
 
     #[test]
-    fn svg_xml_compare_skip_reason_defers_flowchart_elk_after_parse() {
+    fn svg_xml_compare_skip_reason_accepts_default_and_explicit_elk_fixtures() {
         assert_eq!(
             svg_xml_compare_skip_reason(
                 "flowchart",
@@ -1008,15 +991,7 @@ mod tests {
             None
         );
         assert_eq!(
-            crate::cmd::flowchart_elk_svg_parity_skip_reason(
-                "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
-            ),
-            None
-        );
-        assert_eq!(
-            crate::cmd::flowchart_elk_svg_parity_skip_reason(
-                "upstream_html_demos_flowchart_elk_flowchart_elk_001",
-            ),
+            svg_xml_compare_skip_reason("flowchart", "explicit_elk_outside_historical_collection"),
             None
         );
         assert_eq!(
@@ -1044,10 +1019,11 @@ mod tests {
     }
 
     #[test]
-    fn svg_xml_compare_skip_reason_covers_class_prototype_key_render_artifact() {
-        let reason = svg_xml_compare_skip_reason("class", "upstream_parser_class_spec")
-            .expect("class prototype-key render artifact should be explicitly skipped");
-        assert!(reason.contains("prototype-key class ids"));
+    fn svg_xml_compare_skip_reason_admits_renderable_class_prototype_ids() {
+        assert_eq!(
+            svg_xml_compare_skip_reason("class", "upstream_parser_class_spec"),
+            None
+        );
         assert_eq!(
             svg_xml_compare_skip_reason("class", "upstream_namespaces_and_generics"),
             None

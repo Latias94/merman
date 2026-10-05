@@ -72,12 +72,7 @@ fn render_icon_rect_frame(
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
     // Mermaid `labelHelper(...)` uses the flowchart `nodePadding` (15px) and returns `halfPadding`.
     let half_padding = (ctx.node_padding / 2.0).max(0.0);
-    let label_text_plain =
-        flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-    let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    );
+    let has_label = !label.text.is_empty();
     let label_padding = if has_label { 8.0 } else { 0.0 };
     let top_label = common.node_pos == Some("t");
 
@@ -100,6 +95,7 @@ fn render_icon_rect_frame(
     // Mermaid's `labelHelper(...)` wraps icon labels in `.labelBkg` (2px padding).
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
 
     let outer_w = width.max(label_bbox_w);
     let outer_h = height + label_bbox_h + label_padding;
@@ -113,13 +109,11 @@ fn render_icon_rect_frame(
     let rounded_rect = rounded_rect_path_d(x, y, width, height, corner_radius);
     let hand_drawn = common.look_is_hand_drawn();
     let frame_paths = if hand_drawn {
-        helpers::hand_drawn_path_pair_with_colors(
+        helpers::hand_drawn_path_pair_with_stroke(
             true,
             common.timing,
             details,
             &rounded_rect,
-            common.fill_color,
-            common.fill_color,
             1.3,
             "0 0",
             common.work_meter,
@@ -129,8 +123,6 @@ fn render_icon_rect_frame(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_svg_path_single_set(
                 &rounded_rect,
-                common.fill_color,
-                common.fill_color,
                 1.3,
                 "0 0",
                 common.hand_drawn_seed,

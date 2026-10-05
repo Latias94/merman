@@ -1,6 +1,6 @@
-//! Mermaid 11.17.2 Base updateColors, executed once with assignment-owned provenance.
+//! Mermaid 12.1.0 Base updateColors, executed once with assignment-owned provenance.
 //!
-//! Source: Mermaid 11.17.2 `theme-base.js`, integrated from main revision 9edd6d86a.
+//! Source: Mermaid 12.1.0 `packages/mermaid/src/themes/theme-base.js`.
 //! Constructor preparation and explicit replay remain owned by the shared staged executor.
 
 use super::*;
@@ -114,6 +114,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     inherit_many(
         stage,
         &[
+            ("flowContainerStroke", "secondaryBorderColor"),
             ("nodeTextColor", "primaryTextColor"),
             ("actorBorder", "primaryBorderColor"),
             ("actorBkg", "mainBkg"),
@@ -591,7 +592,9 @@ mod tests {
         assert_eq!(tv["gitInv0"], "rgb(63.75, 63.75, 63.75)");
         assert_eq!(tv["gradientStart"], "#654321");
         assert_eq!(tv["useGradient"], false);
-        assert_eq!(tv["radar"], json!({ "axisColor": null }));
+        assert_eq!(tv["radar"]["axisColor"], Value::Null);
+        assert_eq!(tv["radar"]["graticuleColor"], "#DEDEDE");
+        assert_eq!(tv["radar"]["axisStrokeWidth"], 2);
     }
 
     #[test]

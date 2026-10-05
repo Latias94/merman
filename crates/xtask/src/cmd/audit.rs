@@ -2,15 +2,14 @@
 
 use crate::XtaskError;
 use crate::cmd::{
-    MmdFixtureScan, collect_mmd_fixtures, ensure_upstream_svg_puppeteer_config,
-    spawn_timeout_managed_child, wait_with_timeout,
+    MmdFixtureScan, collect_mmd_fixtures, spawn_timeout_managed_child, wait_with_timeout,
 };
 use crate::util::*;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Read as _;
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -237,31 +236,18 @@ fn extract_upstream_error_key_from_error_svg(svg_text: &str) -> Option<String> {
     Some("rendered error svg".to_string())
 }
 
-fn upstream_mmdc_command(
-    mmdc: &Path,
+fn upstream_runtime_command(
+    renderer: &Path,
     node_cwd: &Path,
-    mmd_path: &Path,
-    out_path: &Path,
-    pinned_config: &Path,
-    puppeteer_config: &Path,
-    svg_id: &str,
+    browser_executable: &Path,
 ) -> Command {
     let mut command = Command::new("node");
     command
-        .arg(mmdc)
+        .arg(renderer)
         .current_dir(node_cwd)
-        .arg("-i")
-        .arg(mmd_path)
-        .arg("-o")
-        .arg(out_path)
-        .arg("-t")
-        .arg("default")
-        .arg("-c")
-        .arg(pinned_config)
-        .arg("-p")
-        .arg(puppeteer_config)
-        .arg("--svgId")
-        .arg(svg_id);
+        .env("PUPPETEER_EXECUTABLE_PATH", browser_executable)
+        .env("PUPPETEER_BROWSER", "chrome")
+        .stdin(Stdio::piped());
     command
 }
 
@@ -272,6 +258,7 @@ fn check_upstream_renderability_for_parser_only(
     out_root: &Path,
     timeout: Duration,
     toolchain_read_guard: &crate::cmd::UpstreamSvgToolchainReadGuard,
+    render_probe: &super::generate::UpstreamSvgRenderProbe,
 ) -> Result<UpstreamRenderCheck, XtaskError> {
     let fixture_rel = mmd_path
         .strip_prefix(workspace_root)
@@ -280,11 +267,11 @@ fn check_upstream_renderability_for_parser_only(
         .to_string();
 
     let tools_root = toolchain_read_guard.tools_root();
-    let mmdc = crate::cmd::validate_mermaid_cli_install(tools_root)?;
+    crate::cmd::validate_mermaid_cli_install(tools_root)?;
+    let renderer = crate::cmd::ensure_seeded_upstream_svg_renderer_script()?;
 
     let node_cwd = tools_root.to_path_buf();
     let pinned_config = node_cwd.join("mermaid-config.json");
-    let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
 
     let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
         return Ok(UpstreamRenderCheck {
@@ -303,15 +290,16 @@ fn check_upstream_renderability_for_parser_only(
     let out_path = out_dir.join(format!("{stem}.svg"));
     let log_path = out_dir.join(format!("{stem}.stderr.txt"));
 
-    let mut cmd = upstream_mmdc_command(
-        &mmdc,
-        &node_cwd,
+    let input_json = super::generate::upstream_svg_render_input(
+        diagram,
         mmd_path,
         &out_path,
         &pinned_config,
-        &puppeteer_config,
         &svg_id,
-    );
+        render_probe,
+    )
+    .to_string();
+    let mut cmd = upstream_runtime_command(&renderer, &node_cwd, &render_probe.browser_executable);
 
     let log_file = fs::File::create(&log_path).map_err(|source| XtaskError::WriteFile {
         path: log_path.display().to_string(),
@@ -320,8 +308,12 @@ fn check_upstream_renderability_for_parser_only(
 
     cmd.stdout(Stdio::null()).stderr(Stdio::from(log_file));
 
-    let mut child = spawn_timeout_managed_child(&mut cmd)
-        .map_err(|err| XtaskError::UpstreamSvgFailed(format!("failed to spawn mmdc: {err}")))?;
+    let mut child = spawn_timeout_managed_child(&mut cmd).map_err(|err| {
+        XtaskError::UpstreamSvgFailed(format!("failed to spawn upstream SVG renderer: {err}"))
+    })?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input_json.as_bytes());
+    }
     let status = match wait_with_timeout(&mut child, timeout) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
@@ -333,7 +325,7 @@ fn check_upstream_renderability_for_parser_only(
         }
         Err(e) => {
             return Err(XtaskError::UpstreamSvgFailed(format!(
-                "mmdc execution failed: {e}"
+                "upstream SVG renderer execution failed: {e}"
             )));
         }
     };
@@ -593,6 +585,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         let tools_root = crate::cmd::mermaid_cli_root();
         let toolchain_read_guard =
             crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+        let render_probe = super::generate::probe_upstream_svg_render_environment(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -601,7 +594,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
         let _ = writeln!(
             &mut report,
-            "## Upstream renderability (parser-only)\n\n- Tool: Mermaid CLI (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
+            "## Upstream renderability (parser-only)\n\n- Tool: pinned Mermaid standard runtime (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
             upstream_timeout_secs,
             out_root_rel.display()
         );
@@ -618,6 +611,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     &out_root,
                     timeout,
                     &toolchain_read_guard,
+                    &render_probe,
                 )?;
                 results_by_diagram
                     .entry(diagram.clone())
@@ -636,6 +630,8 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
         }
+
+        render_probe.verified_render_environment()?;
 
         let mut actionable: Vec<(String, String)> = Vec::new();
         for (diagram, results) in &results_by_diagram {
@@ -899,6 +895,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         let tools_root = crate::cmd::mermaid_cli_root();
         let toolchain_read_guard =
             crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+        let render_probe = super::generate::probe_upstream_svg_render_environment(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -907,7 +904,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
         let _ = writeln!(
             &mut report,
-            "### Upstream renderability (deferred parse OK)\n\n- Tool: Mermaid CLI (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
+            "### Upstream renderability (deferred parse OK)\n\n- Tool: pinned Mermaid standard runtime (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
             upstream_timeout_secs,
             out_root_rel.display()
         );
@@ -924,6 +921,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 &out_root,
                 timeout,
                 &toolchain_read_guard,
+                &render_probe,
             )?;
             results_by_group
                 .entry(ok.expected_group.clone())
@@ -946,6 +944,8 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     .or_default() += 1;
             }
         }
+
+        render_probe.verified_render_environment()?;
 
         promotable.sort();
 
@@ -1028,35 +1028,25 @@ mod tests {
     }
 
     #[test]
-    fn upstream_audit_mmdc_command_passes_the_managed_puppeteer_config() {
-        let mmdc = Path::new("tools/mermaid-cli/mmdc.js");
+    fn upstream_audit_uses_the_standard_runtime_and_verified_browser() {
+        let renderer = Path::new("target/xtask-js/seeded-upstream-svg-render.js");
         let node_cwd = Path::new("tools/mermaid-cli");
-        let input = Path::new("fixtures/flowchart/basic.mmd");
-        let output = Path::new("target/audit/basic.svg");
-        let mermaid_config = Path::new("tools/mermaid-cli/mermaid-config.json");
-        let puppeteer_config = Path::new("target/xtask-js/puppeteer.json");
-        let command = upstream_mmdc_command(
-            mmdc,
-            node_cwd,
-            input,
-            output,
-            mermaid_config,
-            puppeteer_config,
-            "basic",
-        );
+        let browser = Path::new("managed-browser/chrome");
+        let command = upstream_runtime_command(renderer, node_cwd, browser);
         let args: Vec<_> = command.get_args().collect();
-        let puppeteer_arg = args
-            .iter()
-            .position(|arg| *arg == std::ffi::OsStr::new("-p"))
-            .expect("mmdc command must pass a Puppeteer config");
+        let env: BTreeMap<_, _> = command.get_envs().collect();
 
         assert_eq!(command.get_program(), std::ffi::OsStr::new("node"));
-        assert_eq!(args.first(), Some(&mmdc.as_os_str()));
-        assert_eq!(
-            args.get(puppeteer_arg + 1),
-            Some(&puppeteer_config.as_os_str())
-        );
+        assert_eq!(args, [renderer.as_os_str()]);
         assert_eq!(command.get_current_dir(), Some(node_cwd));
+        assert_eq!(
+            env.get(std::ffi::OsStr::new("PUPPETEER_EXECUTABLE_PATH")),
+            Some(&Some(browser.as_os_str()))
+        );
+        assert_eq!(
+            env.get(std::ffi::OsStr::new("PUPPETEER_BROWSER")),
+            Some(&Some(std::ffi::OsStr::new("chrome")))
+        );
     }
 
     #[test]

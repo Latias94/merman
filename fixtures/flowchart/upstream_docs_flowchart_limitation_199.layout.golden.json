@@ -4,139 +4,85 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "top1",
-          "x": 252.2,
-          "y": 72.5,
-          "width": 80.64,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "subgraph2",
+          "x": 402.0,
+          "y": 296.5,
+          "width": 376.0,
+          "height": 117.0,
+          "is_cluster": true
         },
         {
-          "id": "bottom1",
-          "x": 252.2,
-          "y": 201.5,
-          "width": 106.88,
-          "height": 54.0,
+          "id": "subgraph1",
+          "x": 314.0,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
+          "is_cluster": true
+        },
+        {
+          "id": "outside",
+          "x": 88.0,
+          "y": 206.75,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "top2",
-          "x": 455.96,
-          "y": 301.0,
-          "width": 80.64,
-          "height": 54.0,
+          "x": 314.0,
+          "y": 308.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "bottom2",
-          "x": 599.72,
-          "y": 301.0,
-          "width": 106.88,
-          "height": 54.0,
+          "x": 490.0,
+          "y": 308.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "outside",
-          "x": 60.88,
-          "y": 219.0,
-          "width": 105.76,
-          "height": 54.0,
+          "id": "top1",
+          "x": 314.0,
+          "y": 82.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "subgraph1",
-          "x": 252.2,
-          "y": 137.0,
-          "width": 176.88,
-          "height": 258.0,
-          "is_cluster": true
-        },
-        {
-          "id": "subgraph2",
-          "x": 534.4,
-          "y": 301.0,
-          "width": 287.52,
-          "height": 124.0,
-          "is_cluster": true
+          "id": "bottom1",
+          "x": 314.0,
+          "y": 151.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
-        {
-          "id": "L_top1_bottom1_0",
-          "from": "top1",
-          "to": "bottom1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 252.2,
-              "y": 99.5
-            },
-            {
-              "x": 252.2,
-              "y": 137.0
-            },
-            {
-              "x": 252.2,
-              "y": 174.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "L_top2_bottom2_0",
-          "from": "top2",
-          "to": "bottom2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 496.28,
-              "y": 301.0
-            },
-            {
-              "x": 521.28,
-              "y": 301.0
-            },
-            {
-              "x": 546.28,
-              "y": 301.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
         {
           "id": "L_outside_subgraph1_0",
           "from": "outside",
           "to": "subgraph1",
           "from_cluster": null,
-          "to_cluster": null,
+          "to_cluster": "subgraph1",
           "points": [
             {
-              "x": 86.523,
-              "y": 192.0
+              "x": 164.0,
+              "y": 202.583
             },
             {
-              "x": 138.76,
-              "y": 137.0
+              "x": 184.0,
+              "y": 202.583
             },
             {
-              "x": 163.76,
-              "y": 137.0
+              "x": 184.0,
+              "y": 105.0
+            },
+            {
+              "x": 214.0,
+              "y": 105.0
             }
           ],
           "label": null,
@@ -156,28 +102,74 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 86.523,
-              "y": 246.0
+              "x": 164.0,
+              "y": 210.917
             },
             {
-              "x": 138.76,
-              "y": 301.0
+              "x": 184.0,
+              "y": 210.917
             },
             {
-              "x": 252.2,
-              "y": 301.0
+              "x": 184.0,
+              "y": 308.5
             },
             {
-              "x": 365.64,
-              "y": 301.0
+              "x": 204.0,
+              "y": 308.5
             },
             {
-              "x": 390.64,
-              "y": 301.0
+              "x": 238.0,
+              "y": 308.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_top2_bottom2_0",
+          "from": "top2",
+          "to": "bottom2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 390.0,
+              "y": 308.5
             },
             {
-              "x": 415.64,
-              "y": 301.0
+              "x": 414.0,
+              "y": 308.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_top1_bottom1_0",
+          "from": "top1",
+          "to": "bottom1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 314.0,
+              "y": 105.0
+            },
+            {
+              "x": 314.0,
+              "y": 129.0
             }
           ],
           "label": null,
@@ -193,18 +185,18 @@
       "clusters": [
         {
           "id": "subgraph1",
-          "x": 252.2,
-          "y": 137.0,
-          "width": 176.88,
-          "height": 258.0,
+          "x": 314.0,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "subgraph1",
           "title_label": {
-            "x": 252.2,
-            "y": 20.0,
-            "width": 64.0,
-            "height": 24.0
+            "x": 314.0,
+            "y": 21.5,
+            "width": 56.0,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -214,18 +206,18 @@
         },
         {
           "id": "subgraph2",
-          "x": 534.4,
-          "y": 301.0,
-          "width": 287.52,
-          "height": 124.0,
+          "x": 402.0,
+          "y": 296.5,
+          "width": 376.0,
+          "height": 117.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "subgraph2",
           "title_label": {
-            "x": 534.4,
-            "y": 251.0,
-            "width": 64.0,
-            "height": 24.0
+            "x": 402.0,
+            "y": 247.5,
+            "width": 56.0,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -235,10 +227,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 678.16,
-        "max_y": 363.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 590.0,
+        "max_y": 355.0
       }
     }
   }

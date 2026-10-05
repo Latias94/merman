@@ -376,3 +376,57 @@ fn flowchart_html_label_weights_preserve_plain_source_and_reject_nested_class_wi
         );
     }
 }
+
+#[test]
+fn partial_dark_xychart_title_override_preserves_the_rendered_palette() {
+    let source = "xychart\n  title \"Sales\"\n  x-axis [A, B]\n  y-axis 0 --> 10\n  bar [2, 5]\n";
+    let baseline_engine =
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme":"dark"})));
+    let (baseline_svg, baseline_config) =
+        render_with_engine(&baseline_engine, source, "xychart-partial");
+    let override_config =
+        json!({"theme":"dark", "themeVariables":{"xyChart":{"titleColor":"#ff0000"}}});
+    for (engine, source) in [
+        (
+            Engine::new().with_site_config(MermaidConfig::from_value(override_config.clone())),
+            source.to_owned(),
+        ),
+        (
+            Engine::new(),
+            format!("---\nconfig: {override_config}\n---\n{source}"),
+        ),
+    ] {
+        let (svg, config) = render_with_engine(&engine, &source, "xychart-partial");
+        let observed = config
+            .as_value()
+            .pointer("/themeVariables/xyChart")
+            .unwrap();
+        let mut expected = baseline_config
+            .as_value()
+            .pointer("/themeVariables/xyChart")
+            .unwrap()
+            .clone();
+        expected["titleColor"] = json!("#ff0000");
+        assert_eq!(*observed, expected);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Sales"))
+            .unwrap();
+        assert_eq!(title.attribute("fill"), Some("#ff0000"));
+        let plot_colors = |svg: &str| {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let plot = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("plot"))
+                .unwrap();
+            plot.descendants()
+                .filter_map(|node| node.attribute("fill"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        let expected_colors = plot_colors(&baseline_svg);
+        assert!(!expected_colors.is_empty());
+        assert_eq!(plot_colors(&svg), expected_colors);
+    }
+}

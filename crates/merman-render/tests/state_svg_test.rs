@@ -4198,8 +4198,149 @@ fn state_svg_preserves_default_look_token_without_enabling_alternate_renderer_be
 }
 
 #[test]
-fn state_svg_honors_mermaid_11_16_theme_css_options() {
+fn state_svg_default_min_node_width_reaches_leaf_foreign_object() {
+    let svg = render_state_svg_from_text("stateDiagram-v2\nA\n");
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    let width = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .find(|node| node.descendants().any(|child| child.text() == Some("A")))
+        .and_then(|node| node.attribute("width"))
+        .expect("leaf label foreignObject")
+        .parse::<f64>()
+        .expect("numeric leaf label width");
+    assert_eq!(
+        width, 120.0,
+        "default state.minNodeWidth must size the label box"
+    );
+}
+
+#[test]
+fn state_svg_explicit_zero_min_node_width_keeps_natural_leaf_width() {
+    let svg = render_state_svg_from_text(
+        "%%{init: {\"state\": {\"minNodeWidth\": 0}}}%%\nstateDiagram-v2\nA\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    let width = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .find(|node| node.descendants().any(|child| child.text() == Some("A")))
+        .and_then(|node| node.attribute("width"))
+        .expect("leaf label foreignObject")
+        .parse::<f64>()
+        .expect("numeric leaf label width");
+    assert!(
+        width > 0.0 && width < 120.0,
+        "explicit zero must disable the default minimum: {width}"
+    );
+}
+
+#[test]
+fn state_svg_cross_composite_default_min_width_reaches_all_leaf_labels() {
+    let source =
+        include_str!("../../../fixtures/state/stress_state_cross_composite_transitions_007.mmd");
+    let svg = render_state_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+
+    for label in ["InnerA", "Deep", "After"] {
+        let width = document
+            .descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+            .find(|node| node.descendants().any(|child| child.text() == Some(label)))
+            .and_then(|node| node.attribute("width"))
+            .expect("leaf label foreignObject")
+            .parse::<f64>()
+            .expect("numeric leaf label width");
+        assert_eq!(width, 120.0, "default state.minNodeWidth must size {label}");
+    }
+}
+
+#[test]
+fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
+    for look in ["classic", "neo"] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "layout": "elk",
+            "themeVariables": {
+                "mainBkg": "#112233",
+                "lineColor": "#223344",
+                "stateBorder": "#334455",
+                "specialStateColor": "#445566",
+                "innerEndBackground": "#556677",
+                "background": "#667788"
+            }
+        })));
+        let svg = render_state_svg_from_text_with_engine(
+            engine,
+            "stateDiagram-v2\n[*] --> Ready\nReady --> Done: finish\nDone --> [*]\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
+            .collect();
+        assert_eq!(
+            labels.len(),
+            if cfg!(feature = "layout-elk") { 1 } else { 3 },
+            "{look}: label groups follow the selected provider's insertion contract"
+        );
+        let paths = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "edgePaths")
+                    })
+            })
+            .expect("edge path group");
+        if cfg!(feature = "layout-elk") {
+            assert!(
+                paths
+                    .attribute("class")
+                    .unwrap()
+                    .split_whitespace()
+                    .any(|class| class == "edges")
+            );
+        }
+        for edge in paths.children().filter(|node| node.has_tag_name("path")) {
+            let marker = edge.attribute("marker-end").expect("transition marker");
+            assert_eq!(
+                marker.ends_with("-margin)"),
+                look == "neo",
+                "{look}: {marker}"
+            );
+        }
+        let end_outer = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("outer-path")
+                    && node.children().any(|child| child.has_tag_name("g"))
+            })
+            .expect("end-state double circle");
+        let outer_paints: Vec<_> = end_outer
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect();
+        assert_eq!(outer_paints[0].attribute("fill"), Some("#112233"));
+        assert_eq!(outer_paints[1].attribute("stroke"), Some("#223344"));
+        let inner = end_outer
+            .children()
+            .find(|node| node.has_tag_name("g"))
+            .unwrap();
+        let inner_paints: Vec<_> = inner
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect();
+        assert_eq!(inner_paints[0].attribute("fill"), Some("#334455"));
+        assert_eq!(inner_paints[1].attribute("stroke"), Some("#334455"));
+    }
+}
+
+#[test]
+fn state_svg_classic_look_honors_theme_css_options() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "classic",
         "themeVariables": {
             "transitionColor": "#202020",
             "lineColor": "#303030",
@@ -4239,8 +4380,8 @@ Active --> [*]: done"#,
         "expected State barbEnd marker CSS to follow transitionColor and the prefixed marker id: {svg}"
     );
     assert!(
-        svg.contains(r##"[id$="-dependencyStart"],#merman [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##),
-        "expected State dependency marker CSS to use Mermaid 11.16 suffix selectors: {svg}"
+        svg.contains(r##"#merman [id$="-dependencyStart"],#merman [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:4;}"##),
+        "expected State dependency marker CSS to use Mermaid suffix selectors: {svg}"
     );
     assert!(
         svg.contains(r#".transition{stroke:#202020;stroke-width:4;fill:none;}"#),
@@ -4260,7 +4401,7 @@ Active --> [*]: done"#,
     );
     assert!(
         !svg.contains(r#"id="merman-gradient""#) && svg.contains(r#"id="merman-drop-shadow""#),
-        "classic state SVG should emit 11.16 drop-shadow defs but not gradient defs unless useGradient is set: {svg}"
+        "classic state SVG should emit classic drop-shadow defs but not gradient defs unless useGradient is set: {svg}"
     );
     assert!(
         !svg.contains(r#"markerUnits="strokeWidth""#),
@@ -4270,7 +4411,7 @@ Active --> [*]: done"#,
         svg.contains(r#"id="merman-edge0""#)
             && svg.contains(r#"data-look="classic""#)
             && svg.contains(r#"id="merman-state-Active-1""#),
-        "classic state DOM should use Mermaid 11.16 scoped ids and explicit data-look: {svg}"
+        "classic state DOM should use Mermaid scoped ids and explicit data-look: {svg}"
     );
 }
 
@@ -4313,8 +4454,8 @@ state Active {
         "expected neo state SVG to use Mermaid's neo barb marker geometry: {svg}"
     );
     assert!(
-        svg.contains(r#"marker-end="url(#merman_stateDiagram-barbEnd)""#),
-        "expected neo state transitions to keep an arrowhead marker: {svg}"
+        svg.contains(r#"marker-end="url(#merman_stateDiagram-barbEnd-margin)""#),
+        "expected neo state transitions to use the margin arrowhead marker"
     );
     assert!(
         svg.contains(
@@ -5276,6 +5417,105 @@ state Parent {
 }
 
 #[test]
+fn state_composite_paint_uses_large_and_multiline_title_measurements() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html_labels in [true, false] {
+            for title in ["Large title", "First<br/>Second"] {
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "layout": layout,
+                        "look": "classic",
+                        "htmlLabels": html_labels,
+                        "themeVariables": { "fontSize": "32px" }
+                    })));
+                let source = format!("stateDiagram-v2\nstate \"{title}\" as Parent {{\n A\n}}\n");
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .expect("parse composite")
+                    .expect("State diagram");
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                    .expect("prepare composite");
+                let projection = artifact.layout_json().expect("State layout projection");
+                let clusters = projection["layout"]["StateDiagramV2"]["clusters"]
+                    .as_array()
+                    .expect("State clusters");
+                let cluster = clusters
+                    .iter()
+                    .find(|cluster| cluster["id"] == "Parent")
+                    .expect("Parent cluster");
+                let title_height = cluster["title_label"]["height"].as_f64().unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("render composite");
+                let document = roxmltree::Document::parse(rendered.svg()).expect("State SVG");
+                let group = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("data-id") == Some("Parent")
+                    })
+                    .expect("Parent SVG group");
+                let rect = |class| {
+                    group
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect") && node.attribute("class") == Some(class)
+                        })
+                        .expect("composite rectangle")
+                };
+                let number = |node: roxmltree::Node<'_, '_>, name| {
+                    node.attribute(name).unwrap().parse::<f64>().unwrap()
+                };
+                let outer = rect("outer");
+                let inner = rect("inner");
+                // clusters.js reserves the full painted bbox plus the fixed border gap.
+                assert!(
+                    (number(inner, "y") - number(outer, "y") - title_height - 2.0).abs() < 0.001,
+                    "{layout}, html={html_labels}, title={title}"
+                );
+                assert!(
+                    (number(outer, "height") - number(inner, "height") - title_height - 6.0).abs()
+                        < 0.001,
+                    "{layout}, html={html_labels}, title={title}"
+                );
+                let label = group
+                    .children()
+                    .find(|node| node.attribute("class") == Some("cluster-label"))
+                    .expect("composite title");
+                if html_labels {
+                    let foreign = label
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .expect("HTML title");
+                    assert_eq!(number(foreign, "height"), title_height);
+                    assert_eq!(
+                        title_height,
+                        if title.contains("<br/>") { 96.0 } else { 48.0 }
+                    );
+                    assert_eq!(label.descendants().filter(|node| node.has_tag_name(("http://www.w3.org/1999/xhtml", "br"))).count(),
+                        usize::from(title.contains("<br/>")));
+                } else {
+                    assert!(
+                        title_height > 24.0,
+                        "32px title must exceed the old fixed height"
+                    );
+                    assert_eq!(
+                        label
+                            .descendants()
+                            .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                            .count(),
+                        if title.contains("<br/>") { 2 } else { 1 }
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_notes() {
     let svg = render_state_svg_from_text(
         r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
@@ -5348,23 +5588,47 @@ Display : Running
 
 #[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
-    let svg = render_state_svg_from_text(
-        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
-stateDiagram-v2
-A --> B
-"#,
-    );
-
-    assert!(
-        svg.contains(r#"class="edgeLabel""#)
-            && svg.contains(r#"<g class="label" data-id="edge0" transform="translate(0, 0)"></g>"#),
-        "root htmlLabels=false should keep the State empty edge label container: {svg}"
-    );
-    assert_eq!(
-        svg.matches("<foreignObject").count(),
-        0,
-        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for empty State edge label DOM: {svg}"
-    );
+    for backend in ["elk", "dagre"] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": backend,
+            "htmlLabels": false,
+            "flowchart": {"htmlLabels": true}
+        })));
+        let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA --> B\n");
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
+            .collect();
+        if backend == "elk" && cfg!(feature = "layout-elk") {
+            assert!(
+                labels.is_empty(),
+                "ELK only inserts groups for present labels"
+            );
+        } else {
+            assert_eq!(
+                labels.len(),
+                1,
+                "Dagre inserts an empty wrapper for an unlabeled edge"
+            );
+            let label = labels[0]
+                .children()
+                .find(|node| node.is_element())
+                .expect("Dagre label group");
+            assert_eq!(label.attribute("data-id"), Some("edge0"));
+            assert_eq!(label.attribute("transform"), Some("translate(0, 0)"));
+            assert!(
+                !label.children().any(|node| node.is_element()),
+                "empty SVG labels have no HTML child"
+            );
+        }
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject")),
+            "{backend}: root htmlLabels=false overrides the deprecated Flowchart setting"
+        );
+    }
 }
 
 #[test]
@@ -5397,7 +5661,8 @@ A --> A: again
 #[test]
 fn state_svg_leaf_self_loop_keeps_dagre_label_anchor_without_an_explicit_path_update() {
     let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 A --> A: again
 "#,
     );
@@ -5416,37 +5681,59 @@ A --> A: again
 }
 
 #[test]
-fn state_svg_composite_self_loop_uses_the_explicitly_updated_cluster_path_for_its_label() {
-    let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+fn state_svg_composite_self_loop_preserves_the_layout_label_offset_after_cluster_clipping() {
+    let source = r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 state Active {
   Idle
 }
 Inactive --> Idle: ACT
 Active --> Active: LOG
-"#,
-    );
+"#;
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout: merman_render::model::StateDiagramLayout =
+        serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let svg = rendered.svg();
 
-    let points = state_edge_data_points(&svg, "edge1");
+    let points = state_edge_data_points(svg, "edge1");
     assert_eq!(points.len(), 4, "expected one compact logical self-loop");
     assert!(
         points[0].x > points[1].x && points[3].x < points[2].x,
         "data-points must retain the endpoint-clipped self-loop geometry: {points:?}"
     );
 
-    let (label_x, label_y) = state_edge_label_position(&svg, "edge1");
-    let expected_x = (points[1].x + points[2].x) / 2.0;
-    let expected_y = (points[1].y + points[2].y) / 2.0;
+    let (label_x, label_y) = state_edge_label_position(svg, "edge1");
+    let edge = layout.edges.iter().find(|edge| edge.id == "edge1").unwrap();
+    let anchor = edge.label.as_ref().unwrap();
+    // This symmetric self-loop keeps the same route midpoint after cluster clipping.
+    // Mermaid 12.1 therefore preserves the layout anchor, including its label offset.
+    let expected_x = anchor.x;
+    let expected_y = anchor.y;
+    let midpoint_y = (points[1].y + points[2].y) / 2.0;
+    assert!(
+        expected_y > midpoint_y,
+        "the fixture must retain a nonzero label offset"
+    );
     assert!(
         (label_x - expected_x).abs() <= 1e-5 && (label_y - expected_y).abs() <= 1e-5,
-        "a composite self-loop cluster cut must move the label to the updated path midpoint: label=({label_x}, {label_y}), expected=({expected_x}, {expected_y})"
+        "a symmetric cluster cut must preserve the layout label offset: label=({label_x}, {label_y}), expected=({expected_x}, {expected_y})"
     );
 }
 
 #[test]
 fn state_svg_direct_composite_self_loop_keeps_unclipped_dagre_endpoints() {
     let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 [*] --> Active
 state Active {
   [*] --> Ready
@@ -5861,4 +6148,174 @@ fn state_svg_preserves_ordered_shadow_inputs_and_accumulated_bounds() {
     let reset_bounds = svg_view_box(&reset);
     assert!(composed_bounds[2] >= reset_bounds[2] + 16.0 - 1.0e-6);
     assert!(composed_bounds[3] >= reset_bounds[3] + 16.0 - 1.0e-6);
+}
+
+#[test]
+fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
+    // Pinned roundedRect -> drawRect keeps State's preset radius 10 for numeric
+    // zero, while the truthy string "0" explicitly draws square corners.
+    // Theme Neo supplies radius 3 and Redux supplies 12, independently of look.
+    for (look, theme, radius, expected) in [
+        ("neo", "neo", None, 3.0),
+        ("neo", "redux", None, 12.0),
+        ("classic", "redux", None, 12.0),
+        ("neo", "default", None, 5.0),
+        ("classic", "default", None, 5.0),
+        ("default", "default", None, 5.0),
+        ("neo", "neo", Some(serde_json::json!(0)), 10.0),
+        ("classic", "default", Some(serde_json::json!(0)), 10.0),
+        ("neo", "neo", Some(serde_json::json!("0")), 0.0),
+        ("classic", "default", Some(serde_json::json!(7.5)), 7.5),
+        ("neo", "neo", Some(serde_json::json!(7.5)), 7.5),
+    ] {
+        for html_labels in [true, false] {
+            let mut config = serde_json::json!({
+                "look": look,
+                "theme": theme,
+                "htmlLabels": html_labels
+            });
+            if let Some(radius) = radius.clone() {
+                config["themeVariables"] = serde_json::json!({"radius": radius});
+            }
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+            let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA\n");
+            let document = roxmltree::Document::parse(&svg).expect("State SVG");
+            let rect = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .expect("ordinary State rectangle");
+            for attr in ["rx", "ry"] {
+                let actual: f64 = rect.attribute(attr).unwrap().parse().unwrap();
+                assert_eq!(
+                    actual, expected,
+                    "look={look}, theme={theme}, radius={radius:?}, htmlLabels={html_labels}, {attr}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
+    // stateStart/stateEnd choose the small filter using nodeShadow, independently
+    // of look=neo and dropShadow; a hand-drawn terminal never gets this override.
+    for (look, theme, shadow, expected) in [
+        ("neo", "neo", None, false),
+        ("neo", "redux", None, true),
+        ("classic", "redux", None, true),
+        ("classic", "default", None, false),
+        ("neo", "neo", Some(serde_json::json!(false)), false),
+        ("classic", "default", Some(serde_json::json!(true)), true),
+        ("handDrawn", "neo", Some(serde_json::json!(true)), false),
+        ("neo", "neo", Some(serde_json::json!(0)), false),
+        ("neo", "neo", Some(serde_json::json!("false")), true),
+    ] {
+        let mut config = serde_json::json!({"look": look, "theme": theme});
+        if let Some(shadow) = shadow.clone() {
+            config["themeVariables"] = serde_json::json!({"nodeShadow": shadow});
+        }
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let svg = render_state_svg_from_text_with_engine(
+            engine,
+            "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let diagram_id = document.root_element().attribute("id").expect("diagram id");
+        let expected_style = format!("filter:url(#{diagram_id}-drop-shadow-small)");
+        for class in ["state-start", "outer-path"] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class))
+                .unwrap_or_else(|| panic!("missing State terminal {class}"));
+            assert_eq!(
+                terminal.attribute("style"),
+                expected.then_some(expected_style.as_str()),
+                "look={look}, theme={theme}, nodeShadow={shadow:?}, terminal={class}"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
+    for (min_width, label, wrapping_width, display, white_space, width) in [
+        (120, "A", 1000, "table", "nowrap", Some("120px")),
+        (0, "A", 1000, "table-cell", "nowrap", None),
+        (
+            120,
+            "A long state label beyond the minimum width",
+            1000,
+            "table-cell",
+            "nowrap",
+            None,
+        ),
+        (
+            120,
+            "A long state label that must wrap onto multiple lines",
+            120,
+            "table",
+            "break-spaces",
+            Some("120px"),
+        ),
+    ] {
+        for note in [false, true] {
+            let config = serde_json::json!({
+                "htmlLabels": true,
+                "state": {"minNodeWidth": min_width, "wrappingWidth": wrapping_width}
+            });
+            let source = if note {
+                format!("stateDiagram-v2\nN\nnote right of N : {label}\n")
+            } else {
+                format!("stateDiagram-v2\nstate \"{label}\" as N\n")
+            };
+            let svg = render_state_svg_from_text_with_engine(
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                &source,
+            );
+            let document = roxmltree::Document::parse(&svg).expect("State SVG");
+            let div = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("div")
+                        && node.descendants().any(|child| child.text() == Some(label))
+                })
+                .expect("leaf label div");
+            let style: std::collections::BTreeMap<_, _> = div
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .filter_map(|entry| entry.split_once(':'))
+                .map(|(key, value)| (key.trim(), value.trim()))
+                .collect();
+            assert_eq!(
+                style.get("display").copied(),
+                Some(display),
+                "note={note}, min={min_width}, label={label}"
+            );
+            assert_eq!(style.get("white-space").copied(), Some(white_space));
+            assert_eq!(style.get("width").copied(), width);
+        }
+    }
+    let svg = render_state_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false, "state": {"minNodeWidth": 120}
+        }))),
+        "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("state-start"))
+            .count(),
+        1
+    );
 }

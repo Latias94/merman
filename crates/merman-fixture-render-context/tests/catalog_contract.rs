@@ -41,7 +41,14 @@ impl Drop for TestRoot {
 }
 
 fn sha256(source: &str) -> String {
-    data_encoding::HEXLOWER.encode(&Sha256::digest(source.as_bytes()))
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(source.as_bytes());
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn manifest_entry(
@@ -393,7 +400,7 @@ fn browser_text_wrapping_evidence_is_exact_family_scoped_policy() {
             "class",
             "stress_class_svg_font_size_px_string_precedence_026"
         ),
-        None
+        Some(FixtureDomEvidence::BrowserTextWrapping)
     );
     assert_eq!(
         fixture_dom_evidence("flowchart", "stress_class_svg_font_size_precedence_025"),

@@ -5659,18 +5659,26 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
         unsafe { api.result_free.unwrap()(&mut config_result) };
 
-        for (capability_id, source) in [
+        for (required_capabilities, source, rejected_capability) in [
             (
-                "layout-cytoscape",
+                &["layout-cytoscape"][..],
                 b"architecture-beta\n  service api(server)[API]".as_slice(),
+                "layout-cytoscape",
             ),
             (
-                "layout-elk",
+                &["layout-elk"][..],
                 b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B".as_slice(),
+                "layout-elk",
             ),
-            ("math", b"flowchart TD\nA[\"$$x^2$$\"] --> B".as_slice()),
+            (
+                &["layout-elk", "math"][..],
+                b"flowchart TD\nA[\"$$x^2$$\"] --> B".as_slice(),
+                "layout-elk",
+            ),
         ] {
-            assert!(!capability_ids.iter().any(|id| id == capability_id));
+            for capability_id in required_capabilities {
+                assert!(!capability_ids.iter().any(|id| id == capability_id));
+            }
 
             let plan_request = native_request(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON, source);
             let mut plan_result = native_result();
@@ -5683,11 +5691,11 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             let plan: serde_json::Value = serde_json::from_slice(plan_bytes).unwrap();
             assert_eq!(
                 plan["required_capability_ids"],
-                serde_json::json!([capability_id])
+                serde_json::json!(required_capabilities)
             );
             assert_eq!(
                 plan["missing_capability_ids"],
-                serde_json::json!([capability_id])
+                serde_json::json!(required_capabilities)
             );
             assert_eq!(plan["ready"], false);
             unsafe { api.result_free.unwrap()(&mut plan_result) };
@@ -5700,13 +5708,13 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             );
             let error = result_json(&render_result);
             assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-            assert_eq!(error["capability_id"], capability_id);
+            assert_eq!(error["capability_id"], rejected_capability);
             unsafe { api.result_free.unwrap()(&mut render_result) };
         }
 
         let ratex_request = native_request_with_options(
             MERMAN_NATIVE_OPERATION_SVG,
-            b"flowchart TD\nA --> B",
+            b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B",
             br#"{"environment":{"math_renderer":"ratex"}}"#,
         );
         let mut ratex_result = native_result();

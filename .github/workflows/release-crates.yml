@@ -24,6 +24,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
   validate-inputs:
@@ -91,9 +92,14 @@ jobs:
   preflight:
     needs: validate-inputs
     runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
       source_tree: ${{ steps.source.outputs.source_tree }}
+      reused_evidence: ${{ steps.evidence.outputs.reusable }}
+      version: ${{ needs.validate-inputs.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,6 +132,23 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
+
+      - name: Check out trusted preflight evidence verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .preflight-tooling
+          persist-credentials: false
+
+      - name: Find reusable immutable preflight evidence
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFLIGHT_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 .preflight-tooling/scripts/release_preflight_evidence.py find
 
       - name: Verify release projections and README install mode
         env:
@@ -168,6 +191,7 @@ jobs:
           python3 scripts/verify-independent-crate-version-bumps.py --base-ref "$base_tag"
 
       - name: Verify exhaustive Cargo feature and artifact recipes
+        if: ${{ steps.evidence.outputs.reusable != 'true' }}
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
       - name: Verify crates.io publish graph
@@ -195,9 +219,13 @@ jobs:
       - name: Verify pinned source commit
         env:
           SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
@@ -205,15 +233,18 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Setup Node
+        if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.21.0"
           package-manager-cache: false
 
       - name: Install pinned npm
+        if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install wasm-pack
+        if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
         run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
@@ -226,6 +257,7 @@ jobs:
           cargo run --locked -p xtask -- verify-web-diagram-catalog
 
       - name: Build, verify, and smoke Web package group
+        if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
         run: |
           npm ci --prefix platforms/web
           npm run build --prefix platforms/web
@@ -258,7 +290,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2.87.9
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: wasm-tools
 
@@ -350,35 +382,85 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
-      - name: Download prior crates.io receipts for recovery
+      - name: Select prior crates.io publication attempt
+        id: recovery
         if: ${{ github.run_attempt > 1 || needs.validate-inputs.outputs.recovery_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RECOVERY_RUN_ID: ${{ needs.validate-inputs.outputs.recovery_run_id }}
+        run: |
+          set -euo pipefail
+          recovery_run_id="$REQUESTED_RECOVERY_RUN_ID"
+          recovery_attempt=""
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            history="$(python3 trusted/scripts/release_attempt_history.py \
+              --owner crates --repository "$GITHUB_REPOSITORY" \
+              --run-id "$GITHUB_RUN_ID" --before-attempt "$GITHUB_RUN_ATTEMPT")"
+            if [ "$history" != "never-attempted" ]; then
+              recovery_run_id="$GITHUB_RUN_ID"
+              recovery_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+            fi
+          fi
+          if [ -n "$recovery_run_id" ] && [ -z "$recovery_attempt" ]; then
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$recovery_run_id")"
+            jq -e --arg repository "$GITHUB_REPOSITORY" '
+              .path == ".github/workflows/release-crates.yml"
+              and .repository.full_name == $repository
+              and .status == "completed"
+              and (.run_attempt | type == "number" and . >= 1 and . == floor)
+            ' <<<"$run_json" >/dev/null
+            recovery_attempt="$(jq -r .run_attempt <<<"$run_json")"
+          fi
+          printf 'run_id=%s\n' "$recovery_run_id" >> "$GITHUB_OUTPUT"
+          printf 'attempt=%s\n' "$recovery_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download prior crates.io receipts for recovery
+        id: download-recovery
+        if: ${{ steps.recovery.outputs.run_id != '' }}
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-*
+          name: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-${{ steps.recovery.outputs.attempt }}
           path: recovery-receipts
           github-token: ${{ github.token }}
-          run-id: ${{ needs.validate-inputs.outputs.recovery_run_id != '' && needs.validate-inputs.outputs.recovery_run_id || github.run_id }}
+          run-id: ${{ steps.recovery.outputs.run_id }}
 
-      - name: Upload crates to crates.io
+      - name: Verify release tag immediately before publication
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
           SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
-          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
         run: |
           set -euo pipefail
-          recovery_args=()
-          if [ -d recovery-receipts ]; then
-            recovery_args+=(--recovery-receipts-dir recovery-receipts)
-          fi
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
           test "$observed" = "$SOURCE_SHA" || {
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           }
+
+      - name: Upload crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          PRIOR_RUN_ID: ${{ steps.recovery.outputs.run_id }}
+          PRIOR_ATTEMPT: ${{ steps.recovery.outputs.attempt }}
+          RECOVERY_DOWNLOAD_OUTCOME: ${{ steps.download-recovery.outcome }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.preflight.outputs.source_tree }}
+        run: |
+          set -euo pipefail
+          recovery_args=()
+          if [ -n "$PRIOR_RUN_ID" ]; then
+            recovery_args+=(--recovery-run-id "$PRIOR_RUN_ID" --recovery-attempt "$PRIOR_ATTEMPT")
+            if [ "$RECOVERY_DOWNLOAD_OUTCOME" = "success" ] && compgen -G 'recovery-receipts/batch-*.json' > /dev/null; then
+              recovery_args+=(--recovery-receipts-dir recovery-receipts)
+            else
+              echo "::warning::The exact prior attempt has no usable receipts; only registry observation is allowed."
+              recovery_args+=(--observe-only)
+            fi
+          fi
           python3 trusted/scripts/crates_io_release.py publish-receipted \
+            --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
             --repo-root source \
             --source-sha "$SOURCE_SHA" \
             --source-tree "$SOURCE_TREE" \

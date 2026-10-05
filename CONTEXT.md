@@ -30,7 +30,7 @@ Primary capability areas:
 
 ## Baseline
 
-Current pinned upstream baseline: `mermaid@11.17.2`.
+Current pinned upstream baseline: `mermaid@12.0.0`.
 
 Authoritative baseline sources:
 

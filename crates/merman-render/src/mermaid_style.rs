@@ -1,8 +1,7 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
 use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserInput, SourcePosition, Token,
-    parse_important,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,8 +70,7 @@ pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaratio
         return None;
     }
 
-    let mut input = ParserInput::new(raw);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(raw);
     let property_start = parser.position();
     let property = parser.expect_ident_cloned().ok()?;
     if property == "--" {
@@ -253,13 +251,12 @@ pub(crate) fn visit_style_declaration_boundaries_with_checkpoints<'a, E>(
     checkpoint: &mut impl FnMut() -> Result<(), E>,
     mut visit: impl FnMut(StyleDeclarationBoundary<'a>) -> Result<bool, E>,
 ) -> Result<(), E> {
-    let mut input = ParserInput::new(declaration_list);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(declaration_list);
     while !parser.is_exhausted() {
         checkpoint()?;
         let start = parser.position();
         let _ = parser.parse_until_after(Delimiter::Semicolon, |_declaration| {
-            Ok::<_, ParseError<'_, ()>>(())
+            Ok::<_, ParseError<()>>(())
         });
         let raw = parser.slice(start..parser.position()).trim();
         if raw.is_empty() {
@@ -490,8 +487,7 @@ fn font_size_value_ownership(
 }
 
 pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let mut family_count = 0usize;
     while !parser.is_exhausted() {
         if let Ok(family) = parser.try_parse(|parser| parser.expect_string_cloned()) {
@@ -536,7 +532,7 @@ fn visit_style_declaration_boundaries<'a>(
     );
 }
 
-fn declaration_has_trailing_important(parser: &mut Parser<'_, '_>) -> bool {
+fn declaration_has_trailing_important(parser: &mut Parser<'_>) -> bool {
     while !parser.is_exhausted() {
         let state = parser.state();
         let Ok(token) = parser.next() else {
@@ -559,8 +555,7 @@ struct FontDeclarationFallbackMetadata {
 
 fn declaration_metadata_for_fallback(raw: &str) -> FontDeclarationFallbackMetadata {
     let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
-    let mut input = ParserInput::new(raw);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(raw);
     let Ok(property) = parser.expect_ident_cloned() else {
         return FontDeclarationFallbackMetadata::default();
     };
@@ -860,8 +855,7 @@ fn parse_css_value(raw: &str, policy: CssValuePolicy) -> Option<ParsedCssValue<'
         return None;
     }
 
-    let mut input = ParserInput::new(raw);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(raw);
     let value_start = parser.position();
     let (value_end, analysis, _) =
         parse_css_value_from_parser(&mut parser, value_start, policy).ok()?;
@@ -869,11 +863,11 @@ fn parse_css_value(raw: &str, policy: CssValuePolicy) -> Option<ParsedCssValue<'
     (!value.is_empty()).then_some(ParsedCssValue { value, analysis })
 }
 
-fn parse_css_value_from_parser<'i, 't>(
-    parser: &mut Parser<'i, 't>,
+fn parse_css_value_from_parser<'i>(
+    parser: &mut Parser<'i>,
     value_start: SourcePosition,
     policy: CssValuePolicy,
-) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<'i, ()>> {
+) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<()>> {
     let mut component_count = 0;
     let mut scalar = None;
     let mut has_dynamic_reference_function = false;
@@ -919,9 +913,9 @@ fn parse_css_value_from_parser<'i, 't>(
                         true,
                     );
                 }
-                return Err(parser.new_custom_error(()));
+                return Err(ParseError::custom(()));
             }
-            return Err(parser.new_custom_error(()));
+            return Err(ParseError::custom(()));
         }
 
         let token_source = parser.slice(token_start..parser.position());
@@ -945,16 +939,16 @@ fn parse_css_value_from_parser<'i, 't>(
     }
 }
 
-fn finish_css_value<'i, 't>(
-    parser: &Parser<'i, 't>,
+fn finish_css_value<'i>(
+    parser: &Parser<'i>,
     value_start: SourcePosition,
     value_end: SourcePosition,
     analysis: CssValueAnalysis,
     important: bool,
-) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<'i, ()>> {
+) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<()>> {
     let source = parser.slice(value_start..parser.position());
     if !css_value_source_is_safe(source) {
-        return Err(parser.new_custom_error(()));
+        return Err(ParseError::custom(()));
     }
     Ok((value_end, analysis, important))
 }
@@ -1051,14 +1045,14 @@ fn css_value_source_is_safe(value: &str) -> bool {
             .any(|character| character.is_control() || matches!(character, '<' | '>' | '{' | '}'))
 }
 
-fn validate_css_component<'i, 't>(
-    parser: &mut Parser<'i, 't>,
+fn validate_css_component<'i>(
+    parser: &mut Parser<'i>,
     token_start: SourcePosition,
     token: Token<'i>,
     policy: CssValuePolicy,
     depth: u8,
     has_dynamic_reference_function: &mut bool,
-) -> Result<(), ParseError<'i, ()>> {
+) -> Result<(), ParseError<()>> {
     const MAX_NESTING: u8 = 32;
 
     match token {
@@ -1074,12 +1068,12 @@ fn validate_css_component<'i, 't>(
         | Token::CloseCurlyBracket
         | Token::CDO
         | Token::CDC
-        | Token::Delim('!') => Err(parser.new_custom_error(())),
+        | Token::Delim('!') => Err(ParseError::custom(())),
         Token::Function(name) => {
             *has_dynamic_reference_function |=
                 matches!(name.to_ascii_lowercase().as_str(), "var" | "env");
             if function_is_forbidden(&name, policy) || depth >= MAX_NESTING {
-                return Err(parser.new_custom_error(()));
+                return Err(ParseError::custom(()));
             }
             parser.parse_nested_block(|nested| {
                 consume_safe_component_values(
@@ -1093,7 +1087,7 @@ fn validate_css_component<'i, 't>(
         }
         Token::ParenthesisBlock | Token::SquareBracketBlock => {
             if depth >= MAX_NESTING {
-                return Err(parser.new_custom_error(()));
+                return Err(ParseError::custom(()));
             }
             let close = if matches!(token, Token::ParenthesisBlock) {
                 ')'
@@ -1114,12 +1108,12 @@ fn validate_css_component<'i, 't>(
     }
 }
 
-fn consume_safe_component_values<'i, 't>(
-    parser: &mut Parser<'i, 't>,
+fn consume_safe_component_values<'i>(
+    parser: &mut Parser<'i>,
     policy: CssValuePolicy,
     depth: u8,
     has_dynamic_reference_function: &mut bool,
-) -> Result<(), ParseError<'i, ()>> {
+) -> Result<(), ParseError<()>> {
     loop {
         let token_start = parser.position();
         let token = match parser.next_including_whitespace() {
@@ -1156,16 +1150,16 @@ fn function_is_forbidden(name: &str, policy: CssValuePolicy) -> bool {
         && matches!(name.as_str(), "var" | "env" | "attr"))
 }
 
-fn ensure_source_closed_block<'i, 't>(
-    parser: &Parser<'i, 't>,
+fn ensure_source_closed_block<'i>(
+    parser: &Parser<'i>,
     token_start: SourcePosition,
     close: char,
-) -> Result<(), ParseError<'i, ()>> {
+) -> Result<(), ParseError<()>> {
     let raw_block = parser.slice(token_start..parser.position());
     if raw_block.trim_end().ends_with(close) && source_closes_initial_block(raw_block, close) {
         return Ok(());
     }
-    Err(parser.new_custom_error(()))
+    Err(ParseError::custom(()))
 }
 
 fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
@@ -1176,8 +1170,7 @@ fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
     probe.push(' ');
     probe.push_str(SENTINEL);
 
-    let mut input = ParserInput::new(&probe);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(&probe);
     let Ok(token) = parser.next_including_whitespace().cloned() else {
         return false;
     };
@@ -1190,7 +1183,7 @@ fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
     if parser
         .parse_nested_block(|nested| {
             while nested.next_including_whitespace().is_ok() {}
-            Ok::<_, ParseError<'_, ()>>(())
+            Ok::<_, ParseError<()>>(())
         })
         .is_err()
     {

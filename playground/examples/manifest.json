@@ -1,7 +1,77 @@
 {
   "schemaVersion": 2,
-  "mermaidBaseline": "mermaid@11.17.2",
+  "mermaidBaseline": "mermaid@12.1.0",
   "examples": [
+    {
+      "diagramType": "agentflow",
+      "id": "agentflow-basic",
+      "title": "Agentflow Basic",
+      "category": "Flow",
+      "order": 1,
+      "aliases": [
+        "agentflow-beta",
+        "workflow",
+        "agent flow"
+      ],
+      "fixture": "fixtures/agentflow/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical Agentflow syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "agentflow",
+      "id": "agentflow-container-and-shapes",
+      "title": "Agentflow Container and Shapes",
+      "category": "Flow",
+      "order": 2,
+      "aliases": [
+        "containers",
+        "shape registry",
+        "collapsed flow"
+      ],
+      "fixture": "fixtures/agentflow/container-and-shapes.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates Agentflow containers, collapse state, and authored shapes."
+      }
+    },
+    {
+      "diagramType": "usecase",
+      "id": "usecase-basic",
+      "title": "Usecase Basic",
+      "category": "Flow",
+      "order": 3,
+      "aliases": [
+        "usecase-beta",
+        "actors",
+        "system boundary"
+      ],
+      "fixture": "fixtures/usecase/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical Usecase syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "usecase",
+      "id": "usecase-shapes-and-notes",
+      "title": "Usecase Shapes and Notes",
+      "category": "Flow",
+      "order": 4,
+      "aliases": [
+        "business use case",
+        "notes",
+        "JSON table"
+      ],
+      "fixture": "fixtures/usecase/shapes-and-notes.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates Usecase actors, business shapes, notes, and JSON tables."
+      }
+    },
     {
       "diagramType": "architecture",
       "id": "architecture-services",

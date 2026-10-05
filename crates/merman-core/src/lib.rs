@@ -5,6 +5,10 @@
 //! - 1:1 parity with the repository's pinned upstream Mermaid baseline
 //! - deterministic, testable outputs (semantic snapshot goldens)
 //! - runtime-agnostic async APIs (no specific executor required)
+//!
+//! Default features are empty. Select `diagram-*` features for the required logical families or
+//! `all-diagrams` for the complete parser surface. Family-exclusive public model types and enum
+//! variants are conditional; recognition and custom registries remain available without a family.
 
 pub mod baseline;
 pub mod common;
@@ -20,6 +24,14 @@ pub mod error;
 mod family;
 pub mod generated;
 pub mod geom;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-kanban",
+    feature = "diagram-sequence"
+))]
 mod inline_config;
 pub mod models;
 pub mod operation;
@@ -44,9 +56,11 @@ use config::{ConfigOverlayProvenance, ThemeParseBinding};
 use config::{PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider};
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance,
-    CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramRegistry, DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
+    AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID,
+    BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance, CustomJsonRenderModel,
+    CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
+    DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
@@ -61,8 +75,9 @@ pub use error::{
     ThemeEvaluationLimitExceeded,
 };
 pub use family::{
-    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact,
-    diagram_type_family_id, diagram_type_metadata_id,
+    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
+    DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
+    diagram_type_render_model_kind,
 };
 pub use operation::{
     CancelReason, OperationCancelled, OperationControl, OperationControlResult,
@@ -708,22 +723,42 @@ pub fn supported_theme_ids() -> &'static [MermaidThemeId] {
     MermaidThemeId::ALL
 }
 
-/// Returns supported diagram metadata names for binding and host capability discovery.
+/// Returns metadata names backed by semantic parsers compiled into this build.
+///
+/// Aliases share their catalog-owned metadata name. This does not promise an output adapter;
+/// use the complete [`diagram_family_capabilities`] catalog to distinguish known identities
+/// from available implementations.
 pub fn supported_diagrams() -> &'static [&'static str] {
     family::supported_diagram_metadata_ids()
 }
 
-/// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
+/// Returns every known Mermaid diagram id in the pinned baseline, including unavailable ones.
+///
+/// Identity, detector, header, and configuration facts are retained independently of the parser,
+/// editor, and typed render-model callbacks compiled into this build.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
 }
 
-/// Returns each concrete built-in typed render family exactly once.
+/// Returns the complete catalog-owned mapping from logical families to Cargo selectors.
+///
+/// These declarations are independent of enabled features and exclude infrastructure models.
+/// Selecting a family does not enable an output format or optional layout engine.
+pub fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
+    family::diagram_family_selectors()
+}
+
+/// Returns each compiled concrete built-in typed render-model family exactly once.
+///
+/// This is independent of output adapters and deduplicates aliases sharing a typed model.
 pub fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
     family::built_in_typed_render_families()
 }
 
-/// Returns header completion facts for Mermaid diagram starters in the pinned baseline.
+/// Returns known header facts for Mermaid diagram starters in the pinned baseline.
+///
+/// A header identifies a known family; actionable suggestions must also check that its semantic
+/// parser is available in [`diagram_family_capabilities`].
 pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
     family::diagram_header_facts()
 }
@@ -738,6 +773,17 @@ fn build_default_effective_config(
 
 fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: MermaidConfig) {
     config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+    // initialize() normalizes an unknown global theme before it becomes a user layer.
+    // Scoped themes instead fall through during diagram appearance resolution.
+    if site_config.as_value().get("theme").is_some_and(|value| {
+        !value.is_null()
+            && !value
+                .as_str()
+                .is_some_and(|name| name == "null" || MermaidThemeId::NAMES.contains(&name))
+    }) && let Some(theme) = generated::upstream_default_config().as_value().get("theme")
+    {
+        site_config.set_value("theme", theme.clone());
+    }
     let explicit_secure_policy = site_config
         .as_value()
         .get("secure")

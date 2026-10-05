@@ -27,7 +27,7 @@ impl ClassRenderSettings {
 
         let diagram_use_html_labels = config.render_diagram_html_labels();
         let edge_use_html_labels = config.render_edge_html_labels();
-        let font_size = config.render_font_size(diagram_use_html_labels);
+        let font_size = config.render_font_size();
         let wrap_probe_font_size = config.wrap_probe_font_size();
         let mut html_calc_text_style = config.html_calculate_text_style();
         let class_padding = config.render_class_padding();

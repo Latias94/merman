@@ -13,17 +13,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let total_w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let w = (total_w - h / 4.0).max(1.0);
-    let x = -w / 2.0;
-    let y = -h / 2.0;
-    let notch = y / 2.0;
-    let dx = -notch / 2.0;
+    let geometry = crate::flowchart::OddGeometry::from_bounds(
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    let dx = geometry.shift_x;
     label.dx = dx;
-
-    let pts: Vec<(f64, f64)> = vec![(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)];
-    let path_data = path_from_points(&pts);
+    let path_data = path_from_points(&geometry.points);
 
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
         let _ = write!(
@@ -46,8 +42,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,
@@ -80,16 +74,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
         let _ = write!(
             out,
             r#"<polygon points="{},{} {},{} {},{} {},{} {},{}" class="label-container outer-path" transform="translate({},{})"{} />"#,
-            fmt(x + notch),
-            fmt(y),
-            fmt(x),
-            fmt(0.0),
-            fmt(x + notch),
-            fmt(-y),
-            fmt(-x),
-            fmt(-y),
-            fmt(-x),
-            fmt(y),
+            fmt(geometry.points[0].0),
+            fmt(geometry.points[0].1),
+            fmt(geometry.points[1].0),
+            fmt(geometry.points[1].1),
+            fmt(geometry.points[2].0),
+            fmt(geometry.points[2].1),
+            fmt(geometry.points[3].0),
+            fmt(geometry.points[3].1),
+            fmt(geometry.points[4].0),
+            fmt(geometry.points[4].1),
             fmt(dx),
             fmt(0.0),
             OptionalStyleAttr(common.style)

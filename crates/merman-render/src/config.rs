@@ -49,6 +49,17 @@ pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
+// Theme overrides retain their JSON types; source drawing guards use JavaScript truthiness.
+pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64() != Some(0.0),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
 pub(crate) fn config_effective_html_labels(cfg: &Value) -> bool {
     config_bool(cfg, &["htmlLabels"])
         .or_else(|| config_bool(cfg, &["flowchart", "htmlLabels"]))
@@ -166,6 +177,19 @@ pub(crate) fn config_font_family_css(cfg: &Value) -> String {
     let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string(cfg, &["fontFamily"]))
         .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    font_family_css(font_family)
+}
+
+/// Mermaid's generated :root custom property reads config.fontFamily, independently
+/// of the theme font used by diagram styles (mermaidAPI.createCssStyles).
+pub(crate) fn config_root_font_family_css(cfg: &Value) -> String {
+    let Some(font_family) = config_string(cfg, &["fontFamily"]) else {
+        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+    };
+    // An explicitly blank value produces no declaration in the browser CSSOM.
+    if font_family.trim().is_empty() {
+        return String::new();
+    }
     font_family_css(font_family)
 }
 
@@ -477,6 +501,35 @@ mod tests {
                 "themeVariables": {
                     "fontFamily": " ; "
                 }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn root_font_family_is_independent_of_the_theme_font() {
+        for empty in ["", "   "] {
+            assert_eq!(
+                config_root_font_family_css(&json!({"fontFamily": empty})),
+                ""
+            );
+        }
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": { "fontFamily": "Arial, sans-serif" }
+            })),
+            "Courier,monospace"
+        );
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "themeVariables": { "fontFamily": "Arial, sans-serif" }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "fontFamily": "serif; color: red"
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
         );

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::svg::parity::util::escape_xml_raw_into;
+use crate::svg::parity::util::escape_xml_serialized_text_into;
 use crate::text::PreparedTextLabelId;
 
 #[derive(Clone, Copy)]
@@ -337,7 +338,7 @@ fn write_svg_text_word(
         SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
         SvgTextEntityMode::CreateTextSource => {
             let visible = crate::entities::decode_svg_text_content_entities(word);
-            escape_xml_raw_into(out, visible.as_ref());
+            escape_xml_serialized_text_into(out, visible.as_ref());
         }
     }
 }
@@ -393,7 +394,7 @@ fn markdown_to_wrapped_svg_word_lines(
 fn write_svg_text_markdown_lines(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<(String, bool, bool)>],
-    include_style: bool,
+    css: Option<&str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
@@ -401,7 +402,7 @@ fn write_svg_text_markdown_lines(
     write_svg_text_markdown_lines_with_style(
         out,
         lines,
-        include_style.then_some(""),
+        css,
         center_text,
         include_row_class,
         entity_mode,
@@ -471,7 +472,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         false,
         true,
         SvgTextEntityMode::DecodedModel,
@@ -575,7 +576,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_crea
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -599,7 +600,78 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    text: &str,
+    css: &str,
+) {
+    write_svg_text_impl(
+        out,
+        text,
+        Some(css),
+        true,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    css: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        style,
+        max_width_px,
+    );
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        Some(css),
+        true,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+/// Emit a node's wrapped Markdown label with the same explicit font style used for measurement.
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    css: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let mut lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        style,
+        max_width_px,
+    );
+    if style.font_weight.as_deref() == Some("bold") {
+        for line in &mut lines {
+            for (_, is_strong, _) in line {
+                *is_strong = true;
+            }
+        }
+    }
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        Some(css),
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -681,7 +753,7 @@ mod tests {
         let mut raw_svg = String::new();
         write_svg_text_source_word_lines(&mut raw_svg, &raw, false, true);
         assert!(
-            raw_svg.contains(">&lt;span class=&#39;foo bar&#39;></tspan>"),
+            raw_svg.contains(">&lt;span class=&#39;foo bar&#39;&gt;</tspan>"),
             "{raw_svg}"
         );
         assert_eq!(raw_svg.matches("text-inner-tspan").count(), 3, "{raw_svg}");

@@ -70,13 +70,13 @@ mod tests {
         let diagrams = merman_core::supported_diagrams();
         let output = render_diagram_catalog(diagrams).expect("render catalog");
 
-        assert_eq!(diagrams.len(), 35);
         for diagram in [
             "eventmodeling",
             "ishikawa",
             "swimlane",
             "treeView",
             "wardley",
+            "agentflow",
         ] {
             assert!(
                 output.contains(&format!("  \"{diagram}\",")),

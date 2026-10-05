@@ -86,11 +86,7 @@ impl SequenceBaseTypography {
         let configured_font_family =
             crate::config::config_font_family_css(effective_config.as_value());
         let config = super::config::SequenceConfigView::new(effective_config.as_value());
-        let configured_font_size = config
-            .root_json_number("fontSize")
-            .or_else(|| config.sequence_json_number("messageFontSize"))
-            .unwrap_or(16.0)
-            .max(1.0);
+        let configured_font_size = config.font_size("messageFontSize").max(1.0);
         let mut font_family_css = configured_font_family.clone();
         let mut font_size_px = configured_font_size;
         let mut typed_properties = BTreeSet::new();
@@ -692,11 +688,10 @@ fn cssom_effective_text_style(
     inherited_font_family: &str,
 ) -> (TextStyle, ParsedCssFontStack) {
     let mut terminal_text_style = measurement_style.clone();
-    if let Some(font_stack) = measurement_style
-        .font_family
-        .as_deref()
-        .and_then(parse_css_font_stack)
+    if let Some(font_family) = super::sequence_inline_font_family(measurement_style)
+        && let Some(font_stack) = parse_css_font_stack(&font_family)
     {
+        terminal_text_style.font_family = Some(font_family);
         return (terminal_text_style, font_stack);
     }
 
@@ -787,6 +782,21 @@ mod tests {
     }
 
     #[test]
+    fn cssom_terminal_font_serialization_falls_back_for_unrepresentable_eof_strings() {
+        let measurement_style = TextStyle {
+            font_family: Some("\"Quoted; Family".to_string()),
+            ..TextStyle::default()
+        };
+        let (terminal_style, stack) =
+            cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
+        assert_eq!(
+            terminal_style.font_family.as_deref(),
+            Some("Theme Sans,sans-serif")
+        );
+        assert_eq!(stack.families(), ["Theme Sans", "sans-serif"]);
+    }
+
+    #[test]
     fn cssom_valid_measurement_font_is_shared_with_terminal_text() {
         let measurement_style = TextStyle {
             font_family: Some("Root Sans,serif".to_string()),
@@ -798,7 +808,7 @@ mod tests {
 
         assert_eq!(
             terminal_style.font_family.as_deref(),
-            Some("Root Sans,serif")
+            Some("Root Sans, serif")
         );
         assert_eq!(stack.families(), ["Root Sans", "serif"]);
     }

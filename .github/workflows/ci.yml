@@ -229,7 +229,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: nextest
 
@@ -239,9 +239,11 @@ jobs:
           cache-targets: false
 
       - name: Install CLI asset validators
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -267,7 +269,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.22.2
+        uses: DeterminateSystems/determinate-nix-action@v3.22.5
 
       - name: Build reusable Nix derivation
         run: |
@@ -403,7 +405,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: nextest
 
@@ -448,15 +450,26 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
+      - name: Test selected reference runtime builder
+        if: matrix.parity
+        run: node --test tools/mermaid-cli/reference-runtime.test.mjs
+
       - name: Verify pull-request architecture contracts
         if: matrix.parity
         run: |
           cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-feature-matrix
 
+      - name: Test isolated consumers without diagram families
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
+
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --cargo-quiet
+        run: cargo nextest run --locked --no-fail-fast --cargo-quiet
 
       - name: Compile workspace on pull-request host runners
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -492,10 +505,12 @@ jobs:
             -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
           cargo nextest run --locked -p xtask --cargo-quiet \
             -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
-          cargo nextest run --locked -p merman-ffi \
+          ffi_features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --features "$ffi_features" \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features rustdoc \
+          cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
             --test rustdoc_cli --cargo-quiet
 
       - name: Check committed Rustdoc fragments before documentation
@@ -505,8 +520,8 @@ jobs:
       - name: Test architecture compile-fail contracts
         if: matrix.parity
         run: |
-          cargo test -p merman-render --doc
-          cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
+          cargo test -p merman-render --doc --features all-diagrams
+          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Test preset qualification and legacy projection retirement
         if: matrix.parity
@@ -543,19 +558,27 @@ jobs:
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
             --test render_operation --test theme_composed_effects --cargo-quiet
 
-      - name: Test exact Rustdoc artifact recipe
+      - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
         if: matrix.parity
         run: |
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-gantt --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --test regressions \
+            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
           cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
       - name: Test representative Cargo feature unification contract
         if: matrix.parity
         run: |
-          ambient_render_features="merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
+          ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
           cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
             --no-default-features \
-            --features "$ambient_render_features,merman-ffi/svg" \
+            --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
             --lib --cargo-quiet \
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
 
@@ -610,7 +633,7 @@ jobs:
         if: matrix.parity
         run: |
           cargo nextest run -p merman --no-default-features \
-            --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
+            --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
             --test runtime_determinism --test render_timezone --cargo-quiet
 
       - name: Test C FFI artifact-profile contract
@@ -634,19 +657,19 @@ jobs:
       - name: Test representative ASCII public contracts
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman --no-default-features --features ascii \
+          cargo nextest run --locked -p merman --no-default-features --features all-diagrams,ascii \
             --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(every_ascii_resource_limit_round_trips_exact_public_boundaries) | test(ascii_request_propagates_caller_control_into_the_canonical_renderer)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-uniffi --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-wasm --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
 
@@ -809,7 +832,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: wasm-tools
 
@@ -890,7 +913,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: wasm-tools
 
@@ -1035,10 +1058,10 @@ jobs:
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+        uses: gradle/actions/setup-gradle@v6.4.0
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
 

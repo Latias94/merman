@@ -4,36 +4,36 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "section",
+          "x": 230.0,
+          "y": 171.5,
+          "width": 436.0,
+          "height": 117.0,
+          "is_cluster": true
+        },
+        {
           "id": "A",
-          "x": 167.5,
-          "y": 35.0,
-          "width": 78.48,
-          "height": 54.0,
+          "x": 238.5,
+          "y": 37.5,
+          "width": 150.0,
+          "height": 51.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 95.44,
-          "y": 164.0,
-          "width": 104.88,
-          "height": 39.0,
+          "x": 129.0,
+          "y": 179.0,
+          "width": 186.0,
+          "height": 36.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 239.56,
-          "y": 164.0,
-          "width": 83.36,
-          "height": 54.0,
+          "x": 348.0,
+          "y": 183.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
-        },
-        {
-          "id": "section",
-          "x": 162.12,
-          "y": 164.0,
-          "width": 308.24,
-          "height": 104.0,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -45,20 +45,24 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 130.084,
-              "y": 62.0
+              "x": 216.833,
+              "y": 63.0
             },
             {
-              "x": 95.44,
-              "y": 87.0
+              "x": 216.833,
+              "y": 83.0
             },
             {
-              "x": 95.44,
-              "y": 112.0
+              "x": 129.0,
+              "y": 83.0
             },
             {
-              "x": 95.44,
-              "y": 144.5
+              "x": 129.0,
+              "y": 103.0
+            },
+            {
+              "x": 129.0,
+              "y": 161.0
             }
           ],
           "label": null,
@@ -78,20 +82,24 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 204.916,
-              "y": 62.0
+              "x": 260.167,
+              "y": 63.0
             },
             {
-              "x": 239.56,
-              "y": 87.0
+              "x": 260.167,
+              "y": 83.0
             },
             {
-              "x": 239.56,
-              "y": 112.0
+              "x": 348.0,
+              "y": 83.0
             },
             {
-              "x": 239.56,
-              "y": 137.0
+              "x": 348.0,
+              "y": 103.0
+            },
+            {
+              "x": 348.0,
+              "y": 161.0
             }
           ],
           "label": null,
@@ -107,31 +115,31 @@
       "clusters": [
         {
           "id": "section",
-          "x": 162.12,
-          "y": 164.0,
-          "width": 308.24,
-          "height": 104.0,
+          "x": 230.0,
+          "y": 171.5,
+          "width": 436.0,
+          "height": 117.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "section",
           "title_label": {
-            "x": 162.12,
-            "y": 124.0,
-            "width": 45.76,
-            "height": 24.0
+            "x": 230.0,
+            "y": 122.5,
+            "width": 40.04,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "LR",
+          "effective_dir": "TB",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 316.24,
-        "max_y": 216.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 448.0,
+        "max_y": 230.0
       }
     }
   }

@@ -1,6 +1,6 @@
 //! Private parser catalog cases shared with renderer integration tests.
 
-const MALFORMED_SOURCE: &str = "not-a-mermaid-diagram\n";
+pub(super) const MALFORMED_SOURCE: &str = "not-a-mermaid-diagram\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct CharacterizedCapabilities {
@@ -179,4 +179,10 @@ pub(super) const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         "wardley-beta\ncomponent API [0.6, 0.7]\n"
     ),
     combined_family!("cynefin", "cynefin", "cynefin-beta\n  complex\n"),
+    combined_family!("agentflow", "agentflow", "agentflow-beta\nA --> B\n"),
+    combined_family!(
+        "usecase",
+        "usecase",
+        "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n"
+    ),
 ];

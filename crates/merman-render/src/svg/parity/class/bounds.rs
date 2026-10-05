@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_relation_bounds_include_scaled_start_and_end_markers() {
+    fn horizontal_relation_bounds_keep_markers_in_user_space() {
         let points = vec![
             LayoutPoint { x: 10.0, y: 20.0 },
             LayoutPoint { x: 110.0, y: 20.0 },
@@ -165,7 +165,7 @@ mod tests {
             &mut bounds,
             &points,
             true,
-            class_marker_paint_spec(0, true).expect("aggregation start marker"),
+            class_marker_paint_spec(0, true, false).expect("aggregation start marker"),
             10.0,
             0.0,
             0.0,
@@ -174,17 +174,17 @@ mod tests {
             &mut bounds,
             &points,
             false,
-            class_marker_paint_spec(2, false).expect("composition end marker"),
+            class_marker_paint_spec(2, false, false).expect("composition end marker"),
             10.0,
             0.0,
             0.0,
         );
 
         let bounds = bounds.expect("marker paint bounds");
-        assert_close(bounds.min_x, -200.0);
-        assert_close(bounds.min_y, -80.0);
-        assert_close(bounds.max_x, 320.0);
-        assert_close(bounds.max_y, 120.0);
+        assert_close(bounds.min_x, -11.0);
+        assert_close(bounds.min_y, 10.0);
+        assert_close(bounds.max_x, 131.0);
+        assert_close(bounds.max_y, 30.0);
     }
 
     #[test]
@@ -199,7 +199,7 @@ mod tests {
             &mut bounds,
             &points,
             true,
-            class_marker_paint_spec(1, true).expect("extension start marker"),
+            class_marker_paint_spec(1, true, false).expect("extension start marker"),
             10.0,
             0.0,
             0.0,
@@ -208,25 +208,26 @@ mod tests {
             &mut bounds,
             &points,
             false,
-            class_marker_paint_spec(3, false).expect("dependency end marker"),
+            class_marker_paint_spec(3, false, false).expect("dependency end marker"),
             10.0,
             0.0,
             0.0,
         );
 
         let bounds = bounds.expect("marker paint bounds");
-        assert_close(bounds.min_x, -50.0);
+        assert_close(bounds.min_x, 40.0);
         assert_close(bounds.min_y, 79.0);
-        assert_close(bounds.max_x, 150.0);
-        assert_close(bounds.max_y, 290.0);
+        assert_close(bounds.max_x, 60.0);
+        assert_close(bounds.max_y, 209.0);
     }
 
     #[test]
-    fn lollipop_marker_has_a_finite_scaled_conservative_radius() {
-        let marker = class_marker_paint_spec(4, true).expect("lollipop start marker");
+    fn lollipop_marker_radius_is_independent_of_relation_stroke() {
+        let marker = class_marker_paint_spec(4, true, false).expect("lollipop start marker");
         let radius = marker.conservative_radius(4.0);
 
         assert!(radius.is_finite());
-        assert!(radius > 50.0 && radius < 60.0, "radius={radius}");
+        assert!(radius > 14.0 && radius < 15.0, "radius={radius}");
+        assert_close(radius, marker.conservative_radius(1.0));
     }
 }

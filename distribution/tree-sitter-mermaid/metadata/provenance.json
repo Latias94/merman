@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": {
     "name": "tree-sitter-mermaid",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "releaseState": "candidate"
   },
   "language": {
@@ -12,10 +12,10 @@
     "querySchemaVersion": 1
   },
   "toolchain": {
-    "treeSitterCli": "0.26.12",
-    "rustRuntime": "0.26.12",
+    "treeSitterCli": "0.27.0",
+    "rustRuntime": "0.27.0",
     "nodeRuntime": "0.25.1",
-    "webRuntime": "0.26.12",
+    "webRuntime": "0.27.0",
     "wasiSdk": "29.0",
     "wasiClang": "21.1.4-wasi-sdk"
   },
@@ -30,14 +30,25 @@
     },
     {
       "id": "tree-sitter",
-      "kind": "generator-and-template-source",
+      "kind": "generator-source",
+      "version": "0.27.0",
+      "repository": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.27.0",
+      "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0",
+      "usage": "Pinned generator and generated support headers",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-generator"
+    },
+    {
+      "id": "tree-sitter-templates",
+      "kind": "implementation-template-source",
       "version": "0.26.12",
       "repository": "https://github.com/tree-sitter/tree-sitter.git",
       "ref": "v0.26.12",
       "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
-      "usage": "Pinned generator, generated support headers, and modified C, Rust, and Node binding templates",
+      "usage": "Modified C, Rust, and Node binding templates and WASM build helper retained from the original implementation",
       "license": "MIT",
-      "legalComponentId": "tree-sitter-generator"
+      "legalComponentId": "tree-sitter-templates"
     },
     {
       "id": "mermaid",
@@ -46,9 +57,20 @@
       "repository": "https://github.com/mermaid-js/mermaid.git",
       "ref": "mermaid@11.16.1",
       "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-      "usage": "Accepted source syntax and source-backed grammar translation",
+      "usage": "Accepted source syntax and source-backed grammar translation for the original 35 diagram families",
       "license": "MIT",
       "legalComponentId": "tree-sitter-mermaid-mermaid-baseline"
+    },
+    {
+      "id": "mermaid-12-new-families",
+      "kind": "syntax-authority",
+      "version": "12.0.0",
+      "repository": "https://github.com/mermaid-js/mermaid.git",
+      "ref": "mermaid@12.0.0",
+      "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+      "usage": "Agentflow and Usecase syntax additions; the original 35-family syntax baseline remains Mermaid 11.16.1",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-mermaid-12-new-families"
     },
     {
       "id": "zenuml-core",

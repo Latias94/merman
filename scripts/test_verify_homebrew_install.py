@@ -31,13 +31,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
         self.assertEqual(verifier.CLI_CONTRACT_VERSION, 6)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
-        self.assertTrue(
-            {
-                "merman-cli-rustdoc.1",
-                "merman-cli-rustdoc-build.1",
-                "merman-cli-rustdoc-check.1",
-            }.issubset(verifier.MANPAGE_NAMES)
-        )
+        for name in ("merman-cli-rustdoc.1", "merman-cli-rustdoc-build.1", "merman-cli-rustdoc-check.1"):
+            self.assertIn(name, verifier.MANPAGE_NAMES)
 
     def test_versions_before_threshold_keep_the_binary_only_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -243,9 +238,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_all_fifteen_man_pages_are_required(self) -> None:
+    def test_all_twelve_man_pages_are_required(self) -> None:
         with self.installation_fixture() as fixture:
-            (fixture.prefix / "share/man/man1/merman-cli-rustdoc-check.1").unlink()
+            (fixture.prefix / "share/man/man1/merman-cli-render.1").unlink()
             with self.assertRaisesRegex(
                 verifier.HomebrewVerificationError,
                 "man page set differs",
@@ -367,6 +362,20 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             runner=fixture.run,
                         )
 
+    def test_installed_parser_families_must_match_the_release_recipe(self) -> None:
+        for families in (None, ["flowchart", "gantt"], ["error"]):
+            with self.subTest(families=families), self.installation_fixture() as fixture:
+                fixture.capabilities["diagram_families"] = families
+                with self.assertRaisesRegex(verifier.HomebrewVerificationError, "diagram family set differs"):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
     def test_capabilities_package_version_must_match_formula(self) -> None:
         with self.installation_fixture() as fixture:
             fixture.capabilities["package"]["version"] = "0.8.1"
@@ -430,7 +439,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
 
     def test_installed_manpage_body_must_match_the_release_source_asset(self) -> None:
         with self.installation_fixture() as fixture:
-            path = fixture.prefix / "share/man/man1/merman-cli-rustdoc-build.1"
+            path = fixture.prefix / "share/man/man1/merman-cli-render.1"
             path.write_bytes(path.read_bytes() + b".SH STALE\nstale body\n")
 
             with self.assertRaisesRegex(
@@ -493,6 +502,7 @@ class InstallationFixture:
                 "digest": authority["digest"],
             },
             "commands": list(verifier.COMMANDS),
+            "diagram_families": profile["expected"]["diagram_families"],
             "capabilities": [
                 {"id": identifier}
                 for identifier in profile["expected"]["capabilities"]

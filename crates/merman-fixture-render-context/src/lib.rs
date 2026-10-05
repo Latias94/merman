@@ -122,9 +122,11 @@ pub fn fixture_dom_evidence(
             | "upstream_cypress_venn_handdrawn_three_set_title_015"
             | "upstream_cypress_venn_handdrawn_custom_styles_018",
         ) => Some(FixtureDomEvidence::StructureOnly),
-        ("class", "stress_class_svg_font_size_precedence_025") => {
-            Some(FixtureDomEvidence::BrowserTextWrapping)
-        }
+        (
+            "class",
+            "stress_class_svg_font_size_precedence_025"
+            | "stress_class_svg_font_size_px_string_precedence_026",
+        ) => Some(FixtureDomEvidence::BrowserTextWrapping),
         _ => None,
     }
 }
@@ -773,7 +775,14 @@ fn path_matches(actual: &[String], expected: &[&str]) -> bool {
 }
 
 fn sha256_hex(source: &[u8]) -> String {
-    data_encoding::HEXLOWER.encode(&Sha256::digest(source))
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(source);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn validate_sha256(fixture: &str, value: &str) -> Result<(), CatalogError> {

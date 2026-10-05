@@ -6,8 +6,9 @@ use super::math_label::{
     write_sequence_katex_foreign_object,
 };
 use crate::sequence::{
-    SequenceMathHeightMode, SequenceStaticRectThemeReceipt, sequence_note_final_wrapped_lines,
-    sequence_text_line_step_px,
+    SequenceDrawnTextNode, SequenceMathHeightMode, SequenceStaticRectThemeReceipt,
+    measure_sequence_drawn_line_height, sequence_drawn_text_first_y, sequence_drawn_text_style,
+    sequence_drawn_text_y, sequence_note_final_wrapped_lines,
 };
 use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
@@ -119,12 +120,13 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) legacy_label_font_size: f64,
+    pub(super) note_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -150,8 +152,7 @@ pub(super) fn render_sequence_note(
     };
     let (x, y) = node_left_top(n);
     let cx = x + (n.width / 2.0);
-    let text_y = y + 5.0;
-    let line_step = sequence_text_line_step_px(ctx.note_text_style.font_size);
+    let text_y = sequence_drawn_text_first_y(y, ctx.note_margin);
     let shadow = ctx
         .paint
         .shadows
@@ -163,11 +164,18 @@ pub(super) fn render_sequence_note(
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,
-        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note""##,
+        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"{look_attr}"##,
         x = fmt(x),
         y = fmt(y),
         w = fmt(n.width),
-        h = fmt(n.height)
+        h = fmt(n.height),
+        look_attr = if crate::config::config_diagram_look(ctx.sanitize_config.as_value()).as_str()
+            == "neo"
+        {
+            r#" data-look="neo""#
+        } else {
+            ""
+        },
     );
     if let Some(width) = ctx.paint.stroke_width {
         let _ = write!(out, r#" stroke-width="{}""#, fmt(f64::from(width)));
@@ -176,7 +184,13 @@ pub(super) fn render_sequence_note(
         let _ = write!(out, r#" rx="{r}" ry="{r}""#, r = fmt(f64::from(radius)));
     }
     if let Some(filter) = &filter {
-        let _ = write!(out, r#" filter="{}""#, escape_attr(filter));
+        let _ = write!(
+            out,
+            r#" filter="{filter}" style="filter:{filter};""#,
+            filter = escape_attr(filter)
+        );
+    } else if theme_receipt.effect_cleared {
+        out.push_str(r#" style="filter:none;""#);
     }
     out.push_str("/>");
     theme_receipt.record_rect_emission();
@@ -228,31 +242,9 @@ pub(super) fn render_sequence_note(
             ctx.note_text_style,
             ctx.checkpoints.text(),
         )?;
-        render_sequence_note_lines(
-            out,
-            lines.iter().map(String::as_str),
-            cx,
-            text_y,
-            line_step,
-            ctx.legacy_label_font_size,
-            Some(ctx.note_typography),
-            Some(ctx.typography_receipt),
-            Some(ctx),
-            ctx.checkpoints,
-        )?;
+        render_sequence_note_lines(out, lines.iter().map(String::as_str), cx, text_y, ctx)?;
     } else {
-        render_sequence_note_lines(
-            out,
-            crate::text::split_html_br_lines(raw),
-            cx,
-            text_y,
-            line_step,
-            ctx.legacy_label_font_size,
-            Some(ctx.note_typography),
-            Some(ctx.typography_receipt),
-            Some(ctx),
-            ctx.checkpoints,
-        )?;
+        render_sequence_note_lines(out, crate::text::split_html_br_lines(raw), cx, text_y, ctx)?;
     }
     out.push_str("</g>");
     ctx.checkpoints.checkpoint()
@@ -263,33 +255,25 @@ fn render_sequence_note_lines<'a>(
     lines: impl IntoIterator<Item = &'a str>,
     cx: f64,
     text_y: f64,
-    line_step: f64,
-    legacy_label_font_size: f64,
-    typography: Option<&crate::sequence::SequenceResolvedTypography>,
-    typography_receipt: Option<&crate::sequence::SequenceTypographyThemeReceipt>,
-    paint_context: Option<&SequenceNoteRenderContext<'_>>,
-    checkpoints: SequenceEmitCheckpoints<'_>,
+    ctx: &SequenceNoteRenderContext<'_>,
 ) -> Result<()> {
+    let drawn_style = sequence_drawn_text_style(ctx.note_text_style, ctx.sanitize_config);
+    let css = super::settings::sequence_text_style_attribute(ctx.note_text_style);
+    let mut preceding_height = 0.0;
     for (i, line) in lines.into_iter().enumerate() {
-        checkpoints.checkpoint_loop(i)?;
+        ctx.checkpoints.checkpoint_loop(i)?;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
         let text = if decoded.as_ref().is_empty() {
             "\u{200B}"
         } else {
             decoded.as_ref()
         };
-        let y = text_y + (i as f64) * line_step;
-        let legacy_style = format!(
-            "font-size: {}px; font-weight: 400;",
-            fmt(legacy_label_font_size)
-        );
-        let style = typography.map_or(legacy_style.clone(), |typography| {
-            typography.terminal_style("", legacy_style)
-        });
+        let y = sequence_drawn_text_y(text_y, ctx.note_margin, preceding_height);
+        let style = ctx.note_typography.terminal_style("", css.clone());
         // SVG whitespace and the zero-width placeholder have no painted glyphs.
         // Keep the line for layout, but do not create an empty native filter group.
-        let paintless = paint_context.is_some_and(|ctx| ctx.text_shadow.is_paintless(text));
-        let shadow = paint_context
+        let paintless = ctx.text_shadow.is_paintless(text);
+        let shadow = Some(ctx)
             .filter(|_| !paintless)
             .map(|ctx| {
                 ctx.text_shadow.write_definition(
@@ -316,21 +300,27 @@ fn render_sequence_note_lines<'a>(
             style = escape_attr_display(&style),
             text = escape_xml(text)
         );
-        if let Some(receipt) = typography_receipt {
-            receipt.record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
-        }
+        ctx.typography_receipt
+            .record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
         out.checkpoint()?;
-        if let Some(ctx) = paint_context {
-            ctx.text_shadow.record_terminal(
-                shadow.as_ref(),
-                paintless,
-                ctx.shadow_evidence,
-                ctx.typography_receipt,
-                crate::sequence::SequenceTextSurface::NoteLabel,
-            );
+        ctx.text_shadow.record_terminal(
+            shadow.as_ref(),
+            paintless,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::NoteLabel,
+        );
+        if ctx.note_margin > 0.0 {
+            preceding_height += measure_sequence_drawn_line_height(
+                ctx.measurer,
+                text,
+                &drawn_style,
+                SequenceDrawnTextNode::Tspan,
+                ctx.checkpoints.text(),
+            )?;
         }
     }
-    checkpoints.checkpoint()
+    ctx.checkpoints.checkpoint()
 }
 
 #[cfg(test)]
@@ -339,22 +329,155 @@ mod tests {
 
     #[test]
     fn empty_note_rows_render_the_upstream_zero_width_space() {
-        let mut out = String::new();
-        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        super::render_sequence_note_lines(
-            &mut out,
-            ["first", "", "last"],
-            50.0,
-            10.0,
-            19.0,
-            16.0,
-            None,
-            None,
-            None,
-            super::SequenceEmitCheckpoints::for_emit(&meter),
-        )
-        .unwrap();
+        crate::svg::parity::with_test_svg_execution(
+            crate::DiagramFamilyId::SEQUENCE,
+            &crate::svg::SvgRenderOptions::default(),
+            |execution| {
+                let mut out = String::new();
+                let meter =
+                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+                let config = merman_core::MermaidConfig::default();
+                let typography =
+                    crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
+                        .unwrap();
+                let mut receipt =
+                    crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
+                let text_shadow = super::super::text_effect::SequenceTextShadow::resolve(
+                    execution,
+                    crate::sequence::SequenceTypographyRole::Note,
+                    typography.note(),
+                    &mut receipt,
+                );
+                super::render_sequence_note_lines(
+                    &mut out,
+                    ["first", "", "last"],
+                    50.0,
+                    10.0,
+                    &super::SequenceNoteRenderContext {
+                        text_shadow: &text_shadow,
+                        paint: &Default::default(),
+                        shadow_evidence: &Default::default(),
+                        note_typography: typography.note(),
+                        typography_receipt: &receipt,
+                        math_sidecar: &Default::default(),
+                        nodes_by_id: &Default::default(),
+                        measurer: &crate::text::DeterministicTextMeasurer::default(),
+                        note_margin: 10.0,
+                        wrap_padding: 10.0,
+                        note_text_style: &crate::text::TextStyle::default(),
+                        sanitize_config: &merman_core::MermaidConfig::default(),
+                        checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
+                    },
+                )
+                .unwrap();
 
-        assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
+                assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
+            },
+        );
+    }
+    #[test]
+    fn note_rows_use_tspan_heights_and_keep_explicit_dy_at_nonpositive_margins() {
+        crate::svg::parity::with_test_svg_execution(
+            crate::DiagramFamilyId::SEQUENCE,
+            &crate::svg::SvgRenderOptions::default(),
+            |execution| {
+                struct TspanProbe(std::cell::Cell<usize>);
+                impl crate::text::TextMeasurer for TspanProbe {
+                    fn measure(
+                        &self,
+                        _: &str,
+                        _: &crate::text::TextStyle,
+                    ) -> crate::text::TextMetrics {
+                        panic!("notes must use the tspan height operation")
+                    }
+                    fn measure_svg_tspan_text_bbox_height_px(
+                        &self,
+                        text: &str,
+                        style: &crate::text::TextStyle,
+                    ) -> f64 {
+                        assert_eq!(style.font_weight.as_deref(), Some("700"));
+                        self.0.set(self.0.get() + 1);
+                        match text {
+                            "first" => 10.4,
+                            "\u{200b}" => 20.4,
+                            "&" => 8.0,
+                            _ => panic!("unexpected row"),
+                        }
+                    }
+                }
+                let meter =
+                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+                let config = merman_core::MermaidConfig::default();
+                let typography =
+                    crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
+                        .unwrap();
+                let mut receipt =
+                    crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
+                let text_shadow = super::super::text_effect::SequenceTextShadow::resolve(
+                    execution,
+                    crate::sequence::SequenceTypographyRole::Note,
+                    typography.note(),
+                    &mut receipt,
+                );
+                let settings =
+                    super::super::settings::SequenceRenderSettings::from_effective_config(
+                        &serde_json::json!({"sequence": {"noteFontWeight": 700}}),
+                    );
+                for margin in [5.0, 0.0, -5.0] {
+                    let probe = TspanProbe(std::cell::Cell::new(0));
+                    let mut out = String::new();
+                    super::render_sequence_note_lines(
+                        &mut out,
+                        ["first", "", "#38;"],
+                        50.0,
+                        crate::sequence::sequence_drawn_text_first_y(10.25, margin),
+                        &super::SequenceNoteRenderContext {
+                            text_shadow: &text_shadow,
+                            paint: &Default::default(),
+                            shadow_evidence: &Default::default(),
+                            note_typography: typography.note(),
+                            typography_receipt: &receipt,
+                            math_sidecar: &Default::default(),
+                            nodes_by_id: &Default::default(),
+                            measurer: &probe,
+                            note_margin: margin,
+                            wrap_padding: 10.0,
+                            note_text_style: &settings.note_text_style,
+                            sanitize_config: &merman_core::MermaidConfig::default(),
+                            checkpoints: super::SequenceEmitCheckpoints::for_emit(&meter),
+                        },
+                    )
+                    .unwrap();
+                    let svg = format!("<svg>{out}</svg>");
+                    let document = roxmltree::Document::parse(&svg).unwrap();
+                    let ys: Vec<_> = document
+                        .descendants()
+                        .filter(|n| n.has_tag_name("text"))
+                        .map(|n| n.attribute("y").unwrap())
+                        .collect();
+                    assert_eq!(
+                        ys,
+                        if margin > 0.0 {
+                            vec!["13", "23", "44"]
+                        } else {
+                            vec!["10.25"; 3]
+                        }
+                    );
+                    for node in document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("text"))
+                    {
+                        assert!(
+                            node.attribute("style")
+                                .unwrap()
+                                .contains("font-weight: 700;")
+                        );
+                    }
+                    assert_eq!(out.matches("dy=\"1em\"").count(), 3);
+                    assert!(out.contains("&amp;</tspan>"));
+                    assert_eq!(probe.0.get(), if margin > 0.0 { 3 } else { 0 });
+                }
+            },
+        );
     }
 }

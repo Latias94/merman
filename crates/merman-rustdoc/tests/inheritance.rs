@@ -9,6 +9,7 @@ mod support;
 use support::proc_macro_artifact;
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn nested_macros_inherit_explicitly_override_and_reset_parent_configuration() {
     let temp = TempDir::new();
     let source = temp.0.join("lib.rs");

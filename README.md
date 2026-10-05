@@ -14,14 +14,14 @@ Chromium, or another JavaScript runtime.
 Hosts provide explicit output, theme, viewport, and resource policy; Merman returns an artifact,
 metadata, or a typed error. Terminal detection, pager interaction, scheduling, caches, and save/open
 or clipboard actions belong to the host. Start with the
+[Rust embedding guide](docs/rendering/RUST_EMBEDDING.md) for migration and family/backend selection, or the
 [host integration recipes](crates/merman/examples/README.md#host-integration-recipes) for terminal
 text, agent/log output, browser SVG, and raster export using the existing request types.
 
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-Merman currently follows `mermaid@11.17.2`. Its parser, layout, configuration, theming,
-sanitization, and SVG structure are checked against pinned Mermaid source and fixtures.
+This checkout prepares **`0.8.0` (unreleased)** with Mermaid `12.1.0` selected at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid `12.0.0`. Parser, layout, configuration, theming, sanitization, and SVG structure follow the pinned source and fixtures; transition validation remains in progress. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the previous stable release, the [alpha.7-to-0.8.0 guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for Mermaid 12.1 and low-level Rust changes, or the [versioned index](docs/release/README.md) for earlier prereleases. The broader theme refactor remains deferred.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -31,6 +31,11 @@ sanitization, and SVG structure are checked against pinned Mermaid source and fi
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
 ## Quick start
+
+For the published alpha.7 release, add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies and
+use its [tagged documentation](https://github.com/Latias94/merman/blob/v0.8.0-alpha.7/README.md).
+The source-checkout examples below describe current development. Upgrade coupled Merman crates
+together; `0.8.0` is not yet a published installation target.
 
 Run the maintained SVG example from a source checkout:
 
@@ -97,8 +102,8 @@ Choose one typed target for each request:
 
 | Need | Start with | Cargo feature |
 | --- | --- | --- |
-| Parse a typed Mermaid model | `Engine` and `ParseOptions` | Always available |
-| Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Always available |
+| Parse a typed Mermaid model | `Engine` and `ParseOptions` | Required `diagram-*` selectors, or `all-diagrams` |
+| Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Required `diagram-*` selectors, or `all-diagrams` |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
 | Complete one document for several graphical targets | `RenderRequest::document()` | `svg` plus each output feature used |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
@@ -113,21 +118,24 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
-labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
-dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters,
-and ELK remain opt-in. Theme font resources are not supported.
+The current-source `merman` dependency defaults to `all-diagrams` and `complete-svg-elk`: all
+built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Distributed artifacts
+include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
+terminal output, binary export, and ambient system adapters remain opt-in.
 
-Cargo features select capabilities and output backends, not Mermaid diagram families. Every
-parser-capable build retains the same language catalog.
+In the current source, positive `diagram-*` features select built-in families independently of
+outputs and engines. Low-level crates and facade consumers disabling defaults must select
+`all-diagrams` or their required families explicitly. Packages at alpha.6 and earlier predate this
+feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG | defaults, or `complete-svg` |
-| Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
-| Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
-| Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
-| Terminal output | `default-features = false, features = ["ascii"]` |
+| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
+| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
+| Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
+| Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
+| Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |
+| Flowchart + Gantt SVG only | `default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
 Themes select font-family names and typography values. Browsers and native export backends resolve
@@ -149,8 +157,10 @@ optional monotonic deadline. Cancellation is observed at operation checkpoints; 
 callback already in progress may return before Merman reaches the next checkpoint.
 
 Resource limits are part of the request contract. Missing capabilities and exhausted limits return
-typed errors rather than partial output or a silent fallback. See the [resource and options guide]
-for the complete policy model.
+typed errors rather than partial output or a silent fallback. The
+[host integration guide](docs/integration/RESOURCE_POLICY.md) shows how to select a finite policy,
+run cancellable background previews, and keep layout work separate from host memory/concurrency.
+See the [resource and options guide] for the complete policy model.
 
 ## Internal flow
 
@@ -177,7 +187,8 @@ shared by analysis and rendering. Binary export starts from validated SVG, not a
 | <img width="280" alt="Architecture diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png"> | <img width="280" alt="Mindmap rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png"> | <img width="280" alt="Sankey diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png"> |
 
 These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
-rendering pipeline. The [Playground] covers all 35 built-in diagram families.
+rendering pipeline. The source-checkout Playground covers all 37 built-in diagram types, including
+Agentflow and Usecase. The hosted [Playground] reflects its deployed package version.
 
 ## Ecosystem
 
@@ -223,8 +234,11 @@ Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and Rou
 can still produce documented differences where a robust headless equivalent is unavailable.
 Merman's built-in text measurer is deterministic and font-agnostic; products with a host
 measurement service should use the final display stack as the primary authority and retain the
-built-in measurer as a per-request fallback. The Typst plugin has no such synchronous host import
-and uses deterministic measurement only.
+built-in measurer as a per-request fallback. Rust applications that can always measure a complete
+string can use `DeterministicTextMeasurer::with_width_callback(...)`; Merman still handles wrapping.
+See [`render_svg_monospace.rs`](crates/merman/examples/render_svg_monospace.rs). If measurement can
+fail or must vary by operation, use `HostTextMeasurer`. The Typst plugin has no synchronous host
+import and uses deterministic measurement only.
 Mermaid-style SVG may contain HTML labels. Use `SvgPipeline::resvg_safe()` or a typed PNG, JPEG, or
 PDF target when the consumer cannot render `foreignObject`.
 The resvg-safe fallback resolves supported typography from the original SVG/XHTML context before

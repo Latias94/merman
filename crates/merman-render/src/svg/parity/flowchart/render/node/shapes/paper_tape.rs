@@ -24,8 +24,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
     );
 
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(0.0);
-    let h = (metrics.height + p).max(0.0);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 20.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + padding_y).max(0.0);
     let wave_amplitude = h / 8.0;
     let final_h = h + wave_amplitude * 2.0;
 
@@ -69,8 +71,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

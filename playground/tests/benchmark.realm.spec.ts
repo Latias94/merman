@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import { CANONICAL_BENCHMARK_SCREEN_AVAILABLE_WIDTH } from "../src/benchmark/input.ts";
+import { PLAYGROUND_MERMAN_VERSION } from "../src/generated/examples.ts";
 import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference.ts";
 
 const RUN_TOKEN = "r".repeat(43);
@@ -77,7 +78,7 @@ const EXTERNAL_MERMAID_SCENARIOS = [
     id: "elk-merge-edges",
     externalRequirements: {
       externalDiagrams: [],
-      layoutModules: ["elk"],
+      layoutModules: [],
     },
     source: `---
 config:
@@ -137,7 +138,7 @@ test("trusted Merman defers engine parse/eval until Fresh sampling and then reus
       externalRequirements: { externalDiagrams: [], layoutModules: [] },
     });
     expect(cold.type, JSON.stringify(cold)).toBe("benchmark-sample-success");
-    expect(cold.version).toMatch(/^0\.8\.0-alpha\./u);
+    expect(cold.version).toBe(PLAYGROUND_MERMAN_VERSION);
     expect(cold.trace.adapter_import_start).not.toBeNull();
     expect(cold.trace.adapter_import_end).toBeGreaterThanOrEqual(
       cold.trace.adapter_import_start!

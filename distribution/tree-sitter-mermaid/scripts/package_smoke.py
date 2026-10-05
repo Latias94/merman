@@ -13,7 +13,7 @@ import textwrap
 from pathlib import Path
 import tomllib
 
-from c_smoke import TREE_SITTER_RUNTIME_DEFINES, find_compiler, runtime_directory
+from c_smoke import TREE_SITTER_RUNTIME_DEFINES, runtime_directory
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -282,8 +282,9 @@ def run_cmake_consumer(
     destination: Path,
 ) -> None:
     cmake = shutil.which("cmake")
-    if cmake is None:
-        raise SystemExit("cmake is required for the C package smoke")
+    ctest = shutil.which("ctest")
+    if cmake is None or ctest is None:
+        raise SystemExit("cmake and ctest are required for the C package smoke")
     build = destination / "cmake-build"
     installed = destination / "cmake-install"
     run(
@@ -294,41 +295,64 @@ def run_cmake_consumer(
             "-B",
             str(build),
             "-DBUILD_SHARED_LIBS=OFF",
+            "-DCMAKE_BUILD_TYPE=Release",
             f"-DCMAKE_INSTALL_PREFIX={installed}",
         ],
         cwd=destination,
     )
-    run([cmake, "--build", str(build), "--parallel", "1"], cwd=destination)
-    run([cmake, "--install", str(build)], cwd=destination)
+    run([cmake, "--build", str(build), "--config", "Release", "--parallel", "1"], cwd=destination)
+    run([cmake, "--install", str(build), "--config", "Release"], cwd=destination)
 
     runtime = runtime_directory(workspace_package)
-    compiler = find_compiler()
-    if Path(compiler[0]).name.lower().removesuffix(".exe") in {"cl", "clang-cl"}:
-        raise SystemExit("the installed C archive smoke currently requires a Unix-style compiler")
-    library = next((installed / "lib").glob("libtree-sitter-mermaid.a"), None)
+    library = next(installed.rglob("libtree-sitter-mermaid.a"), None)
     if library is None:
         library = next(installed.rglob("tree-sitter-mermaid.lib"), None)
     if library is None:
         raise SystemExit("CMake install did not produce the static grammar library")
 
-    executable = destination / "tree-sitter-mermaid-installed-c-smoke"
+    consumer = destination / "c-consumer"
+    consumer.mkdir()
+    definitions = " ".join(TREE_SITTER_RUNTIME_DEFINES)
+    (consumer / "CMakeLists.txt").write_text(
+        textwrap.dedent(
+            f"""\
+            cmake_minimum_required(VERSION 3.13)
+            project(tree-sitter-mermaid-installed-consumer LANGUAGES C)
+            add_library(mermaid_grammar STATIC IMPORTED)
+            set_target_properties(mermaid_grammar PROPERTIES
+                IMPORTED_LOCATION "${{GRAMMAR_LIBRARY}}"
+                INTERFACE_INCLUDE_DIRECTORIES "${{GRAMMAR_INCLUDE}}")
+            add_executable(installed_consumer "${{SMOKE_SOURCE}}" "${{RUNTIME_ROOT}}/src/lib.c")
+            set_target_properties(installed_consumer PROPERTIES C_STANDARD 11)
+            target_compile_definitions(installed_consumer PRIVATE {definitions})
+            target_include_directories(installed_consumer PRIVATE
+                "${{RUNTIME_ROOT}}/include" "${{RUNTIME_ROOT}}/src")
+            target_link_libraries(installed_consumer PRIVATE mermaid_grammar)
+            enable_testing()
+            add_test(NAME installed_consumer COMMAND installed_consumer)
+            """
+        ),
+        encoding="utf-8",
+    )
+    consumer_build = destination / "c-consumer-build"
     run(
         [
-            *compiler,
-            "-std=c11",
-            *(f"-D{define}" for define in TREE_SITTER_RUNTIME_DEFINES),
-            f"-I{installed / 'include'}",
-            f"-I{runtime / 'include'}",
-            f"-I{runtime / 'src'}",
-            str(smoke_source),
-            str(runtime / "src/lib.c"),
-            str(library),
-            "-o",
-            str(executable),
+            cmake,
+            "-S", str(consumer),
+            "-B", str(consumer_build),
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DGRAMMAR_LIBRARY={library}",
+            f"-DGRAMMAR_INCLUDE={installed / 'include'}",
+            f"-DRUNTIME_ROOT={runtime}",
+            f"-DSMOKE_SOURCE={smoke_source}",
         ],
         cwd=destination,
     )
-    run([str(executable)], cwd=destination)
+    run(
+        [cmake, "--build", str(consumer_build), "--config", "Release", "--parallel", "1"],
+        cwd=destination,
+    )
+    run([ctest, "-C", "Release", "--output-on-failure"], cwd=consumer_build)
 
 
 def parse_arguments() -> argparse.Namespace:

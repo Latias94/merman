@@ -4,52 +4,52 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "cluster",
+          "x": 709.164,
+          "y": 118.0,
+          "width": 678.64,
+          "height": 212.0,
+          "is_cluster": true
+        },
+        {
           "id": "client",
-          "x": 38.605,
-          "y": 122.0,
-          "width": 61.21,
-          "height": 39.0,
+          "x": 97.625,
+          "y": 130.0,
+          "width": 171.25,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ingress",
-          "x": 307.656,
-          "y": 122.0,
-          "width": 106.08,
-          "height": 54.0,
+          "x": 469.844,
+          "y": 130.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "service",
-          "x": 541.096,
-          "y": 122.0,
-          "width": 108.48,
-          "height": 54.0,
+          "x": 736.484,
+          "y": 130.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "pod1",
-          "x": 687.016,
-          "y": 70.0,
-          "width": 83.36,
-          "height": 54.0,
+          "x": 948.484,
+          "y": 82.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "pod2",
-          "x": 687.016,
-          "y": 174.0,
-          "width": 83.36,
-          "height": 54.0,
+          "x": 948.484,
+          "y": 177.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
-        },
-        {
-          "id": "cluster",
-          "x": 491.656,
-          "y": 122.0,
-          "width": 524.08,
-          "height": 228.0,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -61,27 +61,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 69.21,
-              "y": 122.0
+              "x": 183.25,
+              "y": 130.0
             },
             {
-              "x": 149.413,
-              "y": 122.0
+              "x": 359.844,
+              "y": 130.0
             },
             {
-              "x": 229.616,
-              "y": 122.0
-            },
-            {
-              "x": 254.616,
-              "y": 122.0
+              "x": 393.844,
+              "y": 130.0
             }
           ],
           "label": {
-            "x": 149.413,
-            "y": 122.0,
-            "width": 110.406,
-            "height": 48.0
+            "x": 271.547,
+            "y": 130.0,
+            "width": 96.594,
+            "height": 42.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -99,23 +95,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 360.696,
-              "y": 122.0
+              "x": 545.844,
+              "y": 130.0
             },
             {
-              "x": 423.776,
-              "y": 122.0
-            },
-            {
-              "x": 486.856,
-              "y": 122.0
+              "x": 660.484,
+              "y": 130.0
             }
           ],
           "label": {
-            "x": 423.776,
-            "y": 122.0,
-            "width": 76.16,
-            "height": 24.0
+            "x": 603.164,
+            "y": 129.5,
+            "width": 66.64,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -133,16 +125,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 582.24,
-              "y": 95.0
+              "x": 812.484,
+              "y": 126.1
             },
             {
-              "x": 620.336,
-              "y": 70.0
+              "x": 842.484,
+              "y": 126.1
             },
             {
-              "x": 645.336,
-              "y": 70.0
+              "x": 842.484,
+              "y": 82.5
+            },
+            {
+              "x": 872.484,
+              "y": 82.5
             }
           ],
           "label": null,
@@ -162,16 +158,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 582.24,
-              "y": 149.0
+              "x": 812.484,
+              "y": 133.9
             },
             {
-              "x": 620.336,
-              "y": 174.0
+              "x": 842.484,
+              "y": 133.9
             },
             {
-              "x": 645.336,
-              "y": 174.0
+              "x": 842.484,
+              "y": 177.5
+            },
+            {
+              "x": 872.484,
+              "y": 177.5
             }
           ],
           "label": null,
@@ -187,31 +187,31 @@
       "clusters": [
         {
           "id": "cluster",
-          "x": 491.656,
-          "y": 122.0,
-          "width": 524.08,
-          "height": 228.0,
+          "x": 709.164,
+          "y": 118.0,
+          "width": 678.64,
+          "height": 212.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "cluster",
           "title_label": {
-            "x": 491.656,
-            "y": 20.0,
-            "width": 45.76,
-            "height": 24.0
+            "x": 709.164,
+            "y": 21.5,
+            "width": 40.04,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "TB",
+          "effective_dir": "LR",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 753.696,
-        "max_y": 236.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 1048.484,
+        "max_y": 224.0
       }
     }
   }

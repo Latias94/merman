@@ -1,4 +1,18 @@
 use super::*;
+
+fn state_leaf_label_width(
+    node: &StateSvgNode,
+    ctx: &StateRenderCtx<'_>,
+    label: &str,
+    measured_width: f64,
+) -> f64 {
+    let width = measured_width.max(0.0);
+    if matches!(node.shape.as_str(), "rect" | "note") && !label.is_empty() {
+        width.max(node.min_width.unwrap_or(ctx.label_min_width).max(0.0))
+    } else {
+        width
+    }
+}
 use merman_core::svg_security::{
     MermaidNavigationSecurity, normalize_mermaid_tooltip_attribute, prepare_mermaid_navigation_href,
 };
@@ -108,6 +122,19 @@ pub(super) fn render_state_node_svg(
     let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
     let padding_override = node_style.and_then(crate::state::StateNodeStylePlan::padding_override);
 
+    let small_shadow_attr = if matches!(node.shape.as_str(), "stateStart" | "stateEnd")
+        && w < 25.0
+        && compatibility.node_shadow
+        && data_look != "handDrawn"
+    {
+        format!(
+            r#" style="filter:url(#{}-drop-shadow-small)""#,
+            escape_attr_display(ctx.diagram_id)
+        )
+    } else {
+        String::new()
+    };
+
     match node.shape.as_str() {
         "stateStart" => {
             if effective_look == "handDrawn" {
@@ -182,7 +209,14 @@ pub(super) fn render_state_node_svg(
                 );
                 return Ok(());
             }
-            let semantic_style = escape_xml_display(semantic_shape_style_attr);
+            let mut semantic_style = semantic_shape_style_attr.to_string();
+            if !small_shadow_attr.is_empty() {
+                let _ = write!(
+                    semantic_style,
+                    ";filter:url(#{}-drop-shadow-small)",
+                    ctx.diagram_id
+                );
+            }
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -191,7 +225,7 @@ pub(super) fn render_state_node_svg(
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
-                semantic_style,
+                escape_xml_display(&semantic_style)
             );
             drop(_g_emit);
         }
@@ -301,11 +335,12 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
+                small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
                 fill_path_style_escaped,
@@ -345,8 +380,6 @@ pub(super) fn render_state_node_svg(
                     y: -h / 2.0,
                     w,
                     h,
-                    fill: "#333333",
-                    stroke: "#333333",
                     stroke_width: 1.3,
                     randomness: &ctx.hand_drawn_seed,
                 })
@@ -418,8 +451,6 @@ pub(super) fn render_state_node_svg(
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_choice_diamond_path_data(w, h),
-                    "#ECECFF",
-                    "#9370DB",
                     1.3,
                     "0 0",
                     &ctx.hand_drawn_seed,
@@ -515,7 +546,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
             let rough_start = timing.start();
             let note_radius = super::roughjs::normalized_rounded_rect_radius(
@@ -535,16 +566,12 @@ pub(super) fn render_state_node_svg(
                         y: -h / 2.0,
                         w,
                         h,
-                        fill: "#fff5ad",
-                        stroke: "#aaaa33",
                         stroke_width: 1.3,
                         randomness: &ctx.hand_drawn_seed,
                     })
                 } else {
                     roughjs_paths_for_svg_path(
                         &mermaid_rounded_rect_path_data(w, h, note_radius),
-                        "#fff5ad",
-                        "#aaaa33",
                         1.3,
                         "0 0",
                         &ctx.hand_drawn_seed,
@@ -611,6 +638,13 @@ pub(super) fn render_state_node_svg(
                         div_style_prefix,
                         fmt(ctx.html_label_wrapping_width),
                         fmt(ctx.html_label_wrapping_width),
+                    )
+                } else if lw > metrics.width {
+                    format!(
+                        "{}display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        div_style_prefix,
+                        fmt(ctx.html_label_wrapping_width),
+                        fmt(lw),
                     )
                 } else {
                     format!(
@@ -923,7 +957,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
 
             let mut link_open = String::new();
@@ -1035,6 +1069,13 @@ pub(super) fn render_state_node_svg(
                     fmt(ctx.html_label_wrapping_width),
                     fmt(ctx.html_label_wrapping_width),
                 )
+            } else if lw > metrics.width {
+                format!(
+                    r#"{}display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
+                    div_style_prefix,
+                    fmt(ctx.html_label_wrapping_width),
+                    fmt(lw),
+                )
             } else {
                 format!(
                     r#"{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"#,
@@ -1077,7 +1118,7 @@ pub(super) fn render_state_node_svg(
                     .map(|(_, _, attr, _)| attr.as_str())
                     .unwrap_or_default();
                 let rect_radius = radius_override
-                    .unwrap_or_else(|| if effective_look == "neo" { 3.0 } else { 5.0 })
+                    .unwrap_or(compatibility.rect_radius)
                     .max(0.0);
                 let rect_style = escape_xml_display(shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
@@ -1164,8 +1205,6 @@ pub(super) fn render_state_node_svg(
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_rounded_rect_path_data(w, h, rect_radius),
-                    "#ECECFF",
-                    "#9370DB",
                     1.3,
                     "0 0",
                     &ctx.hand_drawn_seed,

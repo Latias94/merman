@@ -95,9 +95,15 @@ fn render_fixture(renderer: &BenchmarkRenderer, name: &str, input: &str) -> Stri
 
 fn output_identity(output: &str) -> OutputIdentity {
     assert!(!output.is_empty(), "benchmark produced empty output");
+    use std::fmt::Write as _;
+
+    let mut sha256 = String::with_capacity(64);
+    for byte in Sha256::digest(output.as_bytes()) {
+        write!(&mut sha256, "{byte:02x}").expect("writing to a String cannot fail");
+    }
     OutputIdentity {
         bytes: output.len(),
-        sha256: data_encoding::HEXLOWER.encode(&Sha256::digest(output.as_bytes())),
+        sha256,
     }
 }
 

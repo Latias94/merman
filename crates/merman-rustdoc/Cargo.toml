@@ -20,7 +20,78 @@ proc-macro = true
 artifact-profile-required = true
 
 [features]
-default = ["svg", "layout-cytoscape"]
+# Diagram selection is independent of output formats and optional layout engines.
+all-diagrams = [
+    "diagram-agentflow",
+    "diagram-architecture",
+    "diagram-block",
+    "diagram-c4",
+    "diagram-class",
+    "diagram-cynefin",
+    "diagram-er",
+    "diagram-event-modeling",
+    "diagram-flowchart",
+    "diagram-gantt",
+    "diagram-git-graph",
+    "diagram-info",
+    "diagram-ishikawa",
+    "diagram-journey",
+    "diagram-kanban",
+    "diagram-mindmap",
+    "diagram-packet",
+    "diagram-pie",
+    "diagram-quadrant-chart",
+    "diagram-radar",
+    "diagram-railroad",
+    "diagram-requirement",
+    "diagram-sankey",
+    "diagram-sequence",
+    "diagram-state",
+    "diagram-swimlane",
+    "diagram-timeline",
+    "diagram-tree-view",
+    "diagram-treemap",
+    "diagram-usecase",
+    "diagram-venn",
+    "diagram-wardley",
+    "diagram-xychart",
+    "diagram-zenuml",
+]
+diagram-architecture = ["merman?/diagram-architecture"]
+diagram-block = ["merman?/diagram-block"]
+diagram-c4 = ["merman?/diagram-c4"]
+diagram-class = ["merman?/diagram-class"]
+diagram-cynefin = ["merman?/diagram-cynefin"]
+diagram-er = ["merman?/diagram-er"]
+diagram-event-modeling = ["merman?/diagram-event-modeling"]
+diagram-agentflow = ["merman?/diagram-agentflow"]
+diagram-usecase = ["merman?/diagram-usecase"]
+diagram-flowchart = ["merman?/diagram-flowchart"]
+diagram-gantt = ["merman?/diagram-gantt"]
+diagram-git-graph = ["merman?/diagram-git-graph"]
+diagram-info = ["merman?/diagram-info"]
+diagram-ishikawa = ["merman?/diagram-ishikawa"]
+diagram-journey = ["merman?/diagram-journey"]
+diagram-kanban = ["merman?/diagram-kanban"]
+diagram-mindmap = ["merman?/diagram-mindmap"]
+diagram-packet = ["merman?/diagram-packet"]
+diagram-pie = ["merman?/diagram-pie"]
+diagram-quadrant-chart = ["merman?/diagram-quadrant-chart"]
+diagram-radar = ["merman?/diagram-radar"]
+diagram-railroad = ["merman?/diagram-railroad"]
+diagram-requirement = ["merman?/diagram-requirement"]
+diagram-sankey = ["merman?/diagram-sankey"]
+diagram-sequence = ["merman?/diagram-sequence"]
+diagram-state = ["merman?/diagram-state"]
+diagram-swimlane = ["merman?/diagram-swimlane"]
+diagram-timeline = ["merman?/diagram-timeline"]
+diagram-tree-view = ["merman?/diagram-tree-view"]
+diagram-treemap = ["merman?/diagram-treemap"]
+diagram-venn = ["merman?/diagram-venn"]
+diagram-wardley = ["merman?/diagram-wardley"]
+diagram-xychart = ["merman?/diagram-xychart"]
+diagram-zenuml = ["merman?/diagram-zenuml"]
+default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
 complete-svg = ["svg", "layout-cytoscape", "math"]
 complete-svg-elk = ["complete-svg", "layout-elk"]
 svg = [
@@ -48,14 +119,25 @@ syn = { workspace = true, optional = true }
 
 [[test]]
 name = "attribute_macro"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart"]
 
 [[test]]
 name = "complete_svg_e2e"
-required-features = ["layout-cytoscape", "layout-elk", "math", "svg"]
+required-features = [
+    "diagram-architecture",
+    "diagram-flowchart",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "svg",
+]
 
 [[test]]
 name = "rustdoc_e2e"
+required-features = ["svg", "diagram-flowchart"]
+
+[[test]]
+name = "feature_selection"
 required-features = ["svg"]
 
 [dev-dependencies]

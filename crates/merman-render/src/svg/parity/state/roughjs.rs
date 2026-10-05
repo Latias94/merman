@@ -6,7 +6,6 @@ use roughr::{PathParser, PathSegment};
 use super::super::roughjs_common::{
     closed_path_d_from_points as roughjs_closed_path_d_from_points,
     mermaid_arc_points as roughjs_arc_points, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
-    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba,
 };
 
 pub(super) fn normalized_rounded_rect_radius(w: f64, h: f64, radius: f64) -> f64 {
@@ -118,15 +117,10 @@ mod tests {
 
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill = roughjs_parse_hex_color_to_srgba(fill)?;
-    let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
-
     let mut dash0: Option<f32> = None;
     let mut dash1: Option<f32> = None;
     for t in stroke_dasharray
@@ -161,8 +155,6 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
         .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
-        .fill(fill)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
         .stroke_line_dash_offset(0.0)

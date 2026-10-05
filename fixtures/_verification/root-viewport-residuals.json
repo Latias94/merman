@@ -1,13 +1,18 @@
 {
-  "schemaVersion": 2,
-  "comparisonRevision": "browser-root-paint-containment-v11",
-  "auditFingerprintVersion": 1,
+  "schemaVersion": 1,
+  "comparisonRevision": "browser-root-paint-containment-v10",
   "entries": [
+    {
+      "fixture": "flowchart/stress_flowchart_title_padding_subgraph_029",
+      "localSvgSha256": "a48f7f0a4b8e6b513fecb476d196481b1109bcb5bdb933055e41a657cf83edfa",
+      "upstreamSvgSha256": "11a3106caf5254ea2122aee581f9ac87ef6415c7acff3a14fe697c24316bdfba",
+      "reason": "deterministic-title-display-font-with-reviewed-filter-paint",
+      "auditSha256": "5f04d3f796c8522a73286caf04e16469438e2219ceaf34d89ece458038d2526c"
+    },
     {
       "fixture": "xychart/upstream_xychart_yaxis_range_without_title_jison_spec",
       "localSvgSha256": "03e653222acfb940914dab95def9c05c338b3817a1d4efc6cab6393c9668b60f",
-      "upstreamSvgSha256": "47b7dedc036095d72c41eee64a52e703bd379aea9dda8f453eb570cbaba44296",
-      "auditEvidenceSha256": "4f6016c875b14eadfb0f6e6db85f297382891f254b157966f349f84feaba3c18",
+      "upstreamSvgSha256": "5332be81934f2e2629e6f327b038bee7d06b561740ed5c7674bb54b109faf5aa",
       "reason": "deterministic-text-measurement-out-of-domain-extrapolation"
     }
   ]

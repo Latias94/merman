@@ -26,6 +26,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) settings: &'a SequenceRenderSettings,
     pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,
     pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
@@ -76,7 +77,13 @@ pub(super) fn render_sequence_interaction_overlays(
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
         label_box_width: ctx.block_label_box_metrics.width(),
-        label_box_height: ctx.block_label_box_metrics.terminal_height(),
+        label_box_height: if ctx.block_label_box_metrics.typography_expanded() {
+            ctx.block_label_box_metrics.terminal_height()
+        } else {
+            ctx.settings.label_box_height
+        },
+        box_margin: ctx.settings.box_margin,
+        box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
@@ -84,6 +91,7 @@ pub(super) fn render_sequence_interaction_overlays(
         typography_receipt: ctx.typography_receipt,
         frame_paint: ctx.frame_paint,
         keyword_paint: ctx.keyword_paint,
+        sanitize_config: ctx.sanitize_config,
         math_sidecar: ctx.math_sidecar,
         checkpoints: ctx.checkpoints,
     };
@@ -93,10 +101,11 @@ pub(super) fn render_sequence_interaction_overlays(
         shadow_evidence: ctx.shadow_evidence,
         nodes_by_id: ctx.nodes_by_id,
         measurer: ctx.measurer,
-        legacy_label_font_size: ctx.settings.actor_label_font_size,
+        note_margin: ctx.settings.note_margin,
         wrap_padding: ctx.settings.wrap_padding,
         note_text_style: &ctx.settings.note_text_style,
         note_typography: ctx.typography.note(),
+        sanitize_config: ctx.sanitize_config,
         typography_receipt: ctx.typography_receipt,
         math_sidecar: ctx.math_sidecar,
         checkpoints: ctx.checkpoints,
@@ -108,6 +117,7 @@ pub(super) fn render_sequence_interaction_overlays(
             out,
             activation_plan,
             &msg.id,
+            ctx.sanitize_config,
             activation_theme_receipt,
             ctx.shadow_evidence,
         )?;

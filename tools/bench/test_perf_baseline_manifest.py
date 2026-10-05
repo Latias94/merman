@@ -45,7 +45,7 @@ def sha256_bytes(value: bytes) -> str:
 def file_record(path: Path) -> dict[str, object]:
     value = path.read_bytes()
     return {
-        "path": str(path),
+        "path": path.as_posix(),
         "bytes": len(value),
         "sha256": sha256_bytes(value),
     }
@@ -369,7 +369,7 @@ class PerfBaselineManifestTest(unittest.TestCase):
             "generated_at": "2026-07-28T08:00:00+00:00",
             "outcome": outcome,
             "exit_code": exit_code,
-            "output": str(self.report_path),
+            "output": self.report_path.as_posix(),
             "method": {
                 "scales": list(MEMORY_SCALES),
                 "repeats": 5,
@@ -425,7 +425,7 @@ class PerfBaselineManifestTest(unittest.TestCase):
                 "features": list(native_recipe.features),
                 "default_features": native_recipe.default_features,
                 "locked": native_recipe.locked,
-                "target_dir": str(native_recipe.target_dir),
+                "target_dir": native_recipe.target_dir.as_posix(),
                 "build_command": build_command,
                 "build_environment": {
                     "CARGO_BUILD_JOBS": "1",

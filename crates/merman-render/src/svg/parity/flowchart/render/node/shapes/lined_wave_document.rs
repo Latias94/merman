@@ -24,8 +24,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     );
 
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(0.0);
-    let h = (metrics.height + 2.0 * p).max(0.0);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + 2.0 * padding_y).max(0.0);
     let wave_amplitude = if common.look_is_neo() {
         h / 4.0
     } else {
@@ -34,9 +36,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     let final_h = h + wave_amplitude;
     let ext = (w / 2.0) * 0.1;
 
-    // Mermaid nudges label by half the left extension, and shifts it up by waveAmplitude/2.
-    label.dx = ext / 2.0;
-    label.dy = -wave_amplitude / 2.0;
+    // Mermaid keeps the authored padding in the label transform while the shape uses
+    // look-specific axis padding. Convert that source transform to the local label wrapper base.
+    label.dx = -padding_x + p + ext / 2.0;
+    label.dy = -padding_y + p - wave_amplitude;
 
     let mut points: Vec<(f64, f64)> = Vec::new();
     points.push((-w / 2.0 - ext, -final_h / 2.0));
@@ -91,13 +94,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
 
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_polygon(
-                &points,
-                common.fill_color,
-                common.stroke_color,
-                common.stroke_width,
-                common.hand_drawn_seed,
-            )
+            roughjs_paths_for_polygon(&points, common.stroke_width, common.hand_drawn_seed)
         })
         .unwrap_or_else(|| (path_data.clone(), path_data));
     let _ = write!(

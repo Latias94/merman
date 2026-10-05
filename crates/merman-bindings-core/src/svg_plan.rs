@@ -128,14 +128,18 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn basic_flowchart_plan_is_ready_without_optional_backends() {
+    fn basic_flowchart_plan_resolves_the_default_registered_backend() {
         assert_eq!(
             plan("flowchart TD\nA --> B", b""),
             serde_json::json!({
                 "schema_version": SVG_PLAN_SCHEMA_VERSION,
                 "planned_operation_id": "svg",
                 "diagram_type": "flowchart-v2",
-                "required_capability_ids": [],
+                "required_capability_ids": if cfg!(feature = "layout-elk") {
+                    serde_json::json!(["layout-elk"])
+                } else {
+                    serde_json::json!([])
+                },
                 "missing_capability_ids": [],
                 "ready": true,
             })
@@ -149,18 +153,14 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
             b"",
         );
-        let expected_missing = if cfg!(feature = "layout-elk") {
-            serde_json::json!([])
+        let required = if cfg!(feature = "layout-elk") {
+            serde_json::json!(["layout-elk"])
         } else {
-            serde_json::json!(["layout-elk"])
+            serde_json::json!([])
         };
-
-        assert_eq!(
-            value["required_capability_ids"],
-            serde_json::json!(["layout-elk"])
-        );
-        assert_eq!(value["missing_capability_ids"], expected_missing);
-        assert_eq!(value["ready"], cfg!(feature = "layout-elk"));
+        assert_eq!(value["required_capability_ids"], required);
+        assert_eq!(value["missing_capability_ids"], serde_json::json!([]));
+        assert_eq!(value["ready"], true);
     }
 
     #[cfg(feature = "svg")]
@@ -170,17 +170,18 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B",
             b"",
         );
-        let expected_missing = [
-            (!cfg!(feature = "layout-elk")).then_some("layout-elk"),
-            (!cfg!(feature = "math")).then_some("math"),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        let expected_missing = [(!cfg!(feature = "math")).then_some("math")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         assert_eq!(
             value["required_capability_ids"],
-            serde_json::json!(["layout-elk", "math"])
+            if cfg!(feature = "layout-elk") {
+                serde_json::json!(["layout-elk", "math"])
+            } else {
+                serde_json::json!(["math"])
+            }
         );
         assert_eq!(
             value["missing_capability_ids"],
@@ -220,7 +221,11 @@ mod tests {
 
         assert_eq!(
             value["required_capability_ids"],
-            serde_json::json!(["math"])
+            if cfg!(feature = "layout-elk") {
+                serde_json::json!(["layout-elk", "math"])
+            } else {
+                serde_json::json!(["math"])
+            }
         );
         assert_eq!(value["missing_capability_ids"], serde_json::json!(["math"]));
         assert_eq!(value["ready"], false);

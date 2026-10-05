@@ -6,12 +6,9 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This checkout is ahead of the published `0.8.0-alpha.6`. The dependency snippets below install
-> alpha.6 for the basic workflow. New options (`background`, `id_prefix`, `inherit`, and `crate_path`), Markdown
-> container support, and the refactored behavior described here are available from this source
-> checkout and are planned for the next workspace release; alpha.6 does not include them. This
-> checkout also makes math opt-in. The quick-start recipe selects the same smaller feature set
-> explicitly because alpha.6 still enables math by default.
+> This guide and its dependency examples target `0.8.0-alpha.7`. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6; use its tagged documentation when maintaining an older dependency.
+
+> The offline resource defaults and resource-budget options documented below require this source checkout or a later release. Published `0.8.0-alpha.7` uses the interactive 800,000-unit budget and does not expose these options.
 
 ## Quick Start
 
@@ -19,7 +16,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg", "layout-cytoscape"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.7", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -134,21 +131,27 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-This checkout defaults to `svg` and `layout-cytoscape`: deterministic SVG rendering with
-Cytoscape layout. Math is opt-in; add `math` to your dependency's features when diagrams contain
-math labels, or select `complete-svg` for SVG, Cytoscape, and math together. Existing users of
-alpha.6's math-enabled default must make that selection when upgrading to the next release.
+This checkout for `0.8.0-alpha.7` defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
+`layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
+Math is opt-in; add `math` when diagrams contain mathematical labels, or select `complete-svg-elk`
+for SVG, both layouts, and math together. Users of alpha.6's math-enabled default must enable
+math explicitly when upgrading.
 
-The default does not enable the optional EPL-2.0 ELK implementation or host clock, time-zone,
-random, or timing adapters. Use `complete-svg-elk` only when the published artifact is prepared
-with the corresponding ELK notices and source provenance. The separate `merman` facade retains
-its `complete-svg` default.
+The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
+corresponding notices and source provenance. It does not enable host clock, time-zone, random,
+or timing adapters. The separate `merman` facade defaults to `all-diagrams + complete-svg-elk`,
+including math. To omit ELK, disable default features and select the required diagram families
+plus `complete-svg` for SVG, Cytoscape, and math, or choose narrower capability leaves. Selecting
+`complete-svg` without disabling defaults still includes ELK because Cargo features are additive.
+See the repository's
+[third-party notices](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for the
+source provenance and artifact obligations.
 
 Use a smaller closure when the documented diagrams need only the base SVG renderer:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.7", default-features = false, features = ["diagram-flowchart", "svg"], optional = true }
 ```
 
 | Feature | Adds |
@@ -160,7 +163,15 @@ merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, feature
 | `layout-elk` | ELK-backed layouts; implies `svg` |
 | `math` | RaTeX math rendering; implies `svg` |
 
-If build weight matters, start with `svg` and add only the capabilities required by the diagrams in your docs.
+For the current checkout, disable defaults and select both families and outputs explicitly:
+
+```toml
+merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
+```
+
+Use `all-diagrams` to retain the complete parser surface. `complete-svg` and `complete-svg-elk`
+select output/engine closures; neither enables a family when defaults are disabled. See the
+[migration guide](../../docs/FEATURES.md#select-diagram-families).
 
 ## Include Mermaid Files
 
@@ -254,6 +265,8 @@ pub fn configured() {}
 | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 | `background` | A CSS background color | `transparent` | Set the root SVG background independently of Mermaid theme configuration. |
 | `id_prefix` | A nonempty string of ASCII letters, digits, `-`, or `_` | Automatic namespace | Add an explicit namespace for generated documentation with overlapping source locations. |
+| `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `trusted-native` | Select the input, model, layout, and SVG resource policy. |
+| `max_layout_work_units` | Positive integer literal | Selected profile's limit | Override only the layout work budget for each diagram and theme variant. |
 
 `theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
 
@@ -346,6 +359,45 @@ applies to identical generated methods whose outer calls have the same line and 
 different files. Stable procedural macros do not expose every outer expansion context; no
 process-global counter is used to disguise this boundary.
 
+## Resource Budgets
+
+Rustdoc uses the `trusted-native` profile for offline documentation builds, matching the CLI's
+local-file workflow. It allows 15,000,000 layout work units per diagram and theme variant while
+retaining finite source, model, nesting, and SVG limits. Ordinary documentation needs no budget
+configuration. The general library and Web defaults remain `interactive` (14,100,000 units).
+
+Work units measure deterministic admission work, not milliseconds, bytes, or a Mermaid syntax
+limit. Alpha.7 selects ELK for Class and other supported families when compiled in; nested
+namespaces can require more work than the former Dagre default. The native budget is calibrated
+against the registered corpus and nested-Class controls, rather than source lines or node count.
+
+For an exceptional trusted diagram, increase only the budget named by the diagnostic:
+
+```rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(max_layout_work_units = 20_000_000)
+)]
+/// include_mmd!("docs/diagrams/architecture.mmd")
+pub fn architecture() {}
+```
+
+The integer must be positive and fit the build host's `usize`; quoted numbers, expressions,
+and zero are rejected. The example value is not a guarantee for every diagram. A resource
+error's `actual` value identifies the charge that was rejected, not the total budget a successful
+render would need. Each diagram and each light/dark variant receives its own budget.
+
+Use `resource_profile = "interactive"` or `"constrained"` when intentionally tightening the broader
+input/model/output policy for a restricted build environment. `unbounded-for-trusted-input`
+explicitly removes policy ceilings for trusted documentation; hard implementation guards remain.
+An explicit `max_layout_work_units` applies after the selected profile, including the unbounded
+profile. Choose a finite override when only one budget needs to change.
+
+Both options follow `scope = "tree"` inheritance. A child overrides only the fields it supplies;
+changing its profile preserves an inherited explicit layout limit. `inherit = "off"` resets both
+to defaults before applying local options. Mermaid frontmatter and init directives cannot override
+these host limits, and the attribute macro does not read `merman-rustdoc.toml`.
+
 ## Supported Inputs
 
 - Backtick or tilde Mermaid fences, including in lists, blockquotes, and footnotes.
@@ -435,9 +487,10 @@ select `complete-svg` for SVG with Cytoscape and math, or select `complete-svg-e
 
 ## License And Notices
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The default
-`complete-svg` closure does not compile ELK; `complete-svg-elk` and any artifact profile that lists
-`layout-elk` additionally carry the EPL-2.0 ELK source closure. Distribute the matching notices and
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. This checkout's
+default includes `layout-elk` and carries the EPL-2.0 ELK source closure. Disable default features
+and select the required diagram families plus `complete-svg` or narrower capability leaves to omit
+it. Distribute the matching notices and
 source provenance from [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
 with that artifact. Math-enabled builds may also include the OFL-1.1 RaTeX font closure.
 

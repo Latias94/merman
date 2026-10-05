@@ -56,6 +56,63 @@
     },
     {
       "localPaths": [
+        "grammar/families/agentflow.js",
+        "test/corpus/families/agentflow.txt"
+      ],
+      "localSymbols": [
+        "agentflowRules",
+        "agentflowConflicts"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid-12-new-families",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/agentflow/afDetector.ts",
+            "packages/mermaid/src/diagrams/agentflow/parser/agentflow.jison",
+            "packages/mermaid/src/diagrams/agentflow/parser/agentflowParser.ts"
+          ]
+        },
+        {
+          "sourceId": "pappasam-tree-sitter-mermaid",
+          "relationship": "modified",
+          "sourcePaths": [
+            "grammar.js:369-622"
+          ]
+        },
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/flowchart/parser/flow.jison:1-635"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/usecase.js",
+        "test/corpus/families/usecase.txt"
+      ],
+      "localSymbols": [
+        "usecaseRules",
+        "usecaseConflicts"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid-12-new-families",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/usecase/usecaseDetector.ts",
+            "packages/mermaid/src/diagrams/usecase/parser/usecase.parser.ts",
+            "packages/mermaid/src/diagrams/usecase/parser/usecase.tokens.ts",
+            "packages/mermaid/src/diagrams/usecase/parser/usecase.lexer.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
         "grammar/families/architecture.js",
         "grammar/families/cynefin.js",
         "grammar/families/git-graph.js",
@@ -456,12 +513,12 @@
       ],
       "sources": [
         {
-          "sourceId": "tree-sitter",
+          "sourceId": "tree-sitter-templates",
           "relationship": "modified",
           "sourcePaths": [
             "crates/cli/src/templates/binding.gyp",
-            "crates/cli/src/templates/CMakeLists.txt",
-            "crates/cli/src/templates/Makefile",
+            "crates/cli/src/templates/cmakelists.cmake",
+            "crates/cli/src/templates/makefile",
             "crates/cli/src/templates/PARSER_NAME.pc.in",
             "crates/cli/src/templates/PARSER_NAME.h",
             "crates/cli/src/templates/js-binding.cc",
@@ -507,7 +564,7 @@
       ],
       "sources": [
         {
-          "sourceId": "tree-sitter",
+          "sourceId": "tree-sitter-templates",
           "relationship": "modified",
           "sourcePaths": [
             "crates/loader/src/loader.rs:1290-1467"

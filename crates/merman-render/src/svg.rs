@@ -26,6 +26,14 @@ pub const RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX: &str = "-merman-native-paint";
 
 mod css_identifier;
 mod fallback;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod icon_registry;
 mod parity;
 pub(crate) use parity::BaseEdgeMarkerKind;
@@ -38,11 +46,16 @@ pub(crate) use fallback::{
     PREPARED_TEXT_LABEL_DATA_ATTR,
 };
 pub(crate) use icon_registry::IconCurrentColorUse;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) use parity::FlowchartEdgeStylePlan;
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::theme as render_theme;
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-flowchart"))]
 pub(crate) use parity::write_flowchart_svg_label_plan_for_test;
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
 pub(crate) use pipeline::SvgPostprocessExecution;
@@ -66,4 +79,5 @@ pub use pipeline::{
     validate_static_inline_svg_admission,
 };
 
+#[cfg(feature = "diagram-block")]
 pub(crate) use parity::block_edge_path_data;

@@ -1,4 +1,5 @@
 use crate::config::{config_bool, config_diagram_look, config_f64, config_f64_css_px};
+use crate::layout_backend::{GraphLayoutBackend, resolve_graph_layout};
 use crate::text::{TextStyle, WrapMode};
 use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
@@ -60,11 +61,6 @@ impl<'a> ErConfigView<'a> {
         };
 
         ErLayoutSettings {
-            algorithm: if self.is_elk_layout() {
-                ErLayoutAlgorithm::Elk
-            } else {
-                ErLayoutAlgorithm::Dagre
-            },
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
                 nodesep: self.er_f64("nodeSpacing").unwrap_or(DEFAULT_NODE_SPACING),
@@ -236,10 +232,7 @@ impl<'a> ErConfigView<'a> {
     }
 
     pub(crate) fn is_elk_layout(&self) -> bool {
-        self.effective_config
-            .get("layout")
-            .and_then(Value::as_str)
-            .is_some_and(|s| s.eq_ignore_ascii_case("elk"))
+        resolve_graph_layout(self.effective_config).backend == GraphLayoutBackend::Elk
     }
 
     fn root_bool(&self, key: &str) -> Option<bool> {
@@ -267,14 +260,7 @@ impl<'a> ErConfigView<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ErLayoutAlgorithm {
-    Dagre,
-    Elk,
-}
-
 pub(super) struct ErLayoutSettings {
-    pub(super) algorithm: ErLayoutAlgorithm,
     pub(super) graph: GraphLabel,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
@@ -352,7 +338,7 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
 
-        assert_eq!(settings.algorithm, ErLayoutAlgorithm::Dagre);
+        assert!(!ErConfigView::new(&cfg).is_elk_layout());
         assert_eq!(settings.graph.rankdir, RankDir::LR);
         assert_eq!(settings.graph.nodesep, 160.0);
         assert_eq!(settings.graph.ranksep, 90.0);
@@ -446,6 +432,7 @@ mod tests {
         let settings = ErConfigView::new(&cfg).entity_measurement_settings();
 
         assert!(!settings.html_labels_raw);
+        assert_eq!(settings.label_wrap_mode, WrapMode::HtmlLike);
         assert_eq!(settings.diagram_padding, 21.0);
         assert_eq!(settings.entity_padding, 17.0);
         assert_eq!(settings.min_entity_width, 120.0);
@@ -469,13 +456,7 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).render_settings_with_font_family(None);
 
-        assert!(settings.is_elk_layout);
-        assert_eq!(
-            ErConfigView::new(&cfg)
-                .layout_settings_with_font_family("TB", None)
-                .algorithm,
-            ErLayoutAlgorithm::Elk
-        );
+        assert_eq!(settings.is_elk_layout, cfg!(feature = "layout-elk"));
         assert_eq!(settings.diagram_look, "handDrawn");
         assert_eq!(settings.hand_drawn_seed, 7.0);
         assert_eq!(settings.font_size, 1.0);
@@ -493,6 +474,10 @@ mod tests {
             WrapMode::HtmlLike
         );
         assert_eq!(settings.entity_html_label_wrap_mode, WrapMode::SvgLike);
+        assert_eq!(
+            settings.entity_measurement.label_wrap_mode,
+            WrapMode::SvgLike
+        );
 
         let root_fallback = ErConfigView::new(&json!({
             "titleTopMargin": 33

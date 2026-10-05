@@ -202,6 +202,16 @@ fn build_flowchart(scale: u32, seed: u64) -> Result<String, ProbeError> {
     Ok(source)
 }
 
+fn encode_lower_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
 fn sha256_file(path: &Path) -> Result<String, ProbeError> {
     let mut file = File::open(path)
         .map_err(|error| ProbeError::new(format!("failed to open executable: {error}")))?;
@@ -216,7 +226,7 @@ fn sha256_file(path: &Path) -> Result<String, ProbeError> {
         }
         digest.update(&buffer[..bytes_read]);
     }
-    Ok(data_encoding::HEXLOWER.encode(&digest.finalize()))
+    Ok(encode_lower_hex(&digest.finalize()))
 }
 
 fn executable_sha256() -> Result<String, ProbeError> {
@@ -226,7 +236,7 @@ fn executable_sha256() -> Result<String, ProbeError> {
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
+    encode_lower_hex(&Sha256::digest(bytes))
 }
 
 fn projected_node_labels(semantic: &SemanticArtifact) -> Result<(u32, bool), ProbeError> {

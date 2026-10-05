@@ -381,7 +381,7 @@ impl ToolIdentity {
         hash_optional(&mut hasher, self.rustflags.as_deref());
         hash_optional(&mut hasher, self.cargo_encoded_rustflags.as_deref());
         ToolFingerprint {
-            sha256: data_encoding::HEXLOWER.encode(&hasher.finalize()),
+            sha256: crate::util::encode_lower_hex(&hasher.finalize()),
             cargo_version: self.cargo_version,
             rustc_version: self.rustc_version,
             wasm_opt_version: self.wasm_opt_version,
@@ -957,7 +957,7 @@ fn collect_input_fingerprint(
         hash_framed(&mut hasher, file.sha256.as_bytes());
     }
     Ok(InputFingerprint {
-        sha256: data_encoding::HEXLOWER.encode(&hasher.finalize()),
+        sha256: crate::util::encode_lower_hex(&hasher.finalize()),
         packages,
         files,
     })
@@ -1079,16 +1079,8 @@ fn validate_resolved_root_features(
     spec: &TypstArtifactSpec,
     root: &MetadataNode,
 ) -> Result<(), XtaskError> {
-    let resolved = root
-        .features
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    let requested = spec
-        .features
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
+    let resolved = root.features.iter().cloned().collect::<BTreeSet<_>>();
+    let requested = normalized_metadata_features(spec)?;
     if resolved != requested {
         return Err(artifact_error(format!(
             "cargo metadata root features do not exactly match profile `{}`: expected [{}], found [{}]",
@@ -1098,6 +1090,45 @@ fn validate_resolved_root_features(
         )));
     }
     Ok(())
+}
+
+fn normalized_metadata_features(spec: &TypstArtifactSpec) -> Result<BTreeSet<String>, XtaskError> {
+    let manifest_path = spec.workspace_root.join(&spec.cargo_manifest_path);
+    let source = fs::read_to_string(&manifest_path).map_err(|source| {
+        artifact_io_error(
+            "read Cargo manifest for feature validation",
+            &manifest_path,
+            source,
+        )
+    })?;
+    let manifest: toml::Value = toml::from_str(&source).map_err(|error| {
+        artifact_error(format!(
+            "failed to parse Cargo manifest {} for feature validation: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    let all_diagrams = manifest
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .and_then(|features| features.get("all-diagrams"))
+        .and_then(toml::Value::as_array);
+    let mut requested = spec.features.iter().cloned().collect::<BTreeSet<_>>();
+    if requested.contains("all-diagrams") {
+        let Some(all_diagrams) = all_diagrams else {
+            requested.insert("all-diagrams".to_string());
+            return Ok(requested);
+        };
+        for feature in all_diagrams {
+            let feature = feature.as_str().ok_or_else(|| {
+                artifact_error(format!(
+                    "Cargo manifest {} has a non-string `all-diagrams` member",
+                    manifest_path.display()
+                ))
+            })?;
+            requested.insert(feature.to_string());
+        }
+    }
+    Ok(requested)
 }
 
 fn ensure_local_manifest_is_in_workspace(

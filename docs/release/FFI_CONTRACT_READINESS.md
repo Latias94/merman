@@ -1,9 +1,6 @@
 # FFI Contract Readiness
 
-This is the final pre-release readiness view for the FFI contract alignment work. It is a
-candidate-branch engineering record, not a publication or release approval. The public-native
-and experimental public Node lanes are reported separately because their distributed capability
-sets and release evidence differ.
+This records the FFI contract alignment checkpoint carried into `0.8.0-alpha.7`; it is not a live publication status or a release approval. Readiness claims below describe that contract scope. The public-native and experimental public Node lanes are separate because their distributed capabilities and evidence differ. For current recipes and procedures, use [Package surfaces](PACKAGE_SURFACES.md) and [Releasing](RELEASING.md); the [dated publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot) records the completed alpha.7 channels.
 
 ## Readiness lanes
 

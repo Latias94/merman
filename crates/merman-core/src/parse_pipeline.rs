@@ -466,6 +466,15 @@ impl<'a> ParsePipeline<'a> {
         } else {
             false
         };
+        #[cfg(feature = "diagram-agentflow")]
+        if matches!(owner, Some(RegistryOwner::BuiltIn)) {
+            let (line_offset, column_offset) = code.parser_position_offset();
+            crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
+                &mut model,
+                line_offset,
+                column_offset,
+            );
+        }
         Self::remap_warning_facts_controlled(&mut warning_facts, &source_map, control)?;
         if matches!(owner, Some(RegistryOwner::BuiltIn)) || custom_warning_adapter_succeeded {
             Self::sync_compatibility_warning_facts(&mut model, &warning_facts);
@@ -533,6 +542,10 @@ impl<'a> ParsePipeline<'a> {
             error_diagram::suppressed_error_render_diagram,
             ParsedDiagramRender::from_parse_output,
             |output, source_map| {
+                let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                output
+                    .model_mut()
+                    .offset_parser_diagnostic_positions(line_offset, column_offset);
                 output.model_mut().remap_warning_fact_spans(|fact| {
                     Self::remap_warning_fact_spans(fact, source_map);
                 });
@@ -613,6 +626,7 @@ impl<'a> ParsePipeline<'a> {
                     timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
                     return Ok(Ok(Some(error_diagram::suppressed_error_render_diagram(
                         &meta,
+                        &source_map.remap_parse_error(error),
                     ))));
                 }
             };
@@ -622,6 +636,10 @@ impl<'a> ParsePipeline<'a> {
                 .sanitize_common_db_fields(&meta.effective_config);
             let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
+            let (line_offset, column_offset) = code.parser_position_offset();
+            output
+                .model_mut()
+                .offset_parser_diagnostic_positions(line_offset, column_offset);
             output.model_mut().remap_warning_fact_spans(|fact| {
                 Self::remap_warning_fact_spans(fact, &source_map);
             });
@@ -687,7 +705,7 @@ impl<'a> ParsePipeline<'a> {
         preprocess_path: PreprocessPath,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
         postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
@@ -715,7 +733,7 @@ impl<'a> ParsePipeline<'a> {
         operation_context: &runtime::OperationContext,
         parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
-        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        suppressed: impl FnOnce(&ParseMetadata, &Error) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
         postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
@@ -742,7 +760,7 @@ impl<'a> ParsePipeline<'a> {
                 }
 
                 timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
-                return Ok(Some(suppressed(&meta)));
+                return Ok(Some(suppressed(&meta, &source_map.remap_parse_error(err))));
             }
         };
 
@@ -770,6 +788,15 @@ impl<'a> ParsePipeline<'a> {
     ) {
         match &mut parsed.warnings {
             CompatibilityWarnings::Typed(warning_facts) => {
+                #[cfg(feature = "diagram-agentflow")]
+                {
+                    let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                    crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
+                        &mut parsed.model,
+                        line_offset,
+                        column_offset,
+                    );
+                }
                 for fact in warning_facts.iter_mut() {
                     Self::remap_warning_fact_spans(fact, source_map);
                 }
@@ -1028,7 +1055,7 @@ impl<'a> ParsePipeline<'a> {
         let outcome = match captured.outcome {
             crate::preprocess::PreprocessCaptureResult::Ready(preprocessed) => {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    self.finish_preprocessed_controlled(preprocessed, known_type, control)
+                    self.finish_preprocessed_controlled(*preprocessed, known_type, control)
                 })) {
                     Ok(result) => match result? {
                         Ok((source, metadata)) => {
@@ -1093,7 +1120,7 @@ impl<'a> ParsePipeline<'a> {
 
     fn finish_preprocessed_controlled(
         &self,
-        pre: crate::PreprocessResult,
+        mut pre: crate::PreprocessResult,
         known_type: Option<&str>,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
@@ -1108,7 +1135,6 @@ impl<'a> ParsePipeline<'a> {
                 Err(error) => return Ok(Err(error)),
             };
         let config_before_detection = effective_config.clone();
-
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
             None => match self.engine.registry.detect_type_precleaned_controlled(
@@ -1120,30 +1146,85 @@ impl<'a> ParsePipeline<'a> {
                 Err(error) => return Ok(Err(error)),
             },
         };
+        let config_after_detection = effective_config.clone();
+        effective_config.mark_mutations_after_as_explicit(&config_before_detection);
+        let mut overlay_application = crate::config::ConfigOverlayApplication::default();
+        for path in config_after_detection.mutation_paths_after(&config_before_detection) {
+            overlay_application.claim_path(std::sync::Arc::from(path));
+        }
         control.checkpoint()?;
-        family::apply_diagram_type_config_effects(
+        let source_selects_theme = crate::config::resolve_appearance(
             &diagram_type,
-            &pre.config,
+            &effective_source_config,
+            &self.engine.site_config_overrides,
+            self.engine.theme_compatibility_config.as_ref(),
+            &crate::generated::upstream_default_config(),
             &mut effective_config,
         );
-        effective_config.mark_mutations_after_as_explicit(&config_before_detection);
+        if effective_config.get_str("theme") != Some("null")
+            && (source_selects_theme
+                || effective_config.get_str("theme") != self.engine.site_config.get_str("theme"))
+        {
+            effective_config = match self.materialize_operation_theme(
+                &diagram_type,
+                &effective_source_config,
+                source_selects_theme,
+            ) {
+                Ok(config) => config,
+                Err(error) => return Ok(Err(error.into())),
+            };
+            effective_config.replay_mutations_after(
+                &config_before_detection,
+                &config_after_detection,
+                control,
+            )?;
+            crate::config::resolve_appearance(
+                &diagram_type,
+                &effective_source_config,
+                &self.engine.site_config_overrides,
+                self.engine.theme_compatibility_config.as_ref(),
+                &crate::generated::upstream_default_config(),
+                &mut effective_config,
+            );
+        }
+        // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
+        if diagram_type == "flowchart-elk" {
+            effective_config
+                .set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
+            overlay_application.claim_path(std::sync::Arc::from("layout"));
+        }
+        let config_before_overlay = effective_config.clone();
         let overlay_application = match self.apply_post_detection_config_overlay(
             &diagram_type,
             &effective_source_config,
-            &config_before_detection,
+            &config_before_overlay,
             &mut effective_config,
+            overlay_application,
             control,
         )? {
             Ok(application) => application,
             Err(error) => return Ok(Err(error)),
         };
-        let overlay_provenance = overlay_application.finalize(&effective_config);
-        effective_config.set_overlay_provenance(overlay_provenance);
+        effective_config.set_overlay_provenance(overlay_application.finalize(&effective_config));
         effective_config.freeze_theme_compatibility();
 
         control.checkpoint()?;
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
         control.checkpoint()?;
+
+        if matches!(diagram_type.as_str(), "agentflow" | "eventmodeling")
+            && let Some(with_comments) = pre.with_comments.take()
+        {
+            let max_text_size = effective_config
+                .as_value()
+                .get("maxTextSize")
+                .and_then(Value::as_u64)
+                .unwrap_or(50_000);
+            if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
+                pre.source =
+                    crate::preprocess::prepare_parser_text_controlled(with_comments, control)?;
+            }
+        }
 
         Ok(Ok((
             pre.source,
@@ -1269,33 +1350,63 @@ impl<'a> ParsePipeline<'a> {
                 MermaidConfig::empty_object(),
             )));
         }
-
         let effective_overrides =
             materialized_site_config.source_filtered_overrides(overrides, control)?;
-        let effective_config = match theme::materialize_source_selected_theme(
-            &self.engine.site_config,
-            &self.engine.fallback_overlay_explicit_config,
-            &effective_overrides,
-        ) {
-            Ok(Some(config)) => config,
-            Ok(None) => {
-                materialized_site_config.deep_merge_explicit(effective_overrides.as_value());
-                materialized_site_config
-            }
-            Err(error) => return Ok(Err(error.into())),
-        };
-        Ok(Ok((effective_config, effective_overrides)))
+        materialized_site_config.deep_merge_explicit(effective_overrides.as_value());
+        Ok(Ok((materialized_site_config, effective_overrides)))
+    }
+
+    fn materialize_operation_theme(
+        &self,
+        diagram_type: &str,
+        source_config: &MermaidConfig,
+        source_selects_theme: bool,
+    ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+        let mut raw_config = self.engine.site_config.clone();
+        // Registered source selection rebuilds variables from raw initialization inputs.
+        // Ordinary source updates retain initialized derivations instead.
+        let initial_variables = self
+            .engine
+            .fallback_overlay_explicit_config
+            .as_value()
+            .get("themeVariables")
+            .filter(|value| theme::is_js_truthy(value))
+            .map(crate::config::clone_value_nonrecursive)
+            .unwrap_or_else(|| serde_json::json!({}));
+        raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
+        if source_selects_theme {
+            raw_config.deep_merge_explicit(source_config.as_value());
+        }
+        crate::config::resolve_appearance(
+            diagram_type,
+            source_config,
+            &self.engine.site_config_overrides,
+            self.engine.theme_compatibility_config.as_ref(),
+            &crate::generated::upstream_default_config(),
+            &mut raw_config,
+        );
+        let selected = theme::MermaidThemeId::parse(
+            raw_config
+                .get_str("theme")
+                .expect("appearance resolves a registered theme"),
+        )
+        .expect("appearance validates registered themes");
+        let mut effective_config = theme::materialize_selected_theme(&raw_config, selected)?;
+        if !source_selects_theme {
+            effective_config.deep_merge_explicit(source_config.as_value());
+        }
+        Ok(effective_config)
     }
 
     fn apply_post_detection_config_overlay(
         &self,
         diagram_type: &str,
         effective_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        config_before_overlay: &MermaidConfig,
         effective_config: &mut MermaidConfig,
+        mut application: crate::config::ConfigOverlayApplication,
         control: &OperationControl,
     ) -> OperationControlResult<Result<crate::config::ConfigOverlayApplication>> {
-        let mut application = crate::config::ConfigOverlayApplication::default();
         let Some(family) = family::operation_family_id(diagram_type, effective_config) else {
             return Ok(Ok(application));
         };
@@ -1305,7 +1416,7 @@ impl<'a> ParsePipeline<'a> {
                 family,
                 &self.engine.site_config_overrides,
                 effective_source_config,
-                config_before_detection,
+                config_before_overlay,
                 effective_config,
                 &mut application,
                 crate::config::ConfigOverlayLane::Host,
@@ -1316,7 +1427,7 @@ impl<'a> ParsePipeline<'a> {
             family,
             &self.engine.fallback_overlay_explicit_config,
             effective_source_config,
-            config_before_detection,
+            config_before_overlay,
             &application,
             control,
         )?;
@@ -1346,7 +1457,7 @@ impl<'a> ParsePipeline<'a> {
                 family,
                 &self.engine.fallback_overlay_explicit_config,
                 effective_source_config,
-                config_before_detection,
+                config_before_overlay,
                 effective_config,
                 &mut application,
                 crate::config::ConfigOverlayLane::Fallback,
@@ -1715,6 +1826,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..4_096 {
@@ -1735,6 +1847,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
         let engine = Engine::new();
@@ -1759,7 +1872,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
-    fn render_preprocessing_does_not_repeat_frontmatter_extraction() {
+    fn public_and_render_preprocessing_share_one_frontmatter_pass() {
         let input = concat!(
             "   ---\n",
             "title: only-visible-after-trimming\n",
@@ -1778,7 +1891,7 @@ mod editor_parse_source_map_tests {
             .expect("public parse preprocess");
 
         assert!(render.code().starts_with("---"));
-        assert!(public_parse.code().starts_with("flowchart TD"));
+        assert_eq!(public_parse.code(), render.code());
     }
 
     #[test]

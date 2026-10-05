@@ -1,6 +1,10 @@
+use crate::time::CivilDate;
+#[cfg(feature = "diagram-gantt")]
+use crate::time::CivilDateTime;
+#[cfg(any(test, feature = "diagram-gantt"))]
+use crate::time::OffsetDateTime;
 #[cfg(test)]
 use crate::time::UtcOffset;
-use crate::time::{CivilDate, CivilDateTime, OffsetDateTime};
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 
@@ -536,16 +540,19 @@ pub(crate) fn with_operation_context<R>(context: &OperationContext, f: impl FnOn
     })
 }
 
+#[cfg(any(test, feature = "diagram-gantt"))]
 pub(crate) fn today_local() -> CivilDate {
     active_operation_context().today_local
 }
 
+#[cfg(feature = "diagram-gantt")]
 pub(crate) fn resolve_local_datetime(local: CivilDateTime) -> Option<OffsetDateTime> {
     active_operation_context()
         .local_time_zone
         .resolve_local(local)
 }
 
+#[cfg(feature = "diagram-gantt")]
 pub(crate) fn datetime_to_local(datetime: OffsetDateTime) -> OffsetDateTime {
     active_operation_context()
         .local_time_zone
@@ -553,10 +560,17 @@ pub(crate) fn datetime_to_local(datetime: OffsetDateTime) -> OffsetDateTime {
         .unwrap_or(datetime)
 }
 
+#[cfg(feature = "diagram-gantt")]
 pub(crate) fn datetime_to_local_civil(datetime: OffsetDateTime) -> CivilDateTime {
     datetime_to_local(datetime).local_datetime()
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-block",
+    feature = "diagram-git-graph",
+    feature = "diagram-mindmap"
+))]
 pub(crate) fn generated_id_hex(domain: &str, counter: u64, len: usize) -> String {
     let context = active_operation_context();
     context.derive_hex(domain, counter, len)
@@ -602,6 +616,13 @@ fn splitmix64(state: u64) -> u64 {
     z ^ (z >> 31)
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-gantt",
+    feature = "diagram-block",
+    feature = "diagram-git-graph",
+    feature = "diagram-mindmap"
+))]
 fn active_operation_context() -> OperationContext {
     OPERATION_CONTEXT
         .with(|cell| cell.borrow().clone())

@@ -11,7 +11,7 @@ use crate::svg::parity::flowchart::style::{
 };
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr,
 };
 use crate::svg::parity::flowchart::{
     write_flowchart_svg_label_plan_with_style, write_flowchart_svg_text_markdown_wrapped_with_style,
@@ -167,11 +167,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         if !div_style.is_empty() {
             div_style.push(';');
         }
-        let _ = write!(
-            &mut div_style,
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
-            fmt_display(ctx.wrapping_width)
-        );
+        div_style.push_str(&super::helpers::asset_label_div_style(ctx, width));
         let _ = write!(
             out,
             r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
@@ -280,6 +276,8 @@ fn render_flowchart_node_label_with_wrapper(
             common.shape,
             "doc"
                 | "document"
+                | "lin-doc"
+                | "lined-document"
                 | "lin-cyl"
                 | "disk"
                 | "lined-cylinder"
@@ -296,6 +294,20 @@ fn render_flowchart_node_label_with_wrapper(
                 | "win-pane"
                 | "internal-storage"
                 | "window-pane"
+                | "st-rect"
+                | "procs"
+                | "processes"
+                | "stacked-rectangle"
+                | "lin-rect"
+                | "lined-rectangle"
+                | "lined-process"
+                | "lin-proc"
+                | "shaded-process"
+                | "brace"
+                | "brace-l"
+                | "comment"
+                | "brace-r"
+                | "braces"
         )
     {
         // Mermaid shape renderers override `labelHelper(...)`'s default centering using
@@ -306,41 +318,26 @@ fn render_flowchart_node_label_with_wrapper(
             .measurer
             .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style);
     }
-    let mut metrics = if let (Some(w), Some(h)) = (
-        common.layout_node.label_width,
-        common.layout_node.label_height,
-    ) {
-        // Layout already had to measure labels to compute node sizes. Carry those metrics forward so
-        // render does not repeat expensive HTML/markdown measurement work.
-        crate::text::TextMetrics {
-            width: w,
-            height: h,
-            line_count: 0,
-        }
-    } else {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label.text,
-                label_type: label.label_type,
-                style: &node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        )
-    };
-    let label_has_visual_content = flowchart_html_contains_img_tag(label.text)
-        || (label.label_type == "markdown" && label.text.contains("!["));
-    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    ) && !label_has_visual_content
-    {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
+    let metrics = super::helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    // Only authored FlowDB nodes carry minWidth; subgraph titles retain their own sizing.
+    let min_width = ctx
+        .nodes_by_id
+        .get(common.node_id)
+        .filter(|_| !ctx.subgraphs_by_id.contains_key(common.node_id))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label.text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
     let label_group_class = if common.shape == "note" {
         "label noteLabel"
     } else {
@@ -473,9 +470,27 @@ fn render_flowchart_node_label_with_wrapper(
                 crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
             ) || ctx.math_renderer.is_some());
 
+        let mut label_below_minimum = false;
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             if is_math_html_label {
-                metrics.width >= ctx.wrapping_width - 0.01
+                let natural = if min_width > 0.0 {
+                    crate::flowchart::flowchart_label_metrics_for_layout(
+                        crate::flowchart::FlowchartLabelMetricsRequest {
+                            measurer: ctx.measurer,
+                            raw_label: label.text,
+                            label_type: label.label_type,
+                            style: &node_text_style,
+                            max_width_px: Some(ctx.wrapping_width),
+                            wrap_mode: ctx.node_wrap_mode,
+                            config: ctx.config,
+                            math_renderer: ctx.math_renderer,
+                        },
+                    )
+                } else {
+                    metrics
+                };
+                label_below_minimum = natural.width < min_width;
+                natural.width >= ctx.wrapping_width - 0.01
             } else {
                 let has_inline_style_tags =
                     ctx.node_html_labels && label.label_type != "markdown" && {
@@ -511,6 +526,7 @@ fn render_flowchart_node_label_with_wrapper(
                         )
                         .width
                 };
+                label_below_minimum = raw < min_width;
                 raw > ctx.wrapping_width
             }
         } else {
@@ -524,6 +540,13 @@ fn render_flowchart_node_label_with_wrapper(
                 &mut div_style,
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                 mw = fmt_display(ctx.wrapping_width)
+            );
+        } else if label_below_minimum {
+            let _ = write!(
+                &mut div_style,
+                "display: table; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center; width: {min}px;",
+                mw = fmt_display(ctx.wrapping_width),
+                min = fmt_display(min_width),
             );
         } else {
             let _ = write!(

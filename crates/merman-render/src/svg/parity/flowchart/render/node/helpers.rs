@@ -143,6 +143,7 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) tooltip_enabled: bool,
     pub(super) tooltip: &'a str,
     pub(super) look: &'a str,
+    pub(super) color_slot: Option<usize>,
 }
 
 pub(super) fn open_node_wrapper(
@@ -161,8 +162,8 @@ pub(super) fn open_node_wrapper(
         tooltip_enabled,
         tooltip,
         look,
+        color_slot,
     } = attrs;
-
     if wrapped_in_a {
         if let Some(href) = href {
             out.push_str(r#"<a xlink:href=""#);
@@ -214,6 +215,9 @@ pub(super) fn open_node_wrapper(
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
     }
+    if let Some(slot) = color_slot {
+        let _ = write!(out, r#" data-color-id="color-{slot}""#);
+    }
     out.push('>');
 }
 
@@ -243,20 +247,18 @@ pub(super) fn timed_node_roughjs<T>(
 /// Generate the complete RoughJS hand-drawn pair for a node path.
 ///
 /// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
-/// boundary is shared: unsupported colors or empty generated paths must fall back as a whole
+/// boundary is shared: rejected resources or empty generated paths must fall back as a whole
 /// shape instead of emitting a partial hand-drawn fragment.
 pub(super) fn hand_drawn_path_pair(
     common: &super::FlowchartNodeRenderCommon<'_>,
     details: &mut FlowchartRenderDetails,
     path_data: &str,
 ) -> Option<(String, String)> {
-    hand_drawn_path_pair_with_colors(
+    hand_drawn_path_pair_with_stroke(
         common.look_is_hand_drawn(),
         common.timing,
         details,
         path_data,
-        common.fill_color,
-        common.stroke_color,
         common.stroke_width,
         common.stroke_dasharray,
         common.work_meter,
@@ -264,13 +266,11 @@ pub(super) fn hand_drawn_path_pair(
     )
 }
 
-pub(super) fn hand_drawn_path_pair_with_colors(
+pub(super) fn hand_drawn_path_pair_with_stroke(
     hand_drawn: bool,
     timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
     path_data: &str,
-    fill_color: &str,
-    stroke_color: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     work_meter: &crate::resources::OperationWorkMeter,
@@ -283,8 +283,6 @@ pub(super) fn hand_drawn_path_pair_with_colors(
     timed_node_roughjs(timing, details, || {
         super::roughjs::roughjs_paths_for_hand_drawn_svg_path(
             path_data,
-            fill_color,
-            stroke_color,
             stroke_width,
             stroke_dasharray,
             work_meter,
@@ -510,9 +508,8 @@ pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
     node_classes: &[String],
     node_styles: &[String],
 ) -> crate::text::TextMetrics {
-    // Shared across many Flowchart v2 shape renderers.
-    //
-    // Keep behavior identical to the inlined implementations to preserve Mermaid SVG parity.
+    // Layout metrics are authoritative. Callers without them can reuse a prepared label or
+    // measure with the same effective styles as layout.
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -540,6 +537,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     label_type: &str,
     node_text_style: &crate::text::TextStyle,
 ) -> crate::text::TextMetrics {
+    let layout_node = layout_node.filter(|_| !label_text.is_empty());
     let label_text_plain = crate::svg::parity::flowchart::flowchart_label_plain_text(
         label_text,
         label_type,
@@ -587,19 +585,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         )
     };
 
-    let label_has_visual_content =
-        super::super::super::util::flowchart_html_contains_img_tag(label_text)
-            || (label_type == "markdown" && label_text.contains("!["));
-    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
-        &label_text_plain,
-        ctx.node_html_labels,
-    ) && !label_has_visual_content
-    {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
+    // The measurement layer owns empty-label semantics. HTML line boxes and icons can have
+    // nonzero dimensions without plain text; preserve their measured bounds during painting.
 
-    metrics
+    let min_width = layout_node
+        .filter(|node| !ctx.subgraphs_by_id.contains_key(node.id.as_str()))
+        .and_then(|node| ctx.nodes_by_id.get(node.id.as_str()))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    metrics.with_label_min_width(label_text, min_width, None)
 }
 
 fn prepared_node_label_metrics(
@@ -610,7 +609,7 @@ fn prepared_node_label_metrics(
 ) -> Option<crate::text::TextMetrics> {
     let sidecar = ctx.svg_label_sidecar?;
     let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
-    sidecar.prepared_metrics(
+    let metrics = sidecar.prepared_metrics(
         owner,
         label_text,
         ctx.measurer,
@@ -618,5 +617,36 @@ fn prepared_node_label_metrics(
         Some(ctx.wrapping_width),
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
-    )
+    )?;
+    let min_width = ctx
+        .nodes_by_id
+        .get(node_id)
+        .filter(|_| !ctx.subgraphs_by_id.contains_key(node_id))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    Some(metrics.with_label_min_width(label_text, min_width, None))
+}
+
+/// Match createText's wrapping decision for labels with an icon/image background.
+pub(in crate::svg::parity::flowchart::render::node) fn asset_label_div_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    label_bbox_width: f64,
+) -> String {
+    let width = fmt_display(ctx.wrapping_width);
+    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
+        && label_bbox_width >= ctx.wrapping_width
+    {
+        format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;"
+        )
+    } else {
+        format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px; text-align: center;"
+        )
+    }
 }

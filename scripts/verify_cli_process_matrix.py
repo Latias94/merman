@@ -13,6 +13,11 @@ import subprocess
 import sys
 from typing import TypeAlias
 
+if __package__:
+    from .artifact_profile_recipe import load_artifact_profile
+else:
+    from artifact_profile_recipe import load_artifact_profile
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROFILE_CASE_ENV = "MERMAN_CLI_PROFILE_CASE"
@@ -30,14 +35,11 @@ class ProfileCase:
     name: str
     features: tuple[str, ...]
     workflow: str
-    use_all_features: bool = False
     use_default_features: bool = False
 
     def __post_init__(self) -> None:
-        if self.use_all_features and self.use_default_features:
-            raise ValueError(f"{self.name} cannot select defaults and --all-features")
-        if (self.use_all_features or self.use_default_features) and self.features:
-            raise ValueError(f"{self.name} cannot list explicit features in aggregate mode")
+        if self.use_default_features and self.features:
+            raise ValueError(f"{self.name} cannot list explicit features with defaults")
         if not self.case_id or not self.name or not self.workflow:
             raise ValueError("profile cases require an id, name, and workflow")
         if any(not feature for feature in self.features):
@@ -54,91 +56,91 @@ PROFILE_CASES = (
     ProfileCase(
         "analysis",
         "Analysis",
-        ("analysis",),
+        ("all-diagrams", "analysis"),
         "Lint and fix stdin without render dependencies.",
     ),
     ProfileCase(
         "svg",
         "SVG",
-        ("svg",),
+        ("all-diagrams", "svg"),
         "Render one SVG to stdout and to an atomic file target.",
     ),
     ProfileCase(
         "ascii",
         "ASCII",
-        ("ascii",),
+        ("all-diagrams", "ascii"),
         "Render ASCII and Unicode through the shared executor without SVG.",
     ),
     ProfileCase(
         "local-icons",
         "Local icons",
-        ("icons",),
+        ("all-diagrams", "icons"),
         "Load a bounded local icon pack and render it.",
     ),
     ProfileCase(
         "markdown",
         "Markdown",
-        ("markdown",),
+        ("all-diagrams", "markdown"),
         "Run sequential native batch publication and recovery smoke.",
     ),
     ProfileCase(
         "parallel-markdown",
         "Parallel Markdown",
-        ("parallel-markdown",),
+        ("all-diagrams", "parallel-markdown"),
         "Render a multi-chart SVG Markdown batch with bounded parallel scheduling.",
     ),
     ProfileCase(
         "network-icons",
         "Network icons",
-        ("network-icons",),
+        ("all-diagrams", "network-icons"),
         "Reject unauthorized loopback, then load an authorized bounded fixture.",
     ),
     ProfileCase(
         "png",
         "PNG",
-        ("png",),
+        ("all-diagrams", "png"),
         "Render and validate one PNG.",
     ),
     ProfileCase(
         "jpeg",
         "JPEG",
-        ("jpeg",),
+        ("all-diagrams", "jpeg"),
         "Render and validate one JPEG.",
     ),
     ProfileCase(
         "pdf",
         "PDF",
-        ("pdf",),
+        ("all-diagrams", "pdf"),
         "Render and validate one PDF.",
     ),
     ProfileCase(
         "parallel-pdf",
         "Parallel PDF",
-        ("parallel-markdown", "pdf"),
+        ("all-diagrams", "parallel-markdown", "pdf"),
         "Render a multi-chart Markdown batch with bounded parallel scheduling.",
     ),
     ProfileCase(
         "cytoscape-layout",
         "Cytoscape layout",
-        ("layout-cytoscape",),
+        ("all-diagrams", "layout-cytoscape"),
         "Render a family that calls the compiled Cytoscape layout.",
     ),
     ProfileCase(
         "elk-layout",
         "ELK layout",
-        ("layout-elk",),
+        ("all-diagrams", "layout-elk"),
         "Render a family that calls the compiled ELK layout.",
     ),
     ProfileCase(
         "math",
         "Math",
-        ("math",),
+        ("all-diagrams", "math"),
         "Render one RaTeX expression.",
     ),
     ProfileCase(
         "rustdoc",
         "Rustdoc",
-        ("rustdoc",),
+        ("all-diagrams", "rustdoc"),
         "Build and check one committed static Rustdoc fragment.",
     ),
     ProfileCase(
@@ -156,25 +158,25 @@ PROFILE_CASES = (
     ProfileCase(
         "system-clock",
         "System clock",
-        ("system-clock",),
+        ("all-diagrams", "system-clock"),
         "Invoke the clock adapter flag without the native runtime shortcut.",
     ),
     ProfileCase(
         "system-timezone",
         "System timezone",
-        ("system-timezone",),
+        ("all-diagrams", "system-timezone"),
         "Invoke the timezone adapter flag without the native runtime shortcut.",
     ),
     ProfileCase(
         "system-random",
         "System random",
-        ("system-random",),
+        ("all-diagrams", "system-random"),
         "Invoke the random adapter flag without the native runtime shortcut.",
     ),
     ProfileCase(
         "system-timing",
         "System timing",
-        ("system-timing",),
+        ("all-diagrams", "system-timing"),
         "Invoke the timing adapter flag without the native runtime shortcut.",
     ),
     ProfileCase(
@@ -187,9 +189,8 @@ PROFILE_CASES = (
     ProfileCase(
         "release",
         "Release",
-        (),
-        "Exercise every cfg branch and the native runtime shortcut.",
-        use_all_features=True,
+        load_artifact_profile("cli-release").features,
+        "Exercise the exact published recipe and the native runtime shortcut.",
     ),
 )
 
@@ -299,9 +300,7 @@ def cargo_nextest_args(
         args.append("--locked")
     args.extend(["-p", "merman-cli"])
 
-    if profile.use_all_features:
-        args.append("--all-features")
-    elif not profile.use_default_features:
+    if not profile.use_default_features:
         args.append("--no-default-features")
         if profile.features:
             args.extend(["--features", ",".join(profile.features)])

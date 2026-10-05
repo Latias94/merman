@@ -281,7 +281,8 @@ fn position_flowchart_edge_label(
         .as_deref()
         .unwrap_or(geom.d.as_str());
     crate::svg::parity::edge_label_geometry::position_edge_label(
-        dagre_anchor,
+        geom.label_anchor.clone().unwrap_or(dagre_anchor),
+        Some(geom.original_label_path_points.as_slice()),
         &geom.label_path_points,
         rendered_d,
         geom.label_path_was_explicitly_updated || always_recompute,
@@ -313,6 +314,12 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
         return position_flowchart_edge_label(dagre_anchor, geom, always_recompute);
     }
 
+    if let Some(midpoint) =
+        edge_geom::missing_section_label_position(ctx, key, layout_edge, origin_x, origin_y)
+    {
+        return midpoint;
+    }
+
     // Geometry caching only skips routes with fewer than two points. For that degenerate case,
     // `calcLabelPosition` either keeps the anchor (empty) or returns the sole waypoint.
     if always_recompute || layout_edge.to_cluster.is_some() || layout_edge.from_cluster.is_some() {
@@ -326,6 +333,7 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
             .collect::<Vec<_>>();
         return crate::svg::parity::edge_label_geometry::position_edge_label(
             dagre_anchor.clone(),
+            (!always_recompute).then_some(points.as_slice()),
             &points,
             "",
             true,
@@ -497,8 +505,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 y: point.y + ctx.ty - origin_y,
             })
             .collect::<Vec<_>>();
-        let position =
-            crate::svg::parity::edge_label_geometry::position_edge_label(anchor, &points, "", true);
+        let position = crate::svg::parity::edge_label_geometry::position_edge_label(
+            anchor, None, &points, "", true,
+        );
         (position.x, position.y)
     }
 
@@ -1189,7 +1198,9 @@ mod tests {
             original_path_length: None,
             path_length: None,
             line_hop_applied: false,
+            original_label_path_points: points.clone(),
             label_path_points: points,
+            label_anchor: None,
             label_path_was_explicitly_updated: false,
             emitted_d_for_label: None,
             bounds_skipped_for_viewbox: false,
@@ -1297,7 +1308,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_dagre_keeps_anchor_until_insert_edge_marks_path_updated() {
+    fn ordinary_dagre_keeps_anchor_when_paint_does_not_move_the_route_midpoint() {
         let anchor = point(4.0, 5.0);
         let mut geometry = geom(
             "M0,0L10,0L20,0",
@@ -1309,18 +1320,40 @@ mod tests {
 
         geometry.label_path_was_explicitly_updated = true;
         let updated = position_flowchart_edge_label(anchor, &geometry, false);
-        assert_eq!((updated.x, updated.y), (10.0, 0.0));
+        assert_eq!((updated.x, updated.y), (4.0, 5.0));
     }
 
     #[test]
-    fn swimlane_always_recomputes_from_returned_waypoints() {
-        let geometry = geom(
+    fn cluster_cut_moves_the_anchor_by_the_midpoint_delta() {
+        let mut geometry = geom("M0,0L100,0", vec![point(0.0, 0.0), point(100.0, 0.0)]);
+        geometry.original_label_path_points = vec![point(-20.0, 0.0), point(100.0, 0.0)];
+        geometry.label_path_was_explicitly_updated = true;
+        let label = position_flowchart_edge_label(point(12.0, 8.0), &geometry, false);
+        assert_eq!((label.x, label.y), (22.0, 8.0));
+    }
+
+    #[test]
+    fn elk_paints_the_projected_anchor_without_recentering_on_the_whole_route() {
+        let mut geometry = geom(
+            "M0,0L100,0L100,100",
+            vec![point(0.0, 0.0), point(100.0, 0.0), point(100.0, 100.0)],
+        );
+        geometry.label_anchor = Some(point(60.0, 0.0));
+        let label = position_flowchart_edge_label(point(60.0, 10.0), &geometry, false);
+        assert_eq!((label.x, label.y), (60.0, 0.0));
+        assert_ne!((label.x, label.y), (100.0, 0.0));
+    }
+
+    #[test]
+    fn swimlane_recomputes_from_returned_waypoints_by_delta() {
+        let mut geometry = geom(
             "M0,0L10,0L20,0",
             vec![point(0.0, 0.0), point(10.0, 0.0), point(20.0, 0.0)],
         );
-
+        geometry.original_label_path_points =
+            vec![point(-20.0, 0.0), point(0.0, 0.0), point(20.0, 0.0)];
         let positioned = position_flowchart_edge_label(point(4.0, 5.0), &geometry, true);
-        assert_eq!((positioned.x, positioned.y), (10.0, 0.0));
+        assert_eq!((positioned.x, positioned.y), (14.0, 5.0));
     }
 
     #[test]
@@ -1336,7 +1369,7 @@ mod tests {
 
         geometry.emitted_d_for_label = Some("M1.1,2.2C3.3,4.4,5.5,6.6,7.7,8.8".to_string());
         let rough_curve = position_flowchart_edge_label(anchor, &geometry, false);
-        assert_ne!((rough_curve.x, rough_curve.y), (4.0, 5.0));
+        assert_eq!((rough_curve.x, rough_curve.y), (4.0, 5.0));
     }
 
     #[test]
@@ -1348,18 +1381,18 @@ mod tests {
 
         let single = geom("M2,3", vec![point(2.0, 3.0)]);
         let positioned = position_flowchart_edge_label(anchor.clone(), &single, true);
-        assert_eq!((positioned.x, positioned.y), (2.0, 3.0));
+        assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
 
         let degenerate = geom("M2,3L2,3", vec![point(2.0, 3.0), point(2.0, 3.0)]);
         let positioned = position_flowchart_edge_label(anchor.clone(), &degenerate, true);
-        assert_eq!((positioned.x, positioned.y), (2.0, 3.0));
+        assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
 
         let polyline = geom(
             "M0,0L6,0L6,8",
             vec![point(0.0, 0.0), point(6.0, 0.0), point(6.0, 8.0)],
         );
         let positioned = position_flowchart_edge_label(anchor, &polyline, true);
-        assert_eq!((positioned.x, positioned.y), (6.0, 1.0));
+        assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
     }
 }
 

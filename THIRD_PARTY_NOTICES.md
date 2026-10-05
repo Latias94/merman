@@ -19,9 +19,9 @@ Components: `beautiful-mermaid`, `mermaid`, `mermaid-ascii`, `mermaid-rs-rendere
 
 ### `cli-default`
 
-The default CLI feature closure without ELK, retaining the explicit RaTeX math/font support.
+The default CLI feature closure including ELK and RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
 
 ### `cli-release`
 
@@ -57,13 +57,13 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
 The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.
 
-Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
+Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`.
 
 ### `typst-publish`
 
@@ -235,10 +235,10 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.13`
+- Version: `3.4.16`
 - Source: <https://github.com/cure53/DOMPurify.git>
-- Source ref: `3.4.13`
-- Source commit: `3067f774676975de12306effd6db6ad7a9a8c17f`
+- Source ref: `3.4.16`
+- Source commit: `b9b9d80f7e401771c2ccaef5f45def7eec8f27d7`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License expression: `(Apache-2.0 OR MPL-2.0)`
@@ -250,16 +250,16 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 
 ### Eclipse Layout Kernel (`eclipse-elk`)
 
-The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0.
 
 - Version: `0.9.1`
 - Source: <https://github.com/eclipse-elk/elk.git>
 - Source ref: `v0.9.1`
 - Source commit: `62d5909f96fad541bc101ad52dabaece6b7eab7e`
-- Source path: `plugins/org.eclipse.elk.alg.layered`
+- Source path: `plugins`
 - Relationship: `modified`, `translated`
 - License expression: `EPL-2.0`
-- Artifact scopes: `cli-release`, `elk-render`, `source-archive`, `typst-publish`, `web-full`, `web-render`
+- Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-elk-layered`, `crates/merman-layout-elk`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md`](THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)
@@ -275,7 +275,7 @@ Mermaid's ELK adapter behavior is compared against this JavaScript distribution,
 - Source path: `.`
 - Relationship: `behavior-reference`
 - License expression: `EPL-2.0`
-- Artifact scopes: `cli-release`, `elk-render`, `playground-reference`, `source-archive`, `typst-publish`, `web-full`, `web-render`
+- Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-layout-elk`, `playground`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/elkjs/LICENSE.md`](THIRD_PARTY_LICENSES/elkjs/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)
@@ -365,10 +365,10 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.17.2`
+- Version: `12.1.0`
 - Source: <https://github.com/mermaid-js/mermaid.git>
-- Source ref: `mermaid@11.17.2`
-- Source commit: `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
+- Source ref: `mermaid@12.1.0`
+- Source commit: `21f72f07ea22c0af48a3149c550654e80d8e40cb`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
@@ -540,23 +540,39 @@ The language package retains this implementation as an additional behavior refer
 
 ### Tree-sitter (`tree-sitter-generator`)
 
-The language package uses the pinned generator, copies its generated support headers, and modifies its C, Rust, and Node binding templates.
+The language package uses the pinned generator and copies its generated support headers.
 
-- Version: `0.26.12`
+- Version: `0.27.0`
 - Source: <https://github.com/tree-sitter/tree-sitter.git>
-- Source ref: `v0.26.12`
-- Source commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
+- Source ref: `v0.27.0`
+- Source commit: `6070dbfefd326bd735e5683eb128cc1b57dad0c0`
 - Source path: `.`
-- Relationship: `copied`, `generated`, `modified`
+- Relationship: `copied`, `generated`
 - License expression: `MIT`
 - Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
 - Local evidence: `distribution/tree-sitter-mermaid`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/tree-sitter/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter/LICENSE) (license, SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78`)
 
+### Mermaid (tree-sitter-mermaid Agentflow and Usecase additions) (`tree-sitter-mermaid-mermaid-12-new-families`)
+
+The language package translates Agentflow and Usecase syntax from the pinned Mermaid 12.0.0 source and carries source-backed editor corpus cases. Existing diagram-family derivations retain their separately recorded Mermaid 11.16.1 source identity.
+
+- Version: `12.0.0`
+- Source: <https://github.com/mermaid-js/mermaid.git>
+- Source ref: `mermaid@12.0.0`
+- Source commit: `98a0945418c76238f15df2afaddbba4272656c3b`
+- Source path: `packages/mermaid`
+- Relationship: `behavior-reference`, `fixtures`, `translated`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid/grammar/families/agentflow.js`, `distribution/tree-sitter-mermaid/grammar/families/usecase.js`, `distribution/tree-sitter-mermaid/test/corpus/families/agentflow.txt`, `distribution/tree-sitter-mermaid/test/corpus/families/usecase.txt`, `distribution/tree-sitter-mermaid/test/fixtures/family-roots.json`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
+
 ### Mermaid (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-mermaid-baseline`)
 
-The language package translates the exact Mermaid 11.16.1 syntax baseline and carries Merman-selected representative fixtures recorded against that baseline; this component intentionally does not move with the repository baseline.
+The language package retains the exact Mermaid 11.16.1 syntax baseline for its original 35 diagram families and their representative fixtures. Agentflow and Usecase additions are attributed separately to Mermaid 12.0.0; this component intentionally does not move with the repository baseline.
 
 - Version: `11.16.1`
 - Source: <https://github.com/mermaid-js/mermaid.git>
@@ -586,6 +602,22 @@ The language package follows the exact ZenUML Core 3.50.1 companion baseline and
 - Legal files:
   - [`THIRD_PARTY_LICENSES/zenuml-core/LICENSE`](THIRD_PARTY_LICENSES/zenuml-core/LICENSE) (license, SHA-256 `d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978`)
 
+### Tree-sitter binding templates (`tree-sitter-templates`)
+
+The language package retains modified C, Rust, and Node binding templates and the WASM build helper from Tree-sitter 0.26.12.
+
+- Version: `0.26.12`
+- Source: <https://github.com/tree-sitter/tree-sitter.git>
+- Source ref: `v0.26.12`
+- Source commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
+- Source path: `.`
+- Relationship: `copied`, `modified`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/tree-sitter/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter/LICENSE) (license, SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78`)
+
 ### @upsetjs/venn.js (`venn-js`)
 
 The Venn family uses a modified Rust translation of the venn.js geometry and layout kernel.
@@ -606,10 +638,10 @@ The Venn family uses a modified Rust translation of the venn.js geometry and lay
 
 The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text.
 
-- Version: `0.2.0`
+- Version: `0.2.1`
 - Source: <https://github.com/typst-community/wasm-minimal-protocol.git>
-- Source ref: `wasm-minimal-protocol-0.2.0`
-- Source commit: `cc08c96b8e7683188eb16ad315a9689b89290f85`
+- Source ref: `wasm-minimal-protocol-0.2.1`
+- Source commit: `b595eb790d9926dd91afc37d98c2e1fd3102cb2a`
 - Source path: `crates/macro`
 - Relationship: `linked`
 - License expression: `Unlicense`

@@ -15,12 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 ) -> Option<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
     // Port of Mermaid `imageSquare.ts` (`image-shape default`).
     if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
-        let label_text_plain =
-            flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-        let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
-            &label_text_plain,
-            ctx.node_html_labels,
-        );
+        let has_label = !label.text.is_empty();
         let label_padding = if has_label { 8.0 } else { 0.0 };
         let top_label = common.node_pos == Some("t");
 
@@ -63,9 +58,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
         let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
         let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-
-        let outer_w = image_width.max(label_bbox_w);
-        let outer_h = image_height + label_bbox_h + label_padding;
+        let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
+        let geometry = crate::flowchart::ImageSquareGeometry::from_label(
+            metrics,
+            has_label,
+            common.node_asset_width,
+            common.node_asset_height,
+            common.node_constraint == Some("on"),
+            ctx.wrapping_width,
+        );
+        let image_width = geometry.image_width;
+        let image_height = geometry.image_height;
+        let outer_w = geometry.width;
+        let outer_h = geometry.height;
 
         let x0 = -image_width / 2.0;
         let y0 = -image_height / 2.0;
@@ -116,7 +121,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_stroke_path_for_svg_path(
                     &rect_stroke_path,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,

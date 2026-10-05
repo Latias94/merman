@@ -10,6 +10,7 @@ use super::BlockNode;
 /// Traverse each tree in source order; later non-empty fields replace earlier fields.
 #[derive(Debug)]
 pub(crate) struct BlockNodeSource<'a> {
+    pub(crate) color_index: Option<usize>,
     pub(crate) label: &'a str,
     pub(crate) block_type: &'a str,
     pub(crate) classes: &'a [String],
@@ -21,6 +22,7 @@ pub(crate) struct BlockNodeSource<'a> {
 impl<'a> BlockNodeSource<'a> {
     fn new(node: &'a BlockNode) -> Self {
         Self {
+            color_index: node.color_index,
             label: &node.label,
             block_type: &node.block_type,
             classes: &node.classes,
@@ -31,6 +33,9 @@ impl<'a> BlockNodeSource<'a> {
     }
 
     fn merge(&mut self, node: &'a BlockNode) {
+        if node.color_index.is_some() {
+            self.color_index = node.color_index;
+        }
         if !node.label.is_empty() {
             self.label = &node.label;
         }

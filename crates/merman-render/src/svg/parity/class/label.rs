@@ -97,12 +97,38 @@ pub(super) fn render_class_html_label<'a>(
     emitted_style
 }
 
+pub(super) fn write_class_svg_plain_node_text(out: &mut impl SvgOutput, text: &str) {
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
+        .into_iter()
+        .map(|line| {
+            crate::text::non_markdown_svg_words(&line)
+                .map(str::to_owned)
+                .collect()
+        })
+        .collect::<Vec<_>>();
+    out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+    crate::svg::parity::label::write_svg_text_source_word_lines(out, &lines, true, false);
+    out.push_str("</g>");
+}
+
 pub(super) fn write_class_svg_text_markdown(
     out: &mut impl SvgOutput,
     markdown: &str,
     include_style: bool,
 ) {
     crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
+}
+
+pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
+    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
+}
+
+pub(super) fn write_class_svg_edge_text_markdown(
+    out: &mut impl SvgOutput,
+    markdown: &str,
+    include_style: bool,
+) {
+    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
 }
 
 pub(super) fn write_class_svg_text_markdown_with_style<'a>(
@@ -171,10 +197,6 @@ pub(super) fn write_class_svg_text_markdown_with_style<'a>(
     }
     out.push_str("</text>");
     emitted_style
-}
-
-pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
-    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text_with_style<'a>(
@@ -400,64 +422,19 @@ fn mermaid_class_svg_create_text_width_px(
     style: &TextStyle,
     wrap_probe_font_size: f64,
 ) -> Option<f64> {
-    let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
-    // Mermaid `calculateTextWidth(...)` selects between `sans-serif` and the configured font
-    // family using `calculateTextDimensions(...)` (it does *not* always take the max width).
-    // Replicate that selection logic so SVG-label wrapping matches Mermaid's utility contract.
-    #[derive(Clone, Copy)]
-    struct Dim {
-        width: f64,
-        height: f64,
-        line_height: f64,
-    }
-    fn dim_for(measurer: &dyn TextMeasurer, text: &str, style: &TextStyle) -> Dim {
-        let width = measurer
-            .measure_svg_simple_text_bbox_width_px(text, style)
-            .max(0.0)
-            .round();
-        let height = measurer
-            .measure_wrapped(text, style, None, WrapMode::SvgLike)
-            .height
-            .max(0.0)
-            .round();
-        Dim {
-            width,
-            height,
-            line_height: height,
-        }
-    }
-
     let wrap_probe_style = TextStyle {
         font_family: style
             .font_family
             .clone()
             .or_else(|| Some("Arial".to_string())),
-        font_size: wrap_probe_font_size,
+        font_size: wrap_probe_font_size.max(1.0),
         font_weight: None,
         font_style: None,
     };
-    let sans_probe_style = TextStyle {
-        font_family: Some("sans-serif".to_string()),
-        font_size: wrap_probe_font_size,
-        font_weight: None,
-        font_style: None,
-    };
-    let dims = [
-        dim_for(measurer, text, &sans_probe_style),
-        dim_for(measurer, text, &wrap_probe_style),
-    ];
-    let pick_sans = dims[1].height.is_nan()
-        || dims[1].width.is_nan()
-        || dims[1].line_height.is_nan()
-        || (dims[0].height > dims[1].height
-            && dims[0].width > dims[1].width
-            && dims[0].line_height > dims[1].line_height);
-    let w = dims[if pick_sans { 0 } else { 1 }].width + 50.0;
-    if w.is_finite() && w > 0.0 {
-        Some(w)
-    } else {
-        None
-    }
+    // Reuse the same body-attached calculateTextDimensions operation as Class layout.
+    // Combining a generic bbox width and wrapped-text height bypasses host probe semantics.
+    let width = crate::class::class_html_create_text_width_px(text, measurer, &wrap_probe_style);
+    (width > 0).then_some(width as f64)
 }
 
 fn class_svg_text_computed_length_px(
@@ -571,6 +548,58 @@ pub(super) fn class_node_paint_style(
 #[cfg(test)]
 mod tests {
     use super::{ClassHtmlLabelSpec, render_class_html_label};
+
+    #[test]
+    fn class_svg_wrap_width_uses_the_same_host_dimensions_probe_as_layout() {
+        struct HostProbe;
+
+        impl crate::text::TextMeasurer for HostProbe {
+            fn measure(
+                &self,
+                _text: &str,
+                _style: &crate::text::TextStyle,
+            ) -> crate::text::TextMetrics {
+                panic!("Class width must use the dedicated calculateTextDimensions operation");
+            }
+
+            fn measure_mermaid_calculate_text_dimensions(
+                &self,
+                text: &str,
+                style: &crate::text::TextStyle,
+            ) -> crate::text::TextMetrics {
+                assert_eq!(text, "member");
+                assert_eq!(style.font_size, 10.0);
+                assert_eq!(style.font_weight, None);
+                assert_eq!(style.font_style, None);
+                let (width, height) = match style.font_family.as_deref() {
+                    Some("sans-serif") => (120.4, 20.0),
+                    Some("HostFont") => (80.4, 30.0),
+                    family => panic!("unexpected probe font: {family:?}"),
+                };
+                crate::text::TextMetrics {
+                    width,
+                    height,
+                    line_count: 1,
+                }
+            }
+        }
+
+        let render_style = crate::text::TextStyle {
+            font_family: Some("HostFont".to_string()),
+            font_size: 24.0,
+            font_weight: Some("bold".to_string()),
+            font_style: Some("italic".to_string()),
+        };
+        let width = super::mermaid_class_svg_create_text_width_px(
+            &HostProbe,
+            "member",
+            &render_style,
+            10.0,
+        );
+        // Mermaid keeps the configured font when sans-serif is wider but not taller.
+        // Its rounded width (80) then receives shapeUtil's 50px wrapping allowance.
+        assert_eq!(width, Some(130.0));
+    }
 
     #[test]
     fn class_html_label_serializes_raw_html_and_escaped_generics_structurally() {

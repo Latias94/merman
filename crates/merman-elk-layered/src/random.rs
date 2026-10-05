@@ -137,12 +137,16 @@ pub enum RandomSeedError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RandomSeedPhase {
     GraphConfigurator,
+    Force,
+    SporeOverlap,
 }
 
 impl RandomSeedPhase {
     const fn domain_label(self) -> &'static str {
         match self {
             Self::GraphConfigurator => "GraphConfigurator.configureGraphProperties",
+            Self::Force => "ForceLayoutProvider.layout",
+            Self::SporeOverlap => "SPOrE.Math.random",
         }
     }
 }
@@ -226,8 +230,10 @@ fn derive_java_seed_from_scope(
     // used to replace ELK's unseeded sentinel; configured nonzero values pass through untouched.
     // The phase and invocation components mirror ELK constructing fresh Java random streams at
     // distinct source boundaries while retaining replayable operation ownership.
-    debug_assert_eq!(phase, RandomSeedPhase::GraphConfigurator);
     let mut hash = graph_scope.node().graph_configurator_hash;
+    if phase != RandomSeedPhase::GraphConfigurator {
+        hash = hash_component(hash, phase.domain_label());
+    }
     for byte in operation_seed
         .value()
         .to_le_bytes()

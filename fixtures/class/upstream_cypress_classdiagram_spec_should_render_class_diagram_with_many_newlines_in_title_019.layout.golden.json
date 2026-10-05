@@ -5,20 +5,20 @@
       "nodes": [
         {
           "id": "This\nTitle\nHas\nMany\nNewlines",
-          "x": 71.441,
-          "y": 168.0,
-          "width": 142.881,
-          "height": 336.0,
+          "x": 76.009,
+          "y": 163.5,
+          "width": 128.017,
+          "height": 303.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 142.881,
-        "max_y": 336.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 140.017,
+        "max_y": 315.0
       }
     }
   }

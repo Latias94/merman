@@ -1155,16 +1155,20 @@ mod tests {
     fn browser_inline_contract_accepts_renderer_owned_family_styles() {
         for (name, source) in [
             ("error", "error"),
+            #[cfg(feature = "diagram-event-modeling")]
             ("eventmodeling", "eventmodeling\ntf 01 event Start"),
+            #[cfg(feature = "diagram-ishikawa")]
             (
                 "ishikawa",
                 "ishikawa-beta\n    Problem\n        Cause\n            Detail",
             ),
+            #[cfg(feature = "diagram-tree-view")]
             ("treeView", "treeView-beta\n    root/\n        file.txt"),
+            #[cfg(feature = "diagram-zenuml")]
             ("zenuml", "zenuml\nAlice->Bob: Hello"),
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(feature = "diagram-mindmap", feature = "layout-cytoscape"))]
             ("mindmap", "mindmap\n  root\n    a\n    b"),
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
             (
                 "architecture",
                 "architecture-beta\nservice worker \"<a href='https://example.test'>Docs</a>\" [Worker]",

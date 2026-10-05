@@ -1,4 +1,5 @@
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   asciiCapabilities,
   asciiSupportedDiagrams,
   createBrowserTextMeasurementSession,
@@ -157,7 +158,10 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
       try {
         return {
-          ascii: renderAscii(input.configuredSource),
+          ascii: renderAscii(input.configuredSource, {
+            version: BINDING_OPTIONS_SCHEMA_VERSION,
+            site_config: input.bindingOptions.site_config,
+          }),
           error: null,
           status: "success",
         };

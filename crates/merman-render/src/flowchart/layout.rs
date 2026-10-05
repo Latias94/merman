@@ -1670,10 +1670,9 @@ fn layout_flowchart_with_model(
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
     work_control.charge_adapter(model.subgraphs.len())?;
-    // Mermaid's FlowDB emits duplicate subgraph ids in reverse order and Graphlib's repeated
-    // `setNode` calls leave the earliest semantic definition's label/style as the winner. Keep a
-    // first-definition index for all presentation lookups while retaining the full source list
-    // for reverse membership assignment below.
+    // Parsed Mermaid 12.1 models already contain one canonical group per id. Public typed
+    // callers can still construct duplicate groups; retain first-owner presentation and merged
+    // membership for that supported input without rebuilding parser semantics here.
     let mut subgraphs_by_id: FlowSubgraphIndex<'_> = HashMap::with_capacity(model.subgraphs.len());
     let mut subgraph_index_by_id: HashMap<&str, usize> =
         HashMap::with_capacity(model.subgraphs.len());
@@ -1818,11 +1817,23 @@ fn layout_flowchart_with_model(
                 &n.classes,
             );
         }
+        metrics = metrics.with_label_min_width(
+            raw_label,
+            super::flowchart_node_label_min_width(
+                raw_label,
+                n.layout_shape.as_deref(),
+                effective_config,
+            ),
+            None,
+        );
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
             layout_direction: &diagram_direction,
             metrics,
+            has_label: !raw_label.is_empty(),
+            wrapping_width,
+            node_constraint: n.constraint.as_deref(),
             padding: node_padding,
             look_is_neo,
             state_padding,
@@ -1895,6 +1906,9 @@ fn layout_flowchart_with_model(
             layout_shape: Some("squareRect"),
             layout_direction: &diagram_direction,
             metrics,
+            has_label: !title.is_empty(),
+            wrapping_width,
+            node_constraint: None,
             padding: cluster_padding,
             look_is_neo: false,
             state_padding,
@@ -4226,10 +4240,72 @@ mod tests {
     }
 
     #[test]
-    fn dagre_preserves_operation_computed_length_precision() {
+    fn dagre_wrapped_labels_fit_rectangle_and_diamond_nodes() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                r#"%%{init: {"flowchart": {"wrappingWidth": 120}}}%%
+flowchart TD
+    A["Receive a new deployment request from the release pipeline"] --> B{"Did every required validation and security check pass successfully?"}
+    B -->|Yes| C["Publish the approved application version to the production environment"]
+    B -->|No| D["Return the detailed validation errors to the requesting developer"]
+"#,
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            measurer.as_ref(),
+            None,
+        )
+        .expect("layout ok");
+
+        for id in ["A", "C", "D"] {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap_or_else(|| panic!("node {id}"));
+            let label_width = node.label_width.expect("rectangle label width");
+            let label_height = node.label_height.expect("rectangle label height");
+            assert!(
+                label_height > 24.0,
+                "node {id} label did not wrap: {node:?}"
+            );
+            assert!(label_width < node.width, "node {id}: {node:?}");
+            assert!(label_height < node.height, "node {id}: {node:?}");
+        }
+
+        let diamond = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "B")
+            .expect("diamond node B");
+        let label_width = diamond.label_width.expect("diamond label width");
+        let label_height = diamond.label_height.expect("diamond label height");
+        assert!(
+            label_height > 24.0,
+            "diamond label did not wrap: {diamond:?}"
+        );
+        assert_eq!(diamond.width, diamond.height);
+        assert!(
+            label_width + label_height < diamond.width,
+            "diamond label does not fit inside its sloped sides: {diamond:?}"
+        );
+    }
+
+    #[test]
+    fn dagre_preserves_operation_computed_length_precision() {
+        // Isolate host precision from Mermaid 12's minimum label width.
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
             )
             .expect("parse ok")
@@ -4830,6 +4906,7 @@ mod tests {
         let mut subgraphs = Vec::with_capacity(depth);
         for i in 0..depth {
             subgraphs.push(FlowSubgraph {
+                metadata: None,
                 id: format!("n{i}"),
                 title: format!("n{i}"),
                 dir: None,

@@ -14,6 +14,10 @@
 > exactly one `preset` or complete `spec`. No mixed product-profile compatibility alias remains,
 > and the C6 cross-family SVG/PNG/PDF portability matrix is not yet proven.
 
+Mermaid 12's source-backed scoped layout selection and absent-loader fallback remain current
+behavior under official Mermaid configuration and renderer admission. The September 20 correction
+to those algorithms does not restore the superseded presentation-profile API.
+
 ## Context
 
 The alpha.3 `HostThemeProfile` API combines four independent decisions: host semantic theme tokens, arbitrary Mermaid configuration, Merman-owned presentation behavior, and SVG output cleanup. It also represents `merman-modern` and Mermaid defaults as theme presets even though the former selects product behavior and the latter is simply the absence of an override.
@@ -27,7 +31,7 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
 1. Host theme data, first-party presentation profiles, official Mermaid config, and SVG output policy have separate owners.
    - `HostTheme` owns optional appearance, typography, semantic roles, and a series palette.
    - `PresentationProfile` owns named Merman product behavior. The first profile is `merman-modern`.
-   - `MermaidConfig` remains the authority for official Mermaid fields such as `theme`, `themeVariables`, `themeCSS`, `look`, `layout`, `flowchart.defaultRenderer`, and `elk.*`.
+   - `MermaidConfig` remains the authority for official Mermaid fields such as `theme`, `themeVariables`, `themeCSS`, `look`, `layout`, `flowchart.layout`, and `elk.*`.
    - `SvgOutputPolicy` and `SvgPipeline` remain the only owners of parity, readable, resvg-safe, scoped CSS, background, CSS override, and duplicate-fallback behavior.
    - `HeadlessRenderer` accepts these owners directly through `with_presentation_profile`, `with_host_theme`, `with_site_config`, and `with_svg_pipeline`. A public `Presentation` aggregate is rejected because it adds no invariant or behavior of its own.
 
@@ -38,7 +42,7 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
    - A Redux/slate visual fallback is applied only when neither a non-empty host theme nor a later site-level Mermaid `theme` owns the appearance.
    - A private Flowchart SVG aspect provides compact routed corners and padded edge-label masks.
    - An optional Flowchart layout aspect defaults ordinary Flowcharts to ELK.
-   - Non-Flowchart inputs do not require ELK. An explicit non-ELK `flowchart.defaultRenderer` disables only the layout aspect for an ordinary Flowchart. A `flowchart-elk` source always requires ELK.
+   - This profile adds no ELK requirement to non-Flowchart inputs. An explicit non-ELK `flowchart.layout` disables only the layout aspect. Both ordinary Flowcharts and the `flowchart-elk` alias use Mermaid 12's registered-layout resolution: an absent ELK loader falls back to Dagre; a compiled backend denied by host policy remains an admission error. In a lean build, the ELK presentation aspect is blocked but the fallback operation is ready.
 
 4. The private Flowchart policy is typed and travels with the prepared render operation to the Flowchart SVG renderer. It does not enter `MermaidConfig` or `LayoutExecution`. Official effective config continues to own detector selection, Neo sizing, and ELK layout.
 

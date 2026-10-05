@@ -12,8 +12,7 @@ mod viewport;
 
 pub(super) use super::roughjs_common::roughjs_paths_for_rect;
 pub(super) use super::roughjs_common::{
-    RoughRectSpec as StateRoughRectSpec, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
-    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_circle_path_d,
+    RoughRectSpec as StateRoughRectSpec, roughjs_circle_path_d,
 };
 
 use roughjs::{
@@ -44,11 +43,15 @@ struct StateRenderCtx<'a> {
     diagram_id: SvgDiagramId<'a>,
     /// The normalized look used for renderer behavior (`default` behaves as `classic`).
     diagram_look: String,
-    /// The allow-listed source token emitted in Mermaid-compatible `data-look` attributes.
     serialized_diagram_look: String,
+    palette_size: usize,
+    uses_elk_adapter_dom: bool,
+    elk_edge_paths: &'a std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
+    elk_line_hop_paths: FxHashMap<String, String>,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
     html_label_wrapping_width: f64,
+    label_min_width: f64,
     state_padding: f64,
     node_order: Vec<&'a str>,
     nodes_by_id: FxHashMap<&'a str, &'a StateSvgNode>,

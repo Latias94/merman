@@ -44,201 +44,6 @@ fn parse_diagram_flowchart_basic_graph() {
 }
 
 #[test]
-fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
-    let engine = Engine::new();
-    let text = "swimlane-beta LR\nA[Start] --> B[Done]\n";
-    let parsed = engine
-        .parse_diagram_snapshot_sync(text)
-        .unwrap()
-        .expect("swimlane parses through flowchart semantics");
-
-    assert_eq!(parsed.metadata().diagram_type, "swimlane");
-    assert_eq!(
-        parsed.metadata().effective_config.get_str("layout"),
-        Some("swimlane")
-    );
-    assert_eq!(
-        parsed
-            .outcome()
-            .parsed_model()
-            .expect("expected parsed snapshot")["type"],
-        json!("swimlane")
-    );
-    assert_eq!(
-        parsed
-            .outcome()
-            .parsed_model()
-            .expect("expected parsed snapshot")["keyword"],
-        json!("swimlane-beta")
-    );
-    assert_eq!(
-        parsed
-            .outcome()
-            .parsed_model()
-            .expect("expected parsed snapshot")["direction"],
-        json!("LR")
-    );
-    assert_eq!(
-        parsed
-            .outcome()
-            .parsed_model()
-            .expect("expected parsed snapshot")["nodes"][0]["id"],
-        json!("A")
-    );
-    assert_eq!(
-        parsed
-            .outcome()
-            .parsed_model()
-            .expect("expected parsed snapshot")["edges"][0]["from"],
-        json!("A")
-    );
-
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
-        panic!("swimlane should reuse flowchart editor facts");
-    };
-    let a_start = text.find("A[").expect("A node");
-    let a = facts
-        .symbols
-        .iter()
-        .find(|symbol| symbol.name == "A")
-        .expect("A editor symbol");
-    assert_eq!(a.selection.start, a_start);
-    assert_eq!(a.selection.end, a_start + "A".len());
-}
-
-#[test]
-fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
-    let cases = [
-        ("flowchart-v2", "flowchart TD"),
-        ("flowchart", "graph TD"),
-        ("flowchart-elk", "flowchart-elk TD"),
-        ("swimlane", "swimlane-beta LR"),
-    ];
-    let engine = Engine::new();
-
-    for (diagram_type, header) in cases {
-        for (tail, should_parse) in [
-            ("accTitle: One pass\nA --> B\n", true),
-            ("accTitle: One pass\nA((\n", false),
-        ] {
-            crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
-            crate::diagrams::flowchart::reset_flowchart_accessibility_scan_count();
-            let source = format!("{header}\n{tail}");
-            let snapshot = engine
-                .parse_diagram_snapshot_with_type_sync(diagram_type, &source)
-                .unwrap()
-                .expect("built-in Flowchart variant snapshot");
-
-            assert_eq!(
-                snapshot.outcome().parsed_model().is_some(),
-                should_parse,
-                "{diagram_type} strict parser outcome"
-            );
-            if !should_parse {
-                let DiagramParseOutcome::Failed(error) = snapshot.outcome() else {
-                    unreachable!("partial recovery token must not satisfy the strict parser");
-                };
-                assert!(error.to_string().contains("Unterminated node label"));
-                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
-                    panic!("failed Flowchart construction must retain editor facts");
-                };
-                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-            }
-            assert_eq!(
-                crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
-                1,
-                "{diagram_type} token trace"
-            );
-            assert_eq!(
-                crate::diagrams::flowchart::flowchart_accessibility_scan_count(),
-                1,
-                "{diagram_type} accessibility scan"
-            );
-        }
-    }
-}
-
-#[test]
-fn parse_swimlane_reuses_flowchart_apostrophe_semantics() {
-    let engine = Engine::new();
-    let text = "swimlane-beta LR\nsubgraph Supplier\nA[Update the RFQs based on the supplier's response]\nB[Done]\nend\nA -->|'Owner's review'| B\n";
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
-        .expect("Swimlane accepts apostrophes through the shared Flowchart parser")
-        .expect("swimlane diagram detected");
-
-    assert_eq!(parsed.meta.diagram_type, "swimlane");
-    assert_eq!(
-        parsed.model["nodes"][0]["label"],
-        json!("Update the RFQs based on the supplier's response")
-    );
-    assert_eq!(parsed.model["nodes"][0]["labelType"], json!("text"));
-    assert_eq!(parsed.model["edges"][0]["label"], json!("'Owner's review'"));
-    assert_eq!(parsed.model["edges"][0]["labelType"], json!("text"));
-}
-
-#[test]
-fn parse_swimlane_layout_default_respects_user_config_precedence() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "layout": "dagre"
-    })));
-
-    let site_default = engine
-        .parse_metadata_sync("swimlane-beta LR\nA-->B\n")
-        .expect("swimlane metadata");
-    assert_eq!(
-        site_default.effective_config.get_str("layout"),
-        Some("swimlane")
-    );
-
-    let user_override = engine
-        .parse_metadata_sync("%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n")
-        .expect("swimlane metadata with user layout");
-    assert_eq!(user_override.config.get_str("layout"), Some("elk"));
-    assert_eq!(
-        user_override.effective_config.get_str("layout"),
-        Some("elk")
-    );
-
-    let cleared_override = engine
-        .parse_metadata_sync("%%{init: {\"layout\": null}}%%\nswimlane-beta LR\nA-->B\n")
-        .expect("swimlane metadata with a null layout override");
-    assert_eq!(
-        cleared_override.effective_config.get_str("layout"),
-        Some("swimlane")
-    );
-
-    let known_type = engine
-        .parse_metadata_with_type_sync("swimlane", "swimlane-beta LR\nA-->B\n")
-        .expect("known-type swimlane metadata");
-    assert_eq!(
-        known_type.effective_config.get_str("layout"),
-        Some("swimlane")
-    );
-}
-
-#[test]
-fn parse_swimlane_render_model_reuses_flowchart_semantics() {
-    let engine = Engine::new();
-    let parsed = engine
-        .parse_diagram_for_render_model_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
-        .expect("swimlane render parse succeeds")
-        .expect("swimlane render model");
-
-    assert_eq!(parsed.metadata().diagram_type, "swimlane");
-    assert_eq!(
-        parsed.metadata().effective_config.get_str("layout"),
-        Some("swimlane")
-    );
-    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-        panic!("swimlane should reuse the flowchart semantic model");
-    };
-    assert_eq!(model.keyword, "swimlane-beta");
-    assert_eq!(model.direction.as_deref(), Some("LR"));
-    assert_eq!(model.nodes.len(), 2);
-    assert_eq!(model.edges.len(), 1);
-}
-
-#[test]
 fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
     let snapshot = Engine::new()
         .parse_diagram_snapshot_with_type_sync(
@@ -2571,6 +2376,48 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
 }
 
 #[test]
+fn parse_diagram_flowchart_subgraph_id_ignores_repeated_separator_whitespace() {
+    let engine = Engine::new();
+    let text = "graph TD;subgraph  Outer;A-->B;end;";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["subgraphs"],
+        json!([{
+            "id": "Outer",
+            "nodes": ["B", "A"],
+            "title": "Outer",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }])
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_subgraph_trailing_spaces_before_newline_stays_empty() {
+    let engine = Engine::new();
+    let text = "graph TD;subgraph   \nA-->B\nend;";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["subgraphs"],
+        json!([{
+            "id": "subGraph0",
+            "nodes": ["B", "A"],
+            "title": "",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }])
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
     let engine = Engine::new();
     let text = "graph TD;subgraph ide1[one];A-->B;end;";
@@ -3226,57 +3073,6 @@ fn parse_flowchart_warning_fact_span_uses_context_after_frontmatter_and_entity_p
         parsed.model["warningFacts"][0]["fixSpan"],
         json!({ "start": flowchart_start + "flowchart".len(), "end": flowchart_start + "flowchart".len() })
     );
-}
-
-#[test]
-fn warning_producing_flowchart_variants_register_typed_compatibility_sidecars() {
-    let engine = Engine::new();
-    let cases = [
-        ("flowchart-elk", "flowchart-elk\nA-->B\n", "flowchart-elk"),
-        ("flowchart-v2", "flowchart\nA-->B\n", "flowchart"),
-        ("flowchart", "flowchart\nA-->B\n", "flowchart"),
-        ("swimlane", "swimlane-beta\nA-->B\n", "swimlane-beta"),
-    ];
-
-    for (diagram_type, source, keyword) in cases {
-        assert!(
-            crate::family::warning_semantic_parser(diagram_type).is_some(),
-            "{diagram_type} must register its typed warning compatibility parser"
-        );
-
-        let snapshot = engine
-            .parse_diagram_snapshot_with_type_sync(diagram_type, source)
-            .unwrap()
-            .unwrap();
-        let DiagramParseOutcome::Parsed {
-            model,
-            warning_facts,
-        } = snapshot.outcome()
-        else {
-            panic!("{diagram_type} warning fixture must parse");
-        };
-        let public = engine
-            .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(warning_facts.len(), 1, "{diagram_type}");
-        assert_eq!(
-            warning_facts[0].span,
-            Some(SourceSpan::new(0, keyword.len())),
-            "{diagram_type}"
-        );
-        assert_eq!(
-            model["warningFacts"],
-            json!(warning_facts),
-            "{diagram_type}"
-        );
-        assert_eq!(
-            public.model["warningFacts"],
-            json!(warning_facts),
-            "{diagram_type}"
-        );
-    }
 }
 
 #[test]
@@ -4176,6 +3972,66 @@ fn flowchart_unicode_ids_keep_adjacent_edge_operators_separate() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
+    // Mermaid's flowchart lexer accepts UNICODE_TEXT in ids (mermaid@11.17.2 parses all of these).
+    let engine = Engine::new();
+    let text = "flowchart TD
+  開始 --> 在庫確認{在庫はあるか}
+  在庫確認 -->|はい| 出荷ー
+  subgraph 受注
+    受付 --> 確認
+  end
+  確認 --> 受注
+  classDef 強調 fill:#f96
+  受付:::強調 --> Ünïcödé
+";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let ids: Vec<&str> = res.model["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "開始",
+            "在庫確認",
+            "出荷ー",
+            "受付",
+            "確認",
+            "受注",
+            "Ünïcödé"
+        ]
+    );
+    assert_eq!(res.model["nodes"][1]["label"], "在庫はあるか");
+    assert_eq!(res.model["subgraphs"][0]["id"], "受注");
+    assert_eq!(res.model["nodes"][3]["classes"], json!(["強調"]));
+}
+
+#[test]
+fn parse_diagram_flowchart_accepts_ecmascript_unicode_whitespace_in_header() {
+    let engine = Engine::new();
+    for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
+        for newline in ["\n", "\r\n"] {
+            let text = format!(
+                "flowchart{whitespace}TD{newline}{whitespace}A --> B{newline}\
+                 {whitespace}B --> C{newline}"
+            );
+            let res = engine
+                .parse_diagram_sync(&text, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(res.model["direction"], json!("TB"), "{text:?}");
+            assert_eq!(res.model["vertexCalls"], json!(["A", "B", "B", "C"]));
+        }
+    }
+}
+
+#[test]
 fn flowchart_unicode_id_rejects_characters_outside_pinned_mermaid_ranges() {
     let engine = Engine::new();
     for id in ["😀", "e\u{0301}", "\u{9fcd}", "\u{10400}"] {
@@ -4184,5 +4040,96 @@ fn flowchart_unicode_id_rejects_characters_outside_pinned_mermaid_ranges() {
             block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err(),
             "{id:?}"
         );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_accepts_unicode_whitespace_in_subgraph_direction() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph S\ndirection\u{3000}LR\u{3000}\nA --> B\nend\n";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["subgraphs"][0]["dir"], "LR");
+    assert_eq!(res.model["vertexCalls"], json!(["A", "B"]));
+}
+
+#[test]
+fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
+    // mermaid@11.17.2 rejects both of these with "Lexical error ... Unrecognized text".
+    let engine = Engine::new();
+    for text in [
+        "flowchart TD
+  開始、 --> 終了
+",
+        "flowchart TD
+  手順１ --> 手順２
+",
+        "flowchart TD
+  Aͅ --> B
+",
+        "flowchart TD
+  𠀀 --> B
+",
+    ] {
+        assert!(
+            engine
+                .parse_diagram_sync(text, ParseOptions::default())
+                .is_err(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
+    let engine = Engine::new();
+    assert!(
+        engine
+            .parse_diagram_sync("flowchart TD\nend開始 --> B", ParseOptions::default())
+            .is_err()
+    );
+
+    let parsed = engine
+        .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "TB");
+    assert_eq!(parsed.model["vertexCalls"], json!(["開始", "B"]));
+}
+
+#[test]
+fn flowchart_unicode_click_separators_preserve_links_and_editor_ranges() {
+    let engine = Engine::new();
+    for separator in ["\u{00a0}", "\u{1680}", "\u{202f}", "\u{3000}", "\u{feff}"] {
+        for href in ["", "href "] {
+            let source = format!(
+                "flowchart LR\nA\nclick A{separator}{href}\"https://example.com\"{separator}\"tooltip\"{separator}_blank\n"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node["link"], "https://example.com/", "{source}");
+            assert_eq!(node["linkTarget"], "_blank", "{source}");
+            assert_eq!(parsed.model["tooltips"]["A"], "tooltip", "{source}");
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                facts.completeness,
+                EditorSemanticCompleteness::Complete,
+                "{source}: {facts:?}"
+            );
+            let start = source.find("click A").unwrap() + "click ".len();
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == "A"
+                    && symbol.selection == SourceSpan::new(start, start + 1)),
+                "{source}"
+            );
+        }
     }
 }

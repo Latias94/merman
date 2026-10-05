@@ -118,7 +118,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
             let request = SvgRequest {
                 environment: merman::SvgEnvironment::deterministic()
                     .with_resource_policy(resources),
-                ..svg_request("swimlane-budget-probe")
+                ..Default::default()
             };
             match Renderer::new().render(RenderRequest::svg(
                 &without_line_hops,
@@ -468,8 +468,8 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
         Some("dagre")
     );
     let svg = render_swimlane(&source, "swimlane-dagre");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]
@@ -647,8 +647,8 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
         Some("elk")
     );
     let svg = render_swimlane(&source, "swimlane-elk");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]

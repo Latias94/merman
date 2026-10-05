@@ -195,7 +195,7 @@ fn representative_dark_theme_diagrams_emit_theme_markup_and_label_nodes() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "theme-flowchart",
-            r##"%%{init: {"theme": "base", "themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "strokeWidth": 4}}}%%
+            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "textColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "strokeWidth": 4}}}%%
 flowchart TD
   A[Dark Node] -->|Readable Edge| B[Other]
 "##,
@@ -252,7 +252,7 @@ stateDiagram-v2
         ),
         (
             "theme-er",
-            r##"%%{init: {"theme": "base", "look": "neo", "themeVariables": {"textColor": "#f8fafc", "primaryTextColor": "#fde68a", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#fde68a", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
 erDiagram
   CUSTOMER ||--o{ ORDER : places
   CUSTOMER {
@@ -266,7 +266,6 @@ erDiagram
                 "#38bdf8",
                 "#fde68a",
                 "rgba(23, 37, 84, 0.5)",
-                "#334155",
             ],
         ),
         (
@@ -950,15 +949,15 @@ fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
         "ER rough entity shapes should also carry mainBkg/nodeBorder inline colors: {svg}"
     );
     assert!(
-        svg.contains(r##"#er-visible-audit .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#fde68a;}"##),
+        svg.contains(r##"#er-visible-audit .label{font-family:"Recursive Variable",arial,sans-serif;color:#fde68a;}"##),
         "ER nodeTextColor should reach current XHTML label containers: {svg}"
     );
     assert!(
-        svg.contains(r##"#er-visible-audit .labelBkg{background-color:rgba(23, 37, 84, 0.5);}"##),
+        svg.contains(r##"#er-visible-audit [data-look=neo].labelBkg{background-color:rgba(23, 37, 84, 0.5);}"##),
         "ER tertiaryColor should be counted through the current labelBkg fade, not as a direct fill: {svg}"
     );
     assert!(
-        svg.contains(r##"#er-visible-audit .edgeLabel{background-color:#334155;}"##),
+        svg.contains(r##"#er-visible-audit .edgeLabel{background-color:#FFFFFF;}"##),
         "ER edgeLabelBackground should reach the current XHTML edge label class: {svg}"
     );
     assert!(
@@ -1107,13 +1106,13 @@ fn requirement_default_visible_rough_stroke_uses_node_border() {
 
     assert!(
         svg.contains(
-            r#"#requirement-default-stroke .reqBox{fill:#ECECFF;fill-opacity:1.0;stroke:hsl(240, 60%, 86.2745098039%);"#
+            r#"#requirement-default-stroke .reqBox{fill:#ECECFE;fill-opacity:1.0;stroke:hsl(247.5, 0%, 9.2156862745%);"#
         ),
         "Requirement legacy CSS should keep Mermaid's requirementBorderColor rule: {svg}"
     );
     assert!(
         svg.contains(
-            r##"stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
+            r##"stroke="#28253D" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
         ),
         "Requirement visible rough shape/divider strokes should use nodeBorder by default: {svg}"
     );

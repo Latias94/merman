@@ -17,7 +17,7 @@ const scopedLegalPathPrefix = "platforms/web/legal/rust-cargo-dependencies/";
 const artifactProfilesPath = path.join(
   repositoryRoot,
   "capabilities",
-  "artifact-profiles-v1.json",
+  "artifact-profiles-v2.json",
 );
 const cargoLockPath = path.join(repositoryRoot, "Cargo.lock");
 const cargoAboutConfigurationPath = path.join(repositoryRoot, "about.toml");
@@ -191,6 +191,9 @@ function loadWebArtifactProfileRecipes() {
     readJson(artifactProfilesPath),
     "Artifact profile descriptor",
   );
+  if (descriptor.schema_version !== 2) {
+    throw new Error("Artifact profile descriptor schema_version must be 2.");
+  }
   const profiles = new Map();
   for (const raw of expectArray(descriptor.profiles, "Artifact profiles")) {
     const profile = expectRecord(raw, "Artifact profile");
@@ -267,9 +270,22 @@ function parseWebArtifactProfile(profile, id) {
   ) {
     throw new Error(`Artifact profile ${id} must target wasm32-unknown-unknown.`);
   }
+  const expected = expectRecord(profile.expected, `Artifact profile ${id} expected`);
+  const diagramFamilies = expectStringArray(
+    expected.diagram_families,
+    `Artifact profile ${id} diagram families`,
+  );
+  if (
+    diagramFamilies.includes("error") ||
+    diagramFamilies.some((family) => !/^[a-z][A-Za-z0-9]*$/.test(family)) ||
+    diagramFamilies.some((family, index) => index > 0 && diagramFamilies[index - 1] >= family)
+  ) {
+    throw new Error(`Artifact profile ${id} diagram families must be sorted, unique logical IDs excluding error.`);
+  }
   return {
     id,
     semantic_target: "web",
+    diagram_families: diagramFamilies,
     cargo: {
       package: expectString(cargo.package, `Artifact profile ${id} package`),
       manifest,

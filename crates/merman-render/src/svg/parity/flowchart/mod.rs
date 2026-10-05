@@ -1,6 +1,7 @@
 use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+mod agentflow;
 mod css;
 mod defs;
 mod document;
@@ -84,4 +85,17 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 
 mod svg_emit;
 pub(super) use svg_emit::render_flowchart_svg_artifact;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) use swimlane::render_swimlane_svg_artifact;
+
+#[cfg(all(test, feature = "layout-elk"))]
+mod browser_measurement_tests;
+
+/// Shared by the title element and its stylesheet; Agentflow owns its title class.
+fn title_css_class(diagram_type: &str) -> &'static str {
+    if diagram_type == "agentflow" {
+        "agentflowTitleText"
+    } else {
+        "flowchartTitleText"
+    }
+}

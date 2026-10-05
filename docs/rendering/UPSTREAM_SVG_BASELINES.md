@@ -3,11 +3,11 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.17.2`.
+Baseline version: Mermaid `@12.0.0`.
 
 Historical fixture notes may still mention the baseline version that introduced a fixture or
-normalization rule. The current authoritative baseline is ADR-0001 plus
-`tools/upstreams/REPOS.lock.json`.
+normalization rule. The current authoritative baseline is ADR-0090 and
+`tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; `tools/upstreams/REPOS.lock.json` pins source checkouts.
 
 ## Why This Exists
 
@@ -18,7 +18,7 @@ in subtle ways (marker ids, viewBox sizing, CSS selectors, etc). Baselines make 
 
 To make 1:1 parity work tractable, `merman` keeps multiple kinds of goldens:
 
-- Upstream SVG baselines (this doc): the authoritative end-to-end output from Mermaid (via CLI).
+- Upstream SVG baselines (this doc): the authoritative end-to-end output from the selected Mermaid reference runtime.
 - Semantic snapshots: parser output snapshots for `fixtures/**/*.mmd` (generated via
   `cargo run -p xtask -- update-snapshots`).
 - Layout golden snapshots: geometry-level snapshots (`*.layout.golden.json`) that validate the
@@ -47,14 +47,15 @@ collapsed into a single "supported" claim.
 
 ## Tooling
 
-We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
-The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.17.2`.
+The reference workspace under `tools/mermaid-cli/` pins Mermaid `12.0.0`, the CLI host,
+companions, browser driver, and esbuild compiler. `reference-runtime.mjs` builds Mermaid's module
+entry point against that locked graph. Published Mermaid IIFE and ESM bundles embed dependency
+copies, so an npm override alone cannot update the sanitizer they execute.
 
 Imported fixtures can carry host initialization settings that Mermaid does not allow diagram
 frontmatter or directives to override. `gen-upstream-svgs`, semantic/layout snapshot generation,
 and SVG comparison all consume the committed `fixtures/_config/render_contexts.json` catalog so
-they render with the same effective host `securityLevel`. Loose contexts are passed to Mermaid CLI
+they render with the same effective host `securityLevel`. Loose contexts are passed to the reference runtime
 as host config. Sandbox contexts are projected to strict for SVG-body parity because Mermaid's
 sandbox iframe is a browser-owned isolation boundary that a headless SVG API cannot reproduce.
 The generator fails closed when the catalog is absent or invalid, and each affected fixture records
@@ -69,22 +70,23 @@ fixture catalog before parsing.
 
 Install:
 
-- `cd tools/mermaid-cli && npm install`
+- `npm ci --ignore-scripts --prefix tools/mermaid-cli`
 
 ### Render-environment attestation
 
-Every schema-v2 `_baseline-manifest.json` distinguishes between two provenance modes:
+Current `_baseline-manifest.json` files use schema 4 and renderer revision
+`xtask-upstream-svg-v5`, with two provenance modes:
 
 - `generated`: the complete family was rendered in one measured environment. The manifest records
-  the CDP browser product/version/revision, Chromium's resolved IANA timezone, Puppeteer version, OS
-  identity, the versions reported by both Mermaid's ESM and IIFE runtimes, SHA-256 tree fingerprints
-  for the installed Mermaid and Mermaid CLI packages, and a browser-font fingerprint.
+  the CDP browser product/version/revision, Chromium's resolved locale and IANA timezone, Puppeteer
+  version, OS identity, the observed Mermaid and DOMPurify versions, compiler version, the executed
+  artifact's SHA-256, selected package tree fingerprints, and a browser-font fingerprint.
 - `adopted-existing`: the corpus and hashes were validated, but its historical browser environment
   cannot be proved. Do not add a render environment to an adopted corpus after the fact.
 
-`gen-upstream-svgs` probes the browser once before rendering or writing provenance. It then passes
-the exact executable reported by the launched Puppeteer process to both mmdc and the seeded IIFE
-renderer. To select a browser, set `PUPPETEER_EXECUTABLE_PATH` before invoking xtask;
+`gen-upstream-svgs` builds and probes the owned runtime once before rendering or writing provenance.
+All selected families use that artifact through the shared seeded renderer and the exact browser
+executable reported by the probe. To select a browser, set `PUPPETEER_EXECUTABLE_PATH` before invoking xtask;
 `CHROME_EXECUTABLE` is not a Puppeteer configuration input. The absolute executable path is used
 only for the current command and is never stored in the manifest. Timed renderer processes run in
 a managed process tree; Puppeteer detachment is disabled so timeout cleanup terminates and reaps
@@ -92,10 +94,12 @@ both Node and its browser descendants. Generated probe and seeded-renderer scrip
 content-addressed paths installed by atomic rename, so concurrent xtask processes cannot observe a
 partially written script.
 
-The probe resolves Mermaid from the actual `@mermaid-js/mermaid-cli` package context, so the ESM and
-IIFE attestations describe the same dependency tree that mmdc uses rather than an unrelated root
-`node_modules/mermaid` installation. The package fingerprints must also match the pinned 11.17.2
-artifacts, so a same-version locally modified runtime is rejected before rendering.
+The builder resolves modules from the selected CLI workspace. The probe verifies Mermaid's version
+and observes a strict HTML-label render calling the selected DOMPurify instance and removing an event
+attribute. Probe and fixture rendering hash the artifact bytes before passing the same bytes to the
+browser. Selected package fingerprints are checked before building, after probing, and before each
+family promotion; artifact or package drift aborts generation. A version string alone is insufficient
+proof that an override participated in rendering.
 
 The font probe hashes fixed SVG `getBBox`/`getComputedTextLength` and canvas `measureText` samples.
 It is an environment fingerprint only: the values must not be copied into `merman-render`, used to
@@ -135,7 +139,7 @@ commit mixed or stale renderer profiles.
 
 All generator invocations also hold one cross-process Mermaid CLI toolchain lock from the
 `node_modules` installation check through rendering and the final runtime-package fingerprint
-verification. Compare and audit readers hold the same lock while invoking Mermaid CLI or Node KaTeX.
+verification. Compare and audit readers hold the same lock while invoking the reference runtime or Node KaTeX.
 This serializes `npm ci`/`npm install` against every shared-toolchain reader, including imports that
 already hold a family transaction lock; nested import operations keep the `toolchain -> family`
 acquisition order and reuse their existing guards.
@@ -315,7 +319,7 @@ Policy:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by the pinned `@mermaid-js/mermaid-cli@11.16.0` runner executing `mermaid@11.17.2`, often
+rejected by the pinned `@mermaid-js/mermaid-cli@11.17.0` runner executing `mermaid@12.0.0`, often
 due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
@@ -385,7 +389,7 @@ Determinism note:
 - Architecture diagrams use Cytoscape `fcose`, whose spectral initialization relies on
   `Math.random()`. To keep baselines reproducible, `xtask gen-upstream-svgs --diagram architecture`
   renders via a small Puppeteer wrapper that seeds browser-side randomness deterministically (while
-  still using the official Mermaid CLI bundle).
+  using the same owned reference runtime as other families).
 - Gantt diagrams use the same Puppeteer wrapper with a fixed wall clock of
   `2024-01-01T00:00:00Z`, a 1200-pixel page viewport, and the matching 1184-pixel Mermaid CLI
   content container after the browser body's default inline margins. The renderer profile records

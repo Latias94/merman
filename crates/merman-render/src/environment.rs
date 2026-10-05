@@ -309,10 +309,24 @@ struct BuiltinInlineRawLineWidthState {
 /// opaque custom measurers cannot construct this state, so their observable callback sequence
 /// remains unchanged.
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 pub(crate) struct BuiltinSvgComputedLength {
     line: BuiltinInlineRawLineWidth,
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 impl BuiltinSvgComputedLength {
     fn new(style: &TextStyle) -> Self {
         Self {
@@ -2614,7 +2628,7 @@ impl RenderSessionReport {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
     use crate::resources::ResourceLimitId;

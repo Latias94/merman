@@ -520,7 +520,7 @@ A[Plain source]"##,
         let options = br##"{
             "theme": { "preset": "one-dark" },
             "site_config": {
-                "flowchart": { "defaultRenderer": "dagre-wrapper" }
+                "flowchart": { "layout": "dagre" }
             },
             "svg": { "diagram_id": "theme equivalence" }
         }"##;

@@ -406,6 +406,8 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) gradient_start: String,
     pub(crate) gradient_stop: String,
     pub(crate) neo_radius: f64,
+    pub(crate) rect_radius: f64,
+    pub(crate) node_shadow: bool,
     terminal_paints:
         BTreeMap<(StateTerminalSurface, StateTerminalPaintProperty), StateTerminalPaintSelection>,
 }
@@ -558,6 +560,20 @@ impl StateCompatibilityPlan {
         let neo_radius = resolver
             .direct_css_px(&["themeVariables.radius"], 5.0)
             .map(|value| value.max(0.0));
+        let rect_radius = if resolver
+            .value
+            .pointer("/themeVariables/radius")
+            .and_then(Value::as_f64)
+            == Some(0.0)
+        {
+            10.0
+        } else {
+            crate::config::config_f64(resolver.value, &["themeVariables", "radius"]).unwrap_or(5.0)
+        };
+        let node_shadow = resolver
+            .value
+            .pointer("/themeVariables/nodeShadow")
+            .is_some_and(crate::config::json_value_is_truthy);
 
         let mut terminal_paints = BTreeMap::new();
         macro_rules! bind_css {
@@ -1012,6 +1028,8 @@ impl StateCompatibilityPlan {
             gradient_start: gradient_start.value,
             gradient_stop: gradient_stop.value,
             neo_radius: neo_radius.value,
+            rect_radius,
+            node_shadow,
             terminal_paints,
         }
     }
@@ -1240,6 +1258,9 @@ mod tests {
             ry: Some(10.0),
             shape: "rect".to_string(),
             position: None,
+            color_index: None,
+            wrapping_width: None,
+            min_width: None,
         }
     }
 

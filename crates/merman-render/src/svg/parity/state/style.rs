@@ -1,5 +1,88 @@
 use super::*;
 
+pub(super) fn state_palette_size(config: &serde_json::Value) -> usize {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return 0;
+    }
+    config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn write_state_palette_css<I: Copy + std::fmt::Display>(
+    out: &mut impl SvgOutput,
+    id: I,
+    config: &serde_json::Value,
+) -> crate::Result<()> {
+    if state_palette_size(config) == 0 {
+        return out.checkpoint();
+    }
+    let Some(borders) = config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return out.checkpoint();
+    };
+    let backgrounds = config
+        .pointer("/themeVariables/bkgColorArray")
+        .and_then(serde_json::Value::as_array)
+        .filter(|colors| !colors.is_empty());
+    let look = config
+        .get("look")
+        .and_then(|value| match value {
+            serde_json::Value::String(value) => Some(value.clone()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        })
+        .filter(|look| {
+            !look.is_empty()
+                && look
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+        .unwrap_or_else(|| "classic".into());
+    let css_color = |value: &serde_json::Value| {
+        value
+            .as_str()
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| value.to_string())
+    };
+    for (index, border) in borders.iter().enumerate() {
+        let border = css_color(border);
+        let tint = backgrounds.map(|colors| css_color(&colors[index % colors.len()]));
+        for (selector, stroke, fill) in [
+            ("rect.outer", true, true),
+            ("rect.inner", true, false),
+            ("rect.divider", true, true),
+            (".outer path[stroke='none']", false, true),
+            (".outer path[fill='none']", true, false),
+            (".divider path[stroke='none']", false, true),
+            (".divider path[fill='none']", true, false),
+        ] {
+            if !stroke && tint.is_none() {
+                continue;
+            }
+            let _ = write!(
+                out,
+                r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].statediagram-cluster {selector}{{"#
+            );
+            if stroke {
+                let _ = write!(out, "stroke:{border};");
+            }
+            if fill && let Some(tint) = &tint {
+                let _ = write!(out, "fill:{tint};");
+            }
+            out.push('}');
+            out.checkpoint()?;
+        }
+    }
+    Ok(())
+}
+
 fn state_shadow_defs<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -93,7 +176,7 @@ where
         if compatibility.is_neo() {
             let _ = write!(
                 out,
-                r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
+                r#"<defs><marker id="{}" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
                 escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
                 transition_color,
                 transition_color,
@@ -182,6 +265,7 @@ pub(super) fn write_state_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     style_plan: &crate::state::StateStylePlan,
+    effective_config: &serde_json::Value,
 ) -> crate::Result<()>
 where
     I: SvgDiagramIdValue,
@@ -299,8 +383,8 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}"#,
-        id
+        r#"#{} .edge-thickness-normal{{stroke-width:{};}}"#,
+        id, neo_stroke_width_px
     );
     let _ = write!(
         &mut css,
@@ -343,6 +427,7 @@ where
         id, ff, font_size_s, font_weight_decl, font_style_decl
     );
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
+    write_state_palette_css(css, id, effective_config)?;
     let _ = write!(
         &mut css,
         r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
@@ -561,10 +646,20 @@ where
         r#"#{} .statediagram .edgeLabel{{color:red;}}"#,
         id
     );
+    // State's dependency rule uses `strokeWidth || 1`; the shared edge rule uses `?? 1`.
+    let dependency_stroke_width = if effective_config
+        .pointer("/themeVariables/strokeWidth")
+        .and_then(serde_json::Value::as_f64)
+        == Some(0.0)
+    {
+        "1"
+    } else {
+        stroke_width.as_str()
+    };
     let _ = write!(
         &mut css,
-        r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:1;}}"#,
-        id, id, line_color, line_color
+        r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, id, line_color, line_color, dependency_stroke_width
     );
     let title_text_style = style_plan.title_text_style();
     if uses_structured_typography {
@@ -661,11 +756,12 @@ where
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
         id, neo_node_stroke, neo_drop_shadow
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, ff
-    );
+    let root_font_family = if uses_structured_typography {
+        ff.clone()
+    } else {
+        crate::config::config_root_font_family_css(effective_config)
+    };
+    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(css, id, &root_font_family)?;
 
     css.checkpoint()?;
 
@@ -1058,6 +1154,34 @@ mod tests {
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
 
+    #[test]
+    fn state_rect_radius_preserves_source_fallback_and_zero_override() {
+        for (config, expected) in [
+            (json!({}), 5.0),
+            (json!({"themeVariables": {"radius": null}}), 5.0),
+            (
+                json!({"look": "neo", "themeVariables": {"radius": 12}}),
+                12.0,
+            ),
+            (
+                json!({"look": "classic", "themeVariables": {"radius": 7.5}}),
+                7.5,
+            ),
+            (json!({"themeVariables": {"radius": 0}}), 10.0),
+            (json!({"themeVariables": {"radius": "0"}}), 0.0),
+            (json!({"themeVariables": {"radius": "7.5"}}), 7.5),
+            // Invalid values retain the existing numeric configuration contract.
+            (json!({"themeVariables": {"radius": "invalid"}}), 5.0),
+        ] {
+            assert_eq!(
+                style_plan(&StateSvgModel::default(), &config)
+                    .compatibility()
+                    .rect_radius,
+                expected
+            );
+        }
+    }
+
     fn state_theme_effect(std_deviation: f32) -> crate::diagram_theme::SvgShadowEffect {
         crate::diagram_theme::SvgShadowEffect::from_graph(
             &EffectGraph::new(
@@ -1101,9 +1225,13 @@ mod tests {
         crate::state::StateStylePlan::resolve_unthemed(model, config)
     }
 
-    fn rendered_state_css(diagram_id: &str, plan: &crate::state::StateStylePlan) -> String {
+    fn rendered_state_css(
+        diagram_id: &str,
+        plan: &crate::state::StateStylePlan,
+        config: &serde_json::Value,
+    ) -> String {
         let mut css = String::new();
-        write_state_css(&mut css, diagram_id, plan).expect("write State CSS");
+        write_state_css(&mut css, diagram_id, plan, config).expect("write State CSS");
         css
     }
 
@@ -1131,7 +1259,7 @@ mod tests {
         let model = model_with_hot_class();
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &config);
 
         let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
         assert!(css.ends_with(&format!(
@@ -1203,7 +1331,7 @@ mod tests {
         let model = model_with_hot_class();
         let config = json!({ "htmlLabels": false });
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &config);
 
         for element in ["rect", "polygon", "ellipse", "circle", "path"] {
             assert!(css.contains(&format!("#st .hot {element}{{")));
@@ -1227,7 +1355,7 @@ mod tests {
 
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &config);
         assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
         assert_eq!(css.matches("#st .emphasis span{").count(), 1);
     }
@@ -1239,7 +1367,7 @@ mod tests {
         let config = json!({});
         let baseline_model = StateSvgModel::default();
         let baseline_plan = style_plan(&baseline_model, &config);
-        let baseline_css = rendered_state_css("st", &baseline_plan);
+        let baseline_css = rendered_state_css("st", &baseline_plan, &config);
 
         let model = model_with_hot_class();
         let plan = style_plan(&model, &config);
@@ -1250,7 +1378,7 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let mut out = BoundedSvgOutput::new(&meter);
 
-        let error = write_state_css(&mut out, "st", &plan)
+        let error = write_state_css(&mut out, "st", &plan, &config)
             .expect_err("the first class rule must cross the SVG byte ceiling");
 
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
@@ -1292,7 +1420,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &cfg);
 
         assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
         assert!(css.contains(
@@ -1304,6 +1432,7 @@ mod tests {
         assert!(css.contains(r#"#st defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#));
         assert!(css.contains(r#"#st g.stateGroup rect{fill:#606060;stroke:#404040;}"#));
         assert!(css.contains(r#"#st .transition{stroke:#202020;stroke-width:4;fill:none;}"#));
+        assert!(css.contains(r#"#st .edge-thickness-normal{stroke-width:4px;}"#));
         assert!(css.contains(r#"#st .state-note{stroke:#909090;fill:#a0a0a0;}"#));
         assert!(css.contains(r#"#st .edgeLabel .label rect{fill:#c0c0c0;opacity:0.5;}"#));
         assert!(css.contains(r#"#st .edgeLabel{background-color:#d0d0d0;text-align:center;}"#));
@@ -1324,8 +1453,27 @@ mod tests {
             r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
         ));
         assert!(css.contains(
-            r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##
+            r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:4;}"##
         ));
+    }
+
+    #[test]
+    fn state_css_preserves_nullish_and_truthy_stroke_width_fallbacks() {
+        for (stroke_width, edge_width, dependency_width) in [
+            (json!(0), "0px", "1"),
+            (json!("0"), "0px", "0"),
+            (json!(null), "1px", "1"),
+        ] {
+            let config = json!({"themeVariables": {"strokeWidth": stroke_width}});
+            let plan = style_plan(&StateSvgModel::default(), &config);
+            let css = rendered_state_css("st", &plan, &config);
+            assert!(css.contains(&format!(
+                "#st .edge-thickness-normal{{stroke-width:{edge_width};}}"
+            )));
+            assert!(css.contains(&format!(
+                r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{{fill:#333333;stroke:#333333;stroke-width:{dependency_width};}}"##
+            )));
+        }
     }
 
     #[test]
@@ -1347,7 +1495,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &cfg);
 
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
@@ -1378,7 +1526,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = rendered_state_css("st", &plan);
+        let css = rendered_state_css("st", &plan, &cfg);
 
         assert!(css.contains(r#"#st .transition{stroke:#333333;stroke-width:1;fill:none;}"#));
         assert!(css.contains(r#"#st .node rect{fill:#606060;stroke:#445566;stroke-width:1px;}"#));
@@ -1396,12 +1544,15 @@ mod tests {
     #[test]
     fn state_css_emits_hand_drawn_rules_only_for_hand_drawn_look() {
         let model = StateSvgModel::default();
-        let classic_css = rendered_state_css("st", &style_plan(&model, &json!({})));
+        let classic_css = rendered_state_css("st", &style_plan(&model, &json!({})), &json!({}));
         assert!(!classic_css.contains(r#"[data-look="handDrawn"].node rect"#));
         assert!(!classic_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
 
-        let hand_drawn_css =
-            rendered_state_css("st", &style_plan(&model, &json!({ "look": "handDrawn" })));
+        let hand_drawn_css = rendered_state_css(
+            "st",
+            &style_plan(&model, &json!({ "look": "handDrawn" })),
+            &json!({ "look": "handDrawn" }),
+        );
         assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node rect"#));
         assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
     }

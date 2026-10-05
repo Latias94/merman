@@ -3,6 +3,31 @@ use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
 
+// ELK overwrites the model curve after routing; Dagre retains ER's basis curve.
+fn er_edge_path_d(
+    points: &[crate::model::LayoutPoint],
+    is_elk_layout: bool,
+    missing_section: bool,
+) -> String {
+    if missing_section {
+        return super::super::curve::curve_linear_path_d(points);
+    }
+    if is_elk_layout {
+        return super::super::curve::curve_rounded_path_d_and_bounds(points, 5.0, false, None).0;
+    }
+    if let [a, b] = points {
+        return curve_basis_path_d(&[
+            a.clone(),
+            crate::model::LayoutPoint {
+                x: (a.x + b.x) / 2.0,
+                y: (a.y + b.y) / 2.0,
+            },
+            b.clone(),
+        ]);
+    }
+    curve_basis_path_d(points)
+}
+
 fn is_er_redux_color_theme(effective_config: &serde_json::Value) -> bool {
     matches!(
         SvgTheme::new(effective_config).theme_name().as_str(),
@@ -53,10 +78,15 @@ fn write_er_redux_color_css(
         let Some(border_color) = border_colors.get(index) else {
             continue;
         };
-        let fill = background_colors
-            .get(index)
-            .map(|color| format!("fill:{color};"))
-            .unwrap_or_default();
+        let border_color = border_color.trim();
+        let fill = if background_colors.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "fill:{};",
+                background_colors[index % background_colors.len()].trim()
+            )
+        };
         let _ = write!(
             out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
@@ -204,6 +234,8 @@ struct ErSubgraphRenderContext<'a> {
     data_look: &'a str,
     classes: &'a indexmap::IndexMap<String, crate::er::ErClassDef>,
     use_html_labels: bool,
+    measurer: &'a dyn crate::text::TextMeasurer,
+    label_style: &'a crate::text::TextStyle,
     translate_x: f64,
     translate_y: f64,
     theme: &'a crate::er::ErEntityThemePlan,
@@ -251,7 +283,7 @@ fn render_er_subgraph_cluster(
     let title_y = cluster.title_label.y + context.translate_y;
     let _ = write!(
         out,
-        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})">"#,
+        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml(&format!("{}", context.diagram_id)),
         escape_xml(&subgraph.id),
         escape_xml(&class_attr),
@@ -261,14 +293,14 @@ fn render_er_subgraph_cluster(
         fmt(top),
         fmt(width),
         fmt(height),
-        fmt(title_x),
-        fmt(title_y),
     );
     if context.use_html_labels {
         let title_fragment = er_subgraph_label_fragment(subgraph);
         let _ = write!(
             out,
-            r#"<foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject>"#,
+            r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
+            fmt(title_x),
+            fmt(title_y),
             fmt(-title_width / 2.0),
             fmt(-title_height / 2.0),
             fmt(title_width),
@@ -277,8 +309,13 @@ fn render_er_subgraph_cluster(
             title_fragment,
         );
     } else {
-        let _ = write!(out, "<g {}>", text_style_attr);
-        write_er_svg_label_background(out);
+        let _ = write!(
+            out,
+            r#"<g class="cluster-label" transform="translate({}, {})" {}>"#,
+            fmt(title_x),
+            fmt(title_y - title_height / 2.0),
+            text_style_attr.replace("color:", "fill:"),
+        );
         let typed_paint = if context.record_text {
             context.theme.typed_subgraph_label(&subgraph.id)
         } else {
@@ -290,20 +327,19 @@ fn render_er_subgraph_cluster(
             .map(|color| format!("fill:{color} !important"))
             .unwrap_or_else(|| typed_style.clone());
         if subgraph.label_type == "string" || subgraph.label_type == "text" {
-            let lines =
-                crate::flowchart::flowchart_non_markdown_svg_source_word_lines(&subgraph.title);
-            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-                out,
-                &lines,
-                &terminal_style,
-                false,
-                None,
-            );
-        } else {
-            crate::svg::parity::label::write_svg_text_markdown_from_create_text_source_with_style(
+            crate::svg::parity::label::write_svg_text_centered_from_create_text_source_with_style(
                 out,
                 &subgraph.title,
-                Some(&terminal_style),
+                &terminal_style,
+            );
+        } else {
+            crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_with_style(
+                out,
+                &subgraph.title,
+                &terminal_style,
+                context.measurer,
+                context.label_style,
+                None,
             );
         }
         if context.record_text {
@@ -315,7 +351,7 @@ fn render_er_subgraph_cluster(
         }
         out.push_str("</g>");
     }
-    out.push_str("</g></g>");
+    out.push_str("</g>");
     out.push('\n');
 }
 
@@ -506,6 +542,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_color_theme = is_er_redux_color_theme(effective_config);
+    let theme_color_limit = er_theme_color_limit(effective_config);
     let svg_theme = SvgTheme::new(effective_config);
     let redux_border_colors = if redux_color_theme {
         svg_theme.string_array("borderColorArray")
@@ -517,7 +554,6 @@ pub(crate) fn render_er_diagram_svg_model(
     } else {
         Vec::new()
     };
-    let theme_color_limit = er_theme_color_limit(effective_config);
     let color_indices = er_color_indices(model);
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
@@ -589,7 +625,65 @@ pub(crate) fn render_er_diagram_svg_model(
         };
         (self_loop, idx, 0)
     }
-    edges.sort_by_key(er_edge_sort_key);
+    edges.sort_by_key(|edge| {
+        let (self_loop, index, secondary) = er_edge_sort_key(edge);
+        (if is_elk_layout { 0 } else { self_loop }, index, secondary)
+    });
+
+    // Box and Rectpacking intentionally leave sections empty. Resolve their paint geometry
+    // before measuring bounds, while retaining provenance to select a linear curve below.
+    let mut missing_sections = rustc_hash::FxHashSet::default();
+    if is_elk_layout {
+        let nodes_by_id: rustc_hash::FxHashMap<_, _> =
+            nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+        for edge in &mut edges {
+            if edge.points.is_empty()
+                && let (Some(start), Some(end)) = (
+                    nodes_by_id.get(edge.from.as_str()),
+                    nodes_by_id.get(edge.to.as_str()),
+                )
+            {
+                edge.points = crate::elk_geometry::missing_rect_section_points(start, end);
+                if let Some(label) = &mut edge.label {
+                    let first = &edge.points[0];
+                    let last = &edge.points[edge.points.len() - 1];
+                    label.x = (first.x + last.x) / 2.0;
+                    label.y = (first.y + last.y) / 2.0;
+                }
+                missing_sections.insert(edge.id.clone());
+            }
+        }
+    }
+
+    if is_elk_layout {
+        for edge in &edges {
+            options
+                .work_meter()
+                .charge(edge.points.len().saturating_add(2))?;
+        }
+        if effective_config
+            .pointer("/elk/straightenEdges")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false)
+        {
+            crate::elk_terminal_jogs::straighten_edge_terminals(&mut edges, |units| {
+                options.work_meter().charge(units).map_err(Into::into)
+            })?;
+        }
+        crate::elk_terminal_jogs::separate_opposite_edge_labels(
+            edges.iter_mut().map(|edge| {
+                let has_label = er_rel_idx_from_edge_id(&edge.id)
+                    .and_then(|index| model.relationships.get(index))
+                    .is_some_and(|relation| !relation.role_a.is_empty());
+                (
+                    edge.from.as_str(),
+                    edge.to.as_str(),
+                    if has_label { edge.label.as_mut() } else { None },
+                )
+            }),
+            |units| options.work_meter().charge(units).map_err(Into::into),
+        )?;
+    }
 
     let visible_relation_edges = edges
         .iter()
@@ -956,42 +1050,93 @@ pub(crate) fn render_er_diagram_svg_model(
         diagram_id,
         data_look,
         classes: &model.classes,
-        use_html_labels: matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike),
+        use_html_labels: edge_html_labels,
+        measurer,
+        label_style: &label_style,
         translate_x,
         translate_y,
         theme: entity_theme,
         record_text: entity_theme.records_subgraph_labels(),
     };
 
-    // Mermaid 11.17 renders both providers through the common layout painter. The provider only
-    // changes the edge group name and z-order: ELK lowers `.edges` beneath `.clusters`, while
-    // Dagre keeps the ordinary `edgePaths` group after clusters.
+    // Mermaid 12 keeps the cluster wrapper in the common painter for both layout providers.
     let _ = writeln!(&mut out, r#"<g class="root">"#);
-    if !is_elk_layout {
-        if layout.clusters.is_empty() {
-            out.push_str(r#"<g class="clusters"/>"#);
-        } else {
-            out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(
-                &mut out,
-                &layout.clusters,
-                model,
-                subgraph_context,
-                &mut entity_theme_receipt,
-            );
-            out.push_str("</g>");
-        }
+    if layout.clusters.is_empty() {
+        out.push_str(r#"<g class="clusters"/>"#);
+    } else {
+        out.push_str(r#"<g class="clusters">"#);
+        render_er_subgraph_clusters(
+            &mut out,
+            &layout.clusters,
+            model,
+            subgraph_context,
+            &mut entity_theme_receipt,
+        );
+        out.push_str("</g>");
     }
 
     if is_elk_layout {
-        out.push_str(r#"<g class="edges edgePath">"#);
+        out.push_str(r#"<g class="edges edgePaths">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
+    let line_hops_enabled = is_elk_layout
+        && options.debug.include_edges
+        && effective_config
+            .pointer("/elk/lineHops")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false);
+    let shifted_hop_points: Vec<Vec<crate::model::LayoutPoint>> = if line_hops_enabled {
+        options
+            .work_meter()
+            .charge(edges.iter().fold(0usize, |work, edge| {
+                work.saturating_add(edge.points.len()).saturating_add(1)
+            }))?;
+        edges
+            .iter()
+            .map(|edge| {
+                edge.points
+                    .iter()
+                    .map(|point| crate::model::LayoutPoint {
+                        x: point.x + translate_x,
+                        y: point.y + translate_y,
+                    })
+                    .collect()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let hop_paths = if line_hops_enabled {
+        options.work_meter().charge(edges.len())?;
+        let hop_edges: Vec<_> = edges
+            .iter()
+            .zip(&shifted_hop_points)
+            .map(|(edge, points)| super::super::line_hops::LineHopEdge {
+                id: edge.id.as_str(),
+                points,
+                curve: Some(if missing_sections.contains(&edge.id) {
+                    "linear"
+                } else {
+                    "rounded"
+                }),
+                arrow_type_start: None,
+                arrow_type_end: None,
+            })
+            .collect();
+        super::super::line_hops::elk_line_hop_paths(
+            effective_config,
+            &hop_edges,
+            options.work_meter(),
+        )?
+    } else {
+        std::collections::HashMap::new()
+    };
     out.checkpoint()?;
     if options.debug.include_edges {
         for e in &edges {
-            if e.points.len() < 2 {
+            let missing_section = missing_sections.contains(&e.id);
+            if e.points.is_empty() || (!missing_section && e.points.len() < 2) {
                 continue;
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
@@ -1014,25 +1159,42 @@ pub(crate) fn render_er_diagram_svg_model(
                 .collect();
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let mut curve_points = shifted.clone();
-            if curve_points.len() == 2 {
-                let a = &curve_points[0];
-                let b = &curve_points[1];
-                curve_points.insert(
-                    1,
-                    crate::model::LayoutPoint {
-                        x: (a.x + b.x) / 2.0,
-                        y: (a.y + b.y) / 2.0,
-                    },
-                );
-            }
-            let d = curve_basis_path_d(&curve_points);
+            let original_d = er_edge_path_d(&shifted, is_elk_layout, missing_section);
+            let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
+            let d = hopped_d.unwrap_or(&original_d);
+
             let typed_relation_stroke = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|index| entity_theme.typed_relation_stroke(index));
-            let path_style = typed_relation_stroke.map_or_else(
-                || "undefined;;;undefined".to_string(),
-                |(_, css)| format!("undefined;;;undefined;stroke:{css}"),
-            );
+            let mut edge_style = String::new();
+            if data_look == "neo"
+                && let Some(length) = super::super::svg_path_length_from_d(&original_d)
+            {
+                super::super::edge_path::write_neo_edge_mask(
+                    &mut edge_style,
+                    length,
+                    None,
+                    None,
+                    is_dashed,
+                    false,
+                );
+            }
+            edge_style.push_str(if is_elk_layout {
+                "fill:none;;;fill:none"
+            } else {
+                "undefined;;;undefined"
+            });
+            if let Some((_, css)) = typed_relation_stroke {
+                let _ = write!(&mut edge_style, ";stroke:{css}");
+            }
+            let edge_style = if let Some(hopped_d) = hopped_d {
+                super::super::line_hops::rewrite_style_after_line_hop(
+                    &edge_style,
+                    hopped_d,
+                    options.work_meter(),
+                )?
+            } else {
+                std::borrow::Cow::Borrowed(edge_style.as_str())
+            };
 
             let _ = write!(
                 &mut out,
@@ -1040,7 +1202,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
-                escape_attr(&path_style),
+                escape_attr(&edge_style),
                 escape_xml(&edge_dom_id),
                 escape_xml(&data_points),
                 escape_xml(data_look)
@@ -1073,24 +1235,6 @@ pub(crate) fn render_er_diagram_svg_model(
     out.push_str("</g>");
     out.checkpoint()?;
 
-    // The published `@mermaid-js/layout-elk@0.2.3` common painter lowers the edge group after
-    // insertion, so its root order is edges, clusters, edgeLabels, nodes.
-    if is_elk_layout {
-        if layout.clusters.is_empty() {
-            out.push_str(r#"<g class="clusters"/>"#);
-        } else {
-            out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(
-                &mut out,
-                &layout.clusters,
-                model,
-                subgraph_context,
-                &mut entity_theme_receipt,
-            );
-            out.push_str("</g>");
-        }
-    }
-
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
     if options.debug.include_edges {
@@ -1108,8 +1252,12 @@ pub(crate) fn render_er_diagram_svg_model(
                 relationship_index.and_then(|index| entity_theme.typed_relation_label(index));
             let relation_label_terminal_style = typed_text_terminal_style(typed_relation_label);
 
+            // Mermaid's shared renderer checks `Boolean(edge.label)`: an empty role has no
+            // label wrapper, while whitespace remains a real (zero-size) label.
+            if rel_text_raw.is_empty() {
+                continue;
+            }
             let has_label_text = !rel_text.is_empty();
-            let has_whitespace_only_label = !rel_text_raw.is_empty() && rel_text.is_empty();
             let (w, h, mut cx, mut cy) = if has_label_text {
                 if let Some(lbl) = &e.label {
                     (
@@ -1122,16 +1270,22 @@ pub(crate) fn render_er_diagram_svg_model(
                     (0.0, 0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0, 0.0, 0.0)
+                let (x, y) = e
+                    .label
+                    .as_ref()
+                    .map(|label| (label.x + translate_x, label.y + translate_y))
+                    .or_else(|| {
+                        super::super::edge_label_geometry::calc_label_position(&e.points)
+                            .map(|point| (point.x + translate_x, point.y + translate_y))
+                    })
+                    .unwrap_or((0.0, 0.0));
+                (0.0, 0.0, x, y)
             };
 
-            if has_label_text && w > 0.0 && h > 0.0 {
-                // Mermaid positions edge labels using Dagre's `edge.x/edge.y` by default, but it
-                // recomputes the label position along the polyline when the edge path `d` doesn't
-                // contain the midpoint coordinates (see `edges.js:isLabelCoordinateInPath`).
-                //
-                // Replicate that behavior here to match upstream DOM parity for certain curved
-                // edges (notably parallel relationship edges in ER diagrams).
+            if has_label_text && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
+                // Mermaid 12.1 preserves the layout anchor and adds only the midpoint delta
+                // from paint-time clipping. ER has no additional clipping here: curve and marker
+                // projection change `d`, while both label polylines remain the layout route.
                 let shifted: Vec<crate::model::LayoutPoint> = e
                     .points
                     .iter()
@@ -1140,21 +1294,10 @@ pub(crate) fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect();
-                let mut curve_points = shifted.clone();
-                if curve_points.len() == 2 {
-                    let a = &curve_points[0];
-                    let b = &curve_points[1];
-                    curve_points.insert(
-                        1,
-                        crate::model::LayoutPoint {
-                            x: (a.x + b.x) / 2.0,
-                            y: (a.y + b.y) / 2.0,
-                        },
-                    );
-                }
-                let rendered_d = curve_basis_path_d(&curve_points);
+                let rendered_d = er_edge_path_d(&shifted, is_elk_layout, false);
                 let position = super::super::edge_label_geometry::position_edge_label(
                     crate::model::LayoutPoint { x: cx, y: cy },
+                    Some(&shifted),
                     &shifted,
                     &rendered_d,
                     false,
@@ -1259,15 +1402,15 @@ pub(crate) fn render_er_diagram_svg_model(
                 }
             } else {
                 if edge_html_labels {
-                    // Mermaid emits a `translate(undefined,NaN)` transform for relationship labels
-                    // that are whitespace-only (but not for fully empty strings). Preserve that
-                    // oddity for DOM parity in `structure` mode (see upstream Cypress fixture
-                    // `*_blank_or_empty_labels_007`).
-                    if has_whitespace_only_label {
-                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
-                    } else {
-                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                    }
+                    // Whitespace is truthy to Mermaid's `hasEdgeLabel`, so it receives a
+                    // zero-size wrapper at the measured edge position. Empty strings returned
+                    // above before reaching this branch.
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label""#,
+                        fmt(cx),
+                        fmt(cy)
+                    );
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
@@ -1275,18 +1418,19 @@ pub(crate) fn render_er_diagram_svg_model(
                     );
                     out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
                 } else {
-                    if has_whitespace_only_label {
-                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
-                    } else {
-                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                    }
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label""#,
+                        fmt(cx),
+                        fmt(cy)
+                    );
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
                         escape_xml_display(&edge_dom_id)
                     );
                     out.push_str(r#" transform="translate(0, 0)"><g><rect class="background" style="" x="0" y="-1" width="0" height="0"/>"#);
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
+                    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
                         &mut out, "", true,
                     );
                     out.push_str("</g></g></g>");
@@ -1526,7 +1670,7 @@ pub(crate) fn render_er_diagram_svg_model(
             .map(|style| format!(r#" style="{style}""#))
             .unwrap_or_default();
 
-        // Mermaid ER attribute tables (erBox.ts) use HTML labels (`foreignObject`) and paths for the table rows.
+        // Mermaid erBox.ts uses the configured label mode and paths for the table rows.
         let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
         let box_x0 = ox;
         let box_y0 = oy;
@@ -1696,12 +1840,8 @@ pub(crate) fn render_er_diagram_svg_model(
         let paint_emission = er_entity_paint_emission(typed_fill, typed_stroke);
 
         // Row rectangles
-        let odd_fill = theme_token(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
-        let even_fill = theme_token(
-            effective_config,
-            "rowEven",
-            "hsl(240, 100%, 97.2745098039%)",
-        );
+        let odd_fill = svg_theme.optional_color("rowOdd");
+        let even_fill = svg_theme.optional_color("rowEven");
         let even_row_override_style_attr = if source_fill.is_some() {
             let style = style_keys_join(
                 rect_style_decls,
@@ -1730,9 +1870,9 @@ pub(crate) fn render_er_diagram_svg_model(
                 "row-rect-even"
             };
             let row_fill = if is_odd {
-                odd_fill.as_str()
+                odd_fill.as_deref()
             } else {
-                even_fill.as_str()
+                even_fill.as_deref()
             };
             let _ = write!(
                 &mut out,
@@ -1756,13 +1896,18 @@ pub(crate) fn render_er_diagram_svg_model(
             let row_fill_style_attr = typed_row_style_attr
                 .as_deref()
                 .unwrap_or(row_override_style_attr);
-            let _ = write!(
-                &mut out,
-                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
-                escape_xml(row_fill),
-                row_fill_style_attr
-            );
+            let has_row_fill = row_fill.is_some_and(|fill| !fill.is_empty() && fill != "none")
+                || typed_row_fill.is_some();
+            if has_row_fill {
+                let fill = row_fill.unwrap_or("none");
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
+                    roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
+                    escape_xml(fill),
+                    row_fill_style_attr
+                );
+            }
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
@@ -1780,7 +1925,11 @@ pub(crate) fn render_er_diagram_svg_model(
         // relationship labels, whose renderer consults `flowchart.htmlLabels` as a fallback.
         // The HTML path keeps Mermaid's foreignObject structure; the SVG path below mirrors
         // createText(..., useHtmlLabels: false) with a background group and text/tspan output.
-        let line_h = (font_size * 1.5).max(1.0);
+        let line_h = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+            (font_size * 1.5).max(1.0)
+        } else {
+            measure.label_height.max(1.0)
+        };
         let mut pad = entity_measurement.diagram_padding;
         // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
         // when `htmlLabels` is unset (undefined), upstream still applies the 1.25 multiplier.
@@ -1821,13 +1970,10 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(name_y),
                 entity_name_style_attr,
             );
-            write_er_svg_label_background(&mut out);
-            write_er_svg_box_label(
+            super::super::label::write_svg_text_markdown_from_create_text_source(
                 &mut out,
-                &measure.label,
-                &label_style,
-                measurer,
-                Some(name_mw_px.max(0) as f64),
+                measure.label.markdown_input(),
+                true,
             );
             out.push_str("</g>");
         }
@@ -1859,7 +2005,11 @@ pub(crate) fn render_er_diagram_svg_model(
         let mut row_top = sep_y;
         for (row_index, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
-            let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
+            let cell_y = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
+                row_top + row_h / 2.0 - line_h / 2.0
+            } else {
+                row_top + measure.text_padding / 2.0
+            };
 
             let type_w = crate::er::er_box_label_metrics_with_wrap_mode(
                 &row.type_label,
@@ -1962,13 +2112,10 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     type_style_attr,
                 );
-                write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(
+                super::super::label::write_svg_text_markdown_from_create_text_source(
                     &mut out,
-                    &row.type_label,
-                    &attr_style,
-                    measurer,
-                    Some(type_mw_px.max(0) as f64),
+                    row.type_label.markdown_input(),
+                    true,
                 );
                 out.push_str("</g>");
             }
@@ -1995,13 +2142,10 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     name_style_attr,
                 );
-                write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(
+                super::super::label::write_svg_text_markdown_from_create_text_source(
                     &mut out,
-                    &row.name_label,
-                    &attr_style,
-                    measurer,
-                    Some(name_mw_px.max(0) as f64),
+                    row.name_label.markdown_input(),
+                    true,
                 );
                 out.push_str("</g>");
             }
@@ -2032,13 +2176,10 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     keys_style_attr,
                 );
-                write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(
+                super::super::label::write_svg_text_markdown_from_create_text_source(
                     &mut out,
-                    &row.key_label,
-                    &attr_style,
-                    measurer,
-                    Some(keys_mw_px.max(0) as f64),
+                    row.key_label.markdown_input(),
+                    true,
                 );
                 out.push_str("</g>");
             }
@@ -2069,13 +2210,10 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     comment_style_attr,
                 );
-                write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(
+                super::super::label::write_svg_text_markdown_from_create_text_source(
                     &mut out,
-                    &row.comment_label,
-                    &attr_style,
-                    measurer,
-                    Some(comment_mw_px.max(0) as f64),
+                    row.comment_label.markdown_input(),
+                    true,
                 );
                 out.push_str("</g>");
             }
@@ -2142,14 +2280,16 @@ pub(crate) fn render_er_diagram_svg_model(
             x1: f64,
             y1: f64,
             fill: &str,
+            fill_style_attr: &str,
             divider_path_attrs: &str,
         ) -> Result<()> {
             let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
             let _ = write!(
                 out,
-                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"/><path d="{}"{} /></g>"#,
+                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{}/><path d="{}"{} /></g>"#,
                 roughjs46_rect_fill_path_d(rx0, ry0, rx1, ry1),
                 escape_xml(fill),
+                fill_style_attr,
                 rough_rect_border_path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
                 divider_path_attrs
             );
@@ -2164,6 +2304,7 @@ pub(crate) fn render_er_diagram_svg_model(
             box_x1,
             sep_y,
             box_fill,
+            &base_fill_style_attr,
             &divider_path_attrs,
         )?;
 
@@ -2184,6 +2325,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 x,
                 box_y1,
                 box_fill,
+                &base_fill_style_attr,
                 &divider_path_attrs,
             )?;
         }
@@ -2196,6 +2338,7 @@ pub(crate) fn render_er_diagram_svg_model(
             box_x1,
             sep_y,
             box_fill,
+            &base_fill_style_attr,
             &divider_path_attrs,
         )?;
 

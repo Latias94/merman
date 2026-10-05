@@ -1,5 +1,6 @@
 use super::*;
-use crate::flowchart::flowchart_label_metrics_for_layout;
+use crate::graph_label::flowchart_label_metrics_for_layout;
+use crate::text::metrics::style_requests_bold_font_weight;
 
 fn assert_finite_positive_metrics(metrics: TextMetrics) {
     assert!(
@@ -26,9 +27,24 @@ fn assert_same_metrics_after_dom_rounding(actual: TextMetrics, expected: TextMet
 }
 
 #[test]
+fn fractional_font_weights_use_the_browser_bold_threshold() {
+    for (weight, expected) in [("599.5", false), ("700.0", true), ("700.5", true)] {
+        let style = TextStyle {
+            font_weight: Some(weight.to_string()),
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            style_requests_bold_font_weight(&style),
+            expected,
+            "{weight}"
+        );
+    }
+}
+
+#[test]
 fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
     let plain =
-        crate::flowchart::flowchart_label_plain_text_for_layout("Hexagon <br> end", "text", true);
+        crate::graph_label::flowchart_label_plain_text_for_layout("Hexagon <br> end", "text", true);
     assert_eq!(plain, "Hexagon\nend");
 
     let measurer = DeterministicTextMeasurer::default();
@@ -49,7 +65,7 @@ fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
 
 #[test]
 fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
-    let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+    let plain = crate::graph_label::flowchart_label_plain_text_for_layout(
         "标题 Unicode — 測試 &amp; &lt; &gt; and x < y > z",
         "text",
         true,
@@ -59,7 +75,7 @@ fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
 
 #[test]
 fn flowchart_html_text_extraction_decodes_html5_entities_once_after_tag_removal() {
-    let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+    let plain = crate::graph_label::flowchart_label_plain_text_for_layout(
         "&copy; &infin; &NotEqualTilde; &lt;b&gt; &amp;lt;",
         "text",
         true,
@@ -67,7 +83,7 @@ fn flowchart_html_text_extraction_decodes_html5_entities_once_after_tag_removal(
 
     assert_eq!(plain, "© ∞ ≂̸ <b> &lt;");
 
-    let split_entity = crate::flowchart::flowchart_label_plain_text_for_layout(
+    let split_entity = crate::graph_label::flowchart_label_plain_text_for_layout(
         "&cop<strong>y;</strong>",
         "text",
         true,
@@ -76,7 +92,7 @@ fn flowchart_html_text_extraction_decodes_html5_entities_once_after_tag_removal(
 
     for input in ["X&#10;Y", "X&NewLine;Y"] {
         assert_eq!(
-            crate::flowchart::flowchart_label_plain_text_for_layout(input, "text", true),
+            crate::graph_label::flowchart_label_plain_text_for_layout(input, "text", true),
             "X Y",
             "{input:?}",
         );
@@ -176,14 +192,16 @@ fn ecmascript_and_html_whitespace_helpers_preserve_next_line_control() {
         "\u{0085}"
     );
 
-    let html = crate::flowchart::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", true);
-    let svg = crate::flowchart::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", false);
+    let html =
+        crate::graph_label::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", true);
+    let svg =
+        crate::graph_label::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", false);
     assert_eq!(html, "\u{0085}");
     assert_eq!(svg, "\u{0085}");
-    assert!(!crate::flowchart::flowchart_label_text_is_empty_for_mode(
+    assert!(!crate::graph_label::flowchart_label_text_is_empty_for_mode(
         &html, true,
     ));
-    assert!(!crate::flowchart::flowchart_label_text_is_empty_for_mode(
+    assert!(!crate::graph_label::flowchart_label_text_is_empty_for_mode(
         &svg, false,
     ));
 }
@@ -203,7 +221,7 @@ fn flowchart_html_text_extraction_preserves_nbsp_boundaries() {
     for label_type in ["text", "string", "markdown"] {
         for (input, expected) in cases {
             assert_eq!(
-                crate::flowchart::flowchart_label_plain_text_for_layout(input, label_type, true,),
+                crate::graph_label::flowchart_label_plain_text_for_layout(input, label_type, true,),
                 expected,
                 "label_type={label_type}, input={input:?}",
             );
@@ -214,7 +232,7 @@ fn flowchart_html_text_extraction_preserves_nbsp_boundaries() {
 #[test]
 fn flowchart_html_text_extraction_preserves_nbsp_and_collapses_ascii_space_runs() {
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout(
+        crate::graph_label::flowchart_label_plain_text_for_layout(
             "A&nbsp;&nbsp;B  C   D",
             "string",
             true,
@@ -250,11 +268,15 @@ fn deterministic_html_wrapping_preserves_nbsp_width() {
 #[test]
 fn flowchart_svg_text_extraction_matches_create_text_entity_and_whitespace_semantics() {
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}A\u{00A0}", "text", false,),
+        crate::graph_label::flowchart_label_plain_text_for_layout(
+            "\u{00A0}A\u{00A0}",
+            "text",
+            false,
+        ),
         "A",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout(
+        crate::graph_label::flowchart_label_plain_text_for_layout(
             "A\u{00A0}\u{FEFF}B",
             "text",
             false,
@@ -262,11 +284,15 @@ fn flowchart_svg_text_extraction_matches_create_text_entity_and_whitespace_seman
         "A B",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout("\u{0085}A\u{0085}", "text", false,),
+        crate::graph_label::flowchart_label_plain_text_for_layout(
+            "\u{0085}A\u{0085}",
+            "text",
+            false,
+        ),
         "\u{0085}A\u{0085}",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout(
+        crate::graph_label::flowchart_label_plain_text_for_layout(
             "&amp;A&lt;B&gt;&nbsp;&#160;",
             "text",
             false,
@@ -274,19 +300,19 @@ fn flowchart_svg_text_extraction_matches_create_text_entity_and_whitespace_seman
         "&A<B>&nbsp;&#160;",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}", "markdown", false,),
+        crate::graph_label::flowchart_label_plain_text_for_layout("\u{00A0}", "markdown", false,),
         "\u{00A0}",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout("A\\nB", "text", false),
+        crate::graph_label::flowchart_label_plain_text_for_layout("A\\nB", "text", false),
         "A\nB",
     );
     assert_eq!(
-        crate::flowchart::flowchart_label_plain_text_for_layout("A<BR\u{00A0}/>B", "text", false,),
+        crate::graph_label::flowchart_label_plain_text_for_layout("A<BR\u{00A0}/>B", "text", false,),
         "A\nB",
     );
-    assert!(crate::flowchart::flowchart_label_is_empty_for_render(""));
-    assert!(!crate::flowchart::flowchart_label_is_empty_for_render(
+    assert!(crate::graph_label::flowchart_label_is_empty_for_render(""));
+    assert!(!crate::graph_label::flowchart_label_is_empty_for_render(
         "<img src='x'>"
     ));
 }
@@ -302,8 +328,8 @@ fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
     };
     let cfg = merman_core::MermaidConfig::default();
 
-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "标题 Unicode — 測試 & < >",
             label_type: "text",
@@ -740,8 +766,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
     };
     let cfg = merman_core::MermaidConfig::default();
 
-    let actual = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let actual = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "fa:fa-car Car",
             label_type: "text",
@@ -769,8 +795,8 @@ fn flowchart_label_metrics_plain_text_uses_dom_text_operation() {
     };
     let cfg = merman_core::MermaidConfig::default();
 
-    let actual = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let actual = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "synthetic",
             label_type: "text",
@@ -796,8 +822,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_preserve_break
     };
     let cfg = merman_core::MermaidConfig::default();
 
-    let twitter = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let twitter = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "fa:fa-twitter<br/>for peace",
             label_type: "text",
@@ -811,8 +837,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_preserve_break
     assert_finite_positive_metrics(twitter);
     assert_eq!(twitter.line_count, 2);
 
-    let camera = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let camera = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: "fa:fa-camera-retro<br/>capture<br/>moments",
             label_type: "text",
@@ -841,8 +867,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_keeps_icon_runs_bounded() {
     };
     let cfg = merman_core::MermaidConfig::default();
 
-    let database = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let database = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: r"fa:fa-database [DBServer\SharedDbInstance]",
             label_type: "text",
@@ -856,8 +882,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_keeps_icon_runs_bounded() {
     assert!(database.width > 0.0 && database.width <= 200.0);
     assert!(database.line_count >= 1);
 
-    let support_db = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let support_db = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: r"fa:fa-circle [DBServer\SharedDbInstance].[SupportDb]",
             label_type: "text",
@@ -942,8 +968,8 @@ fn flowchart_multiline_html_label_uses_widest_measured_line() {
     ];
     let raw_label = lines.join("<br/>");
 
-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: &raw_label,
             label_type: "text",
@@ -1129,7 +1155,7 @@ fn flowchart_svg_layout_metrics_follow_the_shared_text_operation() {
 
     let cfg = merman_core::MermaidConfig::default();
     let layout =
-        flowchart_label_metrics_for_layout(crate::flowchart::FlowchartLabelMetricsRequest {
+        flowchart_label_metrics_for_layout(crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: text,
             label_type: "text",
@@ -1354,8 +1380,8 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
     assert_finite_positive_metrics(html_metrics);
     assert_eq!(html_metrics.line_count, 2);
 
-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
+    let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
+        crate::graph_label::FlowchartLabelMetricsRequest {
             measurer: &measurer,
             raw_label: markdown,
             label_type: "markdown",
@@ -1380,8 +1406,8 @@ fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
     };
     let cfg = merman_core::MermaidConfig::default();
     let measure = |markdown: &str| {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
+        crate::graph_label::flowchart_label_metrics_for_layout(
+            crate::graph_label::FlowchartLabelMetricsRequest {
                 measurer: &measurer,
                 raw_label: markdown,
                 label_type: "markdown",

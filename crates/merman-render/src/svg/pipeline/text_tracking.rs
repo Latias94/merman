@@ -1,7 +1,7 @@
 use quick_xml::events::BytesStart;
 use quick_xml::name::{NamespaceResolver, ResolveResult};
 
-const SVG_NAMESPACE: &[u8] = b"http://www.w3.org/2000/svg";
+const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// An asset-free SVG is font-independent only when it contains no rendered text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,7 @@ impl SvgTextContentTracker {
             ResolveResult::Unbound => true,
             ResolveResult::Bound(namespace) => namespace.as_ref() == SVG_NAMESPACE,
         };
-        let is_text = is_svg_element && local_name.as_ref().eq_ignore_ascii_case(b"text");
+        let is_text = is_svg_element && local_name.as_ref().eq_ignore_ascii_case("text");
         self.element_stack.push(is_text);
         if is_text {
             self.open_text_stack.push(false);
@@ -99,8 +99,8 @@ mod tests {
                     tracker.observe_start(&element, reader.resolver()).unwrap();
                 }
                 Event::End(_) => tracker.observe_end().unwrap(),
-                Event::Text(text) => tracker.observe_content(&text.xml10_content().unwrap()),
-                Event::CData(text) => tracker.observe_content(&text.decode().unwrap()),
+                Event::Text(text) => tracker.observe_content(&text.xml10_content()),
+                Event::CData(text) => tracker.observe_content(&text.xml10_content()),
                 Event::GeneralRef(reference) => {
                     tracker.observe_character(reference.resolve_char_ref().unwrap().unwrap());
                 }

@@ -14,7 +14,6 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::geom::Size;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
 use super::config::*;
 use super::{StateDiagramModel, StateNode, state_value_to_label_text};
@@ -75,7 +74,7 @@ struct HiddenPrefixTrieNode {
 }
 
 #[derive(Default)]
-struct HiddenPrefixMatcher {
+pub(super) struct HiddenPrefixMatcher {
     nodes: Vec<HiddenPrefixTrieNode>,
 }
 
@@ -102,7 +101,7 @@ impl HiddenPrefixMatcher {
         matcher
     }
 
-    fn is_hidden(&self, id: &str) -> bool {
+    pub(super) fn is_hidden(&self, id: &str) -> bool {
         let mut node_idx = 0usize;
         for (byte_idx, ch) in id.char_indices() {
             let Some(&next) = self.nodes[node_idx].children.get(&ch) else {
@@ -171,7 +170,7 @@ fn set_extras_i32(extras: &mut std::collections::BTreeMap<String, Value>, key: &
     extras.insert(key.to_string(), Value::Number(value.into()));
 }
 
-fn edge_label_metrics(
+pub(super) fn edge_label_metrics(
     edge_id: &str,
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -263,7 +262,7 @@ fn node_label_metrics(
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
-fn title_label_metrics(
+pub(super) fn title_label_metrics(
     owner: super::StateLabelOwner<'_>,
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -1396,24 +1395,38 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     model: &StateDiagramModel,
     effective_config: &Value,
     style_plan: &super::StateStylePlan,
-    measurer: &dyn TextMeasurer,
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
-    work_meter: Arc<crate::resources::OperationWorkMeter>,
+    execution: &crate::LayoutExecution<'_>,
 ) -> Result<StateDiagramLayout> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let mut work_control = OperationLayoutWorkControl::new(execution.work_meter());
     let adapter_work = state_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
+    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
+    #[cfg(feature = "layout-elk")]
+    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == crate::layout_backend::GraphLayoutBackend::Elk
+    {
+        return super::elk::layout(
+            model,
+            effective_config,
+            style_plan,
+            label_sidecar,
+            execution.text_measurer(),
+            execution.elk_operation_seed(),
+            &mut work_control,
+        );
+    }
     layout_state_diagram_inner(
         model,
         effective_config,
         style_plan,
-        measurer,
+        execution.text_measurer(),
         label_sidecar,
         &mut work_control,
     )
 }
 
-fn state_hidden_prefixes(model: &StateDiagramModel) -> HiddenPrefixMatcher {
+pub(super) fn state_hidden_prefixes(model: &StateDiagramModel) -> HiddenPrefixMatcher {
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {
         let Some(note) = st.note.as_ref() else {
@@ -1437,9 +1450,141 @@ fn dagre_id_for_node(n: &StateNode) -> String {
     }
 }
 
-fn note_group_owner_id(id: &str) -> Option<&str> {
+pub(super) fn note_group_owner_id(id: &str) -> Option<&str> {
     let (owner, _) = id.rsplit_once("----parent")?;
     (!owner.is_empty()).then_some(owner)
+}
+
+pub(super) fn state_fork_join_painted_dimensions(rankdir: RankDir) -> (f64, f64) {
+    if matches!(rankdir, RankDir::LR | RankDir::RL) {
+        (10.0, 70.0)
+    } else {
+        (70.0, 10.0)
+    }
+}
+
+pub(super) fn state_node_dimensions(
+    n: &StateNode,
+    settings: &StateLayoutSettings,
+    style_plan: &super::StateStylePlan,
+    measurer: &dyn TextMeasurer,
+    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
+) -> Result<(f64, f64)> {
+    let node_style = style_plan.node(&n.id);
+    let node_label_typography = node_style
+        .map(super::StateNodeStylePlan::resolved_label_typography)
+        .unwrap_or_else(|| style_plan.base_label_typography());
+    let padding = node_style
+        .and_then(super::StateNodeStylePlan::padding_override)
+        .or(n.padding)
+        .unwrap_or(settings.state_padding)
+        .max(0.0);
+    let label_text = n
+        .label
+        .as_ref()
+        .map(state_value_to_label_text)
+        .unwrap_or_else(|| n.id.clone());
+
+    let (w, h) = match n.shape.as_str() {
+        "stateStart" => (14.0, 14.0),
+        "stateEnd" => (14.0, 14.0),
+        "choice" => (28.0, 28.0),
+        "fork" | "join" => {
+            let (mut width, mut height) =
+                if matches!(settings.graph.rankdir, RankDir::LR | RankDir::RL) {
+                    (10.0, 70.0)
+                } else {
+                    (70.0, 10.0)
+                };
+            width += settings.state_padding / 2.0;
+            height += settings.state_padding / 2.0;
+            (width, height)
+        }
+        "note" => {
+            let (tw, th) = node_label_metrics(
+                &n.id,
+                &label_text,
+                settings.wrapping_width,
+                measurer,
+                node_label_typography,
+                settings.wrap_mode,
+                label_sidecar,
+            );
+            let tw = crate::text::TextMetrics {
+                width: tw,
+                height: th,
+                line_count: 1,
+            }
+            .with_label_min_width(&label_text, settings.label_min_width, None)
+            .width;
+            (tw + padding * 2.0, th + padding * 2.0)
+        }
+        "rectWithTitle" => {
+            let desc = n
+                .description
+                .as_ref()
+                .map(|v| v.join("\n"))
+                .unwrap_or_default();
+            let title_wrap_mode = if settings.html_labels {
+                WrapMode::HtmlLike
+            } else {
+                WrapMode::SvgLikeSingleRun
+            };
+            let (title_w, title_h) = title_label_metrics(
+                super::StateLabelOwner::NodeTitle(&n.id),
+                &label_text,
+                measurer,
+                node_label_typography,
+                title_wrap_mode,
+                label_sidecar,
+            );
+            let (desc_w, desc_h) = title_label_metrics(
+                super::StateLabelOwner::NodeDescription(&n.id),
+                &desc,
+                measurer,
+                node_label_typography,
+                title_wrap_mode,
+                label_sidecar,
+            );
+
+            let geometry = super::RectWithTitleGeometry::from_metrics(
+                title_w, title_h, desc_w, desc_h, padding,
+            );
+            (geometry.width, geometry.height)
+        }
+        "rect" => {
+            let (tw, th) = node_label_metrics(
+                &n.id,
+                &label_text,
+                settings.wrapping_width,
+                measurer,
+                node_label_typography,
+                settings.wrap_mode,
+                label_sidecar,
+            );
+            let tw = crate::text::TextMetrics {
+                width: tw,
+                height: th,
+                line_count: 1,
+            }
+            .with_label_min_width(&label_text, settings.label_min_width, None)
+            .width;
+            // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
+            let radius = node_style
+                .and_then(super::StateNodeStylePlan::radius_override)
+                .unwrap_or_else(|| n.rx.unwrap_or(0.0).min(n.ry.unwrap_or(0.0)));
+            let has_rounding = radius > 0.0;
+            let pad_x = if has_rounding { padding } else { padding * 2.0 };
+            let pad_y = padding;
+            (tw + pad_x * 2.0, th + pad_y * 2.0)
+        }
+        other => {
+            return Err(Error::InvalidModel {
+                message: format!("unsupported state node shape: {other}"),
+            });
+        }
+    };
+    Ok((w.max(1.0), h.max(1.0)))
 }
 
 fn build_state_diagram_dagre_input(
@@ -1494,16 +1639,13 @@ fn build_state_diagram_dagre_input(
         dir_by_dagre_id.insert(dagre_id.clone(), n.dir.as_ref().map(|s| normalize_dir(s)));
     }
 
-    let StateLayoutSettings {
-        graph: graph_label,
-        html_labels,
-        wrap_mode,
-        wrapping_width,
-        state_padding,
-    } = StateConfigView::new(effective_config)
+    let settings = StateConfigView::new(effective_config)
         .layout_settings(&model.direction, style_plan.compatibility());
-    let base_label_typography = style_plan.base_label_typography();
+    let graph_label = settings.graph.clone();
     let diagram_dir = graph_label.rankdir;
+    let html_labels = settings.html_labels;
+    let wrap_mode = settings.wrap_mode;
+    let wrapping_width = settings.wrapping_width;
 
     let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -1532,106 +1674,7 @@ fn build_state_diagram_dagre_input(
                 ..Default::default()
             }
         } else {
-            let node_style = style_plan.node(&n.id);
-            let node_label_typography = node_style
-                .map(super::StateNodeStylePlan::resolved_label_typography)
-                .unwrap_or(base_label_typography);
-            let padding = node_style
-                .and_then(super::StateNodeStylePlan::padding_override)
-                .or(n.padding)
-                .unwrap_or(state_padding)
-                .max(0.0);
-            let label_text = n
-                .label
-                .as_ref()
-                .map(state_value_to_label_text)
-                .unwrap_or_else(|| n.id.clone());
-
-            let (w, h) = match n.shape.as_str() {
-                "stateStart" => (14.0, 14.0),
-                "stateEnd" => (14.0, 14.0),
-                "choice" => (28.0, 28.0),
-                "fork" | "join" => {
-                    let (mut width, mut height) =
-                        if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
-                            (10.0, 70.0)
-                        } else {
-                            (70.0, 10.0)
-                        };
-                    width += state_padding / 2.0;
-                    height += state_padding / 2.0;
-                    (width, height)
-                }
-                "note" => {
-                    let (tw, th) = node_label_metrics(
-                        &n.id,
-                        &label_text,
-                        wrapping_width,
-                        measurer,
-                        node_label_typography,
-                        wrap_mode,
-                        label_sidecar,
-                    );
-                    (tw + padding * 2.0, th + padding * 2.0)
-                }
-                "rectWithTitle" => {
-                    let desc = n
-                        .description
-                        .as_ref()
-                        .map(|v| v.join("\n"))
-                        .unwrap_or_default();
-                    let title_wrap_mode = if html_labels {
-                        WrapMode::HtmlLike
-                    } else {
-                        WrapMode::SvgLikeSingleRun
-                    };
-                    let (title_w, title_h) = title_label_metrics(
-                        super::StateLabelOwner::NodeTitle(&n.id),
-                        &label_text,
-                        measurer,
-                        node_label_typography,
-                        title_wrap_mode,
-                        label_sidecar,
-                    );
-                    let (desc_w, desc_h) = title_label_metrics(
-                        super::StateLabelOwner::NodeDescription(&n.id),
-                        &desc,
-                        measurer,
-                        node_label_typography,
-                        title_wrap_mode,
-                        label_sidecar,
-                    );
-
-                    let geometry = super::RectWithTitleGeometry::from_metrics(
-                        title_w, title_h, desc_w, desc_h, padding,
-                    );
-                    (geometry.width, geometry.height)
-                }
-                "rect" => {
-                    let (tw, th) = node_label_metrics(
-                        &n.id,
-                        &label_text,
-                        wrapping_width,
-                        measurer,
-                        node_label_typography,
-                        wrap_mode,
-                        label_sidecar,
-                    );
-                    // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
-                    let radius = node_style
-                        .and_then(super::StateNodeStylePlan::radius_override)
-                        .unwrap_or_else(|| n.rx.unwrap_or(0.0).min(n.ry.unwrap_or(0.0)));
-                    let has_rounding = radius > 0.0;
-                    let pad_x = if has_rounding { padding } else { padding * 2.0 };
-                    let pad_y = padding;
-                    (tw + pad_x * 2.0, th + pad_y * 2.0)
-                }
-                other => {
-                    return Err(Error::InvalidModel {
-                        message: format!("unsupported state node shape: {other}"),
-                    });
-                }
-            };
+            let (w, h) = state_node_dimensions(n, &settings, style_plan, measurer, label_sidecar)?;
 
             NodeLabel {
                 width: w.max(1.0),
@@ -2067,354 +2110,55 @@ fn layout_state_diagram_inner(
         rankdir,
     ));
 
-    // Mermaid adjusts the first/last edge points by intersecting the polyline with the node's
-    // rendered shape. For rounded state nodes, Mermaid uses a polygon intersection that relies on
-    // the historical `intersect-line.js` rounding behavior (producing systematic half-pixel offsets).
-    // Our layout engine emits continuous intersections; post-process endpoints to match upstream.
+    // Mermaid 12's drawRect uses a rectangular intersection even when its visible
+    // corners are rounded. Polygon intersection no longer adds the historical half pixel.
     {
-        type Point = merman_core::geom::Point;
-
-        fn same_sign(a: f64, b: f64) -> bool {
-            a * b > 0.0
-        }
-
-        fn mermaid_intersect_line(p1: Point, p2: Point, q1: Point, q2: Point) -> Option<Point> {
-            // Port of Mermaid@11.12.2 `intersect-line.js` (Graphics Gems II).
-            let a1 = p2.y - p1.y;
-            let b1 = p1.x - p2.x;
-            let c1 = p2.x * p1.y - p1.x * p2.y;
-
-            let r3 = a1 * q1.x + b1 * q1.y + c1;
-            let r4 = a1 * q2.x + b1 * q2.y + c1;
-            if r3 != 0.0 && r4 != 0.0 && same_sign(r3, r4) {
-                return None;
-            }
-
-            let a2 = q2.y - q1.y;
-            let b2 = q1.x - q2.x;
-            let c2 = q2.x * q1.y - q1.x * q2.y;
-
-            let r1 = a2 * p1.x + b2 * p1.y + c2;
-            let r2 = a2 * p2.x + b2 * p2.y + c2;
-            let epsilon = 1e-6;
-            if r1.abs() < epsilon && r2.abs() < epsilon && same_sign(r1, r2) {
-                return None;
-            }
-
-            let denom = a1 * b2 - a2 * b1;
-            if denom == 0.0 {
-                return None;
-            }
-
-            let offset = (denom / 2.0).abs();
-
-            let mut num = b1 * c2 - b2 * c1;
-            let x = if num < 0.0 {
-                (num - offset) / denom
-            } else {
-                (num + offset) / denom
-            };
-
-            num = a2 * c1 - a1 * c2;
-            let y = if num < 0.0 {
-                (num - offset) / denom
-            } else {
-                (num + offset) / denom
-            };
-
-            Some(merman_core::geom::point(x, y))
-        }
-
-        fn mermaid_arc_points(
-            x1: f64,
-            y1: f64,
-            x2: f64,
-            y2: f64,
-            rx: f64,
-            ry: f64,
-            clockwise: bool,
-        ) -> Vec<Point> {
-            // Port of Mermaid@11.12.2 `roundedRect.ts` `generateArcPoints(...)` (20 points).
-            let num_points = 20usize;
-            let mid_x = (x1 + x2) / 2.0;
-            let mid_y = (y1 + y2) / 2.0;
-            let ang = (y2 - y1).atan2(x2 - x1);
-            let dx = (x2 - x1) / 2.0;
-            let dy = (y2 - y1) / 2.0;
-            let tx = dx / rx;
-            let ty = dy / ry;
-            let dist = (tx * tx + ty * ty).sqrt();
-            if dist > 1.0 {
-                return Vec::new();
-            }
-            let scaled_center_dist = (1.0 - dist * dist).sqrt();
-            let center_x =
-                mid_x + scaled_center_dist * ry * ang.sin() * if clockwise { -1.0 } else { 1.0 };
-            let center_y =
-                mid_y - scaled_center_dist * rx * ang.cos() * if clockwise { -1.0 } else { 1.0 };
-
-            let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
-            let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
-
-            let mut angle_range = end_angle - start_angle;
-            if clockwise && angle_range < 0.0 {
-                angle_range += std::f64::consts::TAU;
-            }
-            if !clockwise && angle_range > 0.0 {
-                angle_range -= std::f64::consts::TAU;
-            }
-
-            let mut out = Vec::with_capacity(num_points);
-            for i in 0..num_points {
-                let t = i as f64 / (num_points - 1) as f64;
-                let a = start_angle + t * angle_range;
-                out.push(merman_core::geom::point(
-                    center_x + rx * a.cos(),
-                    center_y + ry * a.sin(),
-                ));
-            }
-            out
-        }
-
-        fn mermaid_rounded_rect_points(w: f64, h: f64) -> Vec<Point> {
-            // Port of Mermaid@11.12.2 `roundedRect.ts` geometry (taper+arc polygon).
-            let radius = 5.0;
-            let taper = 5.0;
-
-            let mut points: Vec<Point> = Vec::new();
-            points.push(merman_core::geom::point(-w / 2.0 + taper, -h / 2.0));
-            points.push(merman_core::geom::point(w / 2.0 - taper, -h / 2.0));
-            points.extend(mermaid_arc_points(
-                w / 2.0 - taper,
-                -h / 2.0,
-                w / 2.0,
-                -h / 2.0 + taper,
-                radius,
-                radius,
-                true,
-            ));
-
-            points.push(merman_core::geom::point(w / 2.0, -h / 2.0 + taper));
-            points.push(merman_core::geom::point(w / 2.0, h / 2.0 - taper));
-            points.extend(mermaid_arc_points(
-                w / 2.0,
-                h / 2.0 - taper,
-                w / 2.0 - taper,
-                h / 2.0,
-                radius,
-                radius,
-                true,
-            ));
-
-            points.push(merman_core::geom::point(w / 2.0 - taper, h / 2.0));
-            points.push(merman_core::geom::point(-w / 2.0 + taper, h / 2.0));
-            points.extend(mermaid_arc_points(
-                -w / 2.0 + taper,
-                h / 2.0,
-                -w / 2.0,
-                h / 2.0 - taper,
-                radius,
-                radius,
-                true,
-            ));
-
-            points.push(merman_core::geom::point(-w / 2.0, h / 2.0 - taper));
-            points.push(merman_core::geom::point(-w / 2.0, -h / 2.0 + taper));
-            points.extend(mermaid_arc_points(
-                -w / 2.0,
-                -h / 2.0 + taper,
-                -w / 2.0 + taper,
-                -h / 2.0,
-                radius,
-                radius,
-                true,
-            ));
-
-            points
-        }
-
-        fn mermaid_choice_points(w: f64, h: f64) -> Vec<Point> {
-            // Mermaid stateDiagram-v2 "choice" nodes are diamonds.
-            vec![
-                merman_core::geom::point(0.0, -h / 2.0),
-                merman_core::geom::point(w / 2.0, 0.0),
-                merman_core::geom::point(0.0, h / 2.0),
-                merman_core::geom::point(-w / 2.0, 0.0),
-            ]
-        }
-
-        fn mermaid_intersect_polygon(
-            node: Point,
-            w: f64,
-            h: f64,
-            poly: &[Point],
-            point: Point,
-        ) -> Point {
-            if poly.is_empty() {
-                return node;
-            }
-
-            let mut min_x = f64::INFINITY;
-            let mut min_y = f64::INFINITY;
-            for p in poly {
-                min_x = min_x.min(p.x);
-                min_y = min_y.min(p.y);
-            }
-
-            let left = node.x - w / 2.0 - min_x;
-            let top = node.y - h / 2.0 - min_y;
-
-            let mut intersections: Vec<Point> = Vec::new();
-            for i in 0..poly.len() {
-                let p1 = poly[i];
-                let p2 = poly[if i + 1 < poly.len() { i + 1 } else { 0 }];
-                let q1 = merman_core::geom::point(left + p1.x, top + p1.y);
-                let q2 = merman_core::geom::point(left + p2.x, top + p2.y);
-                if let Some(hit) = mermaid_intersect_line(node, point, q1, q2) {
-                    intersections.push(hit);
-                }
-            }
-
-            if intersections.is_empty() {
-                return node;
-            }
-
-            intersections.sort_by(|a, b| {
-                let da = ((a.x - point.x).powi(2) + (a.y - point.y).powi(2)).sqrt();
-                let db = ((b.x - point.x).powi(2) + (b.y - point.y).powi(2)).sqrt();
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            intersections[0]
-        }
-
-        fn mermaid_intersect_circle(node: Point, r: f64, point: Point) -> Point {
-            // Port of Mermaid@11.12.2 `intersect-ellipse.js`.
-            let cx = node.x;
-            let cy = node.y;
-            let px = cx - point.x;
-            let py = cy - point.y;
-            let det = (r * r * py * py + r * r * px * px).sqrt();
-            if det == 0.0 {
-                return node;
-            }
-            let mut dx = ((r * r * px) / det).abs();
-            if point.x < cx {
-                dx = -dx;
-            }
-            let mut dy = ((r * r * py) / det).abs();
-            if point.y < cy {
-                dy = -dy;
-            }
-            merman_core::geom::point(cx + dx, cy + dy)
-        }
-
-        let layout_nodes: HashMap<&str, &LayoutNode> =
-            out_nodes.iter().map(|n| (n.id.as_str(), n)).collect();
-        let semantic_nodes: HashMap<&str, &StateNode> =
-            model.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
-
-        for e in &mut out_edges {
-            if e.points.len() < 2 {
+        use crate::elk_edge_geometry::{Outline, Shape};
+        let layout_nodes: HashMap<&str, &LayoutNode> = out_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        let semantic_nodes: HashMap<&str, &StateNode> = model
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        for edge in &mut out_edges {
+            if edge.points.len() < 2 || edge.from == edge.to {
                 continue;
             }
-            if e.from == e.to {
-                continue;
-            }
-            let Some(start_ln) = layout_nodes.get(e.from.as_str()).copied() else {
-                continue;
-            };
-            let Some(end_ln) = layout_nodes.get(e.to.as_str()).copied() else {
-                continue;
-            };
-            let Some(start_sn) = semantic_nodes.get(e.from.as_str()).copied() else {
-                continue;
-            };
-            let Some(end_sn) = semantic_nodes.get(e.to.as_str()).copied() else {
-                continue;
-            };
-
-            let start_target = if e.points.len() >= 3 {
-                e.points[1].clone()
-            } else {
-                e.points[e.points.len() - 1].clone()
-            };
-            let end_target = if e.points.len() >= 3 {
-                e.points[e.points.len() - 2].clone()
-            } else {
-                e.points[0].clone()
-            };
-
-            let start_center = merman_core::geom::point(start_ln.x, start_ln.y);
-            let end_center = merman_core::geom::point(end_ln.x, end_ln.y);
-
-            let start_target = merman_core::geom::point(start_target.x, start_target.y);
-            let end_target = merman_core::geom::point(end_target.x, end_target.y);
-
-            let start_hit = match start_sn.shape.as_str() {
-                "stateStart" | "stateEnd" => {
-                    mermaid_intersect_circle(start_center, 7.0, start_target)
+            let endpoints = [
+                (edge.from.as_str(), 0, 1),
+                (
+                    edge.to.as_str(),
+                    edge.points.len() - 1,
+                    edge.points.len() - 2,
+                ),
+            ];
+            // Read both targets before modifying endpoints (two-point paths share them).
+            let targets = [
+                edge.points[endpoints[0].2].clone(),
+                edge.points[endpoints[1].2].clone(),
+            ];
+            for ((id, endpoint, _), target) in endpoints.into_iter().zip(targets) {
+                let (Some(&node), Some(&semantic)) = (layout_nodes.get(id), semantic_nodes.get(id))
+                else {
+                    continue;
+                };
+                let outline = match semantic.shape.as_str() {
+                    "stateStart" | "stateEnd" => Outline::Ellipse,
+                    "choice" => Outline::Diamond,
+                    _ => Outline::Rect,
+                };
+                let hit = Shape {
+                    node,
+                    outline,
+                    intersection: None,
                 }
-                "choice" => {
-                    let poly =
-                        mermaid_choice_points(start_ln.width.max(1.0), start_ln.height.max(1.0));
-                    mermaid_intersect_polygon(
-                        start_center,
-                        start_ln.width.max(1.0),
-                        start_ln.height.max(1.0),
-                        &poly,
-                        start_target,
-                    )
+                .intersect(&target);
+                if hit.x.is_finite() && hit.y.is_finite() {
+                    edge.points[endpoint] = hit;
                 }
-                // `rect` with rx/ry becomes `roundedRect` in Mermaid.
-                "rect" if start_sn.rx.unwrap_or(0.0) > 0.0 && start_sn.ry.unwrap_or(0.0) > 0.0 => {
-                    let poly = mermaid_rounded_rect_points(
-                        start_ln.width.max(1.0),
-                        start_ln.height.max(1.0),
-                    );
-                    mermaid_intersect_polygon(
-                        start_center,
-                        start_ln.width.max(1.0),
-                        start_ln.height.max(1.0),
-                        &poly,
-                        start_target,
-                    )
-                }
-                _ => start_center,
-            };
-            let end_hit = match end_sn.shape.as_str() {
-                "stateStart" | "stateEnd" => mermaid_intersect_circle(end_center, 7.0, end_target),
-                "choice" => {
-                    let poly = mermaid_choice_points(end_ln.width.max(1.0), end_ln.height.max(1.0));
-                    mermaid_intersect_polygon(
-                        end_center,
-                        end_ln.width.max(1.0),
-                        end_ln.height.max(1.0),
-                        &poly,
-                        end_target,
-                    )
-                }
-                "rect" if end_sn.rx.unwrap_or(0.0) > 0.0 && end_sn.ry.unwrap_or(0.0) > 0.0 => {
-                    let poly =
-                        mermaid_rounded_rect_points(end_ln.width.max(1.0), end_ln.height.max(1.0));
-                    mermaid_intersect_polygon(
-                        end_center,
-                        end_ln.width.max(1.0),
-                        end_ln.height.max(1.0),
-                        &poly,
-                        end_target,
-                    )
-                }
-                _ => end_center,
-            };
-
-            if let Some(p0) = e.points.first_mut() {
-                p0.x = start_hit.x;
-                p0.y = start_hit.y;
-            }
-            if let Some(pn) = e.points.last_mut() {
-                pn.x = end_hit.x;
-                pn.y = end_hit.y;
             }
         }
     }
@@ -2441,6 +2185,8 @@ fn layout_state_diagram_inner(
     };
 
     Ok(StateDiagramLayout {
+        uses_elk_adapter_dom: false,
+        elk_edge_paths: HashMap::new(),
         nodes: out_nodes,
         edges: out_edges,
         clusters,
@@ -2455,7 +2201,7 @@ enum StateParentVisitState {
     Complete,
 }
 
-fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
+pub(super) fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
     validate_state_parent_cycles_with_step(model, || {})
 }
 
@@ -2548,6 +2294,7 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use std::sync::Arc;
 
     struct NonLatticeMeasurer {
         width: f64,
@@ -2584,6 +2331,9 @@ mod tests {
             ry: None,
             shape: "rect".to_string(),
             position: None,
+            color_index: None,
+            wrapping_width: None,
+            min_width: None,
         }
     }
 

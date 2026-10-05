@@ -237,7 +237,7 @@ impl CompareRequest {
         fact: DiagramVerificationFact,
     ) -> Result<Self, XtaskError> {
         let mut request = Self::default();
-        if matches!(fact.diagram, "c4" | "class" | "ishikawa" | "venn") {
+        if matches!(fact.diagram, "c4" | "class" | "error" | "ishikawa" | "venn") {
             request.accepted_residual_policy = AcceptedResidualPolicy::ScopedDomEvidenceCatalog;
         }
         let mut i = 0;
@@ -551,6 +551,7 @@ pub(crate) struct CompareEvidence {
     observed_measurement_routes: usize,
     raw_source_svg_dom_comparisons: usize,
     raw_source_svg_byte_comparisons: usize,
+    accepted_parser_diagnostic_residuals: usize,
     semantic_label_expected_fixture_comparisons: usize,
     semantic_label_fixture_comparisons: usize,
     semantic_label_sample_comparisons: usize,
@@ -638,6 +639,12 @@ impl CompareEvidence {
                 self.rendered_fixtures, self.skipped_fixtures
             ));
         }
+        if self.accepted_parser_diagnostic_residuals > self.raw_source_svg_dom_comparisons {
+            failures.push(format!(
+                "parser diagnostic evidence is inconsistent for {subject}: DOM-comparisons={} accepted-residuals={}",
+                self.raw_source_svg_dom_comparisons, self.accepted_parser_diagnostic_residuals
+            ));
+        }
         if self.semantic_label_accepted_residuals > self.semantic_label_sample_comparisons {
             failures.push(format!(
                 "semantic label evidence is inconsistent for {subject}: samples={} accepted-residuals={}",
@@ -680,7 +687,12 @@ impl CompareEvidence {
         );
         let _ = writeln!(
             report,
-            "- Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
+            "- Parser diagnostic evidence: accepted-residual-comparisons=`{}` (reviewed implementation differences; not DOM parity)",
+            self.accepted_parser_diagnostic_residuals,
+        );
+        let _ = writeln!(
+            report,
+            "- Artifact evidence contract: counts record executed `raw/source comparisons`, not proof of exact parity; accepted residuals are reported separately. Browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
         );
         let _ = writeln!(
             report,
@@ -716,6 +728,8 @@ impl CompareEvidence {
             }
             RawSourceComparison::SvgBytes => self.raw_source_svg_byte_comparisons += 1,
         }
+        self.accepted_parser_diagnostic_residuals +=
+            comparison.accepted_parser_diagnostic_residuals;
         if let Some(labels) = comparison.semantic_labels {
             self.semantic_label_fixture_comparisons += 1;
             self.semantic_label_sample_comparisons += labels.compared_samples;
@@ -737,6 +751,7 @@ impl AddAssign for CompareEvidence {
         self.observed_measurement_routes += rhs.observed_measurement_routes;
         self.raw_source_svg_dom_comparisons += rhs.raw_source_svg_dom_comparisons;
         self.raw_source_svg_byte_comparisons += rhs.raw_source_svg_byte_comparisons;
+        self.accepted_parser_diagnostic_residuals += rhs.accepted_parser_diagnostic_residuals;
         self.semantic_label_expected_fixture_comparisons +=
             rhs.semantic_label_expected_fixture_comparisons;
         self.semantic_label_fixture_comparisons += rhs.semantic_label_fixture_comparisons;
@@ -814,9 +829,8 @@ pub(crate) struct CompareFixtureInput<'a> {
 
 #[derive(Debug)]
 pub(crate) enum CompareFixtureResult {
-    Skipped {
-        reason: String,
-    },
+    #[cfg(test)]
+    Skipped { reason: String },
     Rendered {
         render_evidence: ObservedRenderEvidence,
         local_svg: String,
@@ -981,11 +995,22 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let svg_request = svg_request(
+            let mut svg_request = svg_request(
                 environment.clone(),
                 layout_options.clone(),
                 Some(diagram_id),
             );
+            // The reference CLI applies its white output background even when a
+            // negative fixture renders as Error; the dedicated Error lane omits it.
+            if semantic.semantic_kind() == "error" && fact.diagram != "error" {
+                svg_request.pipeline = Some(
+                    merman::svg::SvgOutputPolicy {
+                        root_background_color: Some("white".to_string()),
+                        ..Default::default()
+                    }
+                    .pipeline(),
+                );
+            }
 
             match fact.specialist {
                 SpecialistHook::None => {}
@@ -1395,6 +1420,7 @@ where
 
         let failure_start = failures.len();
         match outcome {
+            #[cfg(test)]
             CompareFixtureResult::Skipped { reason } => {
                 evidence.skipped_fixtures += 1;
                 notes.push(format!("skipped {stem}: {reason}"));
@@ -1483,10 +1509,25 @@ where
     }
 
     failures.extend(evidence.gate_failures(run.diagram, run.check_dom));
+    // Candidate collection is diagnostic even when no registered label fixture was selected.
+    if std::env::var_os("MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES").is_some() {
+        failures.push(
+            "semantic label residual candidate collection is review_required and cannot admit a comparison"
+                .to_string(),
+        );
+    }
     evidence.write_report(&mut report);
     write_report(state, &mut report, &compare_paths, &run, &failures, &notes);
     let accepted_browser_text_layout_residuals =
         evidence.accepted_browser_text_layout_residual_comparisons();
+    if evidence.accepted_parser_diagnostic_residuals > 0 {
+        println!(
+            "accepted {} exact parser-diagnostic residual comparisons for {}; not DOM parity (report={})",
+            evidence.accepted_parser_diagnostic_residuals,
+            run.diagram,
+            compare_paths.out_path.display()
+        );
+    }
     if accepted_browser_text_layout_residuals > 0 {
         println!(
             "accepted {accepted_browser_text_layout_residuals} exact browser-text-layout residual comparisons for {} (report={})",
@@ -1533,6 +1574,7 @@ enum RawSourceComparison {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FixtureComparisonEvidence {
     raw_source: RawSourceComparison,
+    accepted_parser_diagnostic_residuals: usize,
     semantic_labels: Option<super::SemanticLabelGateEvidence>,
     encountered_browser_text_layout_receipt_keys: BTreeSet<super::BrowserTextLayoutReceiptKey>,
     accepted_browser_text_layout_residual_comparisons: usize,
@@ -1594,6 +1636,7 @@ where
     };
 
     if check_dom && compare_dom {
+        let mut accepted_parser_diagnostic_residuals = 0;
         let evaluations = dom_plan
             .modes()
             .iter()
@@ -1703,6 +1746,34 @@ where
                     descendant_comparisons.push((comparison_key, error.clone()));
                     error
                 };
+                match super::accepts_parser_diagnostic_residual(
+                    diagram,
+                    stem,
+                    requested_mode,
+                    dom_decimals,
+                    input_text,
+                    upstream_svg,
+                    local_svg,
+                ) {
+                    Ok(true) => {
+                        if let Some(error) = comparison_error {
+                            accepted_parser_diagnostic_residuals += 1;
+                            notes.push(format!(
+                                "accepted exact parser diagnostic residual [{mode_label}] for {diagram}/{stem}: implementation-specific parser messages; not DOM parity: {error}"
+                            ));
+                        } else {
+                            failures.push(format!(
+                                "[{mode_label}] stale parser diagnostic receipt for {diagram}/{stem}: the upstream DOM comparison now matches"
+                            ));
+                        }
+                        continue;
+                    }
+                    Err(error) => {
+                        failures.push(format!("[{mode_label}] {error}"));
+                        continue;
+                    }
+                    Ok(false) => {}
+                }
                 accepted_browser_text_layout_residual_comparisons +=
                     usize::from(record_upstream_dom_comparison(
                         upstream_dom_drift_policy,
@@ -1724,6 +1795,7 @@ where
         notes.extend(fixture_notes);
         return Ok(FixtureComparisonEvidence {
             raw_source: RawSourceComparison::SvgDom(dom_plan.modes().len()),
+            accepted_parser_diagnostic_residuals,
             semantic_labels,
             encountered_browser_text_layout_receipt_keys,
             accepted_browser_text_layout_residual_comparisons,
@@ -1740,6 +1812,7 @@ where
         } else {
             RawSourceComparison::None
         },
+        accepted_parser_diagnostic_residuals: 0,
         semantic_labels,
         encountered_browser_text_layout_receipt_keys: BTreeSet::new(),
         accepted_browser_text_layout_residual_comparisons: 0,
@@ -1981,7 +2054,9 @@ pub(crate) fn write_compare_result_section(
         );
     } else if failures.is_empty() {
         let result = match upstream_dom_drift_policy {
-            UpstreamDomDriftPolicy::Blocking => "All fixtures matched.",
+            UpstreamDomDriftPolicy::Blocking => {
+                "All blocking checks passed. Accepted residual comparisons, when present, are reported in the evidence counts and Notes."
+            }
             UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts => {
                 "All blocking checks passed. Exact reviewed browser-text-layout residuals are listed under Notes when present."
             }
@@ -2233,8 +2308,11 @@ mod tests {
             "stress_class_svg_font_size_px_string_precedence_026",
             svgdom::DomMode::Parity,
         );
-        assert!(!neighbor.normalizes_browser_text_wrapping());
-        assert_eq!(note, None);
+        assert!(neighbor.normalizes_browser_text_wrapping());
+        assert!(
+            note.expect("neighbor browser text residual note")
+                .contains("font measurement")
+        );
     }
 
     #[test]
@@ -2414,6 +2492,7 @@ mod tests {
 
         evidence.record_comparison(FixtureComparisonEvidence {
             raw_source: RawSourceComparison::SvgDom(1),
+            accepted_parser_diagnostic_residuals: 0,
             semantic_labels: Some(super::super::SemanticLabelGateEvidence {
                 compared_samples: 5,
                 accepted_residuals: 5,
@@ -2524,10 +2603,16 @@ mod tests {
             .join("c4")
             .join(format!("{FIXTURE}.svg"));
         let upstream = fs::read_to_string(&upstream_path).expect("signed C4 SVG should exist");
-        let local = upstream.replacen(
-            r#"x="501" y="650.9805393218994""#,
-            r#"x="593.9486587427764" y="842""#,
+        let label_position = r#"x="501" y="650.2998428344727""#;
+        assert_eq!(
+            upstream.matches(label_position).count(),
             1,
+            "the current C4 baseline must identify exactly one relation label to mutate"
+        );
+        let local = upstream.replacen(label_position, r#"x="593.9486587427764" y="842""#, 1);
+        assert_ne!(
+            local, upstream,
+            "the label geometry mutation must be applied"
         );
         let root = unique_test_root("semantic-label-without-dom-profile");
         fs::create_dir_all(&root).expect("test output root should be created");
@@ -2698,6 +2783,261 @@ mod tests {
         assert!(notes.is_empty());
     }
 
+    fn run_parser_diagnostic_harness(
+        diagram: &str,
+        stems: &[&str],
+        modes: Vec<svgdom::DomMode>,
+        mutate_local: impl Fn(&mut String),
+    ) -> (CompareRunResult, String) {
+        let root = unique_test_root("parser-diagnostic-residuals");
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        fs::create_dir_all(fixtures_root.join(diagram)).unwrap();
+        fs::create_dir_all(upstream_root.join(diagram)).unwrap();
+        for stem in stems {
+            fs::copy(
+                crate::cmd::fixtures_root()
+                    .join(diagram)
+                    .join(format!("{stem}.mmd")),
+                fixtures_root.join(diagram).join(format!("{stem}.mmd")),
+            )
+            .unwrap();
+            fs::copy(
+                crate::cmd::fixtures_root()
+                    .join("upstream-svgs")
+                    .join(diagram)
+                    .join(format!("{stem}.svg")),
+                upstream_root.join(diagram).join(format!("{stem}.svg")),
+            )
+            .unwrap();
+        }
+        let environment = merman::SvgEnvironment::deterministic().without_math_renderer();
+        let renderer = merman::Renderer::new()
+            .with_engine(super::super::svg_compare_engine())
+            .with_parse_options(ParsePolicy::SuppressErrors.options());
+        let mut observed = ObservedRenderOperations::from_environment(&environment).unwrap();
+        let out_path = root.join("report.md");
+        let result = run_svg_compare(
+            CompareHarnessOptions {
+                run: CompareRunOptions {
+                    diagram,
+                    out_path: Some(out_path.clone()),
+                    filter: None,
+                    check_dom: true,
+                    dom_plan: DomComparisonPlan::new(modes),
+                    dom_decimals: 3,
+                    upstream_dom_drift_policy: UpstreamDomDriftPolicy::Blocking,
+                },
+                fixtures_root: Some(fixtures_root),
+                upstream_root: Some(upstream_root),
+            },
+            &mut observed,
+            |_, _, _, _| {},
+            |_, _, _| None,
+            |observed, input| {
+                let mut request = svg_request(
+                    environment.clone(),
+                    super::super::svg_compare_layout_opts(),
+                    Some(super::super::sanitize_svg_id(input.stem)),
+                );
+                if diagram != "error" {
+                    request.pipeline = Some(
+                        merman::svg::SvgOutputPolicy {
+                            root_background_color: Some("white".to_string()),
+                            ..Default::default()
+                        }
+                        .pipeline(),
+                    );
+                }
+                let rendered = render_source_svg(&renderer, input.text, request)
+                    .map_err(|error| error.to_string())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
+                let mut local_svg = rendered.svg().to_owned();
+                mutate_local(&mut local_svg);
+                Ok(CompareFixtureResult::Rendered {
+                    render_evidence,
+                    local_svg,
+                    compare_dom: true,
+                    issues: Vec::new(),
+                    notes: Vec::new(),
+                })
+            },
+            |_, _, _| {},
+            |_, report, paths, options, failures, notes| {
+                write_compare_result_section(
+                    report,
+                    options.check_dom,
+                    failures,
+                    &paths.out_svg_dir,
+                    options.upstream_dom_drift_policy,
+                );
+                write_notes_section(report, notes);
+            },
+        );
+        let report = fs::read_to_string(out_path).expect("diagnostic report should be written");
+        (result, report)
+    }
+
+    #[test]
+    fn parser_diagnostic_harness_accepts_exact_receipts_without_claiming_parity() {
+        let (result, report) = run_parser_diagnostic_harness(
+            "error",
+            &[
+                "upstream_pkgtests_statediagram_spec_024",
+                "upstream_pkgtests_statediagram_v2_spec_024",
+            ],
+            vec![
+                svgdom::DomMode::Structure,
+                svgdom::DomMode::Parity,
+                svgdom::DomMode::ParityRoot,
+            ],
+            |_| {},
+        );
+        let evidence = result.expect("reviewed diagnostics should pass blocking checks");
+        assert_eq!(evidence.rendered_fixtures, 2);
+        assert_eq!(evidence.raw_source_svg_dom_comparisons, 6);
+        assert_eq!(evidence.accepted_parser_diagnostic_residuals, 6);
+        let mut total = CompareEvidence::default();
+        total += evidence;
+        total += evidence;
+        assert_eq!(total.accepted_parser_diagnostic_residuals, 12);
+        assert_eq!(total.raw_source_svg_dom_comparisons, 12);
+        assert!(report.contains("All blocking checks passed."));
+        assert!(report.contains("Parser diagnostic evidence: accepted-residual-comparisons=`6`"));
+        assert!(report.contains(
+            "counts record executed `raw/source comparisons`, not proof of exact parity"
+        ));
+        assert_eq!(
+            report
+                .matches("accepted exact parser diagnostic residual [")
+                .count(),
+            6
+        );
+        assert!(!report.contains("All fixtures matched."));
+        assert!(!report.contains("`raw/source parity`"));
+    }
+
+    #[test]
+    fn parser_diagnostic_harness_keeps_strict_failures_after_non_strict_acceptance() {
+        let (result, report) = run_parser_diagnostic_harness(
+            "error",
+            &[
+                "upstream_pkgtests_statediagram_spec_024",
+                "upstream_pkgtests_statediagram_v2_spec_024",
+            ],
+            vec![
+                svgdom::DomMode::Structure,
+                svgdom::DomMode::Parity,
+                svgdom::DomMode::ParityRoot,
+                svgdom::DomMode::Strict,
+            ],
+            |_| {},
+        );
+        let failure = result.expect_err("strict DOM mismatches must remain blocking");
+        assert_eq!(failure.evidence().raw_source_svg_dom_comparisons, 8);
+        assert_eq!(failure.evidence().accepted_parser_diagnostic_residuals, 6);
+        let message = failure.to_string();
+        assert_eq!(message.matches("[strict]").count(), 2, "{message}");
+        assert!(!message.contains("[structure]"), "{message}");
+        assert!(!message.contains("[parity]"), "{message}");
+        assert!(!message.contains("[parity-root]"), "{message}");
+        assert!(report.contains("## Mismatches"));
+        assert!(!report.contains("All blocking checks passed."));
+    }
+
+    #[test]
+    fn parser_diagnostic_harness_accepts_family_receipts_but_strict_stays_blocking() {
+        for (diagram, stem) in [
+            ("packet", "upstream_docs_packet_bits_syntax_v11_7_0_002"),
+            ("packet", "upstream_docs_packet_syntax_001"),
+            ("radar", "upstream_docs_radar_axis_007"),
+            ("radar", "upstream_docs_radar_curve_008"),
+            ("radar", "upstream_docs_radar_examples_005"),
+            ("radar", "upstream_docs_radar_options_009"),
+            ("radar", "upstream_docs_radar_title_006"),
+            (
+                "treemap",
+                "upstream_treemap_classdef_and_css_compiled_styles_db",
+            ),
+        ] {
+            let (result, report) = run_parser_diagnostic_harness(
+                diagram,
+                &[stem],
+                vec![
+                    svgdom::DomMode::Structure,
+                    svgdom::DomMode::Parity,
+                    svgdom::DomMode::ParityRoot,
+                    svgdom::DomMode::Strict,
+                ],
+                |_| {},
+            );
+            let failure = result.expect_err("strict DOM mismatch must remain blocking");
+            assert_eq!(failure.evidence().raw_source_svg_dom_comparisons, 4);
+            assert_eq!(failure.evidence().accepted_parser_diagnostic_residuals, 3);
+            let message = failure.to_string();
+            assert!(message.contains("[strict]"), "{message}");
+            assert!(!report.contains("All blocking checks passed."));
+            assert!(report.contains("accepted-residual-comparisons=`3`"));
+            assert!(!message.contains("[structure]"), "{message}");
+            assert!(!message.contains("[parity]"), "{message}");
+            assert!(!message.contains("[parity-root]"), "{message}");
+
+            for mutate in [
+                (|svg: &mut String| svg.push(' ')) as fn(&mut String),
+                |svg: &mut String| *svg = svg.replacen("viewBox=", "data-original-viewBox=", 1),
+            ] {
+                let (result, _) = run_parser_diagnostic_harness(
+                    diagram,
+                    &[stem],
+                    vec![svgdom::DomMode::ParityRoot],
+                    mutate,
+                );
+                let failure = result.expect_err("changed receipt bytes must remain blocking");
+                assert_eq!(failure.evidence().accepted_parser_diagnostic_residuals, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn parser_diagnostic_harness_rejects_changed_content_and_root_contracts() {
+        let (result, report) = run_parser_diagnostic_harness(
+            "error",
+            &[
+                "upstream_pkgtests_statediagram_spec_024",
+                "upstream_pkgtests_statediagram_v2_spec_024",
+            ],
+            vec![svgdom::DomMode::ParityRoot],
+            |svg| {
+                assert!(svg.contains("Unexpected character"));
+                *svg = svg.replace("Unexpected character", "Different character");
+            },
+        );
+        let failure = result.expect_err("changed diagnostic content must invalidate its receipt");
+        assert_eq!(failure.evidence().accepted_parser_diagnostic_residuals, 0);
+        assert_eq!(failure.evidence().raw_source_svg_dom_comparisons, 2);
+        assert!(failure.to_string().contains("receipt local SVG drifted"));
+        assert!(!report.contains("accepted exact parser diagnostic residual ["));
+
+        let (result, report) = run_parser_diagnostic_harness(
+            "error",
+            &[
+                "upstream_pkgtests_statediagram_spec_024",
+                "upstream_pkgtests_statediagram_v2_spec_024",
+            ],
+            vec![svgdom::DomMode::ParityRoot],
+            |svg| {
+                assert!(svg.contains(r#"width="100%""#));
+                *svg = svg.replacen(r#"width="100%""#, r#"width="500""#, 1);
+            },
+        );
+        let failure = result.expect_err("root policy drift must remain blocking");
+        assert_eq!(failure.evidence().accepted_parser_diagnostic_residuals, 0);
+        let message = failure.to_string();
+        assert!(message.contains("width policy changed"), "{message}");
+        assert!(message.contains("receipt local SVG drifted"), "{message}");
+        assert!(!report.contains("accepted exact parser diagnostic residual ["));
+    }
+
     #[test]
     fn dom_suite_reuses_parsed_dom_for_root_evidence() {
         let root = unique_test_root("dom-suite-mode-attribution");
@@ -2858,6 +3198,7 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 3,
                 raw_source_svg_byte_comparisons: 0,
+                accepted_parser_diagnostic_residuals: 0,
                 semantic_label_expected_fixture_comparisons: 0,
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,
@@ -2867,12 +3208,12 @@ mod tests {
             }
         );
         let report = fs::read_to_string(&out_path).expect("report should be written");
-        assert!(report.contains("All fixtures matched."));
+        assert!(report.contains("All blocking checks passed."));
         assert!(report.contains(
             "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` raw/source-SVG-DOM=`3` raw/source-SVG-bytes=`0`"
         ));
         assert!(report.contains(
-            "Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
+            "Artifact evidence contract: counts record executed `raw/source comparisons`, not proof of exact parity; accepted residuals are reported separately. Browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
         ));
         assert!(report.contains("skipped skipped: parse-time admission policy"));
         let out_svg_dir = out_path
@@ -2947,6 +3288,7 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 0,
                 raw_source_svg_byte_comparisons: 0,
+                accepted_parser_diagnostic_residuals: 0,
                 semantic_label_expected_fixture_comparisons: 0,
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,
@@ -3021,6 +3363,7 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 1,
                 raw_source_svg_byte_comparisons: 0,
+                accepted_parser_diagnostic_residuals: 0,
                 semantic_label_expected_fixture_comparisons: 0,
                 semantic_label_fixture_comparisons: 0,
                 semantic_label_sample_comparisons: 0,

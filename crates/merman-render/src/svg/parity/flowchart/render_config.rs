@@ -44,7 +44,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
+    is_elk_layout: bool,
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
     edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 ) -> FlowchartRenderConfig {
@@ -81,11 +81,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let use_max_width = config.render_use_max_width();
     let title_top_margin = config.render_title_top_margin();
     let node_padding = config.render_node_padding();
-    let is_elk_layout = diagram_type == "flowchart-elk"
-        || effective_config_value
-            .get("layout")
-            .and_then(|value| value.as_str())
-            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
     let cfg_curve = if is_elk_layout {
         Some("rounded".to_string())
     } else {
@@ -150,7 +145,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
             effective_config,
             "themeVariables.radius",
         );
-    let edge_corner_radius = node_corner_radius;
+    let edge_corner_radius = 5.0;
     let compact_edge_corners = false;
 
     FlowchartRenderConfig {

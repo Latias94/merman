@@ -3196,7 +3196,9 @@ mod tests {
 
     #[test]
     fn architecture_rejects_grid_constraint_expansion_before_duplicate_materialization() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitPhase};
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
+        };
 
         let ids = (0..12 * 12)
             .map(|index| format!("node-{index}"))
@@ -3242,7 +3244,10 @@ mod tests {
         };
         let config = serde_json::json!({"architecture": {"numIter": 1, "randomize": false}});
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        let policy = RenderResourcePolicy::interactive()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 800_000)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
 
         let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
             .unwrap_err();

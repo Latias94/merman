@@ -309,7 +309,7 @@ function runtimeCatalog(overrides = {}) {
       system_fonts: null,
       embedded_images: null,
     }],
-    registry: { diagram_family_count: 35 },
+    registry: { diagram_family_count: 35, diagram_families: ["flowchart", "gitGraph"] },
     resources: {
       general_binding_default_profile: "interactive",
       cli_default_profile: "trusted-native",
@@ -365,6 +365,19 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   ]);
   assert.equal(engine.runtimeCatalog.output_contracts[0].future_output_metadata, true);
   assert.equal(engine.runtimeCatalog.future_ratio, 0.5);
+  await engine.dispose();
+});
+
+test("runtime catalog validates logical parser family sets", async () => {
+  for (const families of [undefined, ["gantt", "flowchart"], ["flowchart", "flowchart"], ["error"]]) {
+    const catalog = runtimeCatalog();
+    catalog.registry.diagram_families = families;
+    const factory = transportFactory({ runtimeCatalogJson: () => JSON.stringify(catalog) });
+    await assert.rejects(createNodeEngine({}, { loadTransport: factory.loadTransport }), /registry metadata/i);
+  }
+  const factory = transportFactory({ runtimeCatalogJson: () => JSON.stringify(runtimeCatalog()) });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  assert.deepEqual(engine.runtimeCatalog.registry.diagram_families, ["flowchart", "gitGraph"]);
   await engine.dispose();
 });
 

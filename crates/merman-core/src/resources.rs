@@ -1,15 +1,29 @@
 //! Backend-independent Mermaid source and semantic-model resource policy.
 
 use crate::diagram::{ParsedDiagramRender, RenderSemanticModel};
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 use crate::diagrams::flowchart::FlowchartModel;
+#[cfg(feature = "diagram-ishikawa")]
 use crate::diagrams::ishikawa::IshikawaDiagramRenderModel;
+#[cfg(feature = "diagram-kanban")]
 use crate::diagrams::kanban::KanbanDiagramRenderModel;
+#[cfg(feature = "diagram-mindmap")]
 use crate::diagrams::mindmap::MindmapDiagramRenderModel;
+#[cfg(feature = "diagram-radar")]
 use crate::diagrams::radar::RadarDiagramRenderModel;
+#[cfg(feature = "diagram-requirement")]
 use crate::diagrams::requirement::RequirementDiagramRenderModel;
+#[cfg(feature = "diagram-sequence")]
 use crate::diagrams::sequence::SequenceDiagramRenderModel;
+#[cfg(feature = "diagram-treemap")]
 use crate::diagrams::treemap::TreemapDiagramRenderModel;
+#[cfg(feature = "diagram-zenuml")]
 use crate::diagrams::zenuml::{ZenumlDiagramRenderModel, ZenumlStatementKind};
+#[cfg(feature = "diagram-class")]
 use crate::models::class_diagram::ClassDiagram;
 use serde::Serialize;
 use serde::ser::{
@@ -449,6 +463,11 @@ impl InputResourcePolicy {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     pub fn check_flowchart_complexity(
         &self,
         model: &FlowchartModel,
@@ -458,6 +477,7 @@ impl InputResourcePolicy {
         Ok(complexity)
     }
 
+    #[cfg(feature = "diagram-class")]
     pub fn check_class_complexity(
         &self,
         model: &ClassDiagram,
@@ -467,6 +487,7 @@ impl InputResourcePolicy {
         Ok(complexity)
     }
 
+    #[cfg(feature = "diagram-mindmap")]
     pub fn check_mindmap_complexity(
         &self,
         model: &MindmapDiagramRenderModel,
@@ -476,6 +497,7 @@ impl InputResourcePolicy {
         Ok(complexity)
     }
 
+    #[cfg(feature = "diagram-zenuml")]
     pub fn check_zenuml_complexity(
         &self,
         model: &ZenumlDiagramRenderModel,
@@ -485,6 +507,7 @@ impl InputResourcePolicy {
         Ok(complexity)
     }
 
+    #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
         model: &SequenceDiagramRenderModel,
@@ -576,51 +599,86 @@ impl ModelComplexity {
                     .saturating_add(model.model_name().len());
                 complexity
             }
+            #[cfg(feature = "diagram-mindmap")]
             RenderSemanticModel::Mindmap(model) => {
                 MindmapComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-state")]
             RenderSemanticModel::State(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-sequence")]
             RenderSemanticModel::Sequence(model) => {
                 SequenceComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-zenuml")]
             RenderSemanticModel::Zenuml(model) => {
                 ZenumlComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             RenderSemanticModel::Flowchart(model) => {
                 FlowchartComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-architecture")]
             RenderSemanticModel::Architecture(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-class")]
             RenderSemanticModel::Class(model) => {
                 ClassComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-c4")]
             RenderSemanticModel::C4(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-cynefin")]
             RenderSemanticModel::Cynefin(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-railroad")]
             RenderSemanticModel::Railroad(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-kanban")]
             RenderSemanticModel::Kanban(model) => Self::from_kanban(model),
+            #[cfg(feature = "diagram-gantt")]
             RenderSemanticModel::Gantt(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-pie")]
             RenderSemanticModel::Pie(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-packet")]
             RenderSemanticModel::Packet(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-timeline")]
             RenderSemanticModel::Timeline(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-journey")]
             RenderSemanticModel::Journey(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-requirement")]
             RenderSemanticModel::Requirement(model) => Self::from_requirement(model),
+            #[cfg(feature = "diagram-sankey")]
             RenderSemanticModel::Sankey(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-radar")]
             RenderSemanticModel::Radar(model) => Self::from_radar(model),
+            #[cfg(feature = "diagram-info")]
             RenderSemanticModel::Info(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-treemap")]
             RenderSemanticModel::Treemap(model) => {
                 TreemapComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-block")]
             RenderSemanticModel::Block(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-er")]
             RenderSemanticModel::Er(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-quadrant-chart")]
             RenderSemanticModel::QuadrantChart(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-xychart")]
             RenderSemanticModel::XyChart(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-git-graph")]
             RenderSemanticModel::GitGraph(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-tree-view")]
             RenderSemanticModel::TreeView(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-ishikawa")]
             RenderSemanticModel::Ishikawa(model) => {
                 IshikawaComplexity::from_model(model).as_model_complexity()
             }
+            #[cfg(feature = "diagram-event-modeling")]
             RenderSemanticModel::EventModeling(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-venn")]
             RenderSemanticModel::Venn(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-wardley")]
             RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-usecase")]
+            RenderSemanticModel::Usecase(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-agentflow")]
+            RenderSemanticModel::Agentflow(model) => Self::from_serializable(model),
         }
     }
 
@@ -633,6 +691,7 @@ impl ModelComplexity {
         counter.finish()
     }
 
+    #[cfg(feature = "diagram-kanban")]
     pub fn from_kanban(model: &KanbanDiagramRenderModel) -> Self {
         let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
             [
@@ -654,6 +713,7 @@ impl ModelComplexity {
         Self::new(model.nodes.len(), text_bytes, nesting_depth)
     }
 
+    #[cfg(feature = "diagram-radar")]
     pub fn from_radar(model: &RadarDiagramRenderModel) -> Self {
         let common_text_bytes = [
             model.title.as_deref(),
@@ -694,6 +754,7 @@ impl ModelComplexity {
         )
     }
 
+    #[cfg(feature = "diagram-requirement")]
     pub fn from_requirement(model: &RequirementDiagramRenderModel) -> Self {
         let common_text_bytes = [
             model.acc_title.as_deref(),
@@ -1156,6 +1217,11 @@ impl<'a> serde::Serializer for &'a mut ModelComplexitySerializer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub struct FlowchartComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1164,6 +1230,11 @@ pub struct FlowchartComplexity {
     pub subgraph_depth: usize,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 impl FlowchartComplexity {
     pub fn from_model(model: &FlowchartModel) -> Self {
         Self {
@@ -1186,6 +1257,7 @@ impl FlowchartComplexity {
 
 /// Computes Treemap model complexity iteratively without serializing a user-controlled node tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-treemap")]
 pub struct TreemapComplexity {
     pub nodes: usize,
     pub classes: usize,
@@ -1193,6 +1265,7 @@ pub struct TreemapComplexity {
     pub nesting_depth: usize,
 }
 
+#[cfg(feature = "diagram-treemap")]
 impl TreemapComplexity {
     pub fn from_model(model: &TreemapDiagramRenderModel) -> Self {
         let mut nodes = 0usize;
@@ -1261,12 +1334,14 @@ impl TreemapComplexity {
 
 /// Computes Ishikawa model complexity iteratively without growing the stack with cause depth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaComplexity {
     pub nodes: usize,
     pub label_bytes: usize,
     pub nesting_depth: usize,
 }
 
+#[cfg(feature = "diagram-ishikawa")]
 impl IshikawaComplexity {
     pub fn from_model(model: &IshikawaDiagramRenderModel) -> Self {
         let mut complexity = Self {
@@ -1303,6 +1378,7 @@ impl IshikawaComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1312,6 +1388,7 @@ pub struct ClassComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-mindmap")]
 pub struct MindmapComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1319,6 +1396,7 @@ pub struct MindmapComplexity {
     pub nesting_depth: usize,
 }
 
+#[cfg(feature = "diagram-mindmap")]
 impl MindmapComplexity {
     pub fn from_model(model: &MindmapDiagramRenderModel) -> Self {
         let node_label_bytes = model.nodes.iter().fold(0usize, |total, node| {
@@ -1379,6 +1457,7 @@ impl MindmapComplexity {
     }
 }
 
+#[cfg(feature = "diagram-class")]
 impl ClassComplexity {
     pub fn from_model(model: &ClassDiagram) -> Self {
         let class_label_bytes = model
@@ -1491,6 +1570,7 @@ impl ClassComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-zenuml")]
 pub struct ZenumlComplexity {
     pub participants: usize,
     pub groups: usize,
@@ -1501,6 +1581,7 @@ pub struct ZenumlComplexity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "diagram-sequence")]
 pub struct SequenceComplexity {
     pub messages: usize,
     pub block_depth: usize,
@@ -1509,6 +1590,7 @@ pub struct SequenceComplexity {
     pub nesting_depth: usize,
 }
 
+#[cfg(feature = "diagram-sequence")]
 impl SequenceComplexity {
     pub fn from_model(model: &SequenceDiagramRenderModel) -> Self {
         const ACTOR_PROPERTY_VALUE_DEPTH: usize = 4;
@@ -1607,6 +1689,7 @@ impl SequenceComplexity {
     }
 }
 
+#[cfg(feature = "diagram-zenuml")]
 impl ZenumlComplexity {
     pub fn from_model(model: &ZenumlDiagramRenderModel) -> Self {
         let common_label_bytes = [model.title.as_deref(), model.starter.as_deref()]
@@ -1755,6 +1838,11 @@ impl ZenumlComplexity {
     }
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     let mut total = [
         Some(model.keyword.as_str()),
@@ -1866,6 +1954,11 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     total
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
     if model.subgraphs.is_empty() {
         return 0;
@@ -1906,6 +1999,7 @@ fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
     depths.into_iter().max().unwrap_or(0)
 }
 
+#[cfg(feature = "diagram-class")]
 fn class_namespace_depth(model: &ClassDiagram) -> usize {
     if model.namespaces.is_empty() {
         return 0;
@@ -1956,6 +2050,7 @@ fn class_namespace_depth(model: &ClassDiagram) -> usize {
     depths.into_iter().max().unwrap_or(0)
 }
 
+#[cfg(feature = "diagram-kanban")]
 fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
     let indices = model
         .nodes
@@ -2003,12 +2098,14 @@ fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 struct JsonValueComplexity {
     items: usize,
     text_bytes: usize,
     nesting_depth: usize,
 }
 
+#[cfg(feature = "diagram-sequence")]
 impl JsonValueComplexity {
     fn merge(&mut self, other: Self) {
         self.items = self.items.saturating_add(other.items);
@@ -2017,12 +2114,14 @@ impl JsonValueComplexity {
     }
 }
 
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 enum JsonTraversalFrame<'a> {
     Value(&'a serde_json::Value, usize),
     Array(std::slice::Iter<'a, serde_json::Value>, usize),
     Object(serde_json::map::Iter<'a>, usize),
 }
 
+#[cfg(feature = "diagram-sequence")]
 fn json_map_complexity(
     map: &serde_json::Map<String, serde_json::Value>,
     value_depth: usize,
@@ -2041,6 +2140,7 @@ fn json_map_complexity(
 }
 
 /// Counts an arbitrary JSON subtree without recursive calls or width-proportional scratch space.
+#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> JsonValueComplexity {
     let mut complexity = JsonValueComplexity::default();
     let mut pending = vec![JsonTraversalFrame::Value(value, initial_depth)];
@@ -2089,10 +2189,12 @@ fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> Jso
     complexity
 }
 
+#[cfg(feature = "diagram-treemap")]
 fn json_text_bytes(value: &serde_json::Value) -> usize {
     json_value_complexity(value, 0).text_bytes
 }
 
+#[cfg(feature = "diagram-treemap")]
 fn json_item_count(value: &serde_json::Value) -> usize {
     json_value_complexity(value, 0).items
 }
@@ -2184,13 +2286,17 @@ mod tests {
     }
 
     #[test]
-    fn constrained_policy_rejects_source_and_flowchart_cardinality() {
+    fn constrained_policy_rejects_source_bytes() {
         let source_error = InputResourcePolicy::for_profile(ResourceProfile::Constrained)
             .apply_for_test(InputResourceLimitId::MaxSourceBytes, 4)
             .check_source_bytes("12345")
             .unwrap_err();
         assert_eq!(source_error.limit, "max_source_bytes");
+    }
 
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn constrained_policy_rejects_flowchart_cardinality() {
         let parsed = crate::Engine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nA --> B",
@@ -2205,6 +2311,7 @@ mod tests {
         assert_eq!(model_error.limit, "max_model_items");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn parsed_render_resource_checks_include_parser_owned_flowchart_label_sources() {
         let parsed = crate::Engine::new()
@@ -2231,6 +2338,7 @@ mod tests {
         assert!(error.actual > model_complexity.text_bytes);
     }
 
+    #[cfg(feature = "diagram-sequence")]
     #[test]
     fn sequence_complexity_bounds_messages_and_nested_frames() {
         let parsed = crate::Engine::new()
@@ -2257,6 +2365,7 @@ mod tests {
         assert_eq!(error.max, 1);
     }
 
+    #[cfg(feature = "diagram-sequence")]
     #[test]
     fn sequence_complexity_counts_arbitrary_json_items_and_depth_iteratively() {
         let parsed = crate::Engine::new()
@@ -2309,6 +2418,7 @@ mod tests {
         assert_eq!(error.max, complexity.nesting_depth - 1);
     }
 
+    #[cfg(feature = "diagram-mindmap")]
     #[test]
     fn mindmap_model_limits_cover_pre_layout_cardinality_and_labels() {
         let constrained = InputResourcePolicy::for_profile(ResourceProfile::Constrained);
@@ -2350,14 +2460,21 @@ mod tests {
         }
     }
 
+    #[cfg(any(
+        feature = "diagram-kanban",
+        feature = "diagram-radar",
+        feature = "diagram-requirement"
+    ))]
     #[test]
     fn generic_model_budget_covers_new_family_models_without_family_knobs() {
         let models = [
+            #[cfg(feature = "diagram-kanban")]
             RenderSemanticModel::Kanban(KanbanDiagramRenderModel {
                 nodes: vec![crate::diagrams::kanban::KanbanRenderNode::new(
                     "todo", "Todo",
                 )],
             }),
+            #[cfg(feature = "diagram-radar")]
             RenderSemanticModel::Radar({
                 let mut model = RadarDiagramRenderModel::default();
                 model.axes = vec![crate::diagrams::radar::RadarRenderAxis {
@@ -2366,6 +2483,7 @@ mod tests {
                 }];
                 model
             }),
+            #[cfg(feature = "diagram-requirement")]
             RenderSemanticModel::Requirement(RequirementDiagramRenderModel {
                 direction: "TB".to_string(),
                 requirements: vec![crate::diagrams::requirement::RequirementRenderNode {
@@ -2395,6 +2513,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-kanban")]
     #[test]
     fn kanban_complexity_accounts_for_parent_chain_depth_without_quadratic_scans() {
         let root = KanbanDiagramRenderModel {
@@ -2415,6 +2534,7 @@ mod tests {
         assert_eq!(ModelComplexity::from_kanban(&root).nesting_depth, 3);
     }
 
+    #[cfg(feature = "diagram-treemap")]
     #[test]
     fn treemap_complexity_handles_deep_typed_trees_without_serde_recursion() {
         let mut node = crate::diagrams::treemap::TreemapNodeRenderModel {
@@ -2440,6 +2560,7 @@ mod tests {
         assert!(complexity.label_bytes >= "leaf".len());
     }
 
+    #[cfg(feature = "diagram-ishikawa")]
     #[test]
     fn ishikawa_complexity_handles_deep_typed_trees_without_serde_recursion() {
         let mut node = crate::diagrams::ishikawa::IshikawaNodeRenderModel {

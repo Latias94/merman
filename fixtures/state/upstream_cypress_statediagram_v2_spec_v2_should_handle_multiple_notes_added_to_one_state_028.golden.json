@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -34,8 +37,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "left of"
+        "look": "neo",
+        "position": "left of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -46,12 +52,15 @@
         "cssCompiledStyles": [],
         "id": "MyState----note-0",
         "domId": "state-MyState----note-0",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "left of",
-        "parentId": "MyState----parent"
+        "parentId": "MyState----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -65,8 +74,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "right of"
+        "look": "neo",
+        "position": "right of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -77,12 +89,15 @@
         "cssCompiledStyles": [],
         "id": "MyState----note-1",
         "domId": "state-MyState----note-1",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "right of",
-        "parentId": "MyState----parent-1"
+        "parentId": "MyState----parent-1",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -99,7 +114,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "MyState-MyState----note-1",
@@ -114,7 +129,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},

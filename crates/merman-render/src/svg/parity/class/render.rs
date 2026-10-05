@@ -84,7 +84,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             )
         })
         .collect();
-    let marker_expectations = class_marker_terminal_expectations(&model.relations);
+    let marker_expectations =
+        class_marker_terminal_expectations(&model.relations, settings.look == "neo");
     options.work_meter().charge(layout.clusters.len())?;
     let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
         node_expectations.clone(),
@@ -146,9 +147,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
     out.checkpoint()?;
-    // The host Dagre path uses Mermaid 11.17.2's marker helper. The selected ELK 0.2.3 release
-    // bundles the pre-marker-fix helper, which intentionally omits markerUnits on nine ordinary
-    // markers while retaining it on extensionStart and all margin variants.
+    // Mermaid 12 shares host markers across registered layouts.
     class_markers(
         &mut out,
         diagram_id,
@@ -156,16 +155,12 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         true,
         relation_theme,
         &mut relation_theme_receipt,
-        if layout.uses_elk_adapter_dom {
-            ClassMarkerProfile::LayoutElk023
-        } else {
-            ClassMarkerProfile::Mermaid1172
-        },
     )?;
     emit.checkpoint()?;
 
     let ClassRenderLookups {
         class_nodes_by_id,
+        class_color_indices,
         relations_by_id,
         relation_index_by_id,
         note_by_id,
@@ -175,8 +170,72 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     drop(build_ctx_guard);
 
     let terminal_text_style = crate::class::class_cardinality_text_style(&settings.text_style);
+    let mut paint_edges = std::borrow::Cow::Borrowed(layout.edges.as_slice());
+    if layout.uses_elk_adapter_dom {
+        let edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        paint_edges = std::borrow::Cow::Owned(edges);
+    }
+    let mut missing_section_points = rustc_hash::FxHashMap::default();
+    if layout.uses_elk_adapter_dom {
+        let nodes_by_id: rustc_hash::FxHashMap<_, _> = layout
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        for edge in &layout.edges {
+            if edge.points.is_empty()
+                && let (Some(start), Some(end)) = (
+                    nodes_by_id.get(edge.from.as_str()),
+                    nodes_by_id.get(edge.to.as_str()),
+                )
+            {
+                missing_section_points.insert(
+                    edge.id.as_str(),
+                    crate::elk_geometry::missing_rect_section_points(start, end),
+                );
+            }
+        }
+    }
+    let line_hop_edges = if layout.uses_elk_adapter_dom {
+        options.work_meter().charge(paint_edges.len())?;
+        paint_edges
+            .iter()
+            .map(|edge| {
+                let relation = relations_by_id.get(edge.id.as_str()).copied();
+                let missing = missing_section_points.get(edge.id.as_str());
+                super::super::line_hops::LineHopEdge {
+                    id: edge.id.as_str(),
+                    points: missing.map(Vec::as_slice).unwrap_or(&edge.points),
+                    curve: Some(if missing.is_some() {
+                        "linear"
+                    } else {
+                        "rounded"
+                    }),
+                    arrow_type_start: relation.and_then(|rel| {
+                        super::edge::class_arrow_type_for_relation_end(rel.relation.type1)
+                    }),
+                    arrow_type_end: relation.and_then(|rel| {
+                        super::edge::class_arrow_type_for_relation_end(rel.relation.type2)
+                    }),
+                }
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let line_hop_paths = super::super::line_hops::elk_line_hop_paths(
+        effective_config,
+        &line_hop_edges,
+        options.work_meter(),
+    )?;
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
-        edges: &layout.edges,
+        edges: &paint_edges,
+        missing_section_points: &missing_section_points,
+        work_meter: options.work_meter(),
+        line_hop_paths: &line_hop_paths,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
         diagram_marker_class: aria_roledescription,
@@ -191,8 +250,9 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         look: settings.look.as_str(),
         hand_drawn_seed: settings.hand_drawn_seed.clone(),
         timing,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         edge_paths_class: if layout.uses_elk_adapter_dom {
-            "edges edgePath"
+            "edges edgePaths"
         } else {
             "edgePaths"
         },
@@ -209,6 +269,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let nodes_ctx = ClassNodesRenderContext {
         layout,
         class_nodes_by_id: &class_nodes_by_id,
+        class_color_indices: &class_color_indices,
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,
         settings: &settings,
@@ -260,10 +321,10 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         detail.nodes += s.elapsed();
     }
 
-    // Both Mermaid 11.17.2 renderers append shared resources after the graph wrapper. ELK changes
+    // Mermaid 12 renderers append shared resources after the graph wrapper. ELK changes
     // only the layout geometry and edge z-order; it does not create a second top-level painter.
-    push_class_shadow_defs(&mut out, diagram_id, effective_config)?;
-    push_class_gradient(&mut out, diagram_id, effective_config)?;
+    push_look_shadow_defs(&mut out, diagram_id, effective_config)?;
+    push_look_gradient(&mut out, diagram_id, effective_config)?;
     emit.checkpoint()?;
 
     drop(render_guard);

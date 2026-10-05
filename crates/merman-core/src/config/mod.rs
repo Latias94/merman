@@ -17,7 +17,9 @@ use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
 
+mod appearance;
 mod source_presentation;
+pub(crate) use appearance::resolve_appearance;
 pub(crate) use source_presentation::is_presentation_field;
 
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
@@ -725,17 +727,73 @@ impl MermaidConfig {
 
     pub(crate) fn mark_mutations_after_as_explicit(&mut self, before: &Self) {
         let paths = self
-            .mutation_paths
-            .iter()
-            .filter(|(candidate, revision)| {
-                before
-                    .mutation_paths
-                    .get(*candidate)
-                    .is_none_or(|before_revision| *revision > before_revision)
-            })
-            .map(|(path, _)| Arc::clone(path))
+            .mutation_paths_after(before)
+            .map(Arc::from)
             .collect::<Vec<_>>();
         Arc::make_mut(&mut self.explicit_config_paths).extend(paths);
+    }
+
+    pub(crate) fn mutation_paths_after<'a>(
+        &'a self,
+        before: &'a Self,
+    ) -> impl Iterator<Item = &'a str> {
+        self.mutation_paths.iter().filter_map(|(path, revision)| {
+            before
+                .mutation_paths
+                .get(path)
+                .is_none_or(|before_revision| revision > before_revision)
+                .then_some(path.as_ref())
+        })
+    }
+
+    /// Replays detector assignments after selecting and materializing operation appearance.
+    pub(crate) fn replay_mutations_after(
+        &mut self,
+        before: &Self,
+        after: &Self,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        for path in after.mutation_paths_after(before) {
+            control.checkpoint()?;
+            self.shadow_theme_compatibility_path(path);
+            self.record_mutation(path);
+            self.mark_explicit_config_path(path);
+            if path.is_empty() {
+                replace_value_nonrecursive(
+                    self.value_mut(),
+                    clone_value_nonrecursive(after.as_value()),
+                );
+                continue;
+            }
+            let value = path
+                .split('.')
+                .try_fold(after.as_value(), |value, segment| {
+                    value.as_object()?.get(segment)
+                });
+            if let Some(value) = value {
+                self.set_value_without_theme_compatibility_shadow(
+                    path,
+                    clone_value_nonrecursive(value),
+                );
+            } else {
+                let mut segments = path.rsplitn(2, '.');
+                let key = segments.next().expect("a nonempty mutation path");
+                let parent = match segments.next() {
+                    Some(parent) => parent
+                        .split('.')
+                        .try_fold(self.value_mut(), |value, segment| {
+                            value.as_object_mut()?.get_mut(segment)
+                        }),
+                    None => Some(self.value_mut()),
+                };
+                if let Some(parent) = parent.and_then(Value::as_object_mut)
+                    && let Some(removed) = parent.remove(key)
+                {
+                    drop_value_nonrecursive(removed);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn mark_explicit_config_path(&mut self, dotted_path: &str) {

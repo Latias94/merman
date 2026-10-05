@@ -309,6 +309,16 @@ fn portable_path_label(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+fn encode_lower_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
 fn provenance() -> Provenance {
     let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let repository_root_text = repository_root.to_string_lossy().into_owned();
@@ -325,7 +335,7 @@ fn provenance() -> Provenance {
     .map(|output| !output.is_empty());
     let cargo_lock_sha256 = fs::read(repository_root.join("Cargo.lock"))
         .ok()
-        .map(|bytes| data_encoding::HEXLOWER.encode(&Sha256::digest(bytes)));
+        .map(|bytes| encode_lower_hex(&Sha256::digest(bytes)));
 
     Provenance {
         collected_at_unix_seconds: SystemTime::now()
@@ -596,7 +606,7 @@ fn analyze_pack(source_label: &str, bytes: &[u8]) -> Result<PackStatistics, Box<
         }
     }
     let (max_alias_depth, max_alias_fanout) = alias_statistics(icons, &aliases)?;
-    let sha256 = data_encoding::HEXLOWER.encode(&Sha256::digest(bytes));
+    let sha256 = encode_lower_hex(&Sha256::digest(bytes));
 
     Ok(PackStatistics {
         source_label: source_label.to_owned(),

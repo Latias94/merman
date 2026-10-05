@@ -4,8 +4,8 @@ use crate::svg::pipeline::{
 };
 use crate::{Error, Result};
 use cssparser::{
-    BasicParseErrorKind, CssStringWriter, Parser, ParserInput, SourcePosition, Token,
-    serialize_identifier, serialize_name,
+    BasicParseErrorKind, CssStringWriter, Parser, SourcePosition, Token, serialize_identifier,
+    serialize_name,
 };
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesRef, BytesStart, BytesText, Event};
@@ -121,7 +121,7 @@ fn collect_ids(svg: &str, cadence: &mut RebaseCadence<'_>) -> Result<CollectedId
         let event = event.map_err(|error| rebase_error(format!("invalid SVG XML: {error}")))?;
         match event {
             Event::Start(start) | Event::Empty(start) => {
-                collect_start_id(&start, &reader, &mut ids, cadence)?;
+                collect_start_id(&start, &mut ids, cadence)?;
             }
             Event::Eof => break,
             _ => {}
@@ -134,7 +134,6 @@ fn collect_ids(svg: &str, cadence: &mut RebaseCadence<'_>) -> Result<CollectedId
 
 fn collect_start_id(
     start: &BytesStart<'_>,
-    reader: &Reader<&[u8]>,
     ids: &mut BTreeSet<String>,
     cadence: &mut RebaseCadence<'_>,
 ) -> Result<()> {
@@ -142,11 +141,11 @@ fn collect_start_id(
         cadence.tick()?;
         let attribute =
             attribute.map_err(|error| rebase_error(format!("invalid SVG attribute: {error}")))?;
-        if attribute.key.as_ref() != b"id" {
+        if attribute.key.as_ref() != "id" {
             continue;
         }
         let id = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|error| rebase_error(format!("invalid SVG id: {error}")))?;
         if id.is_empty() {
             return Err(rebase_error("SVG id must not be empty"));
@@ -194,11 +193,22 @@ impl IoWrite for ProjectedByteCounter {
 
 struct ProjectedTextCounter<'a> {
     bytes: &'a mut ProjectedByteCounter,
+    attribute: bool,
 }
 
 impl<'a> ProjectedTextCounter<'a> {
-    fn xml_escaped(bytes: &'a mut ProjectedByteCounter) -> Self {
-        Self { bytes }
+    fn xml_text(bytes: &'a mut ProjectedByteCounter) -> Self {
+        Self {
+            bytes,
+            attribute: false,
+        }
+    }
+
+    fn xml_attribute(bytes: &'a mut ProjectedByteCounter) -> Self {
+        Self {
+            bytes,
+            attribute: true,
+        }
     }
 }
 
@@ -208,7 +218,9 @@ impl fmt::Write for ProjectedTextCounter<'_> {
         for (index, byte) in value.bytes().enumerate() {
             let escaped_bytes = match byte {
                 b'<' | b'>' => 4,
-                b'&' => 5,
+                b'&' | b'\r' => 5,
+                b'\n' if self.attribute => 5,
+                b'\t' if self.attribute => 4,
                 b'\'' | b'"' => 6,
                 _ => continue,
             };
@@ -228,9 +240,7 @@ struct LogicalStyleText {
 
 impl LogicalStyleText {
     fn push_text(&mut self, text: &BytesText<'_>, cadence: &mut RebaseCadence<'_>) -> Result<()> {
-        let text = text
-            .xml10_content()
-            .map_err(|error| rebase_error(format!("invalid style text: {error}")))?;
+        let text = text.xml10_content();
         self.push_str(&text, cadence)
     }
 
@@ -239,9 +249,7 @@ impl LogicalStyleText {
         text: &quick_xml::events::BytesCData<'_>,
         cadence: &mut RebaseCadence<'_>,
     ) -> Result<()> {
-        let text = text
-            .xml10_content()
-            .map_err(|error| rebase_error(format!("invalid style CDATA: {error}")))?;
+        let text = text.xml10_content();
         self.push_str(&text, cadence)
     }
 
@@ -283,10 +291,8 @@ fn resolve_style_reference(reference: &BytesRef<'_>) -> Result<char> {
         return Ok(value);
     }
 
-    let name = reference
-        .decode()
-        .map_err(|error| rebase_error(format!("invalid style entity reference: {error}")))?;
-    match name.as_ref() {
+    let name = reference.as_ref();
+    match name {
         "amp" => Ok('&'),
         "apos" => Ok('\''),
         "gt" => Ok('>'),
@@ -323,16 +329,8 @@ fn projected_rebased_xml_bytes(
                 if style_text.is_some() {
                     return Err(nested_style_xml_error());
                 }
-                let is_style = start.local_name().as_ref().eq_ignore_ascii_case(b"style");
-                project_start(
-                    &start,
-                    &reader,
-                    ids,
-                    prefix,
-                    writer.get_mut(),
-                    false,
-                    cadence,
-                )?;
+                let is_style = start.local_name().as_ref().eq_ignore_ascii_case("style");
+                project_start(&start, ids, prefix, writer.get_mut(), false, cadence)?;
                 if is_style {
                     style_text = Some(LogicalStyleText::default());
                 }
@@ -341,22 +339,14 @@ fn projected_rebased_xml_bytes(
                 if style_text.is_some() {
                     return Err(nested_style_xml_error());
                 }
-                project_start(
-                    &start,
-                    &reader,
-                    ids,
-                    prefix,
-                    writer.get_mut(),
-                    true,
-                    cadence,
-                )?;
+                project_start(&start, ids, prefix, writer.get_mut(), true, cadence)?;
             }
             Event::End(end) => {
                 if let Some(style) = style_text.take() {
-                    if !end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
+                    if !end.local_name().as_ref().eq_ignore_ascii_case("style") {
                         return Err(nested_style_xml_error());
                     }
-                    let mut output = ProjectedTextCounter::xml_escaped(writer.get_mut());
+                    let mut output = ProjectedTextCounter::xml_text(writer.get_mut());
                     style.rewrite_to(ids, prefix, &mut output, cadence)?;
                 }
                 writer.write_event(Event::End(end)).map_err(write_error)?;
@@ -393,7 +383,6 @@ fn projected_rebased_xml_bytes(
 
 fn project_start(
     start: &BytesStart<'_>,
-    reader: &Reader<&[u8]>,
     ids: &CollectedIds,
     prefix: &str,
     output: &mut ProjectedByteCounter,
@@ -401,26 +390,20 @@ fn project_start(
     cadence: &mut RebaseCadence<'_>,
 ) -> Result<()> {
     let start_name = start.name();
-    let name = reader
-        .decoder()
-        .decode(start_name.as_ref())
-        .map_err(|error| rebase_error(format!("invalid element name: {error}")))?;
+    let name = start_name.as_ref();
     output.add(1);
     output.add(name.len());
     for attribute in start.attributes().with_checks(true) {
         cadence.tick()?;
         let attribute =
             attribute.map_err(|error| rebase_error(format!("invalid SVG attribute: {error}")))?;
-        let key = reader
-            .decoder()
-            .decode(attribute.key.as_ref())
-            .map_err(|error| rebase_error(format!("invalid attribute name: {error}")))?;
+        let key = attribute.key.as_ref();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|error| rebase_error(format!("invalid attribute value: {error}")))?;
         output.add(1 + key.len() + 2);
-        let mut escaped = ProjectedTextCounter::xml_escaped(output);
-        rewrite_attribute_to(&key, &value, ids, prefix, &mut escaped, cadence)?;
+        let mut escaped = ProjectedTextCounter::xml_attribute(output);
+        rewrite_attribute_to(key, &value, ids, prefix, &mut escaped, cadence)?;
         output.add(1);
     }
     output.add(if empty { 2 } else { 1 });
@@ -472,8 +455,8 @@ fn write_rebased_xml<W: IoWrite>(
                 if style_text.is_some() {
                     return Err(nested_style_xml_error());
                 }
-                let is_style = start.local_name().as_ref().eq_ignore_ascii_case(b"style");
-                let rewritten = rewrite_start(start, &reader, ids, prefix, cadence)?;
+                let is_style = start.local_name().as_ref().eq_ignore_ascii_case("style");
+                let rewritten = rewrite_start(start, ids, prefix, cadence)?;
                 writer
                     .write_event(Event::Start(rewritten))
                     .map_err(write_error)?;
@@ -486,7 +469,7 @@ fn write_rebased_xml<W: IoWrite>(
                 if style_text.is_some() {
                     return Err(nested_style_xml_error());
                 }
-                let rewritten = rewrite_start(start, &reader, ids, prefix, cadence)?;
+                let rewritten = rewrite_start(start, ids, prefix, cadence)?;
                 writer
                     .write_event(Event::Empty(rewritten))
                     .map_err(write_error)?;
@@ -494,7 +477,7 @@ fn write_rebased_xml<W: IoWrite>(
             }
             Event::End(end) => {
                 if let Some(style) = style_text.take() {
-                    if !end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
+                    if !end.local_name().as_ref().eq_ignore_ascii_case("style") {
                         return Err(nested_style_xml_error());
                     }
                     let mut css = String::new();
@@ -536,31 +519,22 @@ fn write_rebased_xml<W: IoWrite>(
 
 fn rewrite_start(
     start: BytesStart<'_>,
-    reader: &Reader<&[u8]>,
     ids: &CollectedIds,
     prefix: &str,
     cadence: &mut RebaseCadence<'_>,
 ) -> Result<BytesStart<'static>> {
-    let name = reader
-        .decoder()
-        .decode(start.name().as_ref())
-        .map_err(|error| rebase_error(format!("invalid element name: {error}")))?
-        .into_owned();
+    let name = start.name().as_ref().to_owned();
     let mut rewritten = BytesStart::new(name);
     for attribute in start.attributes().with_checks(true) {
         cadence.tick()?;
         let attribute =
             attribute.map_err(|error| rebase_error(format!("invalid SVG attribute: {error}")))?;
-        let key = reader
-            .decoder()
-            .decode(attribute.key.as_ref())
-            .map_err(|error| rebase_error(format!("invalid attribute name: {error}")))?
-            .into_owned();
+        let key = attribute.key.as_ref();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|error| rebase_error(format!("invalid attribute value: {error}")))?;
-        let value = rewrite_attribute(&key, &value, ids, prefix, cadence)?;
-        rewritten.push_attribute((key.as_str(), value.as_str()));
+        let value = rewrite_attribute(key, &value, ids, prefix, cadence)?;
+        rewritten.push_attribute((key, value.as_str()));
     }
     Ok(rewritten)
 }
@@ -759,13 +733,12 @@ fn rewrite_component_values_to<W: fmt::Write>(
     output: &mut W,
     cadence: &mut RebaseCadence<'_>,
 ) -> Result<()> {
-    let mut input = ParserInput::new(css);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(css);
     rewrite_parser(&mut parser, ids, prefix, rewrite_hashes, output, cadence)
 }
 
-fn rewrite_parser<'i, 't, W: fmt::Write>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_parser<W: fmt::Write>(
+    input: &mut Parser<'_>,
     ids: &CollectedIds,
     prefix: &str,
     rewrite_hashes: bool,
@@ -831,7 +804,7 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
                         Ok(()) => Ok(()),
                         Err(error) => {
                             rewrite_error = Some(error);
-                            Err(nested.new_custom_error::<(), ()>(()))
+                            Err(cssparser::ParseError::<()>::custom(()))
                         }
                     }
                 });
@@ -866,7 +839,7 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
                         Ok(()) => Ok(()),
                         Err(error) => {
                             rewrite_error = Some(error);
-                            Err(nested.new_custom_error::<(), ()>(()))
+                            Err(cssparser::ParseError::<()>::custom(()))
                         }
                     }
                 });
@@ -900,8 +873,8 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
     Ok(())
 }
 
-fn rewrite_attribute_selector_to<'i, 't, W: fmt::Write>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_attribute_selector_to<W: fmt::Write>(
+    input: &mut Parser<'_>,
     prefix: &str,
     output: &mut W,
     cadence: &mut RebaseCadence<'_>,
@@ -1113,8 +1086,8 @@ fn rewrite_selector_attribute_value_to<W: fmt::Write>(
     Ok(())
 }
 
-fn rewrite_url_or_nested_to<'i, 't, W: fmt::Write>(
-    input: &mut Parser<'i, 't>,
+fn rewrite_url_or_nested_to<W: fmt::Write>(
+    input: &mut Parser<'_>,
     ids: &CollectedIds,
     prefix: &str,
     rewrite_hashes: bool,
@@ -1126,7 +1099,7 @@ fn rewrite_url_or_nested_to<'i, 't, W: fmt::Write>(
         return rewrite_parser(input, ids, prefix, rewrite_hashes, output, cadence);
     }
     let body_start = input.position();
-    let mut payload = None::<(SourcePosition, SourcePosition, Token<'i>)>;
+    let mut payload = None::<(SourcePosition, SourcePosition, Token<'_>)>;
     let mut has_multiple_payload_tokens = false;
     let body_end = loop {
         cadence.tick()?;
@@ -1259,6 +1232,26 @@ mod tests {
     }
 
     #[test]
+    fn preserves_referenced_whitespace_in_attributes_and_style_text() {
+        let svg = r##"<svg id="root" data-note="&#13;&#10;&#9;"><style>#root{fill:red}&#13;&#10;&#9;</style></svg>"##;
+        let output = rebase(svg);
+        let document = roxmltree::Document::parse(&output).expect("rebased SVG XML");
+
+        assert_eq!(
+            document.root_element().attribute("data-note"),
+            Some("\r\n\t")
+        );
+        assert_eq!(
+            document
+                .root_element()
+                .first_element_child()
+                .unwrap()
+                .text(),
+            Some("#fragment-light-root{fill:red}\r\n\t")
+        );
+    }
+
+    #[test]
     fn duplicate_ids_fail_closed() {
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let error = SvgPipeline::parity()
@@ -1271,7 +1264,7 @@ mod tests {
 
     #[test]
     fn projected_n_minus_one_returns_the_exact_svg_byte_limit_error() {
-        let svg = r##"<svg id="root" aria-labelledby="paint shape"><style>#root[aria-labelledby="paint shape"] #shape{fill:url(#paint);content:"&lt;&amp;"}</style><style><![CDATA[#shape{stroke:url(#paint)}]]></style><defs><linearGradient id="paint"/></defs><path id="shape" fill="url(#paint)"/><use href="#shape"/></svg>"##;
+        let svg = r##"<svg id="root" aria-labelledby="paint shape" data-note="&#13;&#10;&#9;"><style>#root[aria-labelledby="paint shape"] #shape{fill:url(#paint);content:"&lt;&amp;"}&#13;&#10;&#9;</style><style><![CDATA[#shape{stroke:url(#paint)}]]></style><defs><linearGradient id="paint"/></defs><path id="shape" fill="url(#paint)"/><use href="#shape"/></svg>"##;
         let processor = RebaseSvgIdsPostprocessor::new("fragment-with-a-long-scope");
         let unbounded_session = RenderEnvironment::deterministic()
             .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())

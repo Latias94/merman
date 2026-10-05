@@ -10,13 +10,14 @@
     "package_manifest": "crates/merman/Cargo.toml",
     "bench": "sequence_message_memory",
     "features": [
+      "all-diagrams",
       "svg"
     ],
     "default_features": false,
     "inputs": [
       {
         "path": "crates/merman/benches/sequence_message_memory.rs",
-        "sha256": "75e9eeb4dcabe8ba760be8c137124ad9d26a4677d37f7edd2f149dface8a774e"
+        "sha256": "28e8f82b6149ea19bcb0012eb527072f8e071ee5606c7b9d06d9bb61e9aa1c16"
       },
       {
         "path": "crates/merman/benches/native_memory/allocator.rs",
@@ -24,11 +25,11 @@
       },
       {
         "path": "crates/merman/Cargo.toml",
-        "sha256": "80210299663b07c92c80b853a18a844b41fe1a3803f5a5af25c42eae47e251ba"
+        "sha256": "02d5bff5335ae0c9e9e9e653bd7804ceeda0add12db2268d68da23e7dd83798f"
       },
       {
         "path": "Cargo.lock",
-        "sha256": "4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71"
+        "sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8"
       }
     ]
   },

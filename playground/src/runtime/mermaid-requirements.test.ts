@@ -49,7 +49,7 @@ test("external requirements consume every generated external diagram alias", () 
   }
   assert.deepEqual(mermaidExternalRequirementsFor(available("class", "elk")), {
     externalDiagrams: [],
-    layoutModules: ["elk"],
+    layoutModules: [],
   });
 });
 
@@ -69,11 +69,11 @@ test("unavailable detection never requests external Mermaid modules", () => {
 test("normalization sorts, deduplicates, freezes, and rejects unknown ids", () => {
   const requirements = normalizeMermaidExternalRequirements({
     externalDiagrams: ["zenuml", "zenuml"],
-    layoutModules: ["tidy-tree", "elk", "tidy-tree"],
+    layoutModules: ["tidy-tree", "tidy-tree"],
   });
   assert.deepEqual(requirements, {
     externalDiagrams: ["zenuml"],
-    layoutModules: ["elk", "tidy-tree"],
+    layoutModules: ["tidy-tree"],
   });
   assert.equal(Object.isFrozen(requirements), true);
   assert.equal(Object.isFrozen(requirements.externalDiagrams), true);

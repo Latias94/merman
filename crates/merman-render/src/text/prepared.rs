@@ -13,7 +13,7 @@ use crate::diagram_theme::{
     ThemeTextStyle, WhiteSpace,
 };
 use crate::resources::OperationWorkMeter;
-use cssparser::{Delimiter, Parser, ParserInput};
+use cssparser::{Delimiter, Parser};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -227,8 +227,7 @@ enum CssTypographyScalar {
 fn parse_css_typography_scalar(value: &str) -> Option<CssTypographyScalar> {
     use cssparser::Token;
 
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let scalar = match parser.next().ok()?.clone() {
         Token::Number { value, .. } => CssTypographyScalar::Number(value),
         Token::Percentage { unit_value, .. } => CssTypographyScalar::Percentage(unit_value),
@@ -363,8 +362,7 @@ impl PreparedTextTypographyRequest {
 }
 
 pub(crate) fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let mut families = Vec::new();
     let mut generic_families = BTreeMap::new();
 
@@ -492,8 +490,7 @@ fn catalog_font_stack_css(stack: &FontStack) -> String {
 }
 
 fn retain_non_font_declarations(existing: &str, remove_text_transform: bool) -> String {
-    let mut input = ParserInput::new(existing);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(existing);
     let mut retained = String::new();
 
     while !parser.is_exhausted() {
@@ -502,7 +499,7 @@ fn retain_non_font_declarations(existing: &str, remove_text_transform: bool) -> 
             let property = declaration.expect_ident_cloned()?.to_string();
             declaration.expect_colon()?;
             while declaration.next_including_whitespace().is_ok() {}
-            Ok::<_, cssparser::ParseError<'_, ()>>(property)
+            Ok::<_, cssparser::ParseError<()>>(property)
         });
         let raw = parser
             .slice(start..parser.position())

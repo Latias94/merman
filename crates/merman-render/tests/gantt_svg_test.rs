@@ -1953,6 +1953,37 @@ Ship: ship, after plan, 1d
 }
 
 #[test]
+fn gantt_section_titles_share_mermaid_break_rows_and_vertical_alignment() {
+    let source = include_str!("../../../fixtures/gantt/multiline_section_title_br_tags.mmd");
+    let layout = layout_gantt_from_text(source);
+    let section = &layout.section_titles[0];
+    let expected = ["Line1", "Line2", "Line3", "Line4", "Line5"];
+    assert_eq!(section.lines, expected);
+    assert_eq!(section.dy_em, -2.0);
+
+    let svg = render_gantt_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("sectionTitle sectionTitle0"))
+        .expect("section title");
+    assert_eq!(title.attribute("dy"), Some("-2em"));
+    let rows: Vec<_> = title
+        .children()
+        .filter(|node| node.has_tag_name("tspan"))
+        .collect();
+    assert_eq!(
+        rows.iter()
+            .map(|node| node.text().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(row.attribute("dy"), (index > 0).then_some("1em"));
+    }
+}
+
+#[test]
 fn gantt_task_text_height_follows_final_svg_security_sanitization() {
     let source = r#"gantt
 dateFormat YYYY-MM-DD

@@ -17,8 +17,9 @@ use super::namespace::{
 };
 use super::node::{
     ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
-    ClassNodeRenderState, ClassSvgNodeBodyContext, render_class_html_node_body,
-    render_class_node_basic_container, render_class_node_shell_open, render_class_svg_node_body,
+    ClassNodeRenderState, ClassNodeShellContext, ClassSvgNodeBodyContext,
+    render_class_html_node_body, render_class_node_basic_container, render_class_node_shell_open,
+    render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::settings::ClassRenderSettings;
@@ -51,6 +52,7 @@ pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNode>,
+    pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
     pub(super) settings: &'a ClassRenderSettings,
@@ -166,6 +168,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
+                            use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
@@ -201,6 +204,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
+                            use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
@@ -318,8 +322,8 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         .iter()
         .map(|cluster| (cluster.id.as_str(), cluster))
         .collect::<HashMap<_, _>>();
-    let edges_by_id = ctx
-        .layout
+    // Consume the prepared paint routes, including terminal straightening and label updates.
+    let edges_by_id = edge_ctx
         .edges
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
@@ -343,18 +347,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         });
     }
 
-    // `layout-elk@0.2.3` uses Mermaid's common layout painter. It inserts one root and four
-    // sibling groups; ELK's post-paint z-order is edge paths, clusters, edge labels, nodes.
-    let edge_label_centers = render_class_split_edge_paths(
-        out,
-        content_bounds,
-        detail,
-        theme_receipt,
-        edge_ctx,
-        0.0,
-        0.0,
-    )?;
-
+    // Mermaid 12 paints clusters before paths so namespace fills cannot cover relations.
     detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
@@ -366,6 +359,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             content_ty: ctx.content_ty,
             bounds_dx: 0.0,
             bounds_dy: 0.0,
+            use_html_labels: ctx.settings.edge_use_html_labels,
             look: ctx.settings.look.as_str(),
             mermaid_config: Some(ctx.mermaid_config),
             math_renderer: ctx.math_renderer,
@@ -376,6 +370,15 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         typography_receipt,
     )?;
 
+    let edge_label_centers = render_class_split_edge_paths(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        edge_ctx,
+        0.0,
+        0.0,
+    )?;
     render_class_split_edge_labels(
         out,
         content_bounds,
@@ -621,6 +624,9 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
 ) -> Result<()> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
+        missing_section_points: edge_ctx.missing_section_points,
+        work_meter: edge_ctx.work_meter,
+        line_hop_paths: edge_ctx.line_hop_paths,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
         diagram_marker_class: edge_ctx.diagram_marker_class,
@@ -646,6 +652,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         look: edge_ctx.look,
         hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
         timing: edge_ctx.timing,
+        uses_elk_adapter_dom: edge_ctx.uses_elk_adapter_dom,
         edge_paths_class: edge_ctx.edge_paths_class,
         relation_theme: edge_ctx.relation_theme,
         text_paint: edge_ctx.text_paint,
@@ -753,7 +760,11 @@ fn render_class_node_id<O: SvgOutput>(
                 diagram_id: ctx.diagram_id,
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
-                line_height: settings.line_height,
+                use_html_labels: settings.diagram_use_html_labels,
+                wrapping_width: crate::class::config::ClassConfigView::new(
+                    ctx.mermaid_config.as_value(),
+                )
+                .interface_wrapping_width(),
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
@@ -833,10 +844,14 @@ fn render_class_node_id<O: SvgOutput>(
         out,
         node,
         position,
-        ctx.diagram_id,
-        ctx.emit,
-        settings.look.as_str(),
-        settings.security_level_loose,
+        &ClassNodeShellContext {
+            diagram_id: ctx.diagram_id,
+            emit: ctx.emit,
+            look: settings.look.as_str(),
+            security_level_loose: settings.security_level_loose,
+            color_index: ctx.class_color_indices.get(n.id.as_str()).copied(),
+            palette_size: super::css::class_palette_size(ctx.mermaid_config.as_value()),
+        },
     )?;
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {
@@ -889,6 +904,11 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
+                use_gradient: config_bool(
+                    ctx.mermaid_config.as_value(),
+                    &["themeVariables", "useGradient"],
+                )
+                .unwrap_or(false),
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },
@@ -916,6 +936,11 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
+                use_gradient: config_bool(
+                    ctx.mermaid_config.as_value(),
+                    &["themeVariables", "useGradient"],
+                )
+                .unwrap_or(false),
                 timing: ctx.timing,
             },
         );

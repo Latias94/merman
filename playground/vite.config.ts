@@ -6,12 +6,30 @@ import {
   loadOpaqueRealmCspHashes,
 } from "./scripts/opaque-realm-csp.mjs";
 import { OPAQUE_REALM_ARTIFACT_PLAN } from "./scripts/opaque-realm-artifact-plan.mjs";
+import { readBuildIdentity } from "./scripts/build-identity.mjs";
 
 const playgroundRoot = import.meta.dirname;
+const buildIdentity = readBuildIdentity(path.resolve(playgroundRoot, ".."));
 const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(playgroundRoot);
 
 export default defineConfig({
-  plugins: [createOpaqueRealmCspPlugin(opaqueRealmCspHashes), react()],
+  define: {
+    __PLAYGROUND_BUILD__: JSON.stringify(buildIdentity),
+  },
+  plugins: [
+    createOpaqueRealmCspPlugin(opaqueRealmCspHashes),
+    react(),
+    {
+      name: "playground-build-identity",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "build-info.json",
+          source: `${JSON.stringify(buildIdentity, null, 2)}\n`,
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(playgroundRoot, "./"),

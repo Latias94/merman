@@ -157,12 +157,12 @@
           "to": "s1",
           "rel_type": "rel",
           "start_point": {
-            "x": 345.969,
-            "y": 351.357
+            "x": 345.671,
+            "y": 351.392
           },
           "end_point": {
             "x": 516.0,
-            "y": 363.633
+            "y": 331.632
           },
           "offset_x": null,
           "offset_y": null,

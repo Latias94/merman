@@ -5,11 +5,14 @@ use super::model::SequenceSvgModel;
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use rustc_hash::FxHashMap;
 
-#[derive(Debug, Clone, Copy)]
-pub(super) struct SequenceActorPopupOptions {
+use crate::text::TextStyle;
+
+#[derive(Clone, Copy)]
+pub(super) struct SequenceActorPopupOptions<'a> {
     pub(super) force_menus: bool,
     pub(super) mirror_actors: bool,
     pub(super) actor_height: f64,
+    pub(super) actor_text_style: &'a TextStyle,
 }
 
 pub(super) fn render_sequence_actor_popup_menus(
@@ -59,7 +62,11 @@ pub(super) fn render_sequence_actor_popup_menus(
             .map(|c| format!("actorPopupMenuPanel {c} {popup_actor_pos_class}"))
             .unwrap_or_else(|| format!("actorPopupMenuPanel actor {popup_actor_pos_class}"));
 
-        let node_id = format!("actor-top-{actor_id}");
+        let node_id = if options.mirror_actors {
+            format!("actor-bottom-{actor_id}")
+        } else {
+            format!("actor-top-{actor_id}")
+        };
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
             typography_receipt
                 .record_missing_text_effect(crate::sequence::SequenceTextSurface::ParticipantLabel);
@@ -68,8 +75,22 @@ pub(super) fn render_sequence_actor_popup_menus(
         let (x, _y) = node_left_top(n);
         let panel_width = actor_popup_widths.get(actor_id).copied().unwrap_or(n.width);
 
+        let is_neo = crate::config::config_diagram_look(sanitize_config.as_value()).is_neo();
+        let rect_height = crate::sequence::sequence_actor_popup_rect_height(
+            &actor.actor_type,
+            n.height,
+            options.actor_height,
+            is_neo,
+            options.mirror_actors,
+        );
+        let radius = match actor.actor_type.as_str() {
+            "collections" | "queue" | "database" => 0,
+            _ if is_neo => 6,
+            _ => 3,
+        };
         let mut link_y: f64 = 20.0;
         let panel_height = crate::sequence::sequence_actor_popup_panel_height(actor.links.len());
+        let text_style = super::settings::sequence_text_style_attribute(options.actor_text_style);
 
         let _ = write!(
             out,
@@ -79,10 +100,10 @@ pub(super) fn render_sequence_actor_popup_menus(
         );
         let _ = write!(
             out,
-            r##"<rect class="{class}" x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3"/>"##,
+            r##"<rect class="{class}" x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{radius}" ry="{radius}"/>"##,
             class = escape_attr(&popup_panel_class),
             x = fmt(x),
-            y = fmt(options.actor_height),
+            y = fmt(rect_height),
             w = fmt(panel_width),
             h = fmt(panel_height),
             fill = escape_xml_display(popup_fill),
@@ -105,7 +126,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 ""
             };
             let text_x = x + 10.0;
-            let text_y = options.actor_height + link_y + 10.0;
+            let text_y = rect_height + link_y + 10.0;
             // Hidden interactive links do not survive native export. Keep their
             // requested effect incomplete instead of certifying an absent filter.
             let application = if options.force_menus {
@@ -114,7 +135,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                     label,
                     text_x,
                     text_y,
-                    16.0,
+                    options.actor_text_style.font_size,
                     super::text_effect::TextShadowBaseline::MiddleStart,
                 )?
             } else {
@@ -126,7 +147,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 .unwrap_or_default();
             let style = actor_typography.terminal_style(
                 "text-anchor: start",
-                "text-anchor: start; font-size: 16px; font-weight: 400;".to_string(),
+                format!("text-anchor: start; {text_style}"),
             );
             if let Some(href) = href {
                 let _ = write!(

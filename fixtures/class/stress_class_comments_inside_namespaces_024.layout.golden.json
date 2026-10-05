@@ -5,34 +5,34 @@
       "nodes": [
         {
           "id": "Outer",
-          "x": 96.44,
-          "y": 109.5,
-          "width": 192.88,
-          "height": 219.0,
+          "x": 91.259,
+          "y": 116.5,
+          "width": 158.519,
+          "height": 209.0,
           "is_cluster": true
         },
         {
           "id": "Bar",
-          "x": 298.079,
-          "y": 311.0,
-          "width": 47.359,
-          "height": 84.0,
+          "x": 300.318,
+          "y": 301.5,
+          "width": 44.438,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Outer.Foo",
-          "x": 96.44,
-          "y": 311.0,
-          "width": 88.953,
-          "height": 84.0,
+          "x": 130.097,
+          "y": 301.5,
+          "width": 80.844,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Foo",
-          "x": 96.44,
-          "y": 109.5,
-          "width": 122.88,
-          "height": 144.0,
+          "x": 91.259,
+          "y": 129.5,
+          "width": 110.519,
+          "height": 135.0,
           "is_cluster": false
         }
       ],
@@ -45,23 +45,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 140.916,
-              "y": 311.0
+              "x": 170.519,
+              "y": 301.5
             },
             {
-              "x": 233.64,
-              "y": 311.0
-            },
-            {
-              "x": 274.4,
-              "y": 311.0
+              "x": 278.099,
+              "y": 301.5
             }
           ],
           "label": {
-            "x": 233.64,
-            "y": 311.0,
-            "width": 31.52,
-            "height": 24.0
+            "x": 224.309,
+            "y": 301.0,
+            "width": 27.58,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -75,31 +71,31 @@
       "clusters": [
         {
           "id": "Outer",
-          "x": 96.44,
-          "y": 109.5,
-          "width": 192.88,
-          "height": 219.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 91.259,
+          "y": 116.5,
+          "width": 158.519,
+          "height": 209.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Outer",
           "title_label": {
-            "x": 96.44,
-            "y": 12.0,
-            "width": 37.12,
-            "height": 24.0
+            "x": 91.259,
+            "y": 22.5,
+            "width": 32.48,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 321.759,
-        "max_y": 353.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 322.536,
+        "max_y": 342.0
       }
     }
   }

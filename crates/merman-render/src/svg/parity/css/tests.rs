@@ -5,9 +5,13 @@ fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) 
 where
     I: SvgDiagramIdValue,
 {
-    let font_family = crate::config::config_font_family_css(effective_config);
     let mut out = String::new();
-    write_info_css_with_font_family(&mut out, diagram_id, effective_config, &font_family)
+    InfoCssValues::new(effective_config, None)
+        .write_all(
+            &mut out,
+            CssSelectorDiagramId(diagram_id),
+            FragmentDiagramId(diagram_id),
+        )
         .expect("String-backed Mermaid CSS emission cannot fail");
     out
 }
@@ -122,6 +126,72 @@ fn shared_css_keeps_selectors_and_url_fragments_in_their_own_escaping_domains() 
     assert!(css.contains("url(#seq:prod.v1-gradient)"));
     assert!(css.contains("url(#seq:prod.v1-drop-shadow)"));
     assert!(!css.contains(r"url(#seq\:prod\.v1-"));
+}
+
+#[test]
+fn neo_css_accepts_renderer_owned_resource_ids() {
+    let mut css = String::new();
+    write_mermaid_common_neo_css_with_ids(
+        &mut css,
+        "diag",
+        "document-gradient-7",
+        "url(#document-shadow-9)",
+        &serde_json::json!({ "themeVariables": { "useGradient": true } }),
+    )
+    .unwrap();
+    assert!(css.contains("stroke:url(#document-gradient-7)"));
+    assert!(css.contains("filter:url(#document-shadow-9)"));
+    assert!(!css.contains("url(#diag-gradient)"));
+    assert!(!css.contains("url(#diag-drop-shadow)"));
+}
+
+#[test]
+fn resolved_typography_owns_the_root_variable_and_receipt() {
+    let config = serde_json::json!({
+        "fontFamily": "Courier, monospace",
+        "themeVariables": { "fontFamily": "Arial, sans-serif" }
+    });
+    let mut css = String::new();
+    let receipt = write_info_css_with_font_family(&mut css, "diag", &config, "serif").unwrap();
+    assert!(css.ends_with("#diag :root{--mermaid-font-family:serif;}"));
+    assert_eq!(receipt.root_variable_font_family_css(), "serif");
+    assert_eq!(receipt.inherited_font_family_css(), "serif");
+}
+
+#[test]
+fn explicit_empty_root_font_omits_the_rule_without_changing_theme_font() {
+    for root_font in ["", "   "] {
+        let config = serde_json::json!({
+            "fontFamily": root_font,
+            "themeVariables": { "fontFamily": "Arial, sans-serif" }
+        });
+        for css in [
+            info_css_with_config("diag", &config),
+            er_css_with_resolved_typography("diag", &config, None, None)
+                .unwrap()
+                .css,
+        ] {
+            assert!(css.starts_with("#diag{font-family:Arial,sans-serif;"));
+            assert!(!css.contains("--mermaid-font-family"));
+        }
+    }
+}
+
+#[test]
+fn shared_and_er_css_keep_theme_font_separate_from_root_custom_property() {
+    let config = serde_json::json!({
+        "fontFamily": "Courier, monospace",
+        "themeVariables": { "fontFamily": "Arial, sans-serif" }
+    });
+    for css in [
+        info_css_with_config("diag", &config),
+        er_css_with_resolved_typography("diag", &config, None, None)
+            .unwrap()
+            .css,
+    ] {
+        assert!(css.starts_with("#diag{font-family:Arial,sans-serif;"));
+        assert!(css.ends_with("#diag :root{--mermaid-font-family:Courier,monospace;}"));
+    }
 }
 
 #[test]
@@ -241,9 +311,7 @@ fn architecture_css_prefers_theme_font_family_over_legacy_root() {
     assert!(css.contains(
         r#"#diag{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
     ));
-    assert!(
-        css.contains(r#"#diag :root{--mermaid-font-family:"IBM Plex Sans",Arial,sans-serif;}"#)
-    );
+    assert!(css.contains(r#"#diag :root{--mermaid-font-family:Courier,monospace;}"#));
 }
 
 #[test]
@@ -263,7 +331,7 @@ fn sankey_css_honors_mermaid_11_15_theme_options() {
     assert!(css.contains(r#"#sk .node-labels{font-family:"ibm plex sans",arial,sans-serif;}"#));
     assert!(css.contains(r#"#sk .sankey-label-bg{stroke:#abcdef;"#));
     assert!(css.contains(r#"#sk .sankey-label-fg{fill:#123456;}"#));
-    assert!(css.contains(r#"#sk :root{--mermaid-font-family:"ibm plex sans",arial,sans-serif;}"#));
+    assert!(css.contains(r#"#sk :root{--mermaid-font-family:"source sans",arial,sans-serif;}"#));
 }
 
 #[test]

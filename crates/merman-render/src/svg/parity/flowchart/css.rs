@@ -191,11 +191,18 @@ where
     }
 }
 
-pub(in crate::svg::parity) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId>(
+pub(in crate::svg::parity) fn write_flowchart_css<
+    DiagramId,
+    DropShadowId,
+    DropShadowSmallId,
+    GradientId,
+>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: DiagramId,
+    diagram_type: &str,
     drop_shadow_id: DropShadowId,
     drop_shadow_small_id: DropShadowSmallId,
+    gradient_id: GradientId,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
@@ -206,6 +213,7 @@ where
     DiagramId: SvgDiagramIdValue,
     DropShadowId: std::fmt::Display,
     DropShadowSmallId: std::fmt::Display,
+    GradientId: std::fmt::Display,
 {
     let id = FlowchartCssSelectorDiagramId(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
@@ -227,9 +235,6 @@ where
     });
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let radius = theme.radius.as_str();
-    let drop_shadow = theme.drop_shadow.as_str();
-    let neo = theme.common.is_neo();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
     let edge_label_background = text_surface_paint
@@ -239,6 +244,8 @@ where
     let tertiary = theme.tertiary.as_str();
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
+    let tooltip_border = theme_token(effective_config, "border2", cluster_border);
+    let drop_shadow = theme_token(effective_config, "dropShadow", "none");
 
     let typed_background =
         text_surface_paint.is_some_and(|plan| plan.background.supplies_background());
@@ -256,7 +263,7 @@ where
         css_rgba_fade(edge_label_background, 0.5)?
     };
     let scoped_drop_shadow = ScopedFlowchartDropShadow {
-        source: drop_shadow,
+        source: &drop_shadow,
         drop_shadow_id,
         drop_shadow_small_id,
     };
@@ -294,14 +301,20 @@ where
     );
     let _ = write!(
         &mut *out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
         id,
         font_family,
         fmt(font_size),
-        id,
-        id,
-        font_family,
-        node_text_color
+        id
+    );
+    out.checkpoint()?;
+    if diagram_type != "agentflow" {
+        super::agentflow::write_flowchart_container_css(out, id, effective_config)?;
+    }
+    let _ = write!(
+        &mut *out,
+        r#"#{} .label{{font-family:{};color:{};}}"#,
+        id, font_family, node_text_color
     );
     let _ = write!(out, "#{id} .cluster-label text{{");
     write_cluster_title_paint(out, text_surface_paint, title_color, false);
@@ -358,11 +371,11 @@ where
     let _ = write!(
         &mut *out,
         "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
-        id, font_family, tertiary, cluster_border, id, text_color, id
+        id, font_family, tertiary, tooltip_border, id, text_color, id
     );
     let _ = write!(
         &mut *out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
         id,
         id,
         background_underlay,
@@ -375,15 +388,19 @@ where
         edge_label_background,
         id,
         id,
-        id,
-        font_family
     );
-    if neo {
-        let _ = write!(
-            &mut *out,
-            r#"#{id} .node[data-look="neo"] rect.basic.label-container{{rx:{radius}px;ry:{radius}px;}}#{id} .node[data-look="neo"] .label-container{{filter:{scoped_drop_shadow};stroke-linejoin:round;}}#{id} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}#{id} .edgeLabel rect{{opacity:1;}}#{id} .labelBkg{{background-color:{edge_label_background};}}"#,
-        );
-    }
+    crate::svg::parity::css::write_mermaid_common_neo_css_with_ids(
+        out,
+        id,
+        gradient_id,
+        scoped_drop_shadow,
+        effective_config,
+    )?;
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
+        &mut *out,
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
+    );
 
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
     // - HTML labels: `.classDef > *` + `.classDef span`
@@ -460,6 +477,7 @@ fn write_cluster_title_paint(
 #[cfg(test)]
 fn flowchart_css(
     diagram_id: &str,
+    diagram_type: &str,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
@@ -469,8 +487,10 @@ fn flowchart_css(
     write_flowchart_css(
         &mut out,
         diagram_id,
+        diagram_type,
         &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow"),
         &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
+        &format!("{diagram_id}-merman-flowchart-document-gradient-root"),
         effective_config,
         font_family,
         font_size,
@@ -567,8 +587,10 @@ mod tests {
         let error = write_flowchart_css(
             &mut out,
             "bounded-css",
+            "flowchart-v2",
             "bounded-css-merman-flowchart-document-filter-drop-shadow",
             "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
+            "bounded-css-merman-flowchart-document-gradient-root",
             &json!({}),
             "sans-serif",
             16.0,
@@ -588,6 +610,7 @@ mod tests {
     fn khroma_named_edge_label_background_preserves_channels() {
         let css = flowchart_css(
             "theme_named_color",
+            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "rebeccapurple"
@@ -608,6 +631,7 @@ mod tests {
     fn unsupported_edge_label_background_returns_color_error() {
         let error = flowchart_css(
             "theme_unknown_color",
+            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "not-a-css-color"
@@ -620,5 +644,22 @@ mod tests {
         .expect_err("unsupported khroma color must fail");
 
         assert!(error.to_string().contains("not-a-css-color"));
+    }
+
+    #[test]
+    fn ordinary_neo_without_profile_keeps_mermaid_common_css_only() {
+        let css = flowchart_css(
+            "ordinary_neo",
+            "flowchart-v2",
+            &json!({"look": "neo"}),
+            "\"trebuchet ms\",verdana,arial,sans-serif",
+            16.0,
+            &IndexMap::new(),
+        )
+        .expect("valid Mermaid CSS");
+
+        assert!(!css.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ));
     }
 }

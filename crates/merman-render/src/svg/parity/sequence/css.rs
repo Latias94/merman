@@ -114,41 +114,45 @@ pub(super) fn sequence_css_with_theme_adapter(
 ) -> String {
     let diagram_id = crate::svg::escape_css_identifier(diagram_id);
     let mut out = String::new();
-    let _ = write_sequence_css_with_theme_adapter(
+    write_sequence_css_with_theme_adapter(
         &mut out,
         diagram_id.as_str(),
         font_size_px,
         effective_config,
         typed,
-    );
+    )
+    .expect("write Sequence CSS into an unbounded string");
     out
 }
 
 pub(super) fn write_sequence_css_with_theme_adapter(
-    mut out: &mut impl std::fmt::Write,
+    mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
-    font_size_px: f64,
+    _font_size_px: f64,
     effective_config: &serde_json::Value,
     typed: SequenceThemeCssAdapter<'_>,
-) -> SequenceThemeCssEmission {
-    // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
+) -> Result<SequenceThemeCssEmission> {
+    out.checkpoint()?;
+    // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = diagram_id;
     let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
     let font = typed
         .base_font_family
         .unwrap_or(theme.common.font_family_css.as_str());
+    let font_size_css = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "fontSize"],
+    )
+    .unwrap_or_else(|| "16px".to_string());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
     let line_color = theme.common.line_color.as_str();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        font,
-        fmt(font_size_px),
-        text_color
+        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
+        id, font, font_size_css, text_color
     );
     let _ = out.write_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -175,11 +179,8 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font,
-        fmt(font_size_px),
-        id
+        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
+        id, font, font_size_css, id
     );
 
     // Sequence styles.
@@ -203,7 +204,6 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let activation_border = theme.activation_border.as_str();
     let node_border = theme.node_border.as_str();
     let label_box_filter = theme.label_box_filter.as_str();
-    let note_font_weight = theme.note_font_weight.as_str();
     let final_actor_fill = typed.actor_fill.unwrap_or(actor_fill);
     let final_actor_stroke = typed.actor_stroke.unwrap_or(actor_border);
     let final_lifeline_stroke = typed.lifeline_stroke.unwrap_or(actor_line);
@@ -260,6 +260,11 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let actor_text_fill = legacy_surface_fill(
         crate::sequence::SequenceTextSurface::ParticipantLabel,
         actor_text,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} rect.actor.outer-path[data-look="neo"]{{filter:{};}}#{} rect.note[data-look="neo"]{{stroke:{};fill:{};filter:{};}}"#,
+        id, drop_shadow, id, final_note_stroke, final_note_fill, drop_shadow
     );
     let _ = write!(
         &mut out,
@@ -373,8 +378,8 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         legacy_surface_fill(crate::sequence::SequenceTextSurface::NoteLabel, note_text);
     let _ = write!(
         &mut out,
-        r#"#{} .noteText,#{} .noteText>tspan{{{}stroke:none;{}}}"#,
-        id, id, note_text_fill, note_font_weight
+        r#"#{} .noteText,#{} .noteText>tspan{{{}stroke:none;}}"#,
+        id, id, note_text_fill
     );
     let _ = write!(
         &mut out,
@@ -395,15 +400,11 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} .actorPopupMenuPanel{{position:absolute;fill:{};box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}}"#,
         id, actor_fill
     );
+    // Glyph strokes inherit their actor group's palette color in Mermaid 12.
     let _ = write!(
         &mut out,
-        r#"#{} .actor-man line{{stroke:{};fill:{};}}"#,
-        id, actor_border, actor_fill
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .actor-man circle,#{} .actor-man line{{stroke:{};fill:{};stroke-width:2px;}}"#,
-        id, id, actor_border, actor_fill
+        r#"#{} .actor-man circle,#{} line{{fill:{};stroke-width:2px;}}"#,
+        id, id, actor_fill
     );
     if let Some(typed_actor_fill) = typed.actor_fill {
         let _ = write!(
@@ -477,12 +478,13 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
-    );
-    emission
+    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
+        out,
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
+    )?;
+    out.checkpoint()?;
+    Ok(emission)
 }
 
 fn grouped_sequence_text_surface_declarations(
@@ -556,7 +558,8 @@ mod tests {
             16.0,
             &config,
             SequenceThemeCssAdapter::default(),
-        );
+        )
+        .expect("write exact Sequence CSS budget");
         exact.checkpoint().expect("exact Sequence CSS budget");
         assert_eq!(exact.finish().expect("finish exact Sequence CSS"), expected);
 
@@ -565,7 +568,7 @@ mod tests {
             .expect("valid short SVG limit");
         let short_meter = OperationWorkMeter::new(short_policy);
         let mut short = BoundedSvgOutput::new(&short_meter);
-        write_sequence_css_with_theme_adapter(
+        let result = write_sequence_css_with_theme_adapter(
             &mut short,
             "sequence-budget",
             16.0,
@@ -573,15 +576,44 @@ mod tests {
             SequenceThemeCssAdapter::default(),
         );
         assert!(matches!(
-            short.checkpoint(),
+            result,
             Err(crate::Error::ResourceLimitExceeded(_))
         ));
         assert!(short.as_str().len() <= expected.len() - 1);
     }
 
     #[test]
+    fn sequence_css_rejects_an_already_failed_sink_before_formatting() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+        out.push_str("too long");
+        let writes = Cell::new(0);
+        let result = write_sequence_css_with_theme_adapter(
+            &mut out,
+            TrackedDiagramId { writes: &writes },
+            16.0,
+            &json!({}),
+            SequenceThemeCssAdapter::default(),
+        );
+
+        assert!(matches!(
+            result,
+            Err(crate::Error::ResourceLimitExceeded(_))
+        ));
+        assert_eq!(writes.get(), 0);
+        assert!(out.as_str().is_empty());
+    }
+
+    #[test]
     fn sequence_css_uses_configured_font_size() {
-        let css = sequence_css("seq", 24.0, &json!({}));
+        let css = sequence_css(
+            "seq",
+            16.0,
+            &json!({"themeVariables": {"fontSize": "24px"}}),
+        );
 
         assert!(css.contains(
             r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
@@ -598,9 +630,33 @@ mod tests {
     }
 
     #[test]
-    fn sequence_css_honors_mermaid_11_15_theme_options() {
+    fn sequence_css_preserves_actor_glyph_inherited_palette_stroke() {
+        let css = sequence_css(
+            "seq",
+            16.0,
+            &json!({
+                "theme": "redux-color",
+                "themeVariables": {
+                    "actorBorder": "#220000",
+                    "actorBkg": "#330000",
+                    "borderColorArray": ["#0055cc", "#00aa77"]
+                }
+            }),
+        );
+
+        // A child stroke declaration would override the parent's per-actor palette.
+        assert!(
+            css.contains(r#"#seq .actor-man circle,#seq line{fill:#330000;stroke-width:2px;}"#)
+        );
+        assert!(!css.contains(".actor-man line{"));
+        assert!(!css.contains(".actor-man circle,#seq line{stroke:"));
+    }
+
+    #[test]
+    fn sequence_css_honors_mermaid_12_theme_options() {
         let cfg = json!({
             "look": "neo",
+            "sequence": {"noteFontWeight": 700},
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
                 "textColor": "#abc001",
@@ -640,12 +696,14 @@ mod tests {
             r#"#seq .marker{fill:#123456;stroke:#123456;}#seq .marker.cross{stroke:#123456;}"#
         ));
         assert!(css.contains(r#"#seq .actor{stroke:#220000;fill:#330000;stroke-width:2;}"#));
+        assert!(css.contains(r#"#seq rect.actor.outer-path[data-look="neo"]{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#));
+        assert!(css.contains(r#"#seq rect.note[data-look="neo"]{stroke:#cccccc;fill:#dddddd;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#));
         assert!(css.contains(r#"#seq text.actor>tspan{fill:#fafafa;stroke:none;}"#));
         assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
-        assert!(css.contains(
-            r#"#seq .actor-man circle,#seq .actor-man line{stroke:#220000;fill:#330000;stroke-width:2px;}"#
-        ));
-        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{"#));
+        assert!(
+            css.contains(r#"#seq .actor-man circle,#seq line{fill:#330000;stroke-width:2px;}"#)
+        );
+        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:"#));
         assert!(css.contains(r#"#seq .messageLine0{stroke-width:1.5;stroke-dasharray:none;}"#));
         assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#555555;}"#));
         assert!(css.contains(r#"#seq .sequenceNumber,#seq .sequenceNumber>tspan{fill:#666666;}"#));
@@ -657,9 +715,12 @@ mod tests {
             )
         );
         assert!(css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
-        assert!(css.contains(
-            r#"#seq .noteText,#seq .noteText>tspan{fill:#eeeeee;stroke:none;font-weight:600;}"#
-        ));
+        assert!(css.contains(r#"#seq .noteText,#seq .noteText>tspan{fill:#eeeeee;stroke:none;}"#));
+        // styles.js deliberately omits weight on note tspans: theme 600 must not
+        // override the weight inherited from the parent text's inline style.
+        for rule in css.split('}').filter(|rule| rule.contains(".noteText")) {
+            assert!(!rule.contains("font-weight"), "{rule}");
+        }
         assert!(css.contains(r#"#seq .activation0{fill:#010203;stroke:#040506;}"#));
         assert!(css.contains(
             r#"#seq g rect.rect{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));stroke:#070809;}"#
@@ -748,7 +809,8 @@ mod tests {
                 sequence_number_fill: Some("#123456"),
                 ..SequenceThemeCssAdapter::default()
             },
-        );
+        )
+        .expect("write Sequence number CSS");
 
         let owner = r#"#seq\:prod .sequenceNumber,#seq\:prod .sequenceNumber>tspan{fill:#123456;}"#;
         assert!(css.contains(owner));

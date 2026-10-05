@@ -65,7 +65,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
         common.node_classes,
         common.node_styles,
     );
-    let label_padding = ctx.node_padding / 2.0;
+    let label_padding = if common.look_is_neo() {
+        12.0
+    } else {
+        ctx.node_padding / 2.0
+    };
     let h = (metrics.height + label_padding).max(1.0);
     let ry = h / 2.0;
     let rx = if ry == 0.0_f64 {

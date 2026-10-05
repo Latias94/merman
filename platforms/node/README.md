@@ -8,15 +8,13 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 
 ## Quick start
 
-The npm `alpha` dist-tag resolves to the published alpha.6 group, including
-`@mermanjs/node-wasm`. Pin `@mermanjs/node@0.8.0-alpha.6` when reproducible installs matter;
-alpha releases remain intentionally experimental.
+This guide targets the `0.8.0-alpha.7` package group, including `@mermanjs/node-wasm`. Pin the exact version when reproducible installs matter; alpha releases remain intentionally experimental.
 
 ```sh
-npm install @mermanjs/node@alpha
+npm install @mermanjs/node@0.8.0-alpha.7
 ```
 
-When validating alpha.6 from source, pin the exact commit accepted by release preflight rather than a moving branch.
+Version `0.8.0-alpha.7` includes Mermaid 12 and Agentflow/Usecase support. The alpha.6 package does not contain those changes; see the [package changelog](CHANGELOG.md). For source validation, use the exact reviewed commit rather than a moving branch.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";

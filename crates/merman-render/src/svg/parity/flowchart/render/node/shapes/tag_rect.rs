@@ -26,8 +26,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
     );
 
     let p = ctx.node_padding;
-    let w = metrics.width + 2.0 * p;
-    let h = metrics.height + 2.0 * p;
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = metrics.width + 2.0 * padding_x;
+    let h = metrics.height + 2.0 * padding_y;
     let x = -w / 2.0;
     let y = -h / 2.0;
     let tag_w = 0.2 * h;
@@ -53,8 +55,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         let tag_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_hand_drawn_solid_svg_path(
                 &tag_path,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.work_meter,
@@ -109,8 +109,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &rect_path,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,
@@ -122,8 +120,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &tag_path,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

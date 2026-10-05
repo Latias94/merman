@@ -1443,7 +1443,7 @@ mod tests {
         );
         assert_eq!(detection.diagram_type, "flowchart");
         assert_eq!(detection.syntax_id, "flowchart-v2");
-        assert_eq!(detection.effective_layout_id, "dagre");
+        assert_eq!(detection.effective_layout_id, "elk");
         assert_eq!(editor_document_context_builds_for_tests(), 1);
     }
 
@@ -1505,7 +1505,7 @@ mod tests {
             .iter()
             .filter(|example| example["evidence"]["role"] == "family-baseline")
             .collect::<Vec<_>>();
-        assert_eq!(baselines.len(), 35);
+        assert_eq!(baselines.len(), merman_core::supported_diagrams().len());
 
         for example in baselines {
             let family = example["diagramType"].as_str().expect("diagram family");

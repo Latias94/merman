@@ -870,7 +870,7 @@ union A,B
         .expect("set A rough fill path");
     assert_eq!(
         circle_a_fill.attribute("stroke"),
-        Some("hsla(240, 100%, 66.2745098039%, 0.30000000000000004)")
+        Some("rgba(232, 121, 249, 0.3)")
     );
 
     let intersection = find_venn_area(&document, "A_B", "venn-intersection");

@@ -835,12 +835,13 @@ impl Analyzer {
                 )
             }
         };
-        Self::finish_capture(
-            candidates,
-            syntax,
-            DiagramParseDisposition::Recovered,
-            cancellation,
-        )
+        let disposition = if matches!(error, CoreError::UnsupportedDiagram { .. }) {
+            // Recognized source without a parser has no recoverable semantic outcome.
+            DiagramParseDisposition::Unavailable
+        } else {
+            DiagramParseDisposition::Recovered
+        };
+        Self::finish_capture(candidates, syntax, disposition, cancellation)
     }
 
     fn editor_recovery_candidates_from_facts_cancellable(

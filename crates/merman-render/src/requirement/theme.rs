@@ -121,7 +121,6 @@ impl RequirementPaintThemePlan {
             .iter()
             .map(|node| node.name.as_str())
             .chain(model.elements.iter().map(|node| node.name.as_str()))
-            .filter(|node_id| *node_id != "__proto__")
         {
             let next_index = node_indices.len();
             node_indices
@@ -551,19 +550,18 @@ fn typed_stroke_expectation(
 }
 
 fn mermaid_owns_requirement_fill(config: &MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(
-        config,
-        "themeVariables.requirementBackground",
-    ) || matches!(
-        config.get_str("theme"),
-        Some("redux-color" | "redux-dark-color")
-    ) || (merman_core::__private::config_path_overrides_typed_default(
-        config,
-        "themeVariables.borderColorArray",
-    ) && merman_core::__private::config_path_overrides_typed_default(
-        config,
-        "themeVariables.bkgColorArray",
-    ))
+    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
+        || matches!(
+            config.get_str("theme"),
+            Some("redux-color" | "redux-dark-color")
+        )
+        || (merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.borderColorArray",
+        ) && merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.bkgColorArray",
+        ))
 }
 
 fn mermaid_owns_requirement_stroke(config: &MermaidConfig) -> bool {

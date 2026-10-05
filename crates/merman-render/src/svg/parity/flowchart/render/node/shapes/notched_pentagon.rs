@@ -24,10 +24,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_notched_pentagon(
     );
 
     let p = ctx.node_padding;
-    let min_width = 60.0;
-    let min_height = 20.0;
-    let w = (metrics.width + 2.0 * p).max(min_width);
-    let h = (metrics.height + 2.0 * p).max(min_height);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = metrics.width + 2.0 * padding_x;
+    let h = metrics.height + 2.0 * padding_y;
     let points = vec![
         ((-w / 2.0) * 0.8, -h / 2.0),
         ((w / 2.0) * 0.8, -h / 2.0),
@@ -69,8 +69,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_notched_pentagon(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

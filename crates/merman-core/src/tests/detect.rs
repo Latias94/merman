@@ -59,6 +59,31 @@ fn canonical_catalog_detects_mindmap() {
 }
 
 #[test]
+fn usecase_header_requires_whitespace_or_end() {
+    let registry = crate::detect::DetectorRegistry::pinned_mermaid_baseline();
+    for source in [
+        "usecase-beta",
+        "  usecase-beta\nactor A",
+        "usecase-beta\tLR",
+    ] {
+        let detected = registry.detect_type(source, &mut MermaidConfig::empty_object());
+        assert_eq!(detected.expect("Usecase header"), "usecase");
+    }
+    for source in [
+        "usecase-betaExtra",
+        "usecase-beta;",
+        "usecase-beta_LR",
+        "Usecase-beta",
+    ] {
+        assert!(
+            registry
+                .detect_type(source, &mut MermaidConfig::empty_object())
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
@@ -777,7 +802,15 @@ fn source_theme_lifecycle_matches_mermaid_update_current_config() {
             ))
             .expect("parse non-registered source theme");
 
-        assert_eq!(source.effective_config.get_str("theme"), Some(source_theme));
+        assert_eq!(
+            source.effective_config.get_str("theme"),
+            Some(if source_theme == "null" {
+                "null"
+            } else {
+                "dark"
+            }),
+            "Mermaid 12 appearance rejects unknown source themes before selection"
+        );
         assert_eq!(
             source
                 .effective_config
@@ -876,6 +909,157 @@ fn secure_filtered_source_theme_does_not_trigger_rematerialization() {
             "a filtered source theme must not rematerialize {path}"
         );
     }
+}
+
+#[test]
+fn scoped_source_theme_rebuilds_raw_variables_without_losing_recipe_binding() {
+    let recipe = MermaidConfig::from_value(json!({
+        "theme": "base", "themeVariables": { "secondaryColor": "#345678" }
+    }));
+    let engine = Engine::new().with_theme_compatibility(theme_binding_for(recipe));
+    let baseline = engine.parse_metadata_sync("flowchart TD\nA-->B").unwrap();
+    assert_eq!(baseline.effective_config.get_str("theme"), Some("base"));
+    let source = engine.parse_metadata_sync(
+        "%%{init: {\"flowchart\": {\"theme\": \"dark\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+    ).unwrap();
+    let equivalent = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "dark",
+            "themeVariables": { "secondaryColor": "#345678", "primaryColor": "#123456" }
+        })))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .unwrap();
+    assert_eq!(source.effective_config.get_str("theme"), Some("dark"));
+    assert_eq!(
+        source.effective_config.as_value()["themeVariables"],
+        equivalent.effective_config.as_value()["themeVariables"]
+    );
+    assert!(source.effective_config.explicit_config_owns_path("theme"));
+    assert_eq!(source.theme_parse_binding(), baseline.theme_parse_binding());
+    assert_eq!(
+        engine
+            .parse_metadata_sync("flowchart TD\nA-->B")
+            .unwrap()
+            .effective_config,
+        baseline.effective_config
+    );
+}
+
+#[test]
+fn scoped_same_value_appearance_is_authored_but_secure_source_is_not() {
+    let engine = Engine::new().with_theme_compatibility(theme_binding_for(
+        MermaidConfig::from_value(json!({"theme": "base"})),
+    ));
+    let baseline = engine.parse_metadata_sync("flowchart TD\nA-->B").unwrap();
+    assert_eq!(baseline.mermaid_compatibility_residual_count(), 1);
+    let text = "%%{init: {\"flowchart\": {\"theme\": \"base\"}}}%%\nflowchart TD\nA-->B";
+    let authored = engine.parse_metadata_sync(text).unwrap();
+    assert_eq!(authored.effective_config.get_str("theme"), Some("base"));
+    assert!(authored.effective_config.explicit_config_owns_path("theme"));
+    assert_eq!(authored.mermaid_compatibility_residual_count(), 0);
+    let secure = engine
+        .with_site_config(MermaidConfig::from_value(json!({"secure": ["theme"]})))
+        .parse_metadata_sync(text)
+        .unwrap();
+    assert_eq!(secure.effective_config.get_str("theme"), Some("base"));
+    assert!(!secure.effective_config.explicit_config_owns_path("theme"));
+    assert_eq!(secure.mermaid_compatibility_residual_count(), 1);
+}
+
+#[test]
+fn scoped_theme_derivations_do_not_become_detector_overlay_claims() {
+    let engine = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
+        .with_post_detection_config_overlay(flowchart_overlay(
+            "themeVariables.mainBkg",
+            json!("#abcdef"),
+        ));
+    let source = "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B";
+    let parsed = engine.parse_metadata_sync(source).unwrap();
+    assert_eq!(
+        parsed
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    assert_eq!(
+        parsed.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#abcdef")
+    );
+    assert!(!parsed.config_overlay_provenance().is_empty());
+}
+
+#[test]
+fn scoped_theme_rebuild_preserves_same_value_detector_assignments() {
+    fn claim_initialized_background(_text: &str, config: &mut MermaidConfig) -> bool {
+        let background = config.as_value()["themeVariables"]["mainBkg"].clone();
+        config.set_value("themeVariables.mainBkg", background);
+        true
+    }
+    fn claim_initialized_root(_text: &str, config: &mut MermaidConfig) -> bool {
+        let _ = config.as_value_mut();
+        true
+    }
+
+    for detector in [claim_initialized_background, claim_initialized_root] {
+        let engine = engine_with_only_flowchart_detector(
+            detector,
+            flowchart_overlay("themeVariables.mainBkg", json!("#abcdef")),
+        )
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
+        let initialized = engine.parse_metadata_sync("custom diagram").unwrap();
+        let source = engine.parse_metadata_sync(
+            "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ncustom diagram",
+        ).unwrap();
+        assert_eq!(source.effective_config.get_str("theme"), Some("base"));
+        assert_eq!(
+            source
+                .effective_config
+                .get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(
+            source.effective_config.get_str("themeVariables.mainBkg"),
+            initialized
+                .effective_config
+                .get_str("themeVariables.mainBkg")
+        );
+        assert!(
+            source
+                .effective_config
+                .explicit_config_owns_path("themeVariables.mainBkg")
+        );
+        assert!(source.config_overlay_provenance().is_empty());
+    }
+}
+
+#[test]
+fn scoped_null_keeps_initialized_variables_and_raw_source_ownership() {
+    let engine =
+        Engine::new().with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(
+            json!({"theme": "base", "themeVariables": {"primaryColor": "#345678"}}),
+        )));
+    let baseline = engine.parse_metadata_sync("flowchart TD\nA-->B").unwrap();
+    let source = engine.parse_metadata_sync(
+        "%%{init: {\"flowchart\": {\"theme\": \"null\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+    ).unwrap();
+    assert_eq!(source.effective_config.get_str("theme"), Some("null"));
+    assert_eq!(
+        source
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    assert_eq!(
+        source.effective_config.get_str("themeVariables.actorBkg"),
+        baseline.effective_config.get_str("themeVariables.actorBkg")
+    );
+    assert!(
+        source
+            .effective_config
+            .explicit_config_owns_path("themeVariables.primaryColor")
+    );
+    assert_eq!(source.theme_parse_binding(), baseline.theme_parse_binding());
 }
 
 #[test]
@@ -1622,7 +1806,8 @@ fn post_detection_overlay_uses_the_configured_flowchart_render_family() {
 #[test]
 fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
     let expected = json!({
-        "defaultRenderer": "dagre-wrapper",
+        "theme": "redux-color",
+        "look": "neo",
         "hideEmptyMembersBox": false,
         "hierarchicalNamespaces": true
     });
@@ -1631,82 +1816,8 @@ fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
             .as_value()
             .get("class"),
         Some(&expected),
-        "Mermaid 11.17 defaultConfig.ts replaces rather than spreads the schema Class object"
+        "Mermaid 12 defaultConfig.ts carries appearance defaults into the replacement Class object"
     );
-}
-
-#[test]
-fn class_diagram_detection_uses_mermaid_11_17_runtime_default_when_site_config_is_merged() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("securityLevel", json!("sandbox"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "classDiagram");
-}
-
-#[test]
-fn class_diagram_detection_respects_explicit_wrapper_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("dagre-wrapper"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "classDiagram");
-}
-
-#[test]
-fn class_diagram_detection_respects_explicit_dagre_d3_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("dagre-d3"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "class");
-}
-
-#[test]
-fn class_diagram_detection_does_not_treat_renderer_as_root_layout() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("elk"));
-        cfg
-    });
-
-    let res = block_on(engine.parse_metadata("classDiagram\nclass Class1\n")).unwrap();
-
-    assert_eq!(res.diagram_type, "class");
-    assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
-}
-
-#[test]
-fn state_diagram_detection_respects_non_default_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("state.defaultRenderer", json!("dagre-d3"));
-        cfg
-    });
-
-    let text = r#"stateDiagram
-[*] --> Still
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "state");
 }
 
 #[test]
@@ -1815,6 +1926,7 @@ fn empty_detector_registry_rejects_builtin_leading_keywords() {
 }
 
 #[test]
+#[cfg(feature = "diagram-kanban")]
 fn kanban_detector_and_known_type_parser_preserve_distinct_upstream_case_rules() {
     let engine = Engine::new();
 
@@ -1878,6 +1990,7 @@ fn detector_registry_strips_mermaid_comment_lines_without_regex() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
     let source = "\u{feff}flowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -1910,6 +2023,7 @@ fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn malformed_directive_json_is_removed_without_rejecting_the_diagram() {
     let source = "%%{init: {\"theme\": }}%%\nflowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -1945,6 +2059,7 @@ fn strict_unterminated_directive_marker_truncates_like_mermaid() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn lenient_unterminated_directive_marker_recovers_the_following_diagram() {
     let source = concat!(
         "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",

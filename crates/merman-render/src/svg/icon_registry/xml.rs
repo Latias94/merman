@@ -422,7 +422,7 @@ fn validate_wrapped_fragment(
                     }
                     let _ =
                         validate_element(&element, namespace, reader.resolver(), true, pack_index)?;
-                    if local_name.as_ref() != b"svg" {
+                    if local_name.as_ref() != "svg" {
                         return Err(invalid_xml_error(
                             pack_index,
                             "icon XML wrapper root is not SVG",
@@ -470,22 +470,18 @@ fn validate_wrapped_fragment(
             }
             Event::Text(text) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                if text.windows(3).any(|window| window == b"]]>") {
+                if text.contains("]]>") {
                     return Err(invalid_xml_error(
                         pack_index,
                         "icon body contains a forbidden XML text terminator",
                     ));
                 }
-                let content = text.xml10_content().map_err(|_| {
-                    invalid_xml_error(pack_index, "icon body contains invalid XML text")
-                })?;
+                let content = text.xml10_content();
                 validate_xml_chars(&content, pack_index, "icon body contains invalid XML text")?;
             }
             Event::CData(text) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = text.xml10_content().map_err(|_| {
-                    invalid_xml_error(pack_index, "icon body contains invalid CDATA")
-                })?;
+                let content = text.xml10_content();
                 validate_xml_chars(&content, pack_index, "icon body contains invalid CDATA")?;
             }
             Event::GeneralRef(reference) => {
@@ -494,9 +490,7 @@ fn validate_wrapped_fragment(
             }
             Event::Comment(comment) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                let content = comment.xml10_content().map_err(|_| {
-                    invalid_xml_error(pack_index, "icon body contains an invalid XML comment")
-                })?;
+                let content = comment.xml10_content();
                 validate_xml_chars(
                     &content,
                     pack_index,
@@ -543,7 +537,7 @@ fn validate_element(
 ) -> Result<bool, IconRegistryBuildError> {
     let mut uses_xlink = matches!(
         &namespace,
-        ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE.as_bytes()
+        ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
     ) && !is_wrapper;
     match namespace {
         ResolveResult::Unknown(_) => {
@@ -552,9 +546,7 @@ fn validate_element(
                 "icon body uses an undeclared namespace prefix",
             ));
         }
-        ResolveResult::Bound(namespace)
-            if is_wrapper && namespace.as_ref() != SVG_NAMESPACE.as_bytes() =>
-        {
+        ResolveResult::Bound(namespace) if is_wrapper && namespace.as_ref() != SVG_NAMESPACE => {
             return Err(invalid_xml_error(
                 pack_index,
                 "icon XML wrapper uses a non-SVG namespace",
@@ -577,7 +569,7 @@ fn validate_element(
             invalid_xml_error(pack_index, "icon body contains an invalid XML attribute")
         })?;
         validate_xml_qname(attribute.key.as_ref(), pack_index)?;
-        if attribute.value.as_ref().contains(&b'<') {
+        if attribute.value.contains('<') {
             return Err(invalid_xml_error(
                 pack_index,
                 "icon body contains an invalid XML attribute value",
@@ -610,7 +602,7 @@ fn validate_element(
                 ));
             }
             ResolveResult::Bound(namespace) => {
-                uses_xlink |= namespace.as_ref() == XLINK_NAMESPACE.as_bytes();
+                uses_xlink |= namespace.as_ref() == XLINK_NAMESPACE;
                 Some(namespace.into_inner())
             }
             ResolveResult::Unbound => None,
@@ -704,13 +696,7 @@ fn validate_general_reference(
         ));
     }
 
-    let name = reference.decode().map_err(|_| {
-        invalid_xml_error(
-            pack_index,
-            "icon body contains an invalid XML entity reference",
-        )
-    })?;
-    if matches!(name.as_ref(), "amp" | "apos" | "gt" | "lt" | "quot") {
+    if matches!(reference.as_ref(), "amp" | "apos" | "gt" | "lt" | "quot") {
         Ok(())
     } else {
         Err(invalid_xml_error(
@@ -720,9 +706,7 @@ fn validate_general_reference(
     }
 }
 
-fn validate_xml_qname(name: &[u8], pack_index: usize) -> Result<(), IconRegistryBuildError> {
-    let name = std::str::from_utf8(name)
-        .map_err(|_| invalid_xml_error(pack_index, "icon body contains an invalid XML name"))?;
+fn validate_xml_qname(name: &str, pack_index: usize) -> Result<(), IconRegistryBuildError> {
     let mut components = name.split(':');
     let first = components.next().unwrap_or_default();
     let second = components.next();

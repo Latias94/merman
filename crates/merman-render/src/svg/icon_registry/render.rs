@@ -352,30 +352,17 @@ fn observe_current_color_use(
 
     loop {
         work_meter.checkpoint(OperationPhase::Postprocess)?;
-        let decoder = reader.decoder();
         match reader.read_event() {
             Ok(Event::Start(element)) => {
                 let inside_non_rendering = non_rendering_stack.last().copied().unwrap_or(false)
                     || is_non_rendering_container(element.name().local_name().as_ref());
-                observe_icon_element(
-                    &element,
-                    decoder,
-                    inside_non_rendering,
-                    work_meter,
-                    &mut observation,
-                )?;
+                observe_icon_element(&element, inside_non_rendering, work_meter, &mut observation)?;
                 non_rendering_stack.push(inside_non_rendering);
             }
             Ok(Event::Empty(element)) => {
                 let inside_non_rendering = non_rendering_stack.last().copied().unwrap_or(false)
                     || is_non_rendering_container(element.name().local_name().as_ref());
-                observe_icon_element(
-                    &element,
-                    decoder,
-                    inside_non_rendering,
-                    work_meter,
-                    &mut observation,
-                )?;
+                observe_icon_element(&element, inside_non_rendering, work_meter, &mut observation)?;
             }
             Ok(Event::End(_)) => {
                 non_rendering_stack.pop().ok_or_else(|| {
@@ -399,14 +386,13 @@ fn observe_current_color_use(
 
 fn observe_icon_element(
     element: &BytesStart<'_>,
-    decoder: quick_xml::encoding::Decoder,
     inside_non_rendering: bool,
     work_meter: &crate::resources::OperationWorkMeter,
     observation: &mut IconCurrentColorObservation,
 ) -> crate::Result<()> {
     let tag = element.name().local_name();
     let tag = tag.as_ref();
-    if tag.eq_ignore_ascii_case(b"style") || tag.eq_ignore_ascii_case(b"use") {
+    if tag.eq_ignore_ascii_case("style") || tag.eq_ignore_ascii_case("use") {
         observation.unverified = true;
     }
 
@@ -423,22 +409,22 @@ fn observe_icon_element(
         let name = attribute.key.local_name();
         let name = name.as_ref();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| {
                 crate::Error::icon_processing(
                     "validated icon SVG paint scan could not decode an attribute",
                 )
             })?;
         let value = value.trim();
-        if name.eq_ignore_ascii_case(b"class") || name.eq_ignore_ascii_case(b"color") {
+        if name.eq_ignore_ascii_case("class") || name.eq_ignore_ascii_case("color") {
             if !value.is_empty() {
                 observation.unverified = true;
             }
-        } else if name.eq_ignore_ascii_case(b"fill") {
+        } else if name.eq_ignore_ascii_case("fill") {
             fill = Some(classify_icon_paint_value(value));
-        } else if name.eq_ignore_ascii_case(b"stroke") {
+        } else if name.eq_ignore_ascii_case("stroke") {
             stroke = Some(classify_icon_paint_value(value));
-        } else if name.eq_ignore_ascii_case(b"style") {
+        } else if name.eq_ignore_ascii_case("style") {
             observe_inline_paint(
                 value,
                 work_meter,
@@ -526,33 +512,25 @@ fn classify_icon_paint_value(value: &str) -> IconPaintValue {
     }
 }
 
-fn is_direct_paint_terminal(tag: &[u8]) -> bool {
+fn is_direct_paint_terminal(tag: &str) -> bool {
     [
-        b"circle".as_slice(),
-        b"ellipse".as_slice(),
-        b"line".as_slice(),
-        b"path".as_slice(),
-        b"polygon".as_slice(),
-        b"polyline".as_slice(),
-        b"rect".as_slice(),
-        b"text".as_slice(),
-        b"tspan".as_slice(),
+        "circle", "ellipse", "line", "path", "polygon", "polyline", "rect", "text", "tspan",
     ]
     .into_iter()
     .any(|candidate| tag.eq_ignore_ascii_case(candidate))
 }
 
-fn is_non_rendering_container(tag: &[u8]) -> bool {
+fn is_non_rendering_container(tag: &str) -> bool {
     [
-        b"clipPath".as_slice(),
-        b"defs".as_slice(),
-        b"filter".as_slice(),
-        b"linearGradient".as_slice(),
-        b"marker".as_slice(),
-        b"mask".as_slice(),
-        b"pattern".as_slice(),
-        b"radialGradient".as_slice(),
-        b"symbol".as_slice(),
+        "clipPath",
+        "defs",
+        "filter",
+        "linearGradient",
+        "marker",
+        "mask",
+        "pattern",
+        "radialGradient",
+        "symbol",
     ]
     .into_iter()
     .any(|candidate| tag.eq_ignore_ascii_case(candidate))

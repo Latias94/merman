@@ -62,8 +62,8 @@ The September 16 [theme capability and impact audit](../knowledge/engineering/ve
 adds confirmed alpha.6-to-alpha.7 default-SVG regressions and matched CPU samples. These are
 active work below; the earlier headless optimization decisions remain historical and unchanged.
 
-The earlier release-range baseline and committed checkpoints were measured on 2026-07-27 and
-2026-07-28:
+The release-range baseline dates to 2026-07-27 and 2026-07-28. Later checkpoints below record
+their own revisions, dates, and admission decisions:
 
 - [Alpha.3 to Alpha.5 Refactoring Report](../release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md)
   compares `v0.8.0-alpha.3` with `d2698d0a3`.
@@ -96,9 +96,21 @@ The earlier release-range baseline and committed checkpoints were measured on 20
 - [Final four-lane attribution](headless_performance_final_attribution_2026-08-08.md) closes U13
   with one late accepted structural candidate, records the representative interaction guard,
   preserves the fail-closed alpha.3 coverage boundary, and reconciles the public break inventory.
+- [Playground startup investigation](playground_startup_2026-10-01.md) leaves initial-render
+  scheduling unchanged after two unstable A/A calibrations. Profiled Monaco and first-SVG main
+  thread costs remain attribution evidence; no cold-start speedup is admitted.
+
+- [Native layout-work policy calibration](native_layout_work_calibration_2026-10-01.md) accepts
+  the 15,000,000-unit offline default for CLI and rustdoc across 73 fixtures and both themes.
+  Exact admission boundaries and identical-output controls passed. The conservative CLI scheduler
+  now admits one default graphical backend at a time; no throughput or memory improvement is claimed.
+- [Interactive layout-work policy calibration](interactive_layout_work_calibration_2026-10-01.md) accepts
+  the 14,100,000-unit general library/Web default across the same 73 fixtures and both themes.
+  Exact `W/W-1`, registered cardinality, and configuration boundaries passed. The profile is an
+  admission baseline; host deadlines, cancellation, concurrency, and memory remain separate.
 
 Evidence dates use the local Asia/Shanghai calendar recorded by each receipt. Decisions through
-2026-08-08 are authoritative; there is no blanket clock-drift exclusion for the U10-U13 receipts.
+2026-10-01 are authoritative; there is no blanket clock-drift exclusion for the U10-U13 receipts.
 Every claim remains bound to named revisions, executables, fixtures, and raw reports by digest.
 
 | Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
@@ -269,7 +281,8 @@ for bounds, correctness evidence, and validation limits; no latency improvement 
 | U6 ELK hierarchy preparation | `accepted-structural` | Stable scope ownership and iterative postorder remove suffix cloning and repeated descendant discovery. A source-equivalent synthetic adjacent pair passed eight-pair public ELK A/A and AB/BA controls with exact SVG identity; see [the U6 receipt](elk_hierarchy_preparation_2026-08-03.md). No latency or memory claim is admitted. |
 | U7 Dugong transient retirement | `accepted-structural` | Stable batch retirement preserves node/edge/compound order and exact writeback; public controls matched SVG identity. One self-loop row was stable, while the long-edge base A/A lane was inconclusive, so no latency claim is admitted; see [the U7 receipt](dugong_transient_retirement_2026-08-02.md). |
 | U8 rich inline HTML planning | `accepted-structural` | Cumulative five-slice planner closure removes repeated run/style scans and growing transient payloads while preserving Mermaid 11.16.1 wrapping and opaque callback semantics; see [the U8 receipt](rich_inline_html_planning_2026-08-07.md). No latency or peak-memory claim is admitted. |
-| Interactive layout-work policy calibration | `accepted-structural` | The 800,000-unit ceiling follows the registered headroom rule for the closed 68-member corpus and has exact `W/W-1`, node/edge cardinality, configuration-amplification, isolated-stage, timeout, RSS, and output evidence; see [the policy receipt](interactive_layout_work_calibration_2026-08-07.md). No latency or memory claim is admitted. |
+| Interactive layout-work policy calibration | `accepted-structural` | The 14,100,000-unit general library/Web ceiling follows the registered headroom rule for the current 73-member Mermaid 12 corpus in both themes and has exact `W/W-1`, node/edge cardinality, configuration-amplification, isolated-stage, timeout, and output evidence; see [the policy receipt](interactive_layout_work_calibration_2026-10-01.md). No latency or memory claim is admitted. |
+| Native layout-work policy calibration | `accepted-structural` | The 15,000,000-unit CLI/rustdoc default follows the fixed margin rule over 73 current fixtures in both themes, with exact `W/W-1`, full-prefix cardinality, configuration-amplification, isolated-stage, timeout, and identical-output controls. See [the native receipt](native_layout_work_calibration_2026-10-01.md). One graphical backend fits the unchanged native scheduler pool; no latency or memory improvement is claimed. |
 | U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. See [the Sequence receipt](sequence_operation_metric_reuse_2026-08-07.md). |
 | U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; the compliant owner-local upper bound was only 13.249 us / 7.379% and did not justify another metric carrier without a registered high-volume, memory, or structural objective. See [the Requirement receipt](requirement_metric_reuse_2026-08-07.md). |
 | U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. See [the Mindmap receipt](mindmap_metric_reuse_2026-08-07.md). |

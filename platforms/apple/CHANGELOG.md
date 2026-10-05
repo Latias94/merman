@@ -4,15 +4,39 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.7] - Unreleased
+## [0.8.0] - Unreleased
+
+### Fixed
+
+- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+
+### Upgrade
+
+- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
 
 ### Breaking changes
 
-- Advance the direct UniFFI binding API to `7`. The merged interface preserves theme-authoring diagnostics and schema-3 ASCII output plans with the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `bindingApiVersionV7()` to reject stale record layouts.
+- Regenerate the direct UniFFI bindings and native library together for the typed-theme authoring and diagnostic changes. Published alpha.7 already exposed API `7` through `bindingApiVersionV7()`; that historical number does not establish compatibility with this development interface. Schema-3 ASCII plans retain requested/effective layouts and Compact-attempt information.
 
 - Replace `presentationCatalogJson()` with `themeCatalogJson()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 
 - Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
+## [0.8.0-alpha.7] - 2026-09-30
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
+
+### Breaking changes
+
+- Added opt-in `auto` ASCII layout for bounded Flowchart and Sequence output, with a Compact retry before overflow handling. ASCII output reports now use schema `3`; update custom decoders for requested/effective layout and Compact-attempt fields.
+- Direct UniFFI binding API advances to `7`. Regenerate Swift bindings and the native library together; use `bindingApiVersionV7()` to reject stale record layouts. The generic request remains `MermanOperationRequestV4`.
 
 ## [0.8.0-alpha.6] - 2026-09-02
 

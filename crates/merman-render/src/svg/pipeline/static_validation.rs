@@ -1,8 +1,8 @@
 use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use crate::{Error, Result};
 use cssparser::{
-    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser, ParserInput,
-    ParserState, QualifiedRuleParser, StyleSheetParser, Token,
+    AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser, ParserState,
+    QualifiedRuleParser, StyleSheetParser, Token,
 };
 use std::collections::{BTreeSet, HashMap};
 use svgtypes::{Length, LengthUnit, NumberListParser};
@@ -654,8 +654,7 @@ fn validate_css(
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
-        let mut input = ParserInput::new(css);
-        let mut parser = Parser::new(&mut input);
+        let mut parser = Parser::new(css);
         validate_css_parser(&mut parser, ids, stylesheet, 0, control)
     })
 }
@@ -668,8 +667,7 @@ fn validate_stylesheet_scope(
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
-        let mut input = ParserInput::new(css);
-        let mut input = Parser::new(&mut input);
+        let mut input = Parser::new(css);
         validate_scoped_rule_list(
             &mut input,
             root_id,
@@ -746,11 +744,10 @@ fn css_checkpoint(control: &StaticCssControl<'_>) -> std::result::Result<(), Str
         .ok_or_else(|| "static SVG CSS validation was interrupted".to_string())
 }
 
-fn css_parse_checkpoint<'i, 't>(
-    input: &Parser<'i, 't>,
+fn css_parse_checkpoint(
     control: &StaticCssControl<'_>,
-) -> std::result::Result<(), ParseError<'i, String>> {
-    css_checkpoint(control).map_err(|message| input.new_custom_error(message))
+) -> std::result::Result<(), ParseError<String>> {
+    css_checkpoint(control).map_err(ParseError::custom)
 }
 
 #[derive(Clone, Copy)]
@@ -772,11 +769,11 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
     type AtRule = ();
     type Error = String;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         consume_scoped_css_tokens(input, self.nesting, self.control)?;
         if matches!(
             name.to_ascii_lowercase().as_str(),
@@ -791,7 +788,9 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
         {
             Ok(ScopedAtRule::DiscardableAnimation)
         } else {
-            Err(input.new_custom_error(format!("rendered SVG contains forbidden CSS @{name} rule")))
+            Err(ParseError::custom(format!(
+                "rendered SVG contains forbidden CSS @{name} rule"
+            )))
         }
     }
 
@@ -803,12 +802,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
         Err(())
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::AtRule, ParseError<Self::Error>> {
         match prelude {
             ScopedAtRule::Group => validate_scoped_rule_list(
                 input,
@@ -830,19 +829,19 @@ impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
     type QualifiedRule = ();
     type Error = String;
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::Prelude, ParseError<Self::Error>> {
         validate_selector_list_scope(input, self.root_id, self.nesting, self.control)
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> std::result::Result<Self::QualifiedRule, ParseError<Self::Error>> {
         if prelude.targets_root {
             validate_root_layout_declarations(
                 input,
@@ -861,19 +860,19 @@ struct SelectorScope {
     targets_root: bool,
 }
 
-fn validate_scoped_rule_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn validate_scoped_rule_list(
+    input: &mut Parser<'_>,
     root_id: &str,
     nesting: u8,
     allow_discardable_animation: bool,
     root_dimension_limit: f64,
     control: &StaticCssControl<'_>,
-) -> std::result::Result<(), ParseError<'i, String>> {
-    css_parse_checkpoint(input, control)?;
+) -> std::result::Result<(), ParseError<String>> {
+    css_parse_checkpoint(control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
-        return Err(
-            input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
-        );
+        return Err(ParseError::custom(
+            "rendered SVG CSS exceeds the nesting limit".to_string(),
+        ));
     }
     let mut parser = ScopedRuleParser {
         root_id,
@@ -883,24 +882,24 @@ fn validate_scoped_rule_list<'i, 't>(
         control,
     };
     for rule in StyleSheetParser::new(input, &mut parser) {
-        rule.map_err(|(error, _)| error)?;
+        rule.map_err(|(error, _, _)| error)?;
     }
     Ok(())
 }
 
-fn validate_selector_list_scope<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn validate_selector_list_scope(
+    input: &mut Parser<'_>,
     root_id: &str,
     nesting: u8,
     control: &StaticCssControl<'_>,
-) -> std::result::Result<SelectorScope, ParseError<'i, String>> {
+) -> std::result::Result<SelectorScope, ParseError<String>> {
     let mut expects_root = true;
     let mut saw_root = false;
     let mut current_targets_root = false;
     let mut any_targets_root = false;
     let mut pending_descendant = false;
     loop {
-        css_parse_checkpoint(input, control)?;
+        css_parse_checkpoint(control)?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
@@ -909,8 +908,9 @@ fn validate_selector_list_scope<'i, 't>(
                         targets_root: any_targets_root || current_targets_root,
                     });
                 }
-                return Err(input
-                    .new_custom_error("rendered SVG contains an empty CSS selector".to_string()));
+                return Err(ParseError::custom(
+                    "rendered SVG contains an empty CSS selector".to_string(),
+                ));
             }
             Err(error) => return Err(error.into()),
         };
@@ -931,7 +931,7 @@ fn validate_selector_list_scope<'i, 't>(
                 pending_descendant = false;
             }
             Token::Delim('+') | Token::Delim('~') | Token::Delim('|') => {
-                return Err(input.new_custom_error(
+                return Err(ParseError::custom(
                     "rendered SVG CSS selector can escape the SVG root".to_string(),
                 ));
             }
@@ -954,7 +954,7 @@ fn validate_selector_list_scope<'i, 't>(
                 })?;
             }
             _ if expects_root => {
-                return Err(input.new_custom_error(format!(
+                return Err(ParseError::custom(format!(
                     "rendered SVG CSS selector must start with #{root_id}"
                 )));
             }
@@ -974,8 +974,7 @@ fn validate_root_layout_declaration_text(
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
     run_css_validation(execution, |control| {
-        let mut input = ParserInput::new(css);
-        let mut input = Parser::new(&mut input);
+        let mut input = Parser::new(css);
         validate_root_layout_declarations(&mut input, 0, root_dimension_limit, control).map_err(
             |error| match error.kind {
                 ParseErrorKind::Custom(message) => message,
@@ -997,41 +996,124 @@ fn map_controlled_css_error(
     }
 }
 
-fn validate_root_layout_declarations<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn validate_root_layout_declarations(
+    input: &mut Parser<'_>,
     nesting: u8,
     root_dimension_limit: f64,
     control: &StaticCssControl<'_>,
-) -> std::result::Result<(), ParseError<'i, String>> {
-    css_parse_checkpoint(input, control)?;
+) -> std::result::Result<(), ParseError<String>> {
+    css_parse_checkpoint(control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
-        return Err(
-            input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
-        );
+        return Err(ParseError::custom(
+            "rendered SVG CSS exceeds the nesting limit".to_string(),
+        ));
     }
     while !input.is_exhausted() {
-        css_parse_checkpoint(input, control)?;
+        css_parse_checkpoint(control)?;
         input.parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
-            css_parse_checkpoint(declaration, control)?;
+            css_parse_checkpoint(control)?;
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
             let normalized = property.to_ascii_lowercase();
             if is_root_size_property(&normalized) {
                 let value_start = declaration.position();
                 consume_scoped_css_tokens(declaration, nesting + 1, control)?;
-                css_parse_checkpoint(declaration, control)?;
+                css_parse_checkpoint(control)?;
                 let value = declaration.slice_from(value_start).trim().to_string();
-                css_parse_checkpoint(declaration, control)?;
+                css_parse_checkpoint(control)?;
                 validate_root_dimension(&property, &value, root_dimension_limit)
-                    .map_err(|message| declaration.new_custom_error(message))?;
+                    .map_err(ParseError::custom)?;
+            } else if let Some(font_property) = usecase_root_font_property(&property) {
+                validate_usecase_root_font_value(
+                    declaration,
+                    font_property,
+                    root_dimension_limit,
+                    control,
+                )?;
             } else if is_allowed_root_presentation_property(&normalized) {
                 consume_scoped_css_tokens(declaration, nesting + 1, control)?;
             } else {
-                return Err(declaration
-                    .new_custom_error(format!("rendered SVG root layout cannot set {property}")));
+                return Err(ParseError::custom(format!(
+                    "rendered SVG root layout cannot set {property}"
+                )));
             }
             Ok(())
         })?;
+    }
+    Ok(())
+}
+
+// The Usecase renderer emits only these six literal font variables on the root.
+// Do not admit arbitrary custom properties or deferred values such as var()/url().
+fn usecase_root_font_property(property: &str) -> Option<&'static str> {
+    match property {
+        "--mermaid-usecase-actor-font-size" | "--mermaid-usecase-font-size" => Some("font-size"),
+        "--mermaid-usecase-actor-font-family" | "--mermaid-usecase-font-family" => {
+            Some("font-family")
+        }
+        "--mermaid-usecase-actor-font-weight" | "--mermaid-usecase-font-weight" => {
+            Some("font-weight")
+        }
+        _ => None,
+    }
+}
+
+fn validate_usecase_root_font_value(
+    input: &mut Parser<'_>,
+    property: &str,
+    size_limit: f64,
+    control: &StaticCssControl<'_>,
+) -> std::result::Result<(), ParseError<String>> {
+    let invalid = || format!("rendered SVG root layout has invalid Usecase {property}");
+    if property == "font-family" {
+        let mut has_family = false;
+        let mut quoted_family = false;
+        while !input.is_exhausted() {
+            css_parse_checkpoint(control)?;
+            match input.next()? {
+                Token::Ident(name)
+                    if !quoted_family
+                        && !["inherit", "initial", "unset", "revert", "revert-layer"]
+                            .iter()
+                            .any(|keyword| name.eq_ignore_ascii_case(keyword)) =>
+                {
+                    has_family = true;
+                }
+                Token::QuotedString(name) if !has_family && !name.is_empty() => {
+                    has_family = true;
+                    quoted_family = true;
+                }
+                Token::Comma if has_family => {
+                    has_family = false;
+                    quoted_family = false;
+                }
+                _ => return Err(ParseError::custom(invalid())),
+            }
+        }
+        if !has_family {
+            return Err(ParseError::custom(invalid()));
+        }
+    } else {
+        css_parse_checkpoint(control)?;
+        let valid = match (property, input.next()?) {
+            ("font-size", Token::Dimension { value, unit, .. }) => {
+                value.is_finite()
+                    && *value >= 0.0
+                    && f64::from(*value) <= size_limit
+                    && unit.eq_ignore_ascii_case("px")
+            }
+            ("font-weight", Token::Number { value, .. }) => {
+                value.is_finite() && (1.0..=1000.0).contains(value)
+            }
+            ("font-weight", Token::Ident(value)) => ["normal", "bold", "bolder", "lighter"]
+                .iter()
+                .any(|allowed| value.eq_ignore_ascii_case(allowed)),
+            _ => false,
+        };
+        if !valid {
+            return Err(ParseError::custom(invalid()));
+        }
+        input.expect_exhausted()?;
     }
     Ok(())
 }
@@ -1164,19 +1246,19 @@ fn validate_root_view_box(value: &str, limit: f64) -> std::result::Result<(), St
     Ok(())
 }
 
-fn consume_scoped_css_tokens<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn consume_scoped_css_tokens(
+    input: &mut Parser<'_>,
     nesting: u8,
     control: &StaticCssControl<'_>,
-) -> std::result::Result<(), ParseError<'i, String>> {
-    css_parse_checkpoint(input, control)?;
+) -> std::result::Result<(), ParseError<String>> {
+    css_parse_checkpoint(control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
-        return Err(
-            input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
-        );
+        return Err(ParseError::custom(
+            "rendered SVG CSS exceeds the nesting limit".to_string(),
+        ));
     }
     loop {
-        css_parse_checkpoint(input, control)?;
+        css_parse_checkpoint(control)?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => return Ok(()),
@@ -1196,8 +1278,8 @@ fn consume_scoped_css_tokens<'i, 't>(
     }
 }
 
-fn validate_css_parser<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn validate_css_parser(
+    input: &mut Parser<'_>,
     ids: &BTreeSet<String>,
     stylesheet: bool,
     nesting: u8,
@@ -1233,7 +1315,7 @@ fn validate_css_parser<'i, 't>(
                         } else {
                             validate_css_parser(nested, ids, stylesheet, nesting + 1, control)
                         }
-                        .map_err(|message| nested.new_custom_error::<String, String>(message))
+                        .map_err(ParseError::<String>::custom)
                     })
                     .map_err(|error| nested_css_error(error, "function"))?;
             }
@@ -1241,7 +1323,7 @@ fn validate_css_parser<'i, 't>(
                 input
                     .parse_nested_block(|nested| {
                         validate_css_parser(nested, ids, stylesheet, nesting + 1, control)
-                            .map_err(|message| nested.new_custom_error::<String, String>(message))
+                            .map_err(ParseError::<String>::custom)
                     })
                     .map_err(|error| nested_css_error(error, "block"))?;
             }
@@ -1253,7 +1335,7 @@ fn validate_css_parser<'i, 't>(
     }
 }
 
-fn nested_css_error(error: ParseError<'_, String>, context: &str) -> String {
+fn nested_css_error(error: ParseError<String>, context: &str) -> String {
     match error.kind {
         ParseErrorKind::Custom(message) => message,
         ParseErrorKind::Basic(error) => {
@@ -1262,13 +1344,13 @@ fn nested_css_error(error: ParseError<'_, String>, context: &str) -> String {
     }
 }
 
-fn validate_quoted_css_url<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn validate_quoted_css_url(
+    input: &mut Parser<'_>,
     ids: &BTreeSet<String>,
     require_target: bool,
     control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), String> {
-    let mut payload = None::<Token<'i>>;
+    let mut payload = None::<Token<'_>>;
     loop {
         css_checkpoint(control)?;
         let token = match input.next_including_whitespace_and_comments() {
@@ -1674,6 +1756,71 @@ mod tests {
                     error.to_string().contains("SVG root layout"),
                     "{svg}: {error}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn allows_only_literal_usecase_font_variables_on_the_svg_root() {
+        let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
+            [validate_admission_with_limits, validate_static_with_limits];
+        for declarations in [
+            "--mermaid-usecase-actor-font-size:14px;--mermaid-usecase-font-size:12px;\
+             --mermaid-usecase-actor-font-family:'Open Sans', sans-serif;\
+             --mermaid-usecase-font-family:Arial, sans-serif;\
+             --mermaid-usecase-actor-font-weight:normal;--mermaid-usecase-font-weight:700",
+            "--mermaid-usecase-actor-font-size:0px;--mermaid-usecase-font-weight:bold",
+            "--mermaid-usecase-font-family:'inherit', sans-serif",
+        ] {
+            for svg in [
+                format!(r#"<svg id="root" style="{declarations}"/>"#),
+                format!(r#"<svg id="root"><style>#root{{{declarations}}}</style></svg>"#),
+            ] {
+                for validator in validators {
+                    validator(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_dynamic_or_unbounded_usecase_root_font_variables() {
+        let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
+            [validate_admission_with_limits, validate_static_with_limits];
+        for declaration in [
+            "--mermaid-usecase-other:fixed",
+            "--mermaid-usecase-font-size:var(--host-size)",
+            "--mermaid-usecase-font-size:calc(100vw)",
+            "--mermaid-usecase-font-size:10vw",
+            "--mermaid-usecase-font-size:-1px",
+            "--mermaid-usecase-font-size:999999999px",
+            "--mermaid-usecase-font-size:12px!important",
+            "--mermaid-usecase-font-family:url(https://tracker.test/font)",
+            "--mermaid-usecase-font-family:var(--host-font)",
+            "--mermaid-usecase-font-family:inherit",
+            "--mermaid-usecase-font-family:InHeRiT",
+            "--mermaid-usecase-font-family:initial",
+            "--mermaid-usecase-font-family:unset",
+            "--mermaid-usecase-font-family:revert",
+            "--mermaid-usecase-font-family:revert-layer",
+            r"--mermaid-usecase-font-family:\69nherit",
+            "--mermaid-usecase-font-family:Arial,",
+            "--mermaid-usecase-font-family:",
+            "--mermaid-usecase-font-weight:var(--host-weight)",
+            "--mermaid-usecase-font-weight:1001",
+            "--mermaid-usecase-font-weight:normal bold",
+            "--mermaid-usecase-font-weight:normal;position:fixed",
+        ] {
+            for svg in [
+                format!(r#"<svg id="root" style="{declaration}"/>"#),
+                format!(r#"<svg id="root"><style>#root{{{declaration}}}</style></svg>"#),
+            ] {
+                for validator in validators {
+                    assert!(
+                        validator(&svg, RenderResourcePolicy::trusted_native()).is_err(),
+                        "accepted {svg}"
+                    );
+                }
             }
         }
     }

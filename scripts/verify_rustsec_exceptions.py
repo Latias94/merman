@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LEDGER_PATH = Path("docs/security/RUSTSEC_EXCEPTIONS.json")
 DENY_PATH = Path("deny.toml")
 LOCK_PATH = Path("Cargo.lock")
-ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v1.json")
+ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v2.json")
 SCHEMA_VERSION = 1
 MAX_REVIEW_INTERVAL = timedelta(days=92)
 ADVISORY_ID_RE = re.compile(r"^RUSTSEC-[0-9]{4}-[0-9]{4}$")
@@ -245,8 +245,8 @@ def load_artifact_profile_ids(root: Path) -> frozenset[str]:
         load_json_strict(root / ARTIFACT_PROFILES_PATH),
         "artifact profile authority",
     )
-    if authority.get("schema_version") != 1:
-        raise RustSecExceptionError("artifact profile authority schema_version must be 1")
+    if authority.get("schema_version") != 2:
+        raise RustSecExceptionError("artifact profile authority schema_version must be 2")
     profile_ids: list[str] = []
     for index, raw in enumerate(
         require_array(authority.get("profiles"), "artifact profile authority profiles")

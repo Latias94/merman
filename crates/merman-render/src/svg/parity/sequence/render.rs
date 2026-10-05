@@ -93,8 +93,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     checkpoints.checkpoint()?;
     let layout = prepared.layout();
 
-    let mut settings = SequenceRenderSettings::from_effective_config(effective_config);
-    settings.apply_typography_plan(prepared.typography());
+    let settings =
+        SequenceRenderSettings::from_resolved_typography(effective_config, prepared.typography());
     let mut typography_receipt =
         crate::sequence::SequenceTypographyThemeReceipt::from_plan(prepared.typography());
     let note_text_shadow = super::text_effect::SequenceTextShadow::resolve(
@@ -273,6 +273,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
 
     activation_plan.prepare_paint(
+        activation_theme.typed_fill.is_some(),
+        activation_theme.typed_stroke.is_some(),
         activation_theme.stroke_width,
         activation_theme.radius,
         activation_theme.effect.take(),
@@ -307,59 +309,68 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         defer_paint_bounds,
     )?;
 
-    let actor_ctx = SequenceActorRenderContext {
-        text_shadow: &actor_text_shadow,
-        rect_style: actor_theme.rect_style,
-        geometry_receipt: &actor_theme.receipt,
-        shadow_plan: &actor_shadows,
-        shadow_evidence: prepared.effect_evidence(),
-        model,
-        nodes_by_id: &nodes_by_id,
-        edges_by_id: &edges_by_id,
-        math_sidecar: prepared.math_sidecar(),
-        actor_wrap_width: settings.actor_wrap_width,
-        actor_height: settings.actor_height,
-        label_box_height: settings.label_box_height,
-        measurer,
-        actor_text_style: &settings.actor_text_style,
-        actor_typography: prepared.typography().actor(),
-        typography_receipt: &typography_receipt,
-        lifeline_effective_stroke_width: lifeline_theme
-            .typed_stroke_width
-            .map(f64::from)
-            .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
-        checkpoints,
-    };
+    {
+        let actor_ctx = SequenceActorRenderContext {
+            text_shadow: &actor_text_shadow,
+            rect_style: actor_theme.rect_style,
+            geometry_receipt: &actor_theme.receipt,
+            shadow_plan: &actor_shadows,
+            shadow_evidence: prepared.effect_evidence(),
+            model,
+            diagram_id,
+            sanitize_config,
+            typed_fill: actor_theme.typed_fill.as_deref(),
+            typed_stroke: actor_theme.typed_stroke.as_deref(),
+            nodes_by_id: &nodes_by_id,
+            edges_by_id: &edges_by_id,
+            math_sidecar: prepared.math_sidecar(),
+            actor_wrap_width: settings.actor_wrap_width,
+            actor_height: settings.actor_height,
+            label_box_height: settings.label_box_height,
+            measurer,
+            actor_text_style: &settings.actor_text_style,
+            actor_typography: prepared.typography().actor(),
+            typography_receipt: &typography_receipt,
+            lifeline_effective_stroke_width: lifeline_theme
+                .typed_stroke_width
+                .map(f64::from)
+                .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
+            checkpoints,
+        };
 
-    render_sequence_box_frames_and_rect_blocks(
-        &mut out,
-        model,
-        &nodes_by_id,
-        SequenceFrameRenderOptions {
-            actor_label_font_size: settings.actor_label_font_size,
-            box_margin: settings.box_margin,
-            box_text_margin: settings.box_text_margin,
-            rect_default_fill: &settings.rect_default_fill,
-        },
-        &actor_ctx.label_context(),
-        checkpoints,
-    )?;
-    out.checkpoint()?;
+        render_sequence_box_frames_and_rect_blocks(
+            &mut out,
+            model,
+            &nodes_by_id,
+            SequenceFrameRenderOptions {
+                actor_text_style: &settings.actor_text_style,
+                box_layouts: prepared.box_layouts(),
+                box_title_height: prepared.box_title_height(),
+                box_height: prepared.box_height(),
+                box_margin: settings.box_margin,
+                box_text_margin: settings.box_text_margin,
+                rect_default_fill: &settings.rect_default_fill,
+            },
+            &actor_ctx.label_context(),
+            checkpoints,
+        )?;
+        out.checkpoint()?;
 
-    if settings.mirror_actors {
-        render_sequence_bottom_actors(&mut out, &actor_ctx)?;
+        if settings.mirror_actors {
+            render_sequence_bottom_actors(&mut out, &actor_ctx)?;
+            out.checkpoint()?;
+        }
+
+        // Top actors + lifelines.
+        render_sequence_top_actors_and_lifelines(
+            &mut out,
+            &actor_ctx,
+            &mut lifeline_theme.receipt,
+            &mut lifeline_paint,
+            options,
+        )?;
         out.checkpoint()?;
     }
-
-    // Top actors + lifelines.
-    render_sequence_top_actors_and_lifelines(
-        &mut out,
-        &actor_ctx,
-        &mut lifeline_theme.receipt,
-        &mut lifeline_paint,
-        options,
-    )?;
-    out.checkpoint()?;
 
     out.push_str("<style>");
     let css_emission = write_sequence_css_with_theme_adapter(
@@ -388,7 +399,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             note_typography: Some(prepared.typography().note()),
             loop_typography: Some(prepared.typography().loop_label()),
         },
-    );
+    )?;
     sequence_number_theme.receipt.record_stylesheet_emission(
         css_emission.sequence_number_fill(),
         css_emission.typed_sequence_number_fill(),
@@ -439,21 +450,30 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     actor_fill_unhandled &= actor_theme.typed_fill.is_some();
     actor_stroke_emitted &= actor_theme.typed_stroke.is_some();
     actor_stroke_unhandled &= actor_theme.typed_stroke.is_some();
-    prepared.theme_evidence().record_actor_emission(
-        model.actor_order.len(),
-        actor_fill_emitted,
-        actor_fill_unhandled,
-        actor_fill_overridden,
-        actor_stroke_emitted,
-        actor_stroke_unhandled,
-        actor_stroke_overridden,
-        actor_theme.receipt,
-    );
-
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     write_scoped_sequence_base_defs(&mut out, diagram_id)?;
+    if crate::config::config_diagram_look(effective_config).is_neo() {
+        let theme = effective_config
+            .get("theme")
+            .and_then(serde_json::Value::as_str);
+        let flood_color = if matches!(theme, Some("redux" | "redux-color")) {
+            "#000000"
+        } else {
+            "#FFFFFF"
+        };
+        let _ = write!(
+            out,
+            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
+        );
+        out.checkpoint()?;
+    }
 
     let actor_labels = super::actor_shapes::ActorLabelContext {
+        config: sanitize_config,
+        diagram_id,
+        typed_fill: actor_theme.typed_fill.as_deref(),
+        typed_stroke: actor_theme.typed_stroke.as_deref(),
+        translate_y: 0.0,
         shadow: &actor_text_shadow,
         shadow_evidence: prepared.effect_evidence(),
         wrap_width_px: settings.actor_wrap_width,
@@ -465,16 +485,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         actor_index: None,
         checkpoints,
     };
-    render_sequence_actor_man_tops(
-        &mut out,
-        model,
-        &nodes_by_id,
-        settings.actor_height,
-        diagram_id,
-        &actor_labels,
-    )?;
-    out.checkpoint()?;
-
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
         prepared,
@@ -507,6 +517,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         options,
     );
     let interaction_ctx = SequenceInteractionRenderContext {
+        sanitize_config,
         frame_paint: &frame_paint,
         keyword_paint: &keyword_paint,
         note_text_shadow: &note_text_shadow,
@@ -555,7 +566,39 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         ),
     );
 
+    let actor_ctx = SequenceActorRenderContext {
+        text_shadow: &actor_text_shadow,
+        rect_style: actor_theme.rect_style,
+        geometry_receipt: &actor_theme.receipt,
+        shadow_plan: &actor_shadows,
+        shadow_evidence: prepared.effect_evidence(),
+        model,
+        diagram_id,
+        sanitize_config,
+        typed_fill: actor_theme.typed_fill.as_deref(),
+        typed_stroke: actor_theme.typed_stroke.as_deref(),
+        nodes_by_id: &nodes_by_id,
+        edges_by_id: &edges_by_id,
+        math_sidecar: prepared.math_sidecar(),
+        actor_wrap_width: settings.actor_wrap_width,
+        actor_height: settings.actor_height,
+        label_box_height: settings.label_box_height,
+        measurer,
+        actor_text_style: &settings.actor_text_style,
+        actor_typography: prepared.typography().actor(),
+        typography_receipt: &typography_receipt,
+        lifeline_effective_stroke_width: lifeline_theme
+            .typed_stroke_width
+            .map(f64::from)
+            .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
+        checkpoints,
+    };
+
+    // Mermaid appends glyph actors after overlays, before drawing messages.
+    render_sequence_actor_man_tops(&mut out, &actor_ctx, diagram_id)?;
+
     let message_ctx = SequenceMessageRenderContext {
+        sanitize_config,
         model,
         paint_plan: &message_paint,
         shadow_evidence: prepared.effect_evidence(),
@@ -566,7 +609,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         message_align: settings.message_align.as_str(),
         diagram_id,
         actor_height: settings.actor_height,
-        legacy_label_font_size: settings.actor_label_font_size,
         sequence_width: settings.sequence_width,
         activation_width: settings.activation_width,
         wrap_padding: settings.wrap_padding,
@@ -600,6 +642,21 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         ),
     );
 
+    if settings.mirror_actors {
+        render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
+    }
+
+    prepared.theme_evidence().record_actor_emission(
+        model.actor_order.len(),
+        actor_fill_emitted,
+        actor_fill_unhandled,
+        actor_fill_overridden,
+        actor_stroke_emitted,
+        actor_stroke_unhandled,
+        actor_stroke_overridden,
+        actor_theme.receipt,
+    );
+
     render_sequence_actor_popup_menus(
         &mut out,
         model,
@@ -609,25 +666,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             force_menus: settings.force_menus,
             mirror_actors: settings.mirror_actors,
             actor_height: settings.actor_height,
+            actor_text_style: &settings.actor_text_style,
         },
         prepared.actor_popup_widths(),
         &actor_labels,
         checkpoints,
     )?;
     out.checkpoint()?;
-
-    if settings.mirror_actors {
-        render_sequence_actor_man_bottoms(
-            &mut out,
-            model,
-            &nodes_by_id,
-            settings.actor_height,
-            settings.label_box_height,
-            diagram_id,
-            &actor_labels,
-        )?;
-        out.checkpoint()?;
-    }
 
     if let Some(title) = prepared.diagram_title() {
         let _ = write!(

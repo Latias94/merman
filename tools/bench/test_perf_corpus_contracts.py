@@ -82,12 +82,26 @@ class CorpusContractsTest(unittest.TestCase):
         with self.assertRaisesRegex(compare_self.ContractViolation, "no registered lane"):
             compare_self._optional_lane_for_group(corpus, "unregistered_group")
 
+    def test_current_pipeline_corpora_require_explicit_diagram_coverage(self) -> None:
+        for path, features in (
+            (CORPUS_PATH, {"svg"}),
+            (ASCII_CORPUS_PATH, {"ascii"}),
+            (BINDING_REQUEST_CORPUS_PATH, {"analysis", "ascii", "svg"}),
+        ):
+            with self.subTest(corpus=path.name), self.assertRaisesRegex(
+                verify_pipeline_bench_list.PipelineBenchListError,
+                "no native-criterion lanes",
+            ):
+                verify_pipeline_bench_list._pipeline_lane_groups(
+                    load_corpus(path), enabled_features=frozenset(features)
+                )
+
     def test_compiled_pipeline_list_requires_current_groups_and_rejects_history(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
         current = dict(
             verify_pipeline_bench_list._pipeline_lane_groups(
                 corpus,
-                enabled_features=frozenset({"svg"}),
+                enabled_features=frozenset({"all-diagrams", "svg"}),
             )[0]
         )
         current_groups = sorted(current)
@@ -205,7 +219,7 @@ class CorpusContractsTest(unittest.TestCase):
         current = dict(
             verify_pipeline_bench_list._pipeline_lane_groups(
                 corpus,
-                enabled_features=frozenset({"ascii"}),
+                enabled_features=frozenset({"all-diagrams", "ascii"}),
             )[0]
         )
         expected_benches = sorted(
@@ -236,7 +250,7 @@ class CorpusContractsTest(unittest.TestCase):
         result = verify_pipeline_bench_list.validate_pipeline_bench_list(
             corpus,
             output,
-            enabled_features=("ascii",),
+            enabled_features=("all-diagrams", "ascii"),
         )
 
         self.assertEqual(result["groups"], ("ascii_end_to_end",))
@@ -248,7 +262,7 @@ class CorpusContractsTest(unittest.TestCase):
             checkout=ROOT,
             package="merman",
             bench="ascii_pipeline",
-            features=("ascii",),
+            features=("all-diagrams", "ascii"),
             default_features=False,
             toolchain=None,
             target_dir=ROOT / "target",
@@ -277,7 +291,7 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list.validate_pipeline_bench_list(
                 corpus,
                 without_receipt,
-                enabled_features=("ascii",),
+                enabled_features=("all-diagrams", "ascii"),
             )
 
         legacy_contract = replace(
@@ -297,7 +311,7 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list.validate_pipeline_bench_list(
                 legacy_contract,
                 output,
-                enabled_features=("ascii",),
+                enabled_features=("all-diagrams", "ascii"),
             )
 
     def test_binding_request_corpus_owns_one_complete_benchmark_list(self) -> None:
@@ -313,7 +327,7 @@ class CorpusContractsTest(unittest.TestCase):
         result = verify_pipeline_bench_list.validate_pipeline_bench_list(
             corpus,
             output,
-            enabled_features=("analysis", "ascii", "svg"),
+            enabled_features=("all-diagrams", "analysis", "ascii", "svg"),
         )
 
         self.assertEqual(result["bench_count"], 3)
@@ -363,7 +377,7 @@ class CorpusContractsTest(unittest.TestCase):
                     "native-criterion",
                     "reused-process",
                     "reused-engine",
-                    ("analysis", "ascii", "svg"),
+                    ("all-diagrams", "analysis", "ascii", "svg"),
                     1,
                     ("latency_ns",),
                     (),
@@ -376,7 +390,7 @@ class CorpusContractsTest(unittest.TestCase):
                     "native-criterion",
                     "reused-process",
                     "reused-engine",
-                    ("analysis", "ascii", "svg"),
+                    ("all-diagrams", "analysis", "ascii", "svg"),
                     1,
                     ("latency_ns",),
                     (),
@@ -389,7 +403,7 @@ class CorpusContractsTest(unittest.TestCase):
                     "native-system-allocator-subprocess",
                     "fresh-process",
                     "reused-engine",
-                    ("analysis", "ascii", "svg"),
+                    ("all-diagrams", "analysis", "ascii", "svg"),
                     1,
                     ("allocation_count", "allocated_bytes", "peak_growth_bytes"),
                     (1, 2, 4, 10, 32, 100),
@@ -402,7 +416,7 @@ class CorpusContractsTest(unittest.TestCase):
                     "native-criterion",
                     "reused-process",
                     "reused-engine",
-                    ("analysis", "ascii", "svg"),
+                    ("all-diagrams", "analysis", "ascii", "svg"),
                     1,
                     ("latency_ns",),
                     (),
@@ -419,7 +433,7 @@ class CorpusContractsTest(unittest.TestCase):
                 "\n".join(
                     f"{bench}: benchmark" for bench in expected_benches[:-1]
                 ),
-                enabled_features=("analysis", "ascii", "svg"),
+                enabled_features=("all-diagrams", "analysis", "ascii", "svg"),
             )
 
     def test_canary_suite_is_standard_hotspot_set(self) -> None:

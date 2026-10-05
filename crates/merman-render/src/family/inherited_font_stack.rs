@@ -182,6 +182,10 @@ impl InheritedTextViewportFacts {
         self.height_px
     }
 
+    pub(crate) fn runs(&self) -> &[InheritedTextRunFacts] {
+        &self.runs
+    }
+
     pub(crate) fn run(&self, index: usize) -> &InheritedTextRunFacts {
         &self.runs[index]
     }

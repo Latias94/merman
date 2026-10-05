@@ -4,16 +4,6 @@ use super::super::*;
 
 pub(crate) fn render_error_diagram_svg_model(
     layout: &ErrorDiagramLayout,
-    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    typography_theme: &crate::error::ErrorTypographyThemePlan,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    render_error_diagram_svg_inner(layout, effective_config, typography_theme, options)
-}
-
-fn render_error_diagram_svg_inner(
-    layout: &ErrorDiagramLayout,
     effective_config: &serde_json::Value,
     typography_theme: &crate::error::ErrorTypographyThemePlan,
     options: &SvgExecution<'_>,
@@ -101,6 +91,26 @@ fn render_error_diagram_svg_inner(
         version.x(),
         version.y(),
     );
+    for (index, detail) in typography_theme.detail_geometry().iter().enumerate() {
+        let _ = write!(
+            &mut out,
+            r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">"#,
+            fmt(detail.x()),
+            fmt(detail.y()),
+            fmt(detail.font_size_px()),
+        );
+        util::escape_xml_serialized_text_into(&mut out, detail.text());
+        out.push_str("</text>");
+        out.checkpoint()?;
+        surface_receipt.record_error_text(
+            crate::error::ErrorTextRole::Detail(index),
+            "error-text",
+            detail.text(),
+            detail.font_size_px(),
+            detail.x(),
+            detail.y(),
+        );
+    }
     out.push_str("</g></svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !typography_theme.record_terminal(surface_receipt) {
@@ -109,4 +119,73 @@ fn render_error_diagram_svg_inner(
         });
     }
     Ok(rooted_svg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_core::diagrams::error_diagram::ErrorDiagramRenderModel;
+
+    fn render_message_with_viewport(message: Option<&str>) -> (String, f64) {
+        let model = ErrorDiagramRenderModel {
+            diagram_type: "error".to_string(),
+            error_message: message.map(str::to_string),
+        };
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .unwrap();
+        let config = serde_json::json!({});
+        let typography = crate::error::ErrorTypographyThemePlan::resolve_with_message(
+            None,
+            &merman_core::MermaidConfig::from_value(config.clone()),
+            execution.text_measurer(),
+            model.error_message.as_deref(),
+        );
+        let layout = crate::error::layout_error_diagram_typed(&model, &typography).unwrap();
+        let viewport_height = typography.viewport_height_px();
+        let svg = render_error_diagram_svg_model(&layout, &config, &typography, &execution)
+            .unwrap()
+            .into_string_for(crate::DiagramFamilyId::ERROR)
+            .unwrap();
+        (svg, viewport_height)
+    }
+
+    fn render_message(message: Option<&str>) -> String {
+        render_message_with_viewport(message).0
+    }
+
+    #[test]
+    fn error_svg_without_a_message_preserves_the_original_graphic() {
+        let svg = render_message(None);
+        assert!(svg.contains(r#"viewBox="0 0 2412 512""#));
+        assert!(svg.contains("Syntax error in text"));
+        assert_eq!(svg.matches(r#"font-size="42px""#).count(), 0);
+    }
+
+    #[test]
+    fn error_svg_shows_literal_error_text_and_grows_the_viewport() {
+        let (svg, viewport_height) =
+            render_message_with_viewport(Some("Unexpected <bad>& #abcdef; #60;"));
+        assert!(svg.contains(&format!(r#"viewBox="0 0 2412 {viewport_height}""#)));
+        assert!(svg.contains("Unexpected &lt;bad&gt;&amp; #abcdef; #60;</text>"));
+        assert!(svg.contains(r#"x="1440""#));
+        assert_eq!(svg.matches(r#"font-size="42px""#).count(), 1);
+    }
+
+    #[test]
+    fn error_svg_emits_at_most_four_message_lines() {
+        let (svg, viewport_height) = render_message_with_viewport(Some(&"x".repeat(500)));
+        assert!(svg.contains(&format!(r#"viewBox="0 0 2412 {viewport_height}""#)));
+        assert_eq!(svg.matches(r#"font-size="42px""#).count(), 4);
+        assert!(svg.contains(&format!("{}...</text>", "x".repeat(72))));
+    }
 }

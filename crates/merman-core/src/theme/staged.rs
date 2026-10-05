@@ -1,7 +1,7 @@
 //! Ordered execution for the classic Mermaid theme classes.
 //!
 //! Mermaid theme classes are mutable JavaScript objects, but their public behavior is a small,
-//! deterministic four-stage protocol. This module keeps that protocol behind one interface and
+//! deterministic staged protocol. This module keeps that protocol behind one interface and
 //! records ownership from the same writes that produce values. It intentionally models only the
 //! three assignment operators used by the pinned theme sources: unconditional assignment,
 //! JavaScript `||`, and JavaScript `??`.
@@ -44,6 +44,7 @@ pub(super) struct ResolutionTrace {
     pub(super) overrides_applied: ThemeState,
     pub(super) after_update: ThemeState,
     pub(super) explicit_replay: ThemeState,
+    pub(super) final_resolved: ThemeState,
 }
 
 #[derive(Debug)]
@@ -106,6 +107,35 @@ impl ThemeState {
             for path in explicit_dependency_leaf_paths(key, value) {
                 self.dependencies
                     .insert(path.clone(), BTreeSet::from([path]));
+            }
+        }
+    }
+
+    fn replay_explicit(&mut self, explicit: &Map<String, Value>) {
+        for (key, value) in explicit {
+            if self.variables.get(key).is_some_and(Value::is_object)
+                && let Value::Object(children) = value
+            {
+                for (child, value) in children {
+                    self.variables
+                        .get_mut(key)
+                        .and_then(Value::as_object_mut)
+                        .expect("replay target remains an object")
+                        .insert(child.clone(), value.clone());
+                    let root = format!("{key}.{child}");
+                    self.remove_dependency_subtree(&root);
+                    for path in explicit_dependency_leaf_paths(&root, value) {
+                        self.dependencies
+                            .insert(path.clone(), BTreeSet::from([path]));
+                    }
+                }
+            } else {
+                self.variables.insert(key.clone(), value.clone());
+                self.remove_dependency_subtree(key);
+                for path in explicit_dependency_leaf_paths(key, value) {
+                    self.dependencies
+                        .insert(path.clone(), BTreeSet::from([path]));
+                }
             }
         }
     }
@@ -263,9 +293,21 @@ impl Resolution {
         #[cfg(test)]
         let after_update = state.clone();
 
-        state.overlay_explicit(explicit);
+        state.replay_explicit(explicit);
         #[cfg(test)]
         let explicit_replay = state.clone();
+
+        if program == StagedProgram::Base
+            && explicit.contains_key("nodeBorder")
+            && !explicit.contains_key("useGradient")
+        {
+            state.commit_computed(
+                "useGradient",
+                ComputedValue::with_dependencies(Value::Bool(false), ["nodeBorder".to_string()]),
+            );
+        }
+        #[cfg(test)]
+        let final_resolved = state.clone();
 
         Ok(Self {
             state,
@@ -275,6 +317,7 @@ impl Resolution {
                 overrides_applied,
                 after_update,
                 explicit_replay,
+                final_resolved,
             },
         })
     }
@@ -885,6 +928,9 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
     stage.assign("edgeLabelBackground", |stage| {
         lightened(stage, "labelBackground", 25.0)
     })?;
+    stage.assign_if_falsy("flowContainerStroke", |stage| {
+        copy(stage, "secondaryBorderColor")
+    })?;
 
     for (target, source) in [
         ("actorBorder", "border1"),
@@ -1181,6 +1227,13 @@ fn update_forest(stage: &mut ThemeState) -> Result<(), ColorError> {
         ("clusterBkg", "secondBkg"),
         ("clusterBorder", "border2"),
         ("defaultLinkColor", "lineColor"),
+    ] {
+        stage.assign(target, |stage| copy(stage, source))?;
+    }
+    stage.assign_if_falsy("flowContainerStroke", |stage| {
+        copy(stage, "secondaryBorderColor")
+    })?;
+    for (target, source) in [
         ("taskBorderColor", "border1"),
         ("taskTextColor", "taskTextLightColor"),
         ("taskTextOutsideColor", "taskTextDarkColor"),
@@ -1426,6 +1479,9 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
     ] {
         stage.assign(target, |stage| copy(stage, source))?;
     }
+    stage.assign_if_falsy("flowContainerStroke", |stage| {
+        copy(stage, "secondaryBorderColor")
+    })?;
     stage.assign("sectionBkgColor", |stage| {
         lightened(stage, "contrast", 30.0)
     })?;
@@ -1550,6 +1606,44 @@ fn update_git_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn shallow_replay_preserves_sibling_dependencies_and_replaces_nested_children() {
+        let mut state = ThemeState::constructor(Map::new());
+        state.overlay_explicit(json!({"source": "#123456"}).as_object().unwrap());
+        state.commit_computed(
+            "chart",
+            ComputedValue::object(
+                json!({"retained": "#123456", "nested": {"old": 1}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                BTreeMap::from([
+                    ("retained".to_string(), vec!["source".to_string()]),
+                    ("nested.old".to_string(), vec!["source".to_string()]),
+                ]),
+            ),
+        );
+        state.replay_explicit(
+            json!({"chart": {"nested": {"new": 2}}})
+                .as_object()
+                .unwrap(),
+        );
+        assert_eq!(
+            state.variables["chart"],
+            json!({"retained": "#123456", "nested": {"new": 2}})
+        );
+        assert!(state.depends_on("chart.retained", "source"));
+        assert!(!state.depends_on("chart.nested.old", "source"));
+        assert!(state.depends_on("chart.nested.new", "chart.nested.new"));
+        state.replay_explicit(json!({"chart": {}}).as_object().unwrap());
+        assert!(state.depends_on("chart.retained", "source"));
+        assert!(!state.depends_on("chart", "chart"));
+        state.replay_explicit(json!({"chart": false}).as_object().unwrap());
+        assert_eq!(state.variables["chart"], json!(false));
+        assert!(!state.depends_on("chart.retained", "source"));
+        assert!(state.depends_on("chart", "chart"));
+    }
 
     fn iteration_count(value: Value) -> Result<usize, ThemeEvaluationLimitExceeded> {
         let mut variables = Map::new();

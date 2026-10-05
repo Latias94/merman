@@ -154,6 +154,17 @@ fn qualify_common_support(
             reason_id: "theme-support.target-not-applicable-to-family",
         });
     }
+    let handler_available = merman_core::diagram_family_capabilities()
+        .iter()
+        .any(|entry| {
+            entry.family_id == family && crate::family::supports_diagram_type(entry.diagram_type)
+        });
+    if !handler_available {
+        return Err(SupportRejection {
+            state: ThemeSupportStateV1::Unverified,
+            reason_id: "theme-support.family-render-capability-not-built",
+        });
+    }
     match output {
         ThemeSupportOutputV1::Ascii => {
             return Err(SupportRejection {
@@ -255,4 +266,35 @@ fn descriptor<const N: usize>(
         state,
         reason_ids,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn support_never_claims_an_uncompiled_family_consumer() {
+        for family in DiagramFamilyId::all() {
+            let available = merman_core::diagram_family_capabilities()
+                .iter()
+                .any(|entry| {
+                    entry.family_id == *family
+                        && crate::family::supports_diagram_type(entry.diagram_type)
+                });
+            if available {
+                continue;
+            }
+            let query = ThemeSupportQueryV1::base_typography(
+                family.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeSupportBaseTypographyPropertyV1::FontStack,
+            );
+            let support = describe_theme_support(&query);
+            assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
+            assert_eq!(
+                support.reason_ids(),
+                ["theme-support.family-render-capability-not-built"]
+            );
+        }
+    }
 }

@@ -1,12 +1,8 @@
-import type { MermanWasmModule, SvgBindingOptions } from "@mermanjs/web";
+import type { MermanWasmModule, HostTextMeasurerSvgBindingOptions } from "@mermanjs/web";
 import { BINDING_OPTIONS_SCHEMA_VERSION } from "../../../../../platforms/web/packages/full/dist/generated/resource-contract.js";
 import { createBrowserTextMeasurementSession } from "../../../../../platforms/web/packages/full/dist/runtime-render.js";
 
-import {
-  diagramFontStack,
-  type DiagramFont,
-} from "../../../lib/diagram-font.ts";
-import { sourceWithConfig } from "../../../lib/mermaid-config.ts";
+import { buildMermaidOperationInput, type MermaidConfigObject } from "../../../lib/mermaid-config.ts";
 import {
   assertRealmSourceBudget,
   type RealmViewport,
@@ -69,13 +65,15 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
       measurement = await runBenchmarkEngineStage("initialize", () =>
         createBrowserTextMeasurementSession()
       );
-      configuredSource = sourceWithConfig(
+      const configured = buildMermaidOperationInput(
         payload.source,
         payload.theme,
-        payload.configJson
+        payload.configJson,
+        { diagramFont: payload.diagramFont },
       );
+      configuredSource = configured.configuredSource;
       assertRealmSourceBudget(configuredSource);
-      options = bindingOptions(payload.diagramFont, payload.viewport);
+      options = bindingOptions(configured.initializationConfig, payload.viewport);
       version = module.packageVersion();
     } catch (error) {
       measurement?.dispose();
@@ -134,17 +132,13 @@ function validateMermanWasmUrl(value: string | null): URL {
 }
 
 function bindingOptions(
-  diagramFont: DiagramFont,
+  initializationConfig: Readonly<MermaidConfigObject>,
   viewport: RealmViewport
 ): string {
-  const fontFamily = diagramFontStack(diagramFont);
   const screenAvailableWidth = window.screen.availWidth;
-  const options: SvgBindingOptions = {
+  const options: HostTextMeasurerSvgBindingOptions = {
     version: BINDING_OPTIONS_SCHEMA_VERSION,
-    site_config: {
-      fontFamily,
-      themeVariables: { fontFamily },
-    },
+    site_config: initializationConfig,
     layout: {
       container_width: viewport.width,
       container_height: viewport.height,

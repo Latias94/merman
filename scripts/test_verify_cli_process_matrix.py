@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 import signal
@@ -19,31 +20,44 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import verify_cli_process_matrix as matrix
 
 
+CLI_RELEASE_FEATURES = tuple(
+    next(
+        profile["cargo"]["features"]
+        for profile in json.loads(
+            (matrix.REPO_ROOT / "capabilities/artifact-profiles-v2.json").read_text(
+                encoding="utf-8"
+            )
+        )["profiles"]
+        if profile["id"] == "cli-release"
+    )
+)
+
+
 EXPECTED_SELECTIONS = (
     ("base", (), "exact"),
-    ("analysis", ("analysis",), "exact"),
-    ("svg", ("svg",), "exact"),
-    ("ascii", ("ascii",), "exact"),
-    ("local-icons", ("icons",), "exact"),
-    ("markdown", ("markdown",), "exact"),
-    ("parallel-markdown", ("parallel-markdown",), "exact"),
-    ("network-icons", ("network-icons",), "exact"),
-    ("png", ("png",), "exact"),
-    ("jpeg", ("jpeg",), "exact"),
-    ("pdf", ("pdf",), "exact"),
-    ("parallel-pdf", ("parallel-markdown", "pdf"), "exact"),
-    ("cytoscape-layout", ("layout-cytoscape",), "exact"),
-    ("elk-layout", ("layout-elk",), "exact"),
-    ("math", ("math",), "exact"),
-    ("rustdoc", ("rustdoc",), "exact"),
+    ("analysis", ("all-diagrams", "analysis"), "exact"),
+    ("svg", ("all-diagrams", "svg"), "exact"),
+    ("ascii", ("all-diagrams", "ascii"), "exact"),
+    ("local-icons", ("all-diagrams", "icons"), "exact"),
+    ("markdown", ("all-diagrams", "markdown"), "exact"),
+    ("parallel-markdown", ("all-diagrams", "parallel-markdown"), "exact"),
+    ("network-icons", ("all-diagrams", "network-icons"), "exact"),
+    ("png", ("all-diagrams", "png"), "exact"),
+    ("jpeg", ("all-diagrams", "jpeg"), "exact"),
+    ("pdf", ("all-diagrams", "pdf"), "exact"),
+    ("parallel-pdf", ("all-diagrams", "parallel-markdown", "pdf"), "exact"),
+    ("cytoscape-layout", ("all-diagrams", "layout-cytoscape"), "exact"),
+    ("elk-layout", ("all-diagrams", "layout-elk"), "exact"),
+    ("math", ("all-diagrams", "math"), "exact"),
+    ("rustdoc", ("all-diagrams", "rustdoc"), "exact"),
     ("completions", ("shell-completions",), "exact"),
     ("svg-completions", ("shell-completions", "svg"), "exact"),
-    ("system-clock", ("system-clock",), "exact"),
-    ("system-timezone", ("system-timezone",), "exact"),
-    ("system-random", ("system-random",), "exact"),
-    ("system-timing", ("system-timing",), "exact"),
+    ("system-clock", ("all-diagrams", "system-clock"), "exact"),
+    ("system-timezone", ("all-diagrams", "system-timezone"), "exact"),
+    ("system-random", ("all-diagrams", "system-random"), "exact"),
+    ("system-timing", ("all-diagrams", "system-timing"), "exact"),
     ("default", (), "default"),
-    ("release", (), "all"),
+    ("release", CLI_RELEASE_FEATURES, "exact"),
 )
 
 
@@ -51,13 +65,7 @@ def selection_projection(profile: matrix.ProfileCase) -> tuple[object, ...]:
     return (
         profile.case_id,
         profile.features,
-        (
-            "all"
-            if profile.use_all_features
-            else "default"
-            if profile.use_default_features
-            else "exact"
-        ),
+        "default" if profile.use_default_features else "exact",
     )
 
 
@@ -66,9 +74,7 @@ def expected_command(selection: tuple[object, ...]) -> list[str]:
     del case_id
     features = tuple(raw_features)
     command = ["cargo", "nextest", "run", "-p", "merman-cli"]
-    if mode == "all":
-        command.append("--all-features")
-    elif mode == "exact":
+    if mode == "exact":
         command.append("--no-default-features")
         if features:
             command.extend(["--features", ",".join(features)])
@@ -91,7 +97,7 @@ class CliProcessMatrixTests(unittest.TestCase):
                 self.assertTrue(profile.name)
                 self.assertTrue(profile.workflow)
 
-    def test_cli_defaults_omit_only_the_explicit_elk_leaf(self) -> None:
+    def test_cli_defaults_select_standard_diagram_workflows(self) -> None:
         cargo_toml = tomllib.loads(
             (matrix.REPO_ROOT / "crates/merman-cli/Cargo.toml").read_text(
                 encoding="utf-8"
@@ -99,12 +105,18 @@ class CliProcessMatrixTests(unittest.TestCase):
         )
         features = cargo_toml["features"]
         public_features = set(features) - {"default"}
+        diagram_selectors = {
+            feature for feature in public_features if feature.startswith("diagram-")
+        }
+        expected_defaults = public_features - diagram_selectors
         self.assertSetEqual(
             set(features["default"]),
-            public_features - {"layout-elk"},
-            "workspace defaults intentionally omit only the explicit EPL-2.0 ELK leaf",
+            expected_defaults,
+            "workspace defaults select all-diagrams and the standard CLI workflows",
         )
-        self.assertNotIn("layout-elk", features["default"])
+        self.assertIn("layout-elk", features["default"])
+        self.assertIn("rustdoc", public_features)
+        self.assertIn("rustdoc", features["default"])
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

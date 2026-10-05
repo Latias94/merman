@@ -30,6 +30,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
+    pub label_style: &'a str,
     pub rough_group_style: &'a str,
     pub fill_color: &'a str,
     pub stroke_color: &'a str,
@@ -205,6 +206,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             tooltip_enabled,
             tooltip,
             look,
+            color_slot: super::super::agentflow::container_color_slot(ctx, node_id),
         },
     );
     ctx.checkpoint_emit()?;
@@ -365,6 +367,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             .as_ref()
             .map_or("", |(_, _, _, attr)| attr.as_str()),
         theme_style: &theme_style,
+        label_style: &compiled_styles.label_style,
         rough_group_style: &rough_group_style,
         fill_color,
         stroke_color,
@@ -393,23 +396,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         ctx.work_meter.charge(label.text.len())?;
     }
     let (shape_outcome, no_label) = if shape == "collapsedGroup" {
-        // Mermaid's collapsedGroup appends its separator and ellipsis after the labelHelper
-        // output. The dedicated renderer currently writes into String, so keep the bounded output
-        // seam here and retain the upstream child order (body → label → indicators).
-        let mut collapsed_body = String::new();
-        let geometry = shapes::render_collapsed_group_body(
-            &mut collapsed_body,
-            ctx,
-            &common,
-            &mut label,
-            details,
-        );
-        out.push_str(&collapsed_body);
+        // Mermaid appends the separator and ellipsis after the labelHelper output.
+        let geometry = shapes::render_collapsed_group_body(out, ctx, &common, &mut label, details);
+        out.checkpoint()?;
         let label_receipt =
             label::render_flowchart_node_label_before_tail(out, ctx, &common, &label, details);
-        let mut collapsed_tail = String::new();
-        shapes::render_collapsed_group_indicators(&mut collapsed_tail, geometry);
-        out.push_str(&collapsed_tail);
+        shapes::render_collapsed_group_indicators(out, geometry);
+        out.checkpoint()?;
         out.push_str("</g>");
         if common.wrapped_in_a {
             out.push_str("</a>");

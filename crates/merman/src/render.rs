@@ -447,6 +447,27 @@ pub enum RenderTarget {
     Pdf(PdfRequest),
 }
 
+impl RenderTarget {
+    fn svg_input_resource_policy(&self) -> Option<InputResourcePolicy> {
+        match self {
+            Self::Semantic => None,
+            #[cfg(feature = "ascii")]
+            Self::Ascii(_) => None,
+            #[cfg(feature = "svg")]
+            Self::Svg(request)
+            | Self::Document(request)
+            | Self::LayoutJson(request)
+            | Self::SvgPlan(request) => Some(request.environment.input_resources),
+            #[cfg(feature = "png")]
+            Self::Png(request) => Some(request.svg.environment.input_resources),
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg(request) => Some(request.svg.environment.input_resources),
+            #[cfg(feature = "pdf")]
+            Self::Pdf(request) => Some(request.svg.environment.input_resources),
+        }
+    }
+}
+
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub struct SvgRequest {
@@ -517,8 +538,10 @@ pub struct RenderRequest<'a> {
 }
 
 impl<'a> RenderRequest<'a> {
-    /// Creates a typed operation request that inherits the renderer's parse and input-resource
-    /// defaults until an explicit request override is applied.
+    /// Creates a typed operation request that inherits the renderer's parse defaults.
+    ///
+    /// Input limits come from an explicit request override, then an explicit renderer policy,
+    /// then a graphical target's SVG environment, or otherwise the renderer's default policy.
     pub fn new(source: &'a str, target: RenderTarget, control: OperationControl) -> Self {
         Self {
             source,
@@ -581,6 +604,8 @@ impl<'a> RenderRequest<'a> {
         self
     }
 
+    /// Overrides input admission for this operation, ahead of renderer and target policies.
+    /// Target-local layout and output limits remain unchanged.
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
         self.resources = Some(resources);
         self
@@ -627,6 +652,7 @@ pub struct Renderer {
     engine: Engine,
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
+    resources_explicit: bool,
 }
 
 impl Default for Renderer {
@@ -635,6 +661,7 @@ impl Default for Renderer {
             engine: Engine::new(),
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
+            resources_explicit: false,
         }
     }
 }
@@ -659,8 +686,11 @@ impl Renderer {
         self
     }
 
+    /// Sets an explicit input policy ahead of graphical targets' SVG environment defaults.
+    /// A request's explicit input policy can still override this policy.
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
         self.resources = resources;
+        self.resources_explicit = true;
         self
     }
 
@@ -677,6 +707,10 @@ impl Renderer {
     }
 
     /// Executes one typed target request through the canonical operation runner.
+    ///
+    /// Input admission uses the request's explicit policy, then the renderer's explicit policy,
+    /// then the graphical target's SVG environment policy. Semantic and ASCII targets use the
+    /// renderer's input defaults when neither the request nor the renderer overrides them.
     pub fn render(&self, request: RenderRequest<'_>) -> Result<RenderOutput, RenderError> {
         let RenderRequest {
             source,
@@ -687,6 +721,13 @@ impl Renderer {
             #[cfg(feature = "svg")]
             theme,
         } = request;
+        let resources = resources.unwrap_or_else(|| {
+            if self.resources_explicit {
+                self.resources
+            } else {
+                target.svg_input_resource_policy().unwrap_or(self.resources)
+            }
+        });
         #[cfg(feature = "svg")]
         let operation_engine = theme
             .as_ref()
@@ -700,7 +741,7 @@ impl Renderer {
             &operation_engine,
             source,
             control,
-            resources.unwrap_or(self.resources),
+            resources,
             #[cfg(feature = "svg")]
             theme,
         )?;
@@ -717,6 +758,7 @@ impl Renderer {
     }
 
     /// Prepares a format-neutral semantic artifact through the same runner used by `render`.
+    /// This uses the renderer's input policy before any output target is selected.
     pub fn prepare_semantic(
         &self,
         source: &str,
@@ -1020,6 +1062,59 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::{RenderError, ResourceLimitCause};
+
+    #[test]
+    fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {
+        use super::{RenderRequest, Renderer, SvgEnvironment, SvgRequest};
+        use merman_core::{
+            OperationControl,
+            resources::{InputResourceLimitId, InputResourcePolicy},
+        };
+        use merman_render::{
+            diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec},
+            resources::{RenderResourcePolicy, ResourceLimitId},
+        };
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = SvgEnvironment::default().with_resource_policy(
+            RenderResourcePolicy::default()
+                .with_limit(ResourceLimitId::MaxSourceBytes, 4)
+                .unwrap(),
+        );
+        let request = || {
+            RenderRequest::document(
+                "flowchart TD\nA --> B",
+                OperationControl::new(),
+                SvgRequest {
+                    environment: environment.clone(),
+                    ..Default::default()
+                },
+            )
+            .with_theme(theme.clone())
+        };
+        let input_policy = |limit| {
+            InputResourcePolicy::default()
+                .with_limit(InputResourceLimitId::MaxSourceBytes, limit)
+                .unwrap()
+        };
+        let explicit_renderer = Renderer::new().with_resource_policy(input_policy(3));
+        for (result, maximum) in [
+            (Renderer::new().render(request()), 4),
+            (explicit_renderer.render(request()), 3),
+            (
+                explicit_renderer.render(request().with_resource_policy(input_policy(2))),
+                2,
+            ),
+        ] {
+            let RenderError::ResourceLimitExceeded(resource) = result.unwrap_err() else {
+                panic!("input should be rejected before theme preparation or family admission");
+            };
+            assert_eq!(resource.id, "max_source_bytes");
+            assert_eq!(resource.maximum, maximum);
+        }
+    }
 
     #[test]
     fn theme_resource_environment_error_maps_to_resource_limit_exceeded() {

@@ -1,4 +1,4 @@
-import type { ThemeName } from "@mermanjs/web";
+import type { MermaidThemeSelection } from "./mermaid-theme-name.ts";
 
 import type { DiagramFont } from "./diagram-font.ts";
 import { DEFAULT_MERMAID_CONFIG } from "./mermaid-config.ts";
@@ -10,7 +10,7 @@ import type {
 export interface WorkspaceSnapshot {
   readonly code: string;
   readonly mermaidConfig: string;
-  readonly diagramTheme: ThemeName;
+  readonly diagramTheme: MermaidThemeSelection;
   readonly themePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
@@ -25,7 +25,7 @@ export const DEFAULT_WORKSPACE_SNAPSHOT: Readonly<WorkspaceSnapshot> =
     B -->|No| D[End]
     C --> D`,
     mermaidConfig: DEFAULT_MERMAID_CONFIG,
-    diagramTheme: "default",
+    diagramTheme: "auto",
     themePresetId: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",

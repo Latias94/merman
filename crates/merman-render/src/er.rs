@@ -1,3 +1,5 @@
+#[cfg(feature = "layout-elk")]
+use crate::elk_options::layout_options as er_elk_layout_options;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{
@@ -15,8 +17,10 @@ use std::sync::{Arc, OnceLock};
 mod config;
 mod theme;
 
+#[cfg(feature = "layout-elk")]
+use crate::layout_backend::GraphLayoutBackend;
+use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
-use config::{ErLayoutAlgorithm, ErLayoutSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
@@ -29,10 +33,6 @@ pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
-
-pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
-    ErConfigView::new(effective_config).is_elk_layout()
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErBoxLabel {
@@ -259,8 +259,9 @@ pub(crate) fn er_box_label_metrics(
     label: &ErBoxLabel,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    wrap_mode: WrapMode,
 ) -> TextMetrics {
-    er_box_label_metrics_with_wrap_mode(label, measurer, style, WrapMode::HtmlLike)
+    er_box_label_metrics_with_wrap_mode(label, measurer, style, wrap_mode)
 }
 
 pub(crate) fn er_box_label_metrics_with_wrap_mode(
@@ -300,6 +301,29 @@ pub(crate) fn er_box_label_metrics_with_wrap_mode(
                 wrap_mode,
             )
         }
+    }
+}
+
+fn er_subgraph_title_metrics(
+    subgraph: &ErSubgraph,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    html_labels: bool,
+) -> TextMetrics {
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
+    if subgraph.label_type == "string" || subgraph.label_type == "text" {
+        measurer.measure_wrapped(&subgraph.title, style, None, wrap_mode)
+    } else {
+        er_box_label_metrics_with_wrap_mode(
+            &ErBoxLabel::from_source(&subgraph.title),
+            measurer,
+            style,
+            wrap_mode,
+        )
     }
 }
 
@@ -345,9 +369,8 @@ pub(crate) fn measure_entity_box(
     attr_style: &TextStyle,
     settings: ErEntityMeasurementSettings,
 ) -> ErEntityMeasure {
-    // Mermaid routes ER labels through `createText`; measure with the same effective
-    // `htmlLabels` mode that the SVG painter will emit. Browser hosts provide HTML metrics when
-    // requested, while the built-in deterministic profile is the explicit headless fallback.
+    // Measure through the same HTML/SVG branch used by Mermaid erBox.ts and the painter.
+    // The operation-owned measurer supplies browser metrics or the deterministic fallback.
 
     // Mermaid's ER renderer (erBox.ts) uses `config.htmlLabels` inconsistently:
     // - It passes `useHtmlLabels: config.htmlLabels` into `createText`, where `undefined`
@@ -1035,31 +1058,24 @@ fn layout_er_diagram_typed_with_elk_authority(
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
     let prepared_labels = Arc::new(ErPreparedLabels::prepare(model, measurer, &settings));
+    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
 
-    if settings.algorithm == ErLayoutAlgorithm::Elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            let operation_seed = match elk_authority {
-                ErElkAuthority::Operation(operation_seed) => Some(operation_seed),
-            };
-            return layout_er_diagram_elk_typed(
-                model,
-                effective_config,
-                measurer,
-                settings,
-                Arc::clone(&prepared_labels),
-                operation_seed,
-                work_control,
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            let _ = elk_authority;
-            return Err(Error::MissingCapability {
-                capability: crate::RenderCapability::LayoutElk,
-                diagram_type: "er".to_string(),
-            });
-        }
+    #[cfg(not(feature = "layout-elk"))]
+    let _ = elk_authority;
+    #[cfg(feature = "layout-elk")]
+    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == GraphLayoutBackend::Elk
+    {
+        let ErElkAuthority::Operation(operation_seed) = elk_authority;
+        return layout_er_diagram_elk_typed(
+            model,
+            effective_config,
+            measurer,
+            settings,
+            Arc::clone(&prepared_labels),
+            Some(operation_seed),
+            work_control,
+        );
     }
 
     layout_er_diagram_dagre_typed(model, measurer, settings, prepared_labels, work_control)
@@ -1128,13 +1144,12 @@ fn layout_er_diagram_dagre_typed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
-        algorithm: _,
         graph: graph_label,
         label_style,
         attr_style: _,
         relationship_label_style: _,
-        relationship_html_labels: _,
-        entity_measurement,
+        relationship_html_labels,
+        entity_measurement: _,
     } = settings;
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
@@ -1174,13 +1189,8 @@ fn layout_er_diagram_dagre_typed(
     // Insert groups in reverse declaration order, matching Mermaid's `getData()` projection and
     // keeping nested group order deterministic for Dagre's compound ranking.
     for subgraph in model.subgraphs.iter().rev() {
-        let title = ErBoxLabel::from_source(&subgraph.title);
-        let metrics = er_box_label_metrics_with_wrap_mode(
-            &title,
-            measurer,
-            &label_style,
-            entity_measurement.label_wrap_mode,
-        );
+        let metrics =
+            er_subgraph_title_metrics(subgraph, measurer, &label_style, relationship_html_labels);
         let has_children = subgraph.nodes.iter().any(|member| {
             subgraph_ids.contains(member.as_str())
                 || entity_id_by_name.contains_key(member.as_str())
@@ -1703,12 +1713,13 @@ fn layout_er_diagram_elk_typed(
     operation_seed: Option<elk::ElkOperationSeed>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
-    let elk_graph = er_elk_graph(
+    let mut elk_graph = er_elk_graph(
         model,
         effective_config,
         measurer,
         &settings,
         &prepared_labels,
+        &mut Some(&mut *work_control),
     )?;
     let subgraph_by_id: HashMap<&str, &ErSubgraph> = model
         .subgraphs
@@ -1718,44 +1729,63 @@ fn layout_er_diagram_elk_typed(
     let subgraph_ids: HashSet<&str> = subgraph_by_id.keys().copied().collect();
     let mut subgraph_title_metrics = HashMap::with_capacity(subgraph_by_id.len());
     for subgraph in model.subgraphs.iter() {
-        let title = ErBoxLabel::from_source(&subgraph.title);
-        let metrics = er_box_label_metrics_with_wrap_mode(
-            &title,
+        let metrics = er_subgraph_title_metrics(
+            subgraph,
             measurer,
             &settings.label_style,
-            settings.entity_measurement.label_wrap_mode,
+            settings.relationship_html_labels,
         );
         subgraph_title_metrics.insert(
             subgraph.id.as_str(),
             (metrics.width.max(0.0), metrics.height.max(0.0)),
         );
     }
+    let oriented = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut elk_graph,
+        effective_config,
+        &mut Some(&mut *work_control),
+    )?;
+    let mut elk_layout = match operation_seed {
+        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
+            oriented.graph(),
+            operation_seed,
+            work_control,
+        ),
+        None => elk::layout_with_work_control(oriented.graph(), work_control),
+    }
+    .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
+    oriented.restore(&mut elk_layout, &mut Some(&mut *work_control))?;
     let source_edge_by_id = elk_graph
         .edges
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
         .collect::<HashMap<_, _>>();
-    let elk_layout = match operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
-            &elk_graph,
-            operation_seed,
-            work_control,
-        ),
-        None => elk::layout_with_work_control(&elk_graph, work_control),
-    }
-    .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
 
+    let frames = crate::elk_adapter::drawing_group_frames(
+        &elk_graph,
+        &elk_layout,
+        |node| node.label.map_or(0.0, |label| label.width) + node.container.padding,
+        &mut Some(&mut *work_control),
+    )?;
+    let paint_order =
+        crate::elk_adapter::parent_first_order(&elk_graph.nodes, &mut Some(&mut *work_control))?;
+    let paint_index_by_id: HashMap<&str, usize> = paint_order
+        .iter()
+        .enumerate()
+        .map(|(index, &node_index)| (elk_graph.nodes[node_index].id.as_str(), index))
+        .collect();
     let mut out_nodes = elk_layout
         .nodes
         .into_iter()
         .map(|node| {
             let is_cluster = subgraph_ids.contains(node.id.as_str());
+            let frame = frames.get(node.id.as_str());
             LayoutNode {
                 id: node.id,
-                x: node.x,
-                y: node.y,
-                width: node.width,
-                height: node.height,
+                x: frame.map_or(node.x, |frame| frame.x),
+                y: frame.map_or(node.y, |frame| frame.y),
+                width: frame.map_or(node.width, |frame| frame.width),
+                height: frame.map_or(node.height, |frame| frame.height),
                 is_cluster,
                 label_width: None,
                 label_height: None,
@@ -1764,7 +1794,7 @@ fn layout_er_diagram_elk_typed(
         .collect::<Vec<_>>();
 
     let mut clusters = Vec::with_capacity(subgraph_by_id.len());
-    for node in out_nodes.iter_mut().filter(|node| node.is_cluster) {
+    for node in out_nodes.iter().filter(|node| node.is_cluster) {
         let Some(subgraph) = subgraph_by_id.get(node.id.as_str()).copied() else {
             continue;
         };
@@ -1773,8 +1803,6 @@ fn layout_er_diagram_elk_typed(
             .copied()
             .unwrap_or((0.0, 0.0));
         let padding = 8.0;
-        node.width = node.width.max(title_width + padding * 2.0);
-        node.height = node.height.max(title_height + padding * 2.0);
         let title_label = LayoutLabel {
             x: node.x,
             y: node.y - node.height / 2.0 + padding + title_height / 2.0,
@@ -1866,7 +1894,8 @@ fn layout_er_diagram_elk_typed(
 
     out_nodes.sort_by(|left, right| left.id.cmp(&right.id));
     out_edges.sort_by(|left, right| left.id.cmp(&right.id));
-    clusters.sort_by(|left, right| left.id.cmp(&right.id));
+    // Mermaid paints groups by stable ancestor depth, then paints leaf nodes above them.
+    clusters.sort_by_key(|cluster| paint_index_by_id.get(cluster.id.as_str()).copied());
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
@@ -1885,15 +1914,15 @@ fn er_elk_graph(
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     let ErLayoutSettings {
-        algorithm: _,
         graph,
         label_style,
         attr_style: _,
         relationship_label_style: _,
-        relationship_html_labels: _,
-        entity_measurement,
+        relationship_html_labels,
+        entity_measurement: _,
     } = settings;
 
     let subgraph_ids: HashSet<&str> = model
@@ -1922,13 +1951,8 @@ fn er_elk_graph(
 
     let mut nodes = Vec::with_capacity(model.subgraphs.len() + model.entities.len());
     for subgraph in model.subgraphs.iter().rev() {
-        let title = ErBoxLabel::from_source(&subgraph.title);
-        let metrics = er_box_label_metrics_with_wrap_mode(
-            &title,
-            measurer,
-            label_style,
-            entity_measurement.label_wrap_mode,
-        );
+        let metrics =
+            er_subgraph_title_metrics(subgraph, measurer, label_style, *relationship_html_labels);
         let has_children = subgraph.nodes.iter().any(|member| {
             subgraph_ids.contains(member.as_str())
                 || entity_id_by_name.contains_key(member.as_str())
@@ -1936,6 +1960,11 @@ fn er_elk_graph(
         nodes.push(elk::Node {
             id: subgraph.id.clone(),
             kind: elk::NodeKind::Group,
+            container: elk::ContainerNodeOptions {
+                padding: 8.0,
+                ..Default::default()
+            },
+            label_text: Some(subgraph.title.clone()),
             width: 0.0,
             height: 0.0,
             parent: parent_by_member
@@ -1944,6 +1973,7 @@ fn er_elk_graph(
             direction: subgraph.dir.as_deref().and_then(er_elk_direction),
             hierarchy_handling: Some(elk::HierarchyHandling::IncludeChildren),
             layer_constraint: None,
+            port_alignment: None,
             label: has_children.then_some(elk::Label {
                 width: metrics.width.max(0.0),
                 height: metrics.height.max(0.0),
@@ -1975,6 +2005,9 @@ fn er_elk_graph(
             Ok(elk::Node {
                 id: entity.id.clone(),
                 kind: elk::NodeKind::Leaf,
+                container: Default::default(),
+                label_text: None,
+                port_alignment: None,
                 width: measure.width,
                 height: measure.height,
                 parent: parent_by_member
@@ -1989,7 +2022,19 @@ fn er_elk_graph(
         .collect::<Result<Vec<_>>>()?;
     nodes.extend(entity_nodes);
 
-    apply_er_cyclic_entry_constraints(model, effective_config, &mut nodes);
+    if crate::config::config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false)
+    {
+        crate::elk_adapter::apply_cyclic_entry_constraints(
+            &mut nodes,
+            model.relationships.iter().map(|relationship| {
+                (
+                    relationship.entity_a.as_str(),
+                    relationship.entity_b.as_str(),
+                )
+            }),
+            work_control,
+        )?;
+    }
 
     let node_ids = nodes
         .iter()
@@ -2015,11 +2060,12 @@ fn er_elk_graph(
             id: format!("er-rel-{index}"),
             source: relationship.entity_a.clone(),
             target: relationship.entity_b.clone(),
-            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
+            label: (!relationship.role_a.is_empty()).then_some(elk::Label {
                 width: label_width,
                 height: label_height,
             }),
             minlen: 1,
+            terminal_labels: Vec::new(),
             inside_self_loops_yo: false,
         });
     }
@@ -2049,201 +2095,6 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
         "BT" => Some(elk::Direction::Up),
         "TB" => Some(elk::Direction::Down),
         _ => None,
-    }
-}
-
-#[cfg(feature = "layout-elk")]
-fn apply_er_cyclic_entry_constraints(
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
-    effective_config: &Value,
-    nodes: &mut [elk::Node],
-) {
-    use crate::config::config_bool;
-
-    if !config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
-        return;
-    }
-
-    let mut by_parent: HashMap<Option<&str>, Vec<&str>> = HashMap::new();
-    for node in nodes.iter() {
-        by_parent
-            .entry(node.parent.as_deref())
-            .or_default()
-            .push(node.id.as_str());
-    }
-
-    let node_ids: HashSet<&str> = nodes.iter().map(|node| node.id.as_str()).collect();
-    let mut edges_by_parent: HashMap<Option<&str>, Vec<(&str, &str)>> = HashMap::new();
-    for relationship in &model.relationships {
-        let source = relationship.entity_a.as_str();
-        let target = relationship.entity_b.as_str();
-        if source == target || !node_ids.contains(source) || !node_ids.contains(target) {
-            continue;
-        }
-        let source_parent = nodes
-            .iter()
-            .find(|node| node.id == source)
-            .and_then(|node| node.parent.as_deref());
-        let target_parent = nodes
-            .iter()
-            .find(|node| node.id == target)
-            .and_then(|node| node.parent.as_deref());
-        if source_parent == target_parent {
-            edges_by_parent
-                .entry(source_parent)
-                .or_default()
-                .push((source, target));
-        }
-    }
-
-    let mut entries = HashSet::new();
-    for (parent, ids) in by_parent {
-        let id_set: HashSet<&str> = ids.iter().copied().collect();
-        let mut incoming = ids
-            .iter()
-            .map(|id| (*id, 0usize))
-            .collect::<HashMap<_, _>>();
-        let mut neighbors = ids
-            .iter()
-            .map(|id| (*id, Vec::<&str>::new()))
-            .collect::<HashMap<_, _>>();
-        for &(source, target) in edges_by_parent
-            .get(&parent)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
-        {
-            if !id_set.contains(source) || !id_set.contains(target) {
-                continue;
-            }
-            *incoming.entry(target).or_default() += 1;
-            neighbors.entry(source).or_default().push(target);
-            neighbors.entry(target).or_default().push(source);
-        }
-
-        let mut components: HashMap<&str, usize> = HashMap::new();
-        let mut component_count = 0usize;
-        for id in &ids {
-            if components.contains_key(id) {
-                continue;
-            }
-            let mut stack = vec![*id];
-            while let Some(current) = stack.pop() {
-                if components.insert(current, component_count).is_some() {
-                    continue;
-                }
-                for next in neighbors.get(current).into_iter().flatten() {
-                    if !components.contains_key(next) {
-                        stack.push(*next);
-                    }
-                }
-            }
-            component_count += 1;
-        }
-        let mut has_source = vec![false; component_count];
-        for id in &ids {
-            if incoming.get(id).copied().unwrap_or_default() == 0 {
-                has_source[components[id]] = true;
-            }
-        }
-        let mut nominated = vec![false; component_count];
-        for id in ids {
-            let component = components[&id];
-            if !has_source[component] && !nominated[component] {
-                entries.insert(id.to_string());
-                nominated[component] = true;
-            }
-        }
-    }
-
-    for node in nodes {
-        if entries.contains(node.id.as_str()) {
-            node.layer_constraint = Some(elk::LayerConstraint::First);
-        }
-    }
-}
-
-#[cfg(feature = "layout-elk")]
-fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
-    use crate::config::{config_bool, config_string};
-
-    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "NONE" => elk::ModelOrderStrategy::None,
-                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
-                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
-                _ => elk::ModelOrderStrategy::NodesAndEdges,
-            },
-        )
-        .unwrap_or_default();
-    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
-                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
-                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
-                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
-                _ => elk::CycleBreakingStrategy::Greedy,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "SIMPLE" => elk::NodePlacementStrategy::Simple,
-                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
-                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
-                _ => elk::NodePlacementStrategy::BrandesKoepf,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement_alignment =
-        config_string(effective_config, &["elk", "nodePlacementAlignment"])
-            .map(
-                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
-                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
-                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
-                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
-                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
-                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
-                    _ => elk::NodePlacementAlignment::None,
-                },
-            )
-            .unwrap_or_default();
-    let self_loop_ordering = config_string(
-        effective_config,
-        &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
-    )
-    .map(
-        |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-            "REVERSE_STACKED" => elk::SelfLoopOrderingStrategy::ReverseStacked,
-            "SEQUENCED" => elk::SelfLoopOrderingStrategy::Sequenced,
-            _ => elk::SelfLoopOrderingStrategy::Stacked,
-        },
-    )
-    .unwrap_or_default();
-
-    elk::LayoutOptions {
-        layered: elk::LayeredOptions {
-            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
-            merge_hierarchy_edges: true,
-            unnecessary_bendpoints: true,
-            inside_self_loops_activate: config_bool(
-                effective_config,
-                &["elk", "insideSelfLoops", "activate"],
-            )
-            .unwrap_or(false),
-            self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
-            self_loop_ordering,
-            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
-                .unwrap_or(false),
-            consider_model_order: model_order != elk::ModelOrderStrategy::None,
-            model_order,
-            cycle_breaking,
-            node_placement,
-            node_placement_alignment,
-            ..Default::default()
-        },
     }
 }
 
@@ -2301,6 +2152,7 @@ mod tests {
             &measurer,
             &settings,
             &prepared_labels,
+            &mut None,
         )
         .expect("ER ELK adapter graph");
         graph.options.layered.random_seed = 0;
@@ -2316,6 +2168,78 @@ mod tests {
             .expect("replayed seeded ER layout");
 
         assert_eq!(first, replayed);
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn er_elk_cyclic_entry_follows_edge_order_in_root_and_nested_scopes() {
+        for declared in [["B", "A", "C"], ["C", "B", "A"]] {
+            for nested in [false, true] {
+                let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+                    direction: "TB".to_string(),
+                    ..Default::default()
+                };
+                for (index, name) in declared.iter().enumerate() {
+                    model.entities.insert(
+                        (*name).to_string(),
+                        super::ErEntity {
+                            id: format!("entity-{name}-{index}"),
+                            label: (*name).to_string(),
+                            ..Default::default()
+                        },
+                    );
+                }
+                for (source, target) in [("A", "B"), ("B", "C"), ("C", "A")] {
+                    model.relationships.push(super::ErRelationship {
+                        entity_a: model.entities[source].id.clone(),
+                        entity_b: model.entities[target].id.clone(),
+                        ..Default::default()
+                    });
+                }
+                if nested {
+                    model.subgraphs.push(super::ErSubgraph {
+                        id: "Scope".to_string(),
+                        title: "Scope".to_string(),
+                        nodes: declared.iter().map(|name| (*name).to_string()).collect(),
+                        ..Default::default()
+                    });
+                }
+                for enabled in [false, true] {
+                    let config = serde_json::json!({ "layout": "elk", "elk": { "keepEntryNodeOnTop": enabled } });
+                    let settings = super::ErConfigView::new(&config)
+                        .layout_settings_with_font_family(&model.direction, None);
+                    let graph = super::er_elk_graph(
+                        &model,
+                        &config,
+                        &DeterministicTextMeasurer::default(),
+                        &settings,
+                        &super::ErPreparedLabels::prepare(
+                            &model,
+                            &DeterministicTextMeasurer::default(),
+                            &settings,
+                        ),
+                        &mut None,
+                    )
+                    .expect("ER adapter graph");
+                    let constrained: Vec<_> = graph
+                        .nodes
+                        .iter()
+                        .filter(|node| {
+                            node.layer_constraint == Some(super::elk::LayerConstraint::First)
+                        })
+                        .map(|node| node.id.as_str())
+                        .collect();
+                    assert_eq!(
+                        constrained,
+                        if enabled {
+                            vec![model.entities["A"].id.as_str()]
+                        } else {
+                            vec![]
+                        }
+                    );
+                }
+            }
+        }
     }
 
     struct ErProbeMeasurer;
@@ -2369,7 +2293,62 @@ mod tests {
         style: &TextStyle,
     ) -> TextMetrics {
         let label = super::ErBoxLabel::from_source(source);
-        super::er_box_label_metrics(&label, measurer, style)
+        super::er_box_label_metrics(&label, measurer, style, WrapMode::HtmlLike)
+    }
+
+    #[test]
+    fn er_svg_entity_measurement_uses_svg_mode_for_names_and_attributes() {
+        struct ModeMeasurer;
+        impl TextMeasurer for ModeMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("label measurement must specify its wrapping mode")
+            }
+
+            fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+                40.0
+            }
+
+            fn measure_wrapped(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+                _max_width_px: Option<f64>,
+                wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                assert_eq!(wrap_mode, WrapMode::SvgLike);
+                TextMetrics {
+                    width: 40.0,
+                    height: 18.0,
+                    line_count: 1,
+                }
+            }
+        }
+        let entity = super::ErEntity {
+            id: "entity-BOOK-0".to_string(),
+            label: "BOOK".to_string(),
+            attributes: vec![merman_core::diagrams::er::ErAttributeRenderModel {
+                ty: "string".to_string(),
+                name: "title".to_string(),
+                keys: vec!["PK".to_string()],
+                comment: "book title".to_string(),
+            }],
+            ..Default::default()
+        };
+        let config = serde_json::json!({ "htmlLabels": false });
+        let settings = super::ErConfigView::new(&config).entity_measurement_settings();
+        let measured = super::measure_entity_box(
+            &entity,
+            &ModeMeasurer,
+            &default_style(),
+            &default_style(),
+            settings,
+        );
+        assert_eq!(measured.label_height, 18.0);
+        assert_eq!(measured.rows.len(), 1);
+        assert_eq!(
+            measured.rows[0].height,
+            18.0 + settings.entity_padding * 1.25
+        );
     }
 
     #[test]

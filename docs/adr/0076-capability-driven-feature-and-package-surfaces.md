@@ -1,7 +1,9 @@
 # ADR 0076: Capability-Driven Feature And Package Surfaces
 
 - Status: accepted; native prebuilt SKU policy superseded by ADR-0079; Rustdoc integration
-  ownership amended by ADR-0087; default feature closure amended by ADR-0085 and ADR-0088
+  ownership amended by ADR-0087; default feature closure amended by ADR-0085 and ADR-0088;
+  diagram selectors and artifact schema superseded by [ADR-0091](0091-selectable-diagram-families.md).
+  Original schema references and admission wording below record the earlier decision.
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`

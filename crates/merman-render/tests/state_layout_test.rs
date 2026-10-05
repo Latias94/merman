@@ -215,7 +215,8 @@ A --> B: owns
 #[test]
 fn state_layout_preserves_html_min_content_width_for_long_labels() {
     let layout = layout_state_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"htmlLabels": true, "state": {"wrappingWidth": 200}}}%%
+stateDiagram-v2
 direction RL
 [*] --> ThisIsAReallyLongStateIdentifierWithNumbers123
 ThisIsAReallyLongStateIdentifierWithNumbers123 --> Done : another-long-label-with-a-veryveryverylongwordthatforceswrapping
@@ -236,12 +237,12 @@ Done --> [*]
         .expect("long transition label");
 
     assert!(
-        long_node.width > 300.0,
-        "an unbreakable HTML label must expand beyond max-width: {long_node:?}"
+        long_node.width > 200.0,
+        "an unbreakable HTML label must expand beyond the configured 200px wrapping width: {long_node:?}"
     );
     assert!(
-        long_edge.width > 250.0,
-        "an unbreakable transition segment must expand the HTML table: {long_edge:?}"
+        long_edge.width > 200.0,
+        "an unbreakable transition segment must expand the HTML table beyond the configured 200px wrapping width: {long_edge:?}"
     );
 }
 
@@ -415,7 +416,8 @@ fn state_layout_exposes_one_logical_self_loop_edge() {
         .join("upstream_stateDiagram_v2_composite_self_link_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let layout = layout_state_from_text(&text);
+    let layout =
+        layout_state_from_text(&format!("%%{{init: {{\"layout\": \"dagre\"}}}}%%\n{text}"));
 
     let self_loop = layout
         .edges
@@ -509,7 +511,8 @@ P --> y
 #[test]
 fn state_layout_keeps_explicit_direction_composite_with_external_edge_in_parent_graph() {
     let layout = layout_state_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 state Composite {
   direction LR
   A --> B: internal
@@ -544,7 +547,8 @@ B --> Outside: external
 #[test]
 fn state_layout_keeps_implicit_direction_composite_with_external_edge_in_parent_graph() {
     let layout = layout_state_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 direction LR
 state Composite {
   A --> B: internal

@@ -5,6 +5,7 @@ use super::{
     destruct_end_link, destruct_labeled_end_link, destruct_start_link, is_ecmascript_trim_char,
     lex, parse_label_text,
 };
+use crate::diagrams::jison_unicode::is_mermaid_unicode_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
 };
@@ -15,20 +16,20 @@ fn directive_argument_spans(
     rest_start: usize,
 ) -> (Option<SourceSpan>, Option<SourceSpan>) {
     let leading = rest
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let body = &rest[leading..];
     if body.is_empty() {
         return (None, None);
     }
 
     let first_len = body
-        .as_bytes()
-        .iter()
-        .position(|byte| byte.is_ascii_whitespace())
-        .unwrap_or(body.len());
+        .char_indices()
+        .find(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map_or(body.len(), |(index, _)| index);
     let first_start = rest_start + leading;
     let first_end = first_start + first_len;
     let first = SourceSpan::new(first_start, first_end);
@@ -38,10 +39,11 @@ fn directive_argument_spans(
     }
 
     let remainder_leading = remainder
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let value_start = first_end + remainder_leading;
     let value_end = rest_start + rest.len();
     (Some(first), Some(SourceSpan::new(value_start, value_end)))
@@ -71,11 +73,12 @@ fn active_following_span(
     let local_start = following.start.checked_sub(rest_start)?;
     let raw = rest.get(local_start..)?;
     let trailing = raw
-        .as_bytes()
-        .iter()
+        .char_indices()
         .rev()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, _)| raw.len() - index)
+        .last()
+        .unwrap_or(0);
     if raw.is_empty() || trailing > 0 {
         return Some(SourceSpan::new(following.end, following.end));
     }
@@ -170,6 +173,14 @@ fn find_pipe_label_end(input: &str, mut pos: usize) -> Option<usize> {
     None
 }
 
+fn non_ascii_id_char_len(input: &str, pos: usize) -> Option<usize> {
+    if !input.is_char_boundary(pos) {
+        return None;
+    }
+    let ch = input[pos..].chars().next()?;
+    (!ch.is_ascii() && is_mermaid_unicode_text(ch)).then(|| ch.len_utf8())
+}
+
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
@@ -193,6 +204,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(super) fn recovering(input: &'input str) -> Self {
         Self {
             recover_partial_node_labels: true,
@@ -228,12 +240,11 @@ impl<'input> Lexer<'input> {
     }
 
     pub(super) fn skip_ws(&mut self) {
-        while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_trim_char(ch) || ch == '\n' {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -243,11 +254,11 @@ impl<'input> Lexer<'input> {
             b'\n' => {
                 let bytes = self.input.as_bytes();
                 let mut look = self.pos + 1;
-                while look < bytes.len() {
-                    match bytes[look] {
-                        b' ' | b'\t' | b'\r' => look += 1,
-                        _ => break,
+                while let Some(ch) = self.input[look..].chars().next() {
+                    if ch == '\n' || !is_ecmascript_trim_char(ch) {
+                        break;
                     }
+                    look += ch.len_utf8();
                 }
                 if look < bytes.len() {
                     let is_linkish = match bytes[look] {
@@ -361,11 +372,11 @@ impl<'input> Lexer<'input> {
         self.skip_ws();
 
         let direction_start = self.pos;
-        while let Some(b) = self.peek() {
-            if b.is_ascii_whitespace() || b == b';' {
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if is_ecmascript_trim_char(ch) || ch == ';' {
                 break;
             }
-            self.pos += 1;
+            self.pos += ch.len_utf8();
         }
         let direction_end = self.pos;
         while let Some(b) = self.peek() {
@@ -782,19 +793,20 @@ impl<'input> Lexer<'input> {
         &mut self,
         keyword_start: usize,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        // Match Mermaid's flowchart parser behavior: it consumes a single "SPACE" token after the
-        // `subgraph` keyword, while any additional whitespace becomes part of the subgraph header
-        // token (`textNoTags`). This affects whether `FlowDB.addSubGraph(...)` decides to auto-generate
-        // a `subGraphN` id.
+        // Mermaid's current flowchart parser treats all horizontal whitespace after the
+        // `subgraph` keyword as a separator. Extra spaces therefore do not become part of the
+        // header token and must not force an otherwise named subgraph onto an auto-generated id.
         //
         // Example:
-        // - `subgraph main`   -> header text has no whitespace, id stays `main`
-        // - `subgraph  main`  -> header text begins with whitespace, id becomes `subGraphN`
+        // - `subgraph main`   -> id stays `main`
+        // - `subgraph  main`  -> id also stays `main`
         let rest = &self.input[self.pos..];
         if rest.starts_with('\n') || rest.starts_with("\r\n") || rest.starts_with(';') {
             return None;
         }
-        if let Some(ch) = rest.chars().next()
+        while let Some(ch) = self.input[self.pos..].chars().next()
+            && ch != '\n'
+            && ch != '\r'
             && is_ecmascript_trim_char(ch)
         {
             self.pos += ch.len_utf8();
@@ -914,17 +926,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        let first_len = if first.is_ascii_alphanumeric() || first == b'_' {
-            1
-        } else if !first.is_ascii() {
-            super::unicode_id::prefix_len(&self.input[start..])
+        if first.is_ascii_alphanumeric() || first == b'_' {
+            self.pos += 1;
+        } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
+            self.pos += len;
         } else {
-            0
-        };
-        if first_len == 0 {
             return None;
         }
-        self.pos += first_len;
 
         while self.pos < bytes.len() {
             if self.pos + 1 < bytes.len()
@@ -938,11 +946,7 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
                 continue;
             }
-            if !b.is_ascii() {
-                let len = super::unicode_id::prefix_len(&self.input[self.pos..]);
-                if len == 0 {
-                    break;
-                }
+            if let Some(len) = non_ascii_id_char_len(self.input, self.pos) {
                 self.pos += len;
                 continue;
             }

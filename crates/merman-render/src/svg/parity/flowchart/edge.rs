@@ -95,3 +95,17 @@ impl FlowchartEdgeAnimationResolution {
         self.active
     }
 }
+
+pub(super) fn flowchart_edge_is_animated(
+    ctx: &super::FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+) -> bool {
+    edge.animate == Some(true)
+        || edge.animation.is_some()
+        || edge
+            .classes
+            .iter()
+            .filter_map(|class| ctx.class_defs.get(class))
+            .flatten()
+            .any(|declaration| declaration.contains("animation"))
+}

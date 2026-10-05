@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "updated": "2026-09-14",
+  "updated": "2026-10-05",
   "compression_source": "stripped",
-  "notes": "Budgets guard the canonical capability-driven artifacts, not immutable historical product sizes. The accepted source is f2adde25ea39cb646ae51a9d14714b4d5cb0ccb0, built on macOS ARM64 with Rust 1.95.0, wasm-pack 0.15.0, Binaryen 131 and wasm-tools 1.253.0. Web uses final assembled npm-package WASM; compression follows wasm-tools strip --all. Typst uses the release wasm-opt -Oz and strip pipeline; raw is the pre-optimization linked input. Each limit is 103% of its measured value, rounded upward to 1,000 bytes. All six exact dependency closures and canonical package checks passed, including installed Web browser consumers and Typst 0.15.0 examples/negative tests. Required theme authoring, font validation and resource controls are retained; slim profiles exclude the renderer/font closure and Typst excludes math and binary export. Measurements, hashes, historical and recent-product comparisons, attribution limits and remaining release scope are recorded in docs/performance/theme_artifact_budget_reassessment_2026-09-14.md. This size rebaseline does not freeze C7a or establish cross-host byte reproducibility. Main revision 9edd6d86a separately records the source-theme repair at 1ab86d7a6: +5,473 gzip bytes (0.29%) for its web-ascii artifact. That measurement is not a rebuild of this theme branch; the accepted product limits above remain unchanged pending the planned final artifact audit.",
+  "notes": "Provisional regression ceilings combine the higher accepted per-profile limits from the theme branch's 2026-09-14 measurement and main's 2026-09-30 Mermaid 12 measurement; they are not measurements of the merged source. Web compression follows wasm-tools strip --all on final assembled npm WASM; Typst uses the release wasm-opt -Oz and strip pipeline. Rebuild and remeasure all six final artifacts with the theme features and Mermaid 12.1 before publishing or claiming artifact-size acceptance. Historical inputs and recipes are recorded in docs/performance/theme_artifact_budget_reassessment_2026-09-14.md and the main-branch release measurements.",
   "artifact_profiles": {
     "typst-wasm": {
       "max_raw_bytes": 19322000,
@@ -13,20 +13,20 @@
     "web-analysis": {
       "max_raw_bytes": 3786000,
       "max_stripped_bytes": 3785000,
-      "max_gzip_bytes": 1455000,
-      "max_brotli_bytes": 1107000
+      "max_gzip_bytes": 1475000,
+      "max_brotli_bytes": 1125000
     },
     "web-ascii": {
       "max_raw_bytes": 5354000,
       "max_stripped_bytes": 5354000,
-      "max_gzip_bytes": 1973000,
-      "max_brotli_bytes": 1490000
+      "max_gzip_bytes": 2025000,
+      "max_brotli_bytes": 1550000
     },
     "web-editor": {
       "max_raw_bytes": 3900000,
       "max_stripped_bytes": 3900000,
-      "max_gzip_bytes": 1501000,
-      "max_brotli_bytes": 1139000
+      "max_gzip_bytes": 1525000,
+      "max_brotli_bytes": 1175000
     },
     "web-full": {
       "max_raw_bytes": 16403000,

@@ -25,7 +25,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     );
 
     let p = ctx.node_padding;
-    let w = metrics.width + p;
+    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
     let h = w + metrics.height;
     let tw = w + metrics.height;
     let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
@@ -34,8 +34,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         let rough_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_hand_drawn_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.work_meter,
@@ -59,8 +57,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
                 escape_attr(common.stroke_dasharray),
             );
         } else {
-            // Keep unsupported CSS colors on the complete classic geometry. Do not emit a
-            // partial hand-drawn shape with empty paths when RoughJS admission fails.
+            // Keep the complete classic geometry when RoughJS admission fails, without
+            // emitting a partial hand-drawn shape with empty paths.
             let _ = write!(
                 out,
                 r#"<path d="{}" class="outer-path" transform="translate({}, {})" style="{}"/>"#,
@@ -74,8 +72,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

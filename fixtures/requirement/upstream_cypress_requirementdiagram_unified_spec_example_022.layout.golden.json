@@ -5,27 +5,27 @@
       "nodes": [
         {
           "id": "test_req",
-          "x": 8.0,
-          "y": 8.0,
-          "width": 150.719,
-          "height": 184.0,
+          "x": 12.0,
+          "y": 12.0,
+          "width": 134.375,
+          "height": 166.0,
           "is_cluster": false
         },
         {
           "id": "test_entity",
-          "x": 208.719,
-          "y": 66.0,
-          "width": 112.484,
-          "height": 68.0,
+          "x": 186.375,
+          "y": 64.0,
+          "width": 100.922,
+          "height": 62.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 321.203,
-        "max_y": 192.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 287.297,
+        "max_y": 178.0
       }
     }
   }

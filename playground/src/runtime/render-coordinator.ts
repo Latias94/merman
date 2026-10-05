@@ -224,7 +224,7 @@ interface ScheduledRequest {
   readonly facade: MermanDomainFacade;
   readonly operationInput: FreezeRenderOperationInput;
   readonly publicationId: RenderPublicationId;
-  readonly scheduledAt: number;
+  readonly runAt: number;
 }
 
 interface ActiveRequest {
@@ -321,7 +321,7 @@ export function createRenderCoordinator({
       facade,
       operationInput,
       publicationId,
-      scheduledAt: now(),
+      runAt: now() + (immediate ? 0 : debounceMs),
     };
     const previous = previousCompleted();
     replaceState(
@@ -333,11 +333,14 @@ export function createRenderCoordinator({
           }
         : { status: "pending", snapshot },
     );
-    scheduleLatest(immediate);
+    scheduleLatest();
   };
 
-  const scheduleLatest = (immediate: boolean) => {
+  const scheduleLatest = (immediate = false) => {
     clearTimer();
+    if (immediate && latest) {
+      latest = { ...latest, runAt: now() };
+    }
     if (
       disposed ||
       !enabled ||
@@ -348,9 +351,7 @@ export function createRenderCoordinator({
     ) {
       return;
     }
-    const remaining = immediate
-      ? 0
-      : Math.max(0, debounceMs - (now() - latest.scheduledAt));
+    const remaining = Math.max(0, latest.runAt - now());
     timer = setTimeout(() => {
       timer = null;
       const request = latest;
@@ -386,7 +387,7 @@ export function createRenderCoordinator({
             latest &&
             latest.publicationId !== request.publicationId
           ) {
-            scheduleLatest(false);
+            scheduleLatest();
           }
         });
       active = execution;

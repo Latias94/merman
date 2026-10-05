@@ -7,7 +7,7 @@ use super::super::timing::RenderTiming;
 use super::super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
-use super::label::class_math_html_label;
+use super::label::{class_math_html_label, write_class_svg_plain_node_text};
 use crate::Result;
 
 #[derive(Clone, Copy)]
@@ -18,6 +18,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub content_ty: f64,
     pub bounds_dx: f64,
     pub bounds_dy: f64,
+    pub use_html_labels: bool,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
@@ -89,7 +90,7 @@ fn render_class_namespace_cluster_at(
     );
 
     let label_w = cluster.title_label.width.max(0.0);
-    let label_h = 24.0;
+    let label_h = cluster.title_label.height.max(0.0);
     let label_x = left + (w - label_w) / 2.0;
     let label_y = top + cluster.title_margin_top;
     include_xywh(
@@ -100,14 +101,21 @@ fn render_class_namespace_cluster_at(
         label_h,
     );
 
-    let (title_html, typography) = class_namespace_title_html(&cluster.title, ctx);
+    let (title_html, typography) = if ctx.use_html_labels {
+        class_namespace_title_html(&cluster.title, ctx)
+    } else {
+        (
+            String::new(),
+            crate::class::ClassTextTerminalFacts::inherited_text(&cluster.title),
+        )
+    };
     let terminal_style = ctx.relation_theme.cluster_terminal_style();
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel""#,
+        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})">"#,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
@@ -117,14 +125,30 @@ fn render_class_namespace_cluster_at(
         escape_attr_display(terminal_style),
         fmt(label_x),
         fmt(label_y),
-        fmt(label_w),
-        MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
     );
     let title_paint = ctx.relation_theme.namespace_title_terminal();
-    if let Some((_, style)) = title_paint {
-        let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
+    if ctx.use_html_labels {
+        let _ = write!(
+            out,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel""#,
+            fmt(label_w),
+            fmt(label_h),
+            MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
+        );
+        if let Some((_, style)) = title_paint {
+            let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
+        }
+        let _ = write!(out, ">{title_html}</span></div></foreignObject>");
+    } else {
+        if let Some((_, style)) = title_paint {
+            let _ = write!(out, r#"<g style="{}">"#, escape_attr_display(style));
+        }
+        write_class_svg_plain_node_text(out, &cluster.title);
+        if title_paint.is_some() {
+            out.push_str("</g>");
+        }
     }
-    let _ = write!(out, ">{title_html}</span></div></foreignObject></g></g>");
+    out.push_str("</g></g>");
     out.checkpoint()?;
     let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
     theme_receipt.record_cluster(&cluster.id, fill_rule, stroke_rule, terminal_style);

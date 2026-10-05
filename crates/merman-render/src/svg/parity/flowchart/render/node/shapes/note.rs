@@ -21,13 +21,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
     let note_fill = util::theme_token(ctx.config.as_value(), "noteBkgColor", "#fff5ad");
     let note_stroke = util::theme_token(ctx.config.as_value(), "noteBorderColor", "#aaaa33");
 
-    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair_with_colors(
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair_with_stroke(
         common.look_is_hand_drawn(),
         common.timing,
         details,
         &format!("M{} {} H{} V{} H{} Z", x, y, x + w, y + h, x),
-        &note_fill,
-        &note_stroke,
         common.stroke_width,
         common.stroke_dasharray,
         common.work_meter,
@@ -68,8 +66,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
                 y,
                 w,
                 h,
-                fill: &note_fill,
-                stroke: &note_stroke,
                 stroke_width: common.stroke_width,
                 randomness: common.hand_drawn_seed,
             })

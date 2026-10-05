@@ -5,192 +5,62 @@
       "nodes": [
         {
           "id": "Core",
-          "x": 757.798,
-          "y": 391.0,
-          "width": 483.68,
-          "height": 214.0,
+          "x": 998.695,
+          "y": 136.375,
+          "width": 473.72,
+          "height": 248.75,
           "is_cluster": true
         },
         {
           "id": "API",
-          "x": 608.678,
-          "y": 132.0,
-          "width": 1217.357,
-          "height": 264.0,
+          "x": 315.848,
+          "y": 170.5,
+          "width": 607.695,
+          "height": 310.0,
           "is_cluster": true
         },
         {
           "id": "CoreResult",
-          "x": 621.958,
-          "y": 391.0,
-          "width": 162.0,
-          "height": 144.0,
+          "x": 858.211,
+          "y": 129.5,
+          "width": 144.751,
+          "height": 135.0,
           "is_cluster": false
         },
         {
           "id": "CoreError",
-          "x": 891.878,
-          "y": 391.0,
-          "width": 165.52,
-          "height": 144.0,
+          "x": 1137.641,
+          "y": 169.25,
+          "width": 147.829,
+          "height": 135.0,
           "is_cluster": false
         },
         {
           "id": "ApiClient",
-          "x": 221.399,
-          "y": 154.0,
-          "width": 392.798,
-          "height": 150.0,
+          "x": 209.35,
+          "y": 138.925,
+          "width": 346.7,
+          "height": 141.0,
           "is_cluster": false
         },
         {
           "id": "ApiRequest",
-          "x": 621.958,
-          "y": 77.0,
-          "width": 95.844,
-          "height": 84.0,
+          "x": 546.25,
+          "y": 130.0,
+          "width": 86.859,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "ApiResponse",
-          "x": 1140.998,
-          "y": 170.0,
-          "width": 102.719,
-          "height": 84.0,
+          "x": 549.258,
+          "y": 261.0,
+          "width": 92.875,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
       "edges": [
-        {
-          "id": "0",
-          "from": "CoreResult",
-          "to": "CoreError",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 702.958,
-              "y": 391.0
-            },
-            {
-              "x": 756.038,
-              "y": 391.0
-            },
-            {
-              "x": 809.118,
-              "y": 391.0
-            }
-          ],
-          "label": {
-            "x": 756.038,
-            "y": 391.0,
-            "width": 56.16,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "1",
-          "from": "ApiClient",
-          "to": "ApiRequest",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 417.798,
-              "y": 92.395
-            },
-            {
-              "x": 466.878,
-              "y": 77.0
-            },
-            {
-              "x": 515.958,
-              "y": 77.0
-            },
-            {
-              "x": 574.036,
-              "y": 77.0
-            }
-          ],
-          "label": {
-            "x": 466.878,
-            "y": 77.0,
-            "width": 36.48,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "2",
-          "from": "ApiClient",
-          "to": "ApiResponse",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 417.798,
-              "y": 154.0
-            },
-            {
-              "x": 466.878,
-              "y": 154.0
-            },
-            {
-              "x": 515.958,
-              "y": 154.0
-            },
-            {
-              "x": 621.958,
-              "y": 154.0
-            },
-            {
-              "x": 756.038,
-              "y": 154.0
-            },
-            {
-              "x": 891.878,
-              "y": 154.0
-            },
-            {
-              "x": 999.638,
-              "y": 154.0
-            },
-            {
-              "x": 1044.638,
-              "y": 154.0
-            },
-            {
-              "x": 1089.638,
-              "y": 161.472
-            }
-          ],
-          "label": {
-            "x": 756.038,
-            "y": 154.0,
-            "width": 41.28,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
         {
           "id": "3",
           "from": "ApiClient",
@@ -199,27 +69,51 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 417.798,
-              "y": 198.004
+              "x": 382.7,
+              "y": 109.075
             },
             {
-              "x": 466.878,
-              "y": 209.0
+              "x": 412.7,
+              "y": 109.075
             },
             {
-              "x": 515.958,
-              "y": 209.0
+              "x": 412.7,
+              "y": 77.5
             },
             {
-              "x": 580.024,
-              "y": 319.0
+              "x": 629.695,
+              "y": 77.5
+            },
+            {
+              "x": 649.695,
+              "y": 77.5
+            },
+            {
+              "x": 649.695,
+              "y": 105.25
+            },
+            {
+              "x": 731.835,
+              "y": 105.25
+            },
+            {
+              "x": 731.835,
+              "y": 129.5
+            },
+            {
+              "x": 751.835,
+              "y": 129.5
+            },
+            {
+              "x": 785.835,
+              "y": 129.5
             }
           ],
           "label": {
-            "x": 466.878,
-            "y": 209.0,
-            "width": 48.16,
-            "height": 24.0
+            "x": 690.765,
+            "y": 105.25,
+            "width": 42.14,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -237,27 +131,165 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 974.638,
-              "y": 391.0
+              "x": 1063.727,
+              "y": 188.15
             },
             {
-              "x": 999.638,
-              "y": 391.0
+              "x": 1033.727,
+              "y": 188.15
             },
             {
-              "x": 1044.638,
+              "x": 1033.727,
               "y": 209.0
             },
             {
-              "x": 1089.638,
-              "y": 190.787
+              "x": 751.835,
+              "y": 209.0
+            },
+            {
+              "x": 731.835,
+              "y": 209.0
+            },
+            {
+              "x": 731.835,
+              "y": 233.25
+            },
+            {
+              "x": 649.695,
+              "y": 233.25
+            },
+            {
+              "x": 649.695,
+              "y": 261.0
+            },
+            {
+              "x": 629.695,
+              "y": 261.0
+            },
+            {
+              "x": 595.695,
+              "y": 261.0
             }
           ],
           "label": {
-            "x": 1044.638,
-            "y": 209.0,
-            "width": 40.0,
-            "height": 24.0
+            "x": 690.765,
+            "y": 233.25,
+            "width": 35.0,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "0",
+          "from": "CoreResult",
+          "to": "CoreError",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 930.587,
+              "y": 129.5
+            },
+            {
+              "x": 1033.727,
+              "y": 129.5
+            },
+            {
+              "x": 1033.727,
+              "y": 150.35
+            },
+            {
+              "x": 1063.727,
+              "y": 150.35
+            }
+          ],
+          "label": {
+            "x": 979.157,
+            "y": 129.0,
+            "width": 49.14,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "ApiClient",
+          "to": "ApiRequest",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 382.7,
+              "y": 138.925
+            },
+            {
+              "x": 412.7,
+              "y": 138.925
+            },
+            {
+              "x": 412.7,
+              "y": 130.0
+            },
+            {
+              "x": 502.82,
+              "y": 130.0
+            }
+          ],
+          "label": {
+            "x": 460.76,
+            "y": 129.5,
+            "width": 31.92,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "2",
+          "from": "ApiClient",
+          "to": "ApiResponse",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 382.7,
+              "y": 168.775
+            },
+            {
+              "x": 412.7,
+              "y": 168.775
+            },
+            {
+              "x": 412.7,
+              "y": 261.0
+            },
+            {
+              "x": 502.82,
+              "y": 261.0
+            }
+          ],
+          "label": {
+            "x": 460.76,
+            "y": 260.5,
+            "width": 36.12,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -271,52 +303,52 @@
       "clusters": [
         {
           "id": "Core",
-          "x": 757.798,
-          "y": 391.0,
-          "width": 483.68,
-          "height": 214.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 998.695,
+          "y": 136.375,
+          "width": 473.72,
+          "height": 248.75,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "Core",
           "title_label": {
-            "x": 757.798,
-            "y": 296.0,
-            "width": 30.24,
-            "height": 24.0
+            "x": 998.695,
+            "y": 22.5,
+            "width": 26.46,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "API",
-          "x": 608.678,
-          "y": 132.0,
-          "width": 1217.357,
-          "height": 264.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 315.848,
+          "y": 170.5,
+          "width": 607.695,
+          "height": 310.0,
+          "diff": -12.0,
+          "offset_y": 15.0,
           "title": "API",
           "title_label": {
-            "x": 608.678,
-            "y": 12.0,
-            "width": 24.0,
-            "height": 24.0
+            "x": 315.848,
+            "y": 26.0,
+            "width": 21.0,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 15.0,
+          "padding": 12.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 1217.357,
-        "max_y": 498.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 1235.555,
+        "max_y": 325.5
       }
     }
   }

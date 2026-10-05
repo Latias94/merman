@@ -30,6 +30,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
     pub(super) actor_has_prepared_math: &'a [bool],
+    pub(super) actor_text_heights: &'a [f64],
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
     pub(super) sequence_default_width: f64,
@@ -64,6 +65,7 @@ pub(super) struct SequenceLayoutGraph {
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     pub(super) bottom_box_top_y: f64,
+    pub(super) box_height: f64,
     pub(super) bounds_start_x: f64,
     pub(super) bounds_stop_x: f64,
 }
@@ -476,6 +478,8 @@ pub(super) fn build_sequence_layout_graph(
             actor_centers_x: ctx.actor_centers_x,
             actor_base_heights: ctx.actor_base_heights,
             actor_has_prepared_math: ctx.actor_has_prepared_math,
+            actor_text_heights: ctx.actor_text_heights,
+            is_neo: ctx.is_neo,
             actor_top_offset_y: ctx.actor_top_offset_y,
             label_box_height: ctx.label_box_height,
             checkpoints: ctx.checkpoints,
@@ -559,6 +563,8 @@ pub(super) fn build_sequence_layout_graph(
             actor_centers_x: ctx.actor_centers_x,
             actor_base_heights: ctx.actor_base_heights,
             actor_has_prepared_math: ctx.actor_has_prepared_math,
+            actor_text_heights: ctx.actor_text_heights,
+            is_neo: ctx.is_neo,
             actor_lifecycle: &state.actor_lifecycle,
             actor_top_offset_y: ctx.actor_top_offset_y,
             bottom_box_top_y,
@@ -570,11 +576,25 @@ pub(super) fn build_sequence_layout_graph(
     )?;
     ctx.checkpoints.checkpoint()?;
 
+    // drawActors advances one shared footer cursor, including destroyed actors' heights.
+    let box_height = if ctx.mirror_actors {
+        let mut max_footer_height = 0.0_f64;
+        for (index, node) in nodes.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(index)?;
+            if node.id.starts_with("actor-bottom-") {
+                max_footer_height = max_footer_height.max(node.height);
+            }
+        }
+        bottom_box_top_y + max_footer_height + ctx.box_margin
+    } else {
+        state.cursor_y
+    };
     Ok(SequenceLayoutGraph {
         nodes,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
         bottom_box_top_y,
+        box_height,
         bounds_start_x: state.bounds_start_x,
         bounds_stop_x: state.bounds_stop_x,
     })

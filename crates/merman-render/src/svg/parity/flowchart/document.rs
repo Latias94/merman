@@ -90,7 +90,11 @@ impl FlowchartSvgDocument<'_> {
             .acc_descr
             .map(|_| self.document_ids.accessibility_description().to_string());
         let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
-        root_chrome.class = Some("flowchart");
+        root_chrome.class = Some(if self.diagram_type == "agentflow" {
+            "agentflow"
+        } else {
+            "flowchart"
+        });
         root_chrome.aria_labelledby = aria_labelledby.as_deref();
         root_chrome.aria_describedby = aria_describedby.as_deref();
         root_chrome.dom.trailing_newline = false;

@@ -26,6 +26,7 @@ jobs:
     outputs:
       source_ref: ${{ steps.release.outputs.source_ref }}
       source_sha: ${{ steps.pin-source.outputs.source_sha }}
+      source_tree: ${{ steps.pin-source.outputs.source_tree }}
       source_date_epoch: ${{ steps.pin-source.outputs.source_date_epoch }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
@@ -90,12 +91,16 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
           source_date_epoch="$(git show -s --format=%ct HEAD)"
           if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             test "$source_sha" = "$EXPECTED_SOURCE_REF"
           fi
-          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
-          printf 'source_date_epoch=%s\n' "$source_date_epoch" >> "$GITHUB_OUTPUT"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'source_date_epoch=%s\n' "$source_date_epoch"
+          } >> "$GITHUB_OUTPUT"
 
   versions-and-packages:
     needs: validate-inputs
@@ -117,19 +122,21 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2.87.0
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-about@0.9.1
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2.87.0
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: cargo-semver-checks@0.50.0
 
       - name: Install CLI validators and native qualification fonts
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core
 
       - name: Verify release versions
         env:
@@ -181,11 +188,13 @@ jobs:
         run: |
           set -euo pipefail
           roughr_version="$(cargo pkgid -p roughr-merman | sed -E 's/.*[#@]//')"
+          stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
+          prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' HEAD)"
           python3 scripts/release_registry_dependents.py \
             --dependency "roughr-merman=$roughr_version" \
             --candidate-path crates/roughr \
-            --dependent merman-render=0.7.0 \
-            --dependent merman-render=0.8.0-alpha.5
+            --dependent "merman-render=${stable_tag#v}" \
+            --dependent "merman-render=${prerelease_tag#v}"
 
       - name: Prefetch locked Rust dependencies for offline metadata and license reports
         run: cargo fetch --locked
@@ -545,13 +554,19 @@ jobs:
       - name: Build wheel
         run: python scripts/build-python-uniffi-wheel.py
 
+      - name: Install Linux wheel repair tools
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes patchelf
+          python -m pip install --upgrade auditwheel
+
       - name: Repair Linux wheel
         id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y patchelf
-          python -m pip install --upgrade auditwheel
           mkdir -p target/python-wheels/repaired
           python -m auditwheel repair target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired
           rm target/python-wheels/merman-*.whl
@@ -611,12 +626,12 @@ jobs:
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: platform-tools
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
@@ -716,7 +731,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2.87.0
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: wasm-tools
 
@@ -1291,7 +1306,7 @@ jobs:
           cargo install cargo-zigbuild --version 0.21.8 --locked
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: platform-tools
 
@@ -1348,3 +1363,45 @@ jobs:
           python3 ../../scripts/verify_flutter_pub_package.py \
             --package-root . \
             --max-compressed-mb 99
+
+  release-preflight-evidence:
+    needs:
+      - validate-inputs
+      - versions-and-packages
+      - cli-and-lsp-archives
+      - python-wheel
+      - android-aar
+      - apple-xcframework
+      - web-npm-dry-run
+      - node-loader-package
+      - node-wasm-package
+      - node-platform-package
+      - node-npm-dry-run
+      - vscode-extension-dry-run
+      - flutter-dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out trusted preflight evidence tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Record successful immutable preflight
+        id: evidence
+        env:
+          PREFLIGHT_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PREFLIGHT_SOURCE_REF: ${{ inputs.source_ref }}
+          PREFLIGHT_NEEDS: ${{ toJSON(needs) }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release_preflight_evidence.py create --output "$RUNNER_TEMP/preflight-evidence.json"
+
+      - name: Upload immutable preflight evidence
+        if: ${{ steps.evidence.outputs.created == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preflight-${{ needs.validate-inputs.outputs.source_sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/preflight-evidence.json
+          if-no-files-found: error

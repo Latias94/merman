@@ -7,8 +7,8 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn path_data(arcs: &[RelativeArc]) -> String {
     let mut path = String::from("M0 0\n");
@@ -41,8 +41,6 @@ fn render_organic_shape(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 super::super::roughjs::roughjs_hachure_paths_for_svg_path(
                     &path,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     HAND_DRAWN_FILL_WEIGHT,

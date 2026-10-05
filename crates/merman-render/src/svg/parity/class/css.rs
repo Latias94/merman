@@ -22,6 +22,82 @@ fn write_class_icon_css(out: &mut impl SvgOutput, id: &str) {
     );
 }
 
+// The same palette gate drives CSS slots and node stamping (colorThemeGate.ts).
+pub(super) fn class_palette_size(config: &serde_json::Value) -> usize {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return 0;
+    }
+    config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn write_class_palette_css(
+    out: &mut impl SvgOutput,
+    id: &str,
+    config: &serde_json::Value,
+) -> Result<()> {
+    if class_palette_size(config) == 0 {
+        return out.checkpoint();
+    }
+    let Some(borders) = config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return out.checkpoint();
+    };
+    let backgrounds = config
+        .pointer("/themeVariables/bkgColorArray")
+        .and_then(serde_json::Value::as_array)
+        .filter(|colors| !colors.is_empty());
+    let look = config
+        .get("look")
+        .and_then(|value| match value {
+            serde_json::Value::String(value) => Some(value.clone()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        })
+        .filter(|look| {
+            !look.is_empty()
+                && look
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+        .unwrap_or_else(|| "classic".into());
+    let color = |value: &serde_json::Value| {
+        // Stylis removes declaration-value whitespace from upstream generated CSS.
+        value
+            .as_str()
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| value.to_string())
+    };
+    for (index, border) in borders.iter().enumerate() {
+        let border = color(border);
+        let _ = write!(
+            out,
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .outer-path path{{stroke:{border};"#
+        );
+        if let Some(backgrounds) = backgrounds {
+            let _ = write!(
+                out,
+                "fill:{};",
+                color(&backgrounds[index % backgrounds.len()])
+            );
+        }
+        out.push('}');
+        let _ = write!(
+            out,
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{border};}}"#
+        );
+        out.checkpoint()?;
+    }
+    Ok(())
+}
+
 pub(super) fn write_class_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
@@ -57,6 +133,7 @@ pub(super) fn write_class_css(
     );
 
     let base_font_emission = info_css.write_prefix(out, diagram_id)?;
+    write_class_palette_css(out, &id, effective_config)?;
 
     let _ = write!(
         out,

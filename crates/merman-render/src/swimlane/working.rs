@@ -1,5 +1,6 @@
 use crate::model::{LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use indexmap::IndexMap;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,7 @@ pub(super) struct WorkingLayout {
 }
 
 impl WorkingLayout {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn refresh_top_lane_ids(&mut self) {
         let parents: HashMap<String, Option<String>> = self
             .nodes

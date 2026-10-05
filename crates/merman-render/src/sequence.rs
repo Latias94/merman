@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::model::{LayoutCluster, LayoutNode, SequenceDiagramLayout};
 use crate::resources::OperationWorkMeter;
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
 use merman_core::diagrams::sequence::{
@@ -48,8 +48,10 @@ pub(crate) use block_geometry::{
 };
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{
-    SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT,
+    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
+    SequenceActorBands, sequence_actor_popup_min_width, sequence_actor_popup_panel_height,
+    sequence_actor_popup_rect_height, sequence_text_dimensions_height_px,
     sequence_text_line_step_px,
 };
 pub(crate) use math_artifact::{
@@ -59,8 +61,10 @@ pub(crate) use math_artifact::{
 #[cfg(test)]
 pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{
-    SequenceMathHeightMode, prepared_sequence_math_terminal_geometry,
-    wrap_sequence_label_like_mermaid_lines,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
+    measure_sequence_math_label, prepared_sequence_math_terminal_geometry,
+    sequence_drawn_text_first_y, sequence_drawn_text_style, sequence_drawn_text_y,
+    sequence_inline_font_family, wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 pub(crate) use text_artifact::SequenceTextSidecar;
@@ -159,6 +163,15 @@ impl<'a> SequenceOperationCheckpoints<'a> {
 
 type SequenceLayoutCheckpoints<'a> = SequenceOperationCheckpoints<'a>;
 
+/// Source-derived box title and spacing retained from actor layout.
+#[derive(Debug)]
+pub(crate) struct SequenceBoxLayout {
+    pub(crate) label: Option<String>,
+    pub(crate) margin: f64,
+    pub(crate) x: Option<f64>,
+    pub(crate) width: f64,
+}
+
 /// Private Sequence render artifact that keeps operation-owned measurements attached to layout.
 ///
 /// Do not expose or detach this from the paired semantic model: the metric sidecar is valid only
@@ -168,6 +181,9 @@ pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
     actor_popup_widths: HashMap<String, f64>,
     message_metrics: SequenceMessageMetricSidecar,
+    box_layouts: Vec<SequenceBoxLayout>,
+    box_title_height: f64,
+    box_height: f64,
     text_sidecar: SequenceTextSidecar,
     math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
@@ -185,6 +201,18 @@ impl SequencePreparedArtifact {
 
     pub(crate) fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
         &self.expected_effect_applications
+    }
+
+    pub(crate) fn box_layouts(&self) -> &[SequenceBoxLayout] {
+        &self.box_layouts
+    }
+
+    pub(crate) fn box_height(&self) -> f64 {
+        self.box_height
+    }
+
+    pub(crate) fn box_title_height(&self) -> f64 {
+        self.box_title_height
     }
 
     pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
@@ -359,7 +387,7 @@ fn sequence_text_work_units_controlled(
     Ok(Some(work_units))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> Option<usize> {
     let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
     sequence_layout_work_units_controlled(model, None, SequenceLayoutCheckpoints::new(&meter))
@@ -554,10 +582,10 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_popup_widths,
         actor_base_heights,
         actor_has_prepared_math,
-        actor_box,
-        actor_left_x,
+        actor_text_heights,
         actor_centers_x,
-        box_margins,
+        box_layouts,
+        box_title_height,
         actor_top_offset_y,
         max_actor_layout_height,
         has_boxes,
@@ -573,8 +601,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         math_sidecar: &math_sidecar_builder,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
+        is_neo: settings.is_neo,
         actor_margin: settings.actor_margin,
-        actor_font_size: settings.actor_text_style.font_size,
         label_box_height: settings.label_box_height,
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
@@ -590,6 +618,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         edges,
         block_layouts_by_id,
         bottom_box_top_y,
+        box_height,
         bounds_start_x,
         bounds_stop_x,
     } = build_sequence_layout_graph(SequenceLayoutGraphContext {
@@ -599,6 +628,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_widths: &actor_widths,
         actor_base_heights: &actor_base_heights,
         actor_has_prepared_math: &actor_has_prepared_math,
+        actor_text_heights: &actor_text_heights,
         actor_top_offset_y,
         max_actor_layout_height,
         sequence_default_width: settings.sequence_default_width,
@@ -665,11 +695,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         bounds_stop_x,
         actor_index: &actor_index,
         actor_centers_x: &actor_centers_x,
-        actor_left_x: &actor_left_x,
-        actor_widths: &actor_widths,
         actor_popup_widths: &actor_popup_widths,
-        actor_box: &actor_box,
-        box_margins: &box_margins,
+        box_layouts: &box_layouts,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
         bottom_box_top_y,
@@ -714,6 +741,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         typography,
         diagram_title,
         block_label_box_metrics,
+        box_layouts,
+        box_title_height,
+        box_height,
     })
 }
 
@@ -729,7 +759,7 @@ pub(crate) fn sequence_render_title<'a>(
     model_title
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 mod resource_tests {
     use super::{
         SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceLayoutWorkShape,

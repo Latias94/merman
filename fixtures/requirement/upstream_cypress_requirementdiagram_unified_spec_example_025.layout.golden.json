@@ -5,27 +5,27 @@
       "nodes": [
         {
           "id": "test req name with spaces",
-          "x": 8.0,
-          "y": 8.0,
-          "width": 411.516,
-          "height": 184.0,
+          "x": 12.0,
+          "y": 12.0,
+          "width": 362.578,
+          "height": 166.0,
           "is_cluster": false
         },
         {
           "id": "test entity name that is extra long with spaces",
-          "x": 469.516,
-          "y": 66.0,
-          "width": 334.078,
-          "height": 68.0,
+          "x": 414.578,
+          "y": 64.0,
+          "width": 294.813,
+          "height": 62.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 803.594,
-        "max_y": 192.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 709.391,
+        "max_y": 178.0
       }
     }
   }

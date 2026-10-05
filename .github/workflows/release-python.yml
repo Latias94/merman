@@ -159,13 +159,19 @@ jobs:
       - name: Build wheel
         run: python scripts/build-python-uniffi-wheel.py
 
+      - name: Install Linux wheel repair tools
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes patchelf
+          python -m pip install --upgrade auditwheel
+
       - name: Repair Linux wheel
         id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y patchelf
-          python -m pip install --upgrade auditwheel
           mkdir -p target/python-wheels/repaired
           python -m auditwheel repair target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired
           rm target/python-wheels/merman-*.whl

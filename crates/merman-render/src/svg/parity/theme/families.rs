@@ -2,6 +2,7 @@ use super::*;
 use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
 impl<'a> MermaidThemeAdapter<'a> {
+    #[cfg(feature = "diagram-xychart")]
     pub(crate) fn xychart(&self) -> XyChartTheme {
         let background = self
             .raw
@@ -64,6 +65,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-quadrant-chart")]
     pub(crate) fn quadrantchart(&self) -> QuadrantChartTheme {
         let value = |key: &str, fallback: &str| self.raw.color(key, fallback);
         let primary_text = self.raw.color("primaryTextColor", "#131300");
@@ -92,6 +94,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-tree-view")]
     pub(crate) fn tree_view(&self) -> TreeViewTheme {
         TreeViewTheme {
             label_font_size: self
@@ -130,6 +133,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-treemap")]
     pub(crate) fn treemap(&self) -> crate::Result<TreemapTheme> {
         let text_color = self.raw.color("textColor", "#333");
         let title_color = self
@@ -217,6 +221,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-gantt")]
     pub(crate) fn gantt(&self) -> GanttTheme {
         let option = |key: &str, default_value: &str| -> String {
             self.raw
@@ -253,6 +258,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-kanban")]
     pub(crate) fn kanban(&self) -> crate::Result<KanbanTheme> {
         let dark_mode = self.raw.bool_root_or_theme("darkMode").unwrap_or(false);
         let sections = (0..12)
@@ -286,6 +292,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-event-modeling")]
     pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
         EventModelingTheme {
             text_color: self.raw.color("textColor", "#333"),
@@ -314,6 +321,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-ishikawa")]
     pub(crate) fn ishikawa(&self) -> IshikawaTheme {
         IshikawaTheme {
             line_color: self.raw.color("lineColor", "#333"),
@@ -322,6 +330,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-venn")]
     pub(crate) fn venn(&self) -> crate::Result<VennTheme> {
         let background = self.raw.color("background", "#f4f4f4");
         let is_dark_theme = is_dark(&background)?;
@@ -346,6 +355,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-journey")]
     pub(crate) fn journey(&self) -> JourneyTheme {
         let text_color = self.raw.color("textColor", "#333");
 
@@ -377,6 +387,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-radar")]
     pub(crate) fn radar(&self) -> RadarTheme {
         let scoped_string = |key: &str, fallback: &str| {
             self.raw
@@ -407,6 +418,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-radar")]
     pub(crate) fn radar_series_colors(&self) -> [String; 12] {
         std::array::from_fn(|index| {
             self.raw
@@ -414,6 +426,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-timeline")]
     pub(crate) fn timeline(&self) -> TimelineTheme {
         let theme_name = self.common.theme_name.clone();
         let theme_color_limit =
@@ -455,12 +468,24 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    pub(in crate::svg::parity) fn common(&self) -> &CommonCssTheme {
+        &self.common
+    }
+
+    #[cfg(feature = "diagram-treemap")]
     fn treemap_style_option(&self, key: &str, default_value: &str) -> String {
         self.raw
             .optional_root_scoped_css_value("treemap", key)
             .unwrap_or_else(|| default_value.to_string())
     }
 
+    #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-mindmap",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-block"
+    ))]
     pub(in crate::svg::parity) fn node_diagram(&self) -> NodeDiagramTheme {
         let node_border = self.raw.color("nodeBorder", "#9370DB");
         let main_bkg = self.raw.color("mainBkg", "#ECECFF");
@@ -479,8 +504,6 @@ impl<'a> MermaidThemeAdapter<'a> {
                 .raw
                 .color("arrowheadColor", self.common.line_color.as_str()),
             stroke_width: self.raw.css_value("strokeWidth", "1"),
-            radius: self.raw.css_value("radius", "5"),
-            drop_shadow: self.raw.css_value("dropShadow", "none"),
             edge_label_background: self
                 .raw
                 .color("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
@@ -492,6 +515,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-class")]
     pub(in crate::svg::parity) fn class_diagram(&self) -> ClassDiagramTheme {
         let class_text = self.raw.color(
             "classText",
@@ -518,6 +542,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-sequence")]
     pub(in crate::svg::parity) fn sequence_diagram(&self) -> SequenceDiagramTheme {
         let actor_border = self.raw.color("actorBorder", "#9370DB");
         let actor_fill = self.raw.color("actorBkg", "#ECECFF");
@@ -544,16 +569,89 @@ impl<'a> MermaidThemeAdapter<'a> {
             activation_fill: self.raw.color("activationBkgColor", "#f4f4f4"),
             activation_border: self.raw.color("activationBorderColor", "#666"),
             node_border: self.raw.color("nodeBorder", actor_border.as_str()),
-            note_font_weight: self
-                .raw
-                .optional_value("noteFontWeight")
-                .map(|font_weight| format!("font-weight:{};", font_weight))
-                .unwrap_or_default(),
             label_box_filter: if self.common.is_neo() {
                 self.raw.css_value("dropShadow", "none")
             } else {
                 "none".to_string()
             },
+        }
+    }
+
+    #[cfg(feature = "diagram-state")]
+    pub(in crate::svg::parity) fn state_diagram(&self) -> StateDiagramTheme {
+        let node_border = self.raw.color("nodeBorder", "#9370DB");
+        let main_bkg = self.raw.color("mainBkg", "#ECECFF");
+        let background = self.raw.color("background", "white");
+        let stroke_width = self.raw.css_value("strokeWidth", "1");
+        let stroke_width_px = if stroke_width.trim_end().ends_with("px") {
+            stroke_width.clone()
+        } else {
+            format!("{stroke_width}px")
+        };
+        let stroke_width_value = stroke_width
+            .trim()
+            .trim_end_matches("px")
+            .trim()
+            .parse::<f64>()
+            .unwrap_or(1.0)
+            .max(0.0);
+        let rough_stroke_width_value = if (stroke_width_value - 1.0).abs() <= 1e-9 {
+            1.3
+        } else {
+            stroke_width_value
+        };
+        let transition_color = self
+            .raw
+            .color("transitionColor", self.common.line_color.as_str());
+        let special_state_color = self
+            .raw
+            .color("specialStateColor", self.common.line_color.as_str());
+        let inner_end_background = self.raw.color("innerEndBackground", node_border.as_str());
+
+        StateDiagramTheme {
+            common: self.common.clone(),
+            transition_color,
+            node_border: node_border.clone(),
+            background: background.clone(),
+            main_bkg: main_bkg.clone(),
+            alt_background: self.raw.color("altBackground", "#efefef"),
+            stroke_width,
+            stroke_width_px,
+            rough_stroke_width_value,
+            note_border: self.raw.color("noteBorderColor", "#aaaa33"),
+            note_bkg: self.raw.color("noteBkgColor", "#fff5ad"),
+            note_text: self.raw.color("noteTextColor", "black"),
+            label_background: self.raw.color("labelBackgroundColor", main_bkg.as_str()),
+            edge_label_background: self
+                .raw
+                .color("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
+            transition_label_color: self
+                .raw
+                .optional_color("transitionLabelColor")
+                .or_else(|| self.raw.optional_color("tertiaryTextColor"))
+                .unwrap_or_else(|| self.common.text_color.clone()),
+            special_state_color,
+            inner_end_background,
+            composite_background: self
+                .raw
+                .optional_color("compositeBackground")
+                .unwrap_or_else(|| background.to_string()),
+            state_bkg: self
+                .raw
+                .optional_color("stateBkg")
+                .unwrap_or_else(|| main_bkg.clone()),
+            state_border: self
+                .raw
+                .optional_color("stateBorder")
+                .unwrap_or_else(|| node_border.clone()),
+            composite_title_background: self
+                .raw
+                .color("compositeTitleBackground", main_bkg.as_str()),
+            state_label_color: self.raw.color("stateLabelColor", "#131300"),
+            drop_shadow: self
+                .raw
+                .optional_value("dropShadow")
+                .unwrap_or_else(|| "none".to_string()),
         }
     }
 }

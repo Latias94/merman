@@ -163,6 +163,8 @@ pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> Result<Sequ
         if !is_block_label_directive(msg) {
             continue;
         }
+        // Mermaid wraps block labels against the computed loop width. The label box occupies
+        // only the leading part of the frame; it does not cap the available loop text width.
         let frame_width = widths_by_id.get(&msg.id).copied();
         directive_steps.insert(
             msg.id.clone(),

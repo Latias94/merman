@@ -1,0 +1,60 @@
+{
+  "diagramType": "agentflow",
+  "model": {
+    "connectors": [
+      {
+        "id": "api",
+        "title": "API"
+      }
+    ],
+    "direction": "LR",
+    "diagnostics": [],
+    "subGraphs": [
+      {
+        "id": "outer",
+        "title": "Outer",
+        "nodes": [
+          "decision",
+          "tool"
+        ],
+        "type": "flow"
+      }
+    ],
+    "vertices": [
+      {
+        "id": "decision",
+        "label": "Decide",
+        "shape": "diamond",
+        "vertexKind": "decision"
+      },
+      {
+        "id": "tool",
+        "label": "Search",
+        "shape": "subroutine",
+        "vertexKind": "tool"
+      }
+    ],
+    "edges": [
+      {
+        "start": "decision",
+        "end": "tool",
+        "id": "L_decision_tool_0",
+        "label": "yes",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      },
+      {
+        "start": "tool",
+        "end": "api",
+        "id": "L_tool_api_0",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      }
+    ],
+    "type": "agentflow"
+  }
+}

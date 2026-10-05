@@ -231,6 +231,7 @@ function writeBuildReceipt(
       capabilities: recipe.capabilityFeatures,
     },
     features: recipe.cargoFeatures,
+    diagram_families: recipe.diagramFamilies,
   };
   const receipt = {
     schema_version: 1,
@@ -352,7 +353,8 @@ export function probeCandidateRuntime(stage, recipe) {
       stableJson(capabilities?.text_measurement?.provider_ids) !==
         stableJson(expectedRuntime.textMeasurementProviderIds) ||
       !Number.isSafeInteger(catalog.registry?.diagram_family_count) ||
-      catalog.registry.diagram_family_count < 1
+      catalog.registry.diagram_family_count < 1 ||
+      stableJson(catalog.registry.diagram_families) !== stableJson(expectedRuntime.diagramFamilies)
     ) {
       throw new Error(`${recipe.candidate} runtime catalog disagrees with its capability recipe.`);
     }
@@ -697,7 +699,8 @@ function completeCandidateRecipe(recipe, capabilityFeatures) {
   return {
     ...recipe,
     capabilityFeatures,
-    cargoFeatures: [...capabilityFeatures, recipe.transportFeature].sort(),
+    diagramFamilies: candidateDiagramFamilies(),
+    cargoFeatures: [...descriptor.cargo.features, ...capabilityFeatures, recipe.transportFeature].sort(),
   };
 }
 
@@ -740,6 +743,14 @@ function candidateCapabilityFeatures() {
     }
   }
   return capabilities;
+}
+
+function candidateDiagramFamilies() {
+  const families = sortedUniqueStrings(descriptor.expected?.diagram_families, "Candidate diagram families");
+  if (families.some((family) => !/^[a-z][A-Za-z0-9]*$/.test(family) || family === "error")) {
+    throw new Error("Candidate diagram families must contain logical family IDs excluding error.");
+  }
+  return families;
 }
 
 export function resolveCandidateRuntimeContract() {
@@ -809,6 +820,7 @@ export function resolveCandidateRuntimeContract() {
       capabilities: capabilityIds,
     },
     capabilityIds,
+    diagramFamilies: candidateDiagramFamilies(),
     outputIds,
     operationIds,
     systemAdapterIds,
@@ -980,6 +992,7 @@ function assertDescriptor() {
     descriptor.schema_version !== 3 ||
     descriptor.status !== "napi-selected-for-alpha" ||
     descriptor.cargo.default_features !== false ||
+    stableJson(descriptor.cargo.features) !== stableJson(["all-diagrams"]) ||
     descriptor.cargo.manifest !== "crates/merman-node/Cargo.toml" ||
     descriptor.capability_recipe?.descriptor !== "capabilities/feature-surface-v1.json" ||
     descriptor.capability_recipe?.target !== "native" ||

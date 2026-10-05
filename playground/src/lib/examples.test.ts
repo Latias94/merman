@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { SUPPORTED_DIAGRAMS } from "@mermanjs/web";
+
 import {
   categories,
   examples,
@@ -9,7 +11,10 @@ import {
 } from "./examples.ts";
 
 test("generated catalog covers every full-profile diagram with teaching variants", () => {
-  assert.equal(new Set(examples.map((example) => example.diagramType)).size, 35);
+  assert.deepEqual(
+    [...new Set(examples.map((example) => example.diagramType))].sort(),
+    [...SUPPORTED_DIAGRAMS].sort()
+  );
   assert.equal(new Set(examples.map((example) => example.id)).size, examples.length);
   assert.equal(
     new Set(examples.map((example) => example.order)).size,

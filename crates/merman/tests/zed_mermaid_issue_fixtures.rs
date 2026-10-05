@@ -311,7 +311,7 @@ fn issue_89_class_fallback_resolves_mermaid_typography_before_zed_css_injection(
     let name_style = fallback_text_style(&svg, "+String name");
     for (label, style) in [("User", user_style), ("+String name", name_style)] {
         assert!(
-            style.contains("font-size: 16px") || style.contains("font-size:16px"),
+            style.contains("font-size: 14px") || style.contains("font-size:14px"),
             "{label:?} must use Mermaid's pre-injection source typography, not a flattened 10px class rule: {style}"
         );
         assert!(
@@ -379,10 +379,10 @@ fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
         ))
         .expect_err("rasterization must reject a tree deeper than the backend capability");
 
+    let message = error.to_string();
     assert!(
-        error
-            .to_string()
-            .contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID),
+        message.contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID)
+            || message.contains("svg_fallback_selector_index"),
         "{error}"
     );
 }

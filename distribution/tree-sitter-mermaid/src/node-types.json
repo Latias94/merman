@@ -1,5 +1,2408 @@
 [
   {
+    "type": "agentflow_accessibility_block_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_accessibility_description_block",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "{",
+            "named": false
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_accessibility_block_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_accessibility_description_statement",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_accessibility_description_block",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_accessibility_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_accessibility_title_statement",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_argument_list",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ")",
+            "named": false
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "(",
+            "named": false
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_arguments",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_arguments",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_backslash_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_trap_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_eof_item",
+          "named": true
+        },
+        {
+          "type": "agentflow_line_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_call_action",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_argument_list",
+            "named": true
+          }
+        ]
+      },
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_callback_name",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_call_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_call_keyword",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_statement_keyword",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_callback_action",
+    "named": true,
+    "fields": {
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_callback_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_callback_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_circle_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_round_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_class_annotation",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_class_name",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":::",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_class_assignment_statement",
+    "named": true,
+    "fields": {
+      "class": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_class_name",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "targets": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_identifier_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_class_definition_statement",
+    "named": true,
+    "fields": {
+      "classes": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_identifier_list",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "style": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_style_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_class_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_click_statement",
+    "named": true,
+    "fields": {
+      "action": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_call_action",
+            "named": true
+          },
+          {
+            "type": "agentflow_callback_action",
+            "named": true
+          },
+          {
+            "type": "agentflow_href_action",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "link_target": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_link_target",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node_id",
+            "named": true
+          }
+        ]
+      },
+      "tooltip": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_connector_statement",
+    "named": true,
+    "fields": {
+      "data": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_shape_data",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_container_title",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_node_id",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_square_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_curly_label_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_cylinder_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_round_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_diagram",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_body",
+            "named": true
+          }
+        ]
+      },
+      "header": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_header",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_diamond_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_curly_label_text",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_direction_statement",
+    "named": true,
+    "fields": {
+      "direction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_direction",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_double_circle_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_round_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_edge",
+    "named": true,
+    "fields": {
+      "id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_edge_id",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_edge_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_middle_edge_label",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_arrow",
+            "named": true
+          },
+          {
+            "type": "agentflow_arrow_start",
+            "named": true
+          },
+          {
+            "type": "agentflow_continued_arrow",
+            "named": true
+          },
+          {
+            "type": "agentflow_continued_arrow_start",
+            "named": true
+          }
+        ]
+      },
+      "operator_end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_arrow",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_edge_id",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "@",
+            "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_edge_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_edge_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_edge_label_text",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_edge_label_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_edge_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_edge_statement",
+    "named": true,
+    "fields": {
+      "edge": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_edge",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_ellipse_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_ellipse_label_text",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_ellipse_label_fragment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_ellipse_label_text",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_ellipse_label_fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_end_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_eof_item",
+    "named": true,
+    "fields": {
+      "statement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_incomplete_edge_statement",
+            "named": true
+          },
+          {
+            "type": "agentflow_statement",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_flow_statement",
+    "named": true,
+    "fields": {
+      "data": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_shape_data",
+            "named": true
+          }
+        ]
+      },
+      "end": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_end_statement",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_container_title",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_node_id",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_square_label",
+            "named": true
+          }
+        ]
+      },
+      "terminator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_line_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_global_statement",
+    "named": true,
+    "fields": {
+      "end": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_end_statement",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "terminator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_line_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_header",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "direction": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "direction",
+            "named": true
+          }
+        ]
+      },
+      "directive": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "directive",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      },
+      "terminator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_hexagon_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_curly_label_text",
+            "named": true
+          },
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_href_action",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "url": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_identifier_list",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          }
+        ]
+      },
+      "item": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_reference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_incomplete_edge_statement",
+    "named": true,
+    "fields": {
+      "edge": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_edge",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_interpolation",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_label",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_label_text",
+          "named": true
+        },
+        {
+          "type": "agentflow_markdown_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_quoted_label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_label_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_line_item",
+    "named": true,
+    "fields": {
+      "statement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_incomplete_edge_statement",
+            "named": true
+          },
+          {
+            "type": "agentflow_statement",
+            "named": true
+          }
+        ]
+      },
+      "terminator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_link_style_statement",
+    "named": true,
+    "fields": {
+      "interpolation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_interpolation",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "style": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_style_list",
+            "named": true
+          }
+        ]
+      },
+      "targets": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_link_style_default",
+            "named": true
+          },
+          {
+            "type": "agentflow_number_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_markdown_label",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_metadata_string",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_metadata_yaml",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_metadata_content",
+          "named": true
+        },
+        {
+          "type": "agentflow_metadata_string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_middle_edge_label",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_markdown_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_middle_edge_label_text",
+          "named": true
+        },
+        {
+          "type": "agentflow_quoted_label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_middle_edge_label_fragment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_middle_edge_label_text",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_middle_edge_label_fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_node",
+    "named": true,
+    "fields": {
+      "separator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "&",
+            "named": false
+          }
+        ]
+      },
+      "vertex": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_vertex",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_node_id",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_node_statement",
+    "named": true,
+    "fields": {
+      "node": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_number_list",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          }
+        ]
+      },
+      "item": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_edge_index",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_odd_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_square_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_property_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_label",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_property_pair",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_property_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_property_pair",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_property_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_property_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_property_value",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_quoted_label",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_reference",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_round_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_round_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_round_label_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_shape",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_backslash_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_circle_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_cylinder_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_diamond_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_double_circle_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_ellipse_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_hexagon_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_odd_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_property_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_round_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_slash_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_square_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_stadium_label",
+          "named": true
+        },
+        {
+          "type": "agentflow_subroutine_label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_shape_data",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
+      "content": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_metadata_yaml",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "@{",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_slash_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_trap_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_square_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_square_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_square_label_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_stadium_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_square_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_statement",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "agentflow_accessibility_description_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_accessibility_title_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_class_assignment_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_class_definition_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_click_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_connector_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_direction_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_edge_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_flow_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_global_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_link_style_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_node_statement",
+          "named": true
+        },
+        {
+          "type": "agentflow_style_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_style_declaration",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_style_property",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_style_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_style_fragment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_style_item",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_style_fragment",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_style_declaration",
+          "named": true
+        },
+        {
+          "type": "agentflow_style_fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_style_list",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          }
+        ]
+      },
+      "item": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_style_item",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_style_property",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_style_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "style": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_style_list",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node_id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_style_value",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_subroutine_label",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_markdown_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_quoted_label",
+            "named": true
+          },
+          {
+            "type": "agentflow_square_label_text",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_shape_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "agentflow_trap_label_fragment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "agentflow_trap_label_text",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "agentflow_trap_label_fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "agentflow_vertex",
+    "named": true,
+    "fields": {
+      "class": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_class_annotation",
+            "named": true
+          }
+        ]
+      },
+      "data": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_shape_data",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "agentflow_node_id",
+            "named": true
+          }
+        ]
+      },
+      "shape": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "agentflow_shape",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "architecture_accessibility_description_block",
     "named": true,
     "fields": {
@@ -13408,6 +15811,11 @@
     }
   },
   {
+    "type": "quadrant_chart_axis_delimiter",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "quadrant_chart_axis_statement",
     "named": true,
     "fields": {
@@ -22033,6 +24441,10 @@
       "required": false,
       "types": [
         {
+          "type": "agentflow_diagram",
+          "named": true
+        },
+        {
           "type": "architecture_diagram",
           "named": true
         },
@@ -22170,6 +24582,10 @@
         },
         {
           "type": "treemap_diagram",
+          "named": true
+        },
+        {
+          "type": "usecase_diagram",
           "named": true
         },
         {
@@ -22920,6 +25336,11 @@
     }
   },
   {
+    "type": "state_concurrent_divider",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "state_description_statement",
     "named": true,
     "fields": {
@@ -23513,6 +25934,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "state_quoted_text",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "state_reference_statement",
@@ -27308,6 +29734,1037 @@
     "type": "treemap_unclosed_name",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "usecase_accessibility_description_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_accessibility_title_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_actor",
+    "named": true,
+    "fields": {
+      "classes": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_class_suffix",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_string",
+            "named": true
+          }
+        ]
+      },
+      "metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_metadata",
+            "named": true
+          }
+        ]
+      },
+      "stereotype": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_stereotype",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "usecase_actor_label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_actor_label",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_actor_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_actor",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "usecase_accessibility_description_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_accessibility_title_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_actor_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_boundary_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_class_definition_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_class_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_direction_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_edge_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_json_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_node_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_note_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_style_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_boundary_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "usecase_actor_statement",
+          "named": true
+        },
+        {
+          "type": "usecase_node_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_boundary_statement",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_boundary_body",
+            "named": true
+          }
+        ]
+      },
+      "classes": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_class_suffix",
+            "named": true
+          }
+        ]
+      },
+      "end": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_end_statement",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_node_label",
+            "named": true
+          },
+          {
+            "type": "usecase_string",
+            "named": true
+          }
+        ]
+      },
+      "metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_metadata",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_class_definition_statement",
+    "named": true,
+    "fields": {
+      "class": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_styles",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_class_statement",
+    "named": true,
+    "fields": {
+      "class": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_class_suffix",
+    "named": true,
+    "fields": {
+      "class": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_diagram",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_body",
+            "named": true
+          }
+        ]
+      },
+      "header": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_header",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_direction_statement",
+    "named": true,
+    "fields": {
+      "direction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "direction",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_edge_label",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_edge_statement",
+    "named": true,
+    "fields": {
+      "edge_id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_operator",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_actor",
+            "named": true
+          },
+          {
+            "type": "usecase_node",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_node",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_end_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_header",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_json_array",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "usecase_json_array",
+          "named": true
+        },
+        {
+          "type": "usecase_json_literal",
+          "named": true
+        },
+        {
+          "type": "usecase_json_number",
+          "named": true
+        },
+        {
+          "type": "usecase_json_object",
+          "named": true
+        },
+        {
+          "type": "usecase_json_string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_json_literal",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "usecase_json_object",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "usecase_json_property",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_json_property",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_json_string",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_json_array",
+            "named": true
+          },
+          {
+            "type": "usecase_json_literal",
+            "named": true
+          },
+          {
+            "type": "usecase_json_number",
+            "named": true
+          },
+          {
+            "type": "usecase_json_object",
+            "named": true
+          },
+          {
+            "type": "usecase_json_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_json_statement",
+    "named": true,
+    "fields": {
+      "classes": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_class_suffix",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_json_object",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_label",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_identifier",
+          "named": true
+        },
+        {
+          "type": "usecase_label_text",
+          "named": true
+        },
+        {
+          "type": "usecase_string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_metadata",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "usecase_metadata_property",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_metadata_property",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          },
+          {
+            "type": "usecase_string",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          },
+          {
+            "type": "usecase_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_node",
+    "named": true,
+    "fields": {
+      "classes": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_class_suffix",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_node_label",
+            "named": true
+          },
+          {
+            "type": "usecase_string",
+            "named": true
+          }
+        ]
+      },
+      "metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_metadata",
+            "named": true
+          }
+        ]
+      },
+      "stereotype": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_stereotype",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_node_label",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_node_statement",
+    "named": true,
+    "fields": {
+      "node": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_node",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_note_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_label",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_operator",
+    "named": true,
+    "fields": {
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_edge_label",
+            "named": true
+          }
+        ]
+      },
+      "relation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "usecase_relation_kind",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_stereotype",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_stereotype_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_style_property",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_style_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_style_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "usecase_style_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "usecase_identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_styles",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "usecase_styles",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "usecase_style_property",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "venn_bare_identifier",
@@ -33305,7 +36762,27 @@
     "named": false
   },
   {
+    "type": "--",
+    "named": false
+  },
+  {
+    "type": "--o",
+    "named": false
+  },
+  {
+    "type": "--x",
+    "named": false
+  },
+  {
+    "type": "--|>",
+    "named": false
+  },
+  {
     "type": ".",
+    "named": false
+  },
+  {
+    "type": "..>",
     "named": false
   },
   {
@@ -33326,6 +36803,10 @@
   },
   {
     "type": "<",
+    "named": false
+  },
+  {
+    "type": "<--",
     "named": false
   },
   {
@@ -33463,6 +36944,54 @@
   {
     "type": "`",
     "named": false
+  },
+  {
+    "type": "agentflow_arrow",
+    "named": true
+  },
+  {
+    "type": "agentflow_arrow_start",
+    "named": true
+  },
+  {
+    "type": "agentflow_container_title",
+    "named": true
+  },
+  {
+    "type": "agentflow_continued_arrow",
+    "named": true
+  },
+  {
+    "type": "agentflow_continued_arrow_start",
+    "named": true
+  },
+  {
+    "type": "agentflow_direction",
+    "named": true
+  },
+  {
+    "type": "agentflow_edge_index",
+    "named": true
+  },
+  {
+    "type": "agentflow_link_style_default",
+    "named": true
+  },
+  {
+    "type": "agentflow_link_target",
+    "named": true
+  },
+  {
+    "type": "agentflow_metadata_content",
+    "named": true
+  },
+  {
+    "type": "agentflow_shape_delimiter",
+    "named": true
+  },
+  {
+    "type": "agentflow_statement_keyword",
+    "named": true
   },
   {
     "type": "align",
@@ -34037,6 +37566,10 @@
     "named": false
   },
   {
+    "type": "o--",
+    "named": false
+  },
+  {
     "type": "outsource",
     "named": false
   },
@@ -34070,10 +37603,6 @@
   },
   {
     "type": "quadrant_chart_axis",
-    "named": true
-  },
-  {
-    "type": "quadrant_chart_axis_delimiter",
     "named": true
   },
   {
@@ -34385,10 +37914,6 @@
     "named": true
   },
   {
-    "type": "state_concurrent_divider",
-    "named": true
-  },
-  {
     "type": "state_description_fragment",
     "named": true
   },
@@ -34430,10 +37955,6 @@
   },
   {
     "type": "state_pseudostate_kind",
-    "named": true
-  },
-  {
-    "type": "state_quoted_text",
     "named": true
   },
   {
@@ -34617,6 +38138,50 @@
     "named": false
   },
   {
+    "type": "usecase_accessibility_text",
+    "named": true
+  },
+  {
+    "type": "usecase_identifier",
+    "named": true
+  },
+  {
+    "type": "usecase_json_number",
+    "named": true
+  },
+  {
+    "type": "usecase_json_string",
+    "named": true
+  },
+  {
+    "type": "usecase_label_text",
+    "named": true
+  },
+  {
+    "type": "usecase_relation_kind",
+    "named": true
+  },
+  {
+    "type": "usecase_statement_keyword",
+    "named": true
+  },
+  {
+    "type": "usecase_stereotype_text",
+    "named": true
+  },
+  {
+    "type": "usecase_string",
+    "named": true
+  },
+  {
+    "type": "usecase_style_name",
+    "named": true
+  },
+  {
+    "type": "usecase_style_value",
+    "named": true
+  },
+  {
     "type": "venn_color",
     "named": true
   },
@@ -34710,6 +38275,10 @@
   },
   {
     "type": "x",
+    "named": false
+  },
+  {
+    "type": "x--",
     "named": false
   },
   {

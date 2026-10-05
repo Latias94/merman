@@ -1,10 +1,9 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
-    ActorLabelContext, LIFELINE_STROKE_WIDTH_PX, is_actor_man_variant, write_actor_man_lifeline,
-    write_collection_actor_shape, write_database_bottom_actor_shape,
-    write_database_top_actor_shape, write_lifeline_root_open, write_queue_actor_shape,
-    write_rect_actor_shape,
+    ActorLabelContext, ActorLifelineIdentity, LIFELINE_STROKE_WIDTH_PX, is_actor_man_variant,
+    write_actor_man_lifeline, write_collection_actor_shape, write_database_actor_shape,
+    write_queue_actor_shape, write_rect_actor_shape,
 };
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
@@ -17,6 +16,7 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) rect_style: super::actor_shapes::SequenceActorRectStyle,
     pub(super) geometry_receipt: &'a crate::sequence::SequenceActorThemeReceipt,
     pub(super) model: &'a SequenceSvgModel,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
@@ -28,6 +28,9 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) actor_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) lifeline_effective_stroke_width: f64,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) typed_fill: Option<&'a str>,
+    pub(super) typed_stroke: Option<&'a str>,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -43,6 +46,11 @@ impl<'a> SequenceActorRenderContext<'a> {
             typography_receipt: self.typography_receipt,
             math_sidecar: self.math_sidecar,
             actor_index: None,
+            config: self.sanitize_config,
+            diagram_id: self.diagram_id,
+            typed_fill: self.typed_fill,
+            typed_stroke: self.typed_stroke,
+            translate_y: 0.0,
             checkpoints: self.checkpoints,
         }
     }
@@ -85,18 +93,36 @@ pub(super) fn render_sequence_bottom_actors(
                 out.push_str("<g/>");
             }
             "collections" => {
-                out.push_str("<g>");
-                write_collection_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx)?;
+                out.push_str("<g");
+                label_ctx.write_shadow_attr(out);
+                out.push('>');
+                write_collection_actor_shape(
+                    out,
+                    n,
+                    actor_id,
+                    actor,
+                    "actor-bottom",
+                    actor_index,
+                    &label_ctx,
+                )?;
                 out.push_str("</g>");
             }
             "queue" => {
                 out.push_str(r#"<g class="actor actor-bottom">"#);
-                write_queue_actor_shape(out, n, actor, "actor-bottom", &label_ctx)?;
+                write_queue_actor_shape(out, n, actor, actor_index, &label_ctx)?;
                 out.push_str("</g>");
             }
             "database" => {
                 out.push_str("<g>");
-                write_database_bottom_actor_shape(out, n, actor, ctx.label_box_height, &label_ctx)?;
+                write_database_actor_shape(
+                    out,
+                    n,
+                    actor,
+                    actor_index,
+                    "actor-bottom",
+                    n.width / 3.0 + ctx.label_box_height,
+                    &label_ctx,
+                )?;
                 out.push_str("</g>");
             }
             _ => {
@@ -107,6 +133,7 @@ pub(super) fn render_sequence_bottom_actors(
                     actor_id,
                     actor,
                     "actor-bottom",
+                    actor_index,
                     &label_ctx,
                     ctx.rect_style,
                     ctx.geometry_receipt,
@@ -199,7 +226,18 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 );
             }
             "collections" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                    &filter,
+                );
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -210,11 +248,30 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     LIFELINE_STROKE_WIDTH_PX,
                     ctx.lifeline_effective_stroke_width,
                 );
-                write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
+                write_collection_actor_shape(
+                    out,
+                    top,
+                    actor_id,
+                    actor,
+                    "actor-top",
+                    idx,
+                    &label_ctx,
+                )?;
                 out.push_str("</g></g>");
             }
             "queue" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                    &filter,
+                );
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -225,11 +282,22 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     LIFELINE_STROKE_WIDTH_PX,
                     ctx.lifeline_effective_stroke_width,
                 );
-                write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx)?;
+                write_queue_actor_shape(out, top, actor, idx, &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "database" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                    &filter,
+                );
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -240,11 +308,30 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     LIFELINE_STROKE_WIDTH_PX,
                     ctx.lifeline_effective_stroke_width,
                 );
-                write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx)?;
+                write_database_actor_shape(
+                    out,
+                    top,
+                    actor,
+                    idx,
+                    "actor-top",
+                    ctx.actor_height,
+                    &label_ctx,
+                )?;
                 out.push_str("</g></g>");
             }
             _ => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                    &filter,
+                );
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -261,6 +348,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     actor_id,
                     actor,
                     "actor-top",
+                    idx,
                     &label_ctx,
                     ctx.rect_style,
                     ctx.geometry_receipt,

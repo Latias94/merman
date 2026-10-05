@@ -983,6 +983,7 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
 /// Flowchart shape rendering calls `sanitizeText(decodeEntities(label), config)` after FlowDB has
 /// already sanitized the label. Entity-authored text therefore still passes through a DOM, whose
 /// serialization preserves comparison delimiters as entities before SVG word tokenization.
+#[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane",))]
 pub(crate) fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig) -> String {
     if text.is_empty() {
         return String::new();

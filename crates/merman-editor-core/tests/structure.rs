@@ -649,3 +649,168 @@ fn selection_chain_ranges(selection: &merman_editor_core::EditorSelectionRange) 
     }
     ranges
 }
+
+#[test]
+fn new_families_support_navigation_and_rename_across_preamble() {
+    let harness = SnapshotHarness::new();
+    for (family, body) in [
+        ("agentflow", "agentflow-beta\nA[Worker]\nA-->B\n"),
+        ("usecase", "usecase-beta\nactor A\nA --> B\n"),
+    ] {
+        let source = format!("---\ntitle: 中文😀\n---\n{body}");
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/{family}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("family source should be accepted");
+        let position = Position::new(5, 0);
+        let definition = goto_definition(&snapshot, position).expect("entity definition");
+        assert_eq!(definition.fact_source, FenceTextIndexSource::ParserComplete);
+        assert_eq!(definition.range.start.line, 4, "{family}");
+        let refs = references(&snapshot, position, true).expect("entity references");
+        assert_eq!(refs.len(), 2, "{family}");
+        let prepare = prepare_rename(&snapshot, position).expect("rename target");
+        assert_eq!(prepare.placeholder, "A");
+        let edit = rename(&snapshot, position, "Customer").unwrap().unwrap();
+        let changes = edit.changes.get(snapshot.uri()).unwrap();
+        assert_eq!(changes.len(), 2, "{family}");
+        assert!(changes.iter().all(|change| change.new_text == "Customer"));
+        assert!(matches!(
+            rename(&snapshot, position, "invalid id"),
+            Err(RenameError::InvalidName)
+        ));
+    }
+}
+
+#[test]
+fn usecase_recovery_refuses_rename_for_non_mergeable_declarations() {
+    let harness = SnapshotHarness::new();
+    for (declarations, position) in [
+        ("actor A\nA(Usecase)\nA --> B\n", Position::new(1, 6)),
+        (
+            "json Data@{\"x\":1}\njson Data@{\"y\":2}\nstyle Data fill:red\n",
+            Position::new(1, 5),
+        ),
+        (
+            "A link@--> B\nB link@--> C\nstyle link stroke:red\n",
+            Position::new(1, 2),
+        ),
+    ] {
+        for suffix in ["", "D -->"] {
+            let snapshot = harness
+                .analyze(
+                    "file:///tmp/usecase.mmd",
+                    1,
+                    format!("usecase-beta\n{declarations}{suffix}"),
+                    DocumentKind::Diagram,
+                )
+                .expect("recovered snapshot");
+            assert!(
+                prepare_rename(&snapshot, position).is_none(),
+                "{declarations}{suffix}"
+            );
+            assert!(
+                matches!(
+                    rename(&snapshot, position, "Renamed"),
+                    Err(RenameError::InvalidName)
+                ),
+                "{declarations}{suffix}"
+            );
+        }
+    }
+    for declarations in [
+        "actor A\nactor A\nA --> B\n",
+        "A(Usecase)\nA(Usecase)\nA --> B\n",
+    ] {
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/usecase.mmd",
+                1,
+                format!("usecase-beta\n{declarations}C -->"),
+                DocumentKind::Diagram,
+            )
+            .expect("recovered snapshot");
+        let position = Position::new(3, 0);
+        assert!(
+            prepare_rename(&snapshot, position).is_some(),
+            "{declarations}"
+        );
+        let edit = rename(&snapshot, position, "Renamed")
+            .unwrap()
+            .expect("mergeable declarations");
+        assert_eq!(edit.changes[snapshot.uri()].len(), 3, "{declarations}");
+    }
+}
+
+#[test]
+fn new_family_rename_rejects_reserved_names_and_preserves_valid_documents() {
+    let harness = SnapshotHarness::new();
+    for (family, body, invalid, valid) in [
+        (
+            "agentflow",
+            "A\nA --> B\n",
+            &["flow", "global", "connector", "flow-guide", "global注文"][..],
+            &["flow_user", "flowUser", "Connector", "friend-end"][..],
+        ),
+        (
+            "usecase",
+            "A(Work)\nA --> B\n",
+            &[
+                "package",
+                "PACKAGE",
+                "rectangle",
+                "allowmixing",
+                "newpage",
+                "skinparam",
+                "actor",
+            ][..],
+            &["package_user", "packageUser", "1User", "Work"][..],
+        ),
+    ] {
+        let source = format!("{family}-beta\n{body}");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/rename.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .expect("valid family document");
+        let position = Position::new(1, 0);
+        for name in invalid {
+            assert!(
+                matches!(
+                    rename(&snapshot, position, name),
+                    Err(RenameError::InvalidName)
+                ),
+                "{family} accepted reserved rename {name}"
+            );
+        }
+        for name in valid {
+            let edit = rename(&snapshot, position, name)
+                .expect("valid family identifier")
+                .expect("rename edit");
+            let mut changed = source.clone();
+            let edits = &edit.changes[snapshot.uri()];
+            assert_eq!(edits.len(), 2, "{family}: {name}");
+            for edit in edits.iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            let renamed = harness
+                .analyze("file:///tmp/renamed.mmd", 2, changed, DocumentKind::Diagram)
+                .expect("renamed document snapshot");
+            assert_eq!(
+                renamed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{family}: {name} must remain parseable"
+            );
+            let references = references(&renamed, position, true).expect("renamed references");
+            assert_eq!(references.len(), 2, "{family}: {name}");
+        }
+    }
+}

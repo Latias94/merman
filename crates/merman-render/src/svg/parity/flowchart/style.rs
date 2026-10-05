@@ -1,7 +1,7 @@
 //! Flowchart style compilation helpers.
 
 use super::*;
-use cssparser::{BasicParseErrorKind, Delimiter, Parser, ParserInput, Token};
+use cssparser::{BasicParseErrorKind, Delimiter, Parser, Token};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::sync::Arc;
@@ -1045,8 +1045,7 @@ fn flowchart_animation_identifier_matches(value: &str, candidates: &[&str]) -> b
 }
 
 fn parse_flowchart_animation_name(value: &str) -> Option<bool> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let names = parser
         .parse_comma_separated(parse_flowchart_animation_name_component)
         .ok()?;
@@ -1056,9 +1055,9 @@ fn parse_flowchart_animation_name(value: &str) -> Option<bool> {
     Some(names.contains(&FlowchartAnimationNameComponent::Active))
 }
 
-fn parse_flowchart_animation_name_component<'i, 't>(
-    parser: &mut Parser<'i, 't>,
-) -> std::result::Result<FlowchartAnimationNameComponent, cssparser::ParseError<'i, ()>> {
+fn parse_flowchart_animation_name_component<'i>(
+    parser: &mut Parser<'i>,
+) -> std::result::Result<FlowchartAnimationNameComponent, cssparser::ParseError<()>> {
     let token = parser.next()?.clone();
     let component = match token {
         Token::Ident(name) if name.eq_ignore_ascii_case("none") => {
@@ -1077,24 +1076,23 @@ fn parse_flowchart_animation_name_component<'i, 't>(
             consume_flowchart_animation_function(parser)?;
             FlowchartAnimationNameComponent::Active
         }
-        _ => return Err(parser.new_custom_error(())),
+        _ => return Err(cssparser::ParseError::custom(())),
     };
     parser.expect_exhausted()?;
     Ok(component)
 }
 
 fn parse_flowchart_animation_shorthand(value: &str) -> Option<bool> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     parser
         .parse_comma_separated(parse_flowchart_single_animation)
         .ok()
         .map(|animations| animations.into_iter().any(std::convert::identity))
 }
 
-fn parse_flowchart_single_animation<'i, 't>(
-    parser: &mut Parser<'i, 't>,
-) -> std::result::Result<bool, cssparser::ParseError<'i, ()>> {
+fn parse_flowchart_single_animation<'i>(
+    parser: &mut Parser<'i>,
+) -> std::result::Result<bool, cssparser::ParseError<()>> {
     let mut active_name = false;
     let mut name_seen = false;
     let mut component_count = 0usize;
@@ -1117,7 +1115,7 @@ fn parse_flowchart_single_animation<'i, 't>(
             Token::Ident(name) if flowchart_animation_shorthand_keyword(name.as_ref()) => {}
             Token::Ident(_) | Token::QuotedString(_) => {
                 if name_seen {
-                    return Err(parser.new_custom_error(()));
+                    return Err(cssparser::ParseError::custom(()));
                 }
                 name_seen = true;
                 active_name = true;
@@ -1136,26 +1134,26 @@ fn parse_flowchart_single_animation<'i, 't>(
                         FLOWCHART_ANIMATION_FUNCTIONS,
                     );
                 if !known {
-                    return Err(parser.new_custom_error(()));
+                    return Err(cssparser::ParseError::custom(()));
                 }
                 consume_flowchart_animation_function(parser)?;
                 if dynamic {
                     active_name = true;
                 }
             }
-            _ => return Err(parser.new_custom_error(())),
+            _ => return Err(cssparser::ParseError::custom(())),
         }
     }
 
     if component_count == 0 || (css_wide && component_count != 1) {
-        return Err(parser.new_custom_error(()));
+        return Err(cssparser::ParseError::custom(()));
     }
     Ok(active_name)
 }
 
-fn consume_flowchart_animation_function<'i, 't>(
-    parser: &mut Parser<'i, 't>,
-) -> std::result::Result<(), cssparser::ParseError<'i, ()>> {
+fn consume_flowchart_animation_function<'i>(
+    parser: &mut Parser<'i>,
+) -> std::result::Result<(), cssparser::ParseError<()>> {
     parser.parse_nested_block(|nested| {
         while nested.next_including_whitespace().is_ok() {}
         Ok(())
@@ -1195,13 +1193,11 @@ fn sanitized_xhtml_source_residuals(
     let mut depth = 0usize;
 
     loop {
-        let decoder = reader.decoder();
         match reader.read_event() {
             Ok(Event::Start(element)) => {
                 if inspect_sanitized_xhtml_element(
                     owner_id,
                     &element,
-                    decoder,
                     &mut declaration_ordinal,
                     &mut residuals,
                 )
@@ -1219,7 +1215,6 @@ fn sanitized_xhtml_source_residuals(
                 if inspect_sanitized_xhtml_element(
                     owner_id,
                     &element,
-                    decoder,
                     &mut declaration_ordinal,
                     &mut residuals,
                 )
@@ -1286,7 +1281,6 @@ pub(super) fn sanitized_xhtml_typography_statuses(
     let mut font_size = Absent;
 
     loop {
-        let decoder = reader.decoder();
         let element = match reader.read_event() {
             Ok(Event::Start(element)) | Ok(Event::Empty(element)) => element,
             Ok(Event::Eof) => break,
@@ -1302,7 +1296,7 @@ pub(super) fn sanitized_xhtml_typography_statuses(
             let name = attribute.key.local_name();
             renderer_math_wrapper |= matches!(
                 name.as_ref(),
-                b"data-merman-prepared-math-native" | b"data-merman-prepared-math-occurrence"
+                "data-merman-prepared-math-native" | "data-merman-prepared-math-occurrence"
             );
         }
 
@@ -1311,14 +1305,12 @@ pub(super) fn sanitized_xhtml_typography_statuses(
                 return (Unverified, Unverified);
             };
             let name = attribute.key.local_name();
-            let is_style = name.as_ref().eq_ignore_ascii_case(b"style");
-            let is_class = name.as_ref().eq_ignore_ascii_case(b"class");
+            let is_style = name.as_ref().eq_ignore_ascii_case("style");
+            let is_class = name.as_ref().eq_ignore_ascii_case("class");
             if (!is_style && !is_class) || renderer_math_wrapper {
                 continue;
             }
-            let Ok(value) =
-                attribute.decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
-            else {
+            let Ok(value) = attribute.normalized_value(XmlVersion::Implicit1_0) else {
                 return (Unverified, Unverified);
             };
             let value = value.trim();
@@ -1331,15 +1323,14 @@ pub(super) fn sanitized_xhtml_typography_statuses(
                 continue;
             }
 
-            let mut input = ParserInput::new(value);
-            let mut parser = Parser::new(&mut input);
+            let mut parser = Parser::new(value);
             while !parser.is_exhausted() {
                 let start = parser.position();
                 let property = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
                     let property = declaration.expect_ident_cloned()?.to_ascii_lowercase();
                     declaration.expect_colon()?;
                     while declaration.next_including_whitespace().is_ok() {}
-                    Ok::<_, cssparser::ParseError<'_, ()>>(property)
+                    Ok::<_, cssparser::ParseError<()>>(property)
                 });
                 let raw = parser
                     .slice(start..parser.position())
@@ -1480,7 +1471,6 @@ fn inspect_xhtml_font_weight(
     let mut depth = 0usize;
 
     loop {
-        let decoder = reader.decoder();
         let element = match reader.read_event() {
             Ok(Event::Start(element)) => {
                 depth = depth.saturating_add(1);
@@ -1499,28 +1489,12 @@ fn inspect_xhtml_font_weight(
             Err(_) => return Unverified,
         };
         let name = element.local_name();
-        if unmeasured_descendant_weight && name.as_ref().eq_ignore_ascii_case(b"span") {
+        if unmeasured_descendant_weight && name.as_ref().eq_ignore_ascii_case("span") {
             return Unverified;
         }
         if [
-            b"b".as_slice(),
-            b"strong",
-            b"h1",
-            b"h2",
-            b"h3",
-            b"h4",
-            b"h5",
-            b"h6",
-            b"th",
-            b"button",
-            b"input",
-            b"select",
-            b"optgroup",
-            b"option",
-            b"textarea",
-            b"math",
-            b"svg",
-            b"style",
+            "b", "strong", "h1", "h2", "h3", "h4", "h5", "h6", "th", "button", "input", "select",
+            "optgroup", "option", "textarea", "math", "svg", "style",
         ]
         .iter()
         .any(|tag| name.as_ref().eq_ignore_ascii_case(tag))
@@ -1533,22 +1507,20 @@ fn inspect_xhtml_font_weight(
                 return Unverified;
             };
             let name = attribute.key.local_name();
-            let Ok(value) =
-                attribute.decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
-            else {
+            let Ok(value) = attribute.normalized_value(XmlVersion::Implicit1_0) else {
                 return Unverified;
             };
-            if name.as_ref().eq_ignore_ascii_case(b"class") && !value.trim().is_empty()
+            if name.as_ref().eq_ignore_ascii_case("class") && !value.trim().is_empty()
                 || name
                     .as_ref()
-                    .eq_ignore_ascii_case(b"data-merman-prepared-math-native")
+                    .eq_ignore_ascii_case("data-merman-prepared-math-native")
                 || name
                     .as_ref()
-                    .eq_ignore_ascii_case(b"data-merman-prepared-math-occurrence")
+                    .eq_ignore_ascii_case("data-merman-prepared-math-occurrence")
             {
                 return Unverified;
             }
-            if name.as_ref().eq_ignore_ascii_case(b"style") {
+            if name.as_ref().eq_ignore_ascii_case("style") {
                 let mut affects_weight = false;
                 crate::mermaid_style::visit_parsed_style_declarations(&value, |declaration| {
                     affects_weight |=
@@ -1565,20 +1537,19 @@ fn inspect_xhtml_font_weight(
 fn inspect_sanitized_xhtml_element(
     owner_id: &str,
     element: &BytesStart<'_>,
-    decoder: quick_xml::encoding::Decoder,
     declaration_ordinal: &mut usize,
     residuals: &mut Vec<crate::diagram_theme::SourceStyleResidual>,
 ) -> std::result::Result<(), ()> {
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|_| ())?;
         let name = attribute.key.local_name();
-        let is_style = name.as_ref().eq_ignore_ascii_case(b"style");
-        let is_class = name.as_ref().eq_ignore_ascii_case(b"class");
+        let is_style = name.as_ref().eq_ignore_ascii_case("style");
+        let is_class = name.as_ref().eq_ignore_ascii_case("class");
         if !is_style && !is_class {
             continue;
         }
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ())?;
         let value = value.trim();
         if value.is_empty() {
@@ -2040,7 +2011,7 @@ fn portable_source_value(value: &str) -> bool {
 }
 
 fn valid_stroke_dasharray(value: &str) -> bool {
-    use cssparser::{BasicParseErrorKind, Parser, ParserInput, Token};
+    use cssparser::{BasicParseErrorKind, Parser, Token};
 
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
@@ -2050,8 +2021,7 @@ fn valid_stroke_dasharray(value: &str) -> bool {
         return false;
     }
 
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(value);
     let mut count = 0usize;
     let mut separator_seen = true;
     let mut comma_pending = false;

@@ -1,3 +1,6 @@
+use crate::text::{TextMeasurer, TextStyle};
+use merman_core::diagrams::sequence::SequenceActor;
+
 pub(crate) const SEQUENCE_MESSAGE_WRAP_PADDING_SIDES: f64 = 2.0;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
 pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
@@ -15,6 +18,44 @@ pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
 
 pub(crate) fn sequence_actor_popup_panel_height(link_count: usize) -> f64 {
     SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT + (link_count as f64) * SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
+}
+
+pub(crate) fn sequence_actor_popup_min_width(
+    actor: &SequenceActor,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    wrap_padding: f64,
+    box_margin: f64,
+) -> f64 {
+    actor
+        .links
+        .keys()
+        .map(|label| {
+            measurer.measure(label, style).width.max(0.0) + 2.0 * wrap_padding + 2.0 * box_margin
+        })
+        .fold(0.0, f64::max)
+}
+
+pub(crate) fn sequence_actor_popup_rect_height(
+    actor_type: &str,
+    visual_height: f64,
+    base_height: f64,
+    is_neo: bool,
+    mirror_actors: bool,
+) -> f64 {
+    // drawPopup inherits the last drawActor call's rectData. Top drawing keeps the pre-shape
+    // actor height for collection, queue, and database shapes; mirrored drawing runs after shape mutation and uses
+    // the footer's visual node height. Neo collections shorten both rectData copies by six pixels.
+    let height = if mirror_actors || !matches!(actor_type, "collections" | "queue" | "database") {
+        visual_height
+    } else {
+        base_height
+    };
+    if actor_type == "collections" && is_neo {
+        (height - 6.0).max(0.0)
+    } else {
+        height
+    }
 }
 
 pub(super) fn sequence_actor_visual_height(
@@ -108,6 +149,35 @@ pub(super) fn sequence_actor_lifeline_start_y(
     }
 }
 
+/// Mermaid's Neo participant row: glyph, gap, measured text, gap to the lifeline.
+pub(crate) const SEQUENCE_GLYPH_BAND_HEIGHT: f64 = 44.0;
+pub(crate) fn sequence_actor_stack_height(text_height: f64) -> f64 {
+    SEQUENCE_GLYPH_BAND_HEIGHT + 6.0 + text_height + 6.0
+}
+
+pub(crate) struct SequenceActorBands {
+    pub(crate) glyph_bottom_y: f64,
+    pub(crate) label_center_y: f64,
+}
+
+impl SequenceActorBands {
+    pub(crate) fn new(actor_y: f64, row_height: f64, text_height: f64, footer: bool) -> Self {
+        if footer {
+            let glyph_bottom_y = actor_y + 10.0 + SEQUENCE_GLYPH_BAND_HEIGHT;
+            Self {
+                glyph_bottom_y,
+                label_center_y: glyph_bottom_y + 6.0 + text_height / 2.0,
+            }
+        } else {
+            let datum = actor_y + row_height;
+            Self {
+                glyph_bottom_y: datum - 6.0 - text_height - 6.0,
+                label_center_y: datum - 3.0 - text_height / 2.0,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -117,6 +187,18 @@ mod tests {
         assert_eq!(super::SEQUENCE_ACTOR_POPUP_ROW_HEIGHT, 30.0);
         assert_eq!(super::sequence_actor_popup_panel_height(0), 20.0);
         assert_eq!(super::sequence_actor_popup_panel_height(4), 140.0);
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("queue", 74.0, 65.0, false, false),
+            65.0
+        );
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("queue", 74.0, 65.0, false, true),
+            74.0
+        );
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("collections", 80.0, 80.0, true, false),
+            74.0
+        );
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);

@@ -102,6 +102,11 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.deepEqual(input.bindingOptions, {
     version: BINDING_OPTIONS_SCHEMA_VERSION,
     theme: { preset: "editor-light" },
+    site_config: {
+      theme: "forest",
+      fontFamily: "Arial, Helvetica, sans-serif",
+      themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+    },
     layout: {
       container_width: 800,
       container_height: 600,
@@ -110,6 +115,38 @@ test("freezes one configured input for detection, parse, layout, and render", ()
     svg: { pipeline: "resvg-safe" },
   });
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
+});
+
+test("preserves initialization independently from later source appearance", () => {
+  const source = '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
+  const input = configuredMermanOperationInput(source, "dark", '{"layout":"dagre","secure":["theme"],"flowchart":{"curve":"linear"}}', { diagramFont: "arial" });
+  assert.equal(input.bindingOptions.site_config?.theme, "dark");
+  assert.equal(input.bindingOptions.site_config?.securityLevel, undefined);
+  assert.equal(input.bindingOptions.site_config?.secure, undefined);
+  assert.ok(input.configuredSource.startsWith('---\nconfig: {theme: forest}\n---\n%%{init:'));
+  assert.ok(input.configuredSource.endsWith('%%{init: {"flowchart":{"theme":"null"}}}%%'));
+  assert.equal(Object.isFrozen(input.bindingOptions.site_config), true);
+  assert.equal(input.bindingOptions.site_config?.flowchart, undefined);
+  assert.equal(Object.isFrozen(input.bindingOptions.site_config?.themeVariables), true);
+});
+
+test("untrusted config cannot become host security, CSS, or resource authority", () => {
+  const attack = {
+    secure: ["theme"], securityLevel: "loose", startOnLoad: true,
+    themeCSS: "svg { background: url(https://invalid.test/escape) }",
+    maxTextSize: 1, maxEdges: 1, suppressErrorRendering: true,
+    fontFamily: "malicious; color:red", themeVariables: { fontFamily: "malicious", primaryColor: "red; color:blue" },
+    flowchart: { secure: [], securityLevel: "loose", themeCSS: "attack" },
+    futureHostAuthority: true,
+  };
+  const source = `---\nconfig: ${JSON.stringify(attack)}\n---\nflowchart TD\nA-->B\n%%{init: ${JSON.stringify(attack)}}%%`;
+  const input = configuredMermanOperationInput(source, "dark", JSON.stringify(attack), { diagramFont: "arial" });
+  assert.deepEqual(input.bindingOptions.site_config, {
+    theme: "dark", fontFamily: "Arial, Helvetica, sans-serif",
+    themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+  });
+  assert.ok(input.configuredSource.includes('"securityLevel":"loose"'));
+  assert.ok(input.configuredSource.endsWith(`%%{init: ${JSON.stringify(attack)}}%%`));
 });
 
 test("keeps headless layout distinct from an observed browser screen", () => {
@@ -140,9 +177,10 @@ test("keeps the default font in Mermaid config without enabling a compiled theme
   );
 
   assert.match(input.configuredSource, /trebuchet ms/);
-  assert.deepEqual(input.bindingOptions, {
-    version: BINDING_OPTIONS_SCHEMA_VERSION,
-  });
+  assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
+  assert.equal(input.bindingOptions.site_config?.theme, "default");
+  assert.equal(input.bindingOptions.theme, undefined);
+  assert.equal(input.bindingOptions.svg, undefined);
 });
 
 test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
@@ -169,17 +207,14 @@ test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent",
     },
   );
 
-  assert.deepEqual(plain.bindingOptions, {
-    version: BINDING_OPTIONS_SCHEMA_VERSION,
-  });
-  assert.deepEqual(themeOnly.bindingOptions, {
-    version: BINDING_OPTIONS_SCHEMA_VERSION,
-    theme: { preset: "future-theme" },
-  });
-  assert.deepEqual(pipelineOnly.bindingOptions, {
-    version: BINDING_OPTIONS_SCHEMA_VERSION,
-    svg: { pipeline: "readable" },
-  });
+  assert.equal(plain.bindingOptions.theme, undefined);
+  assert.equal(plain.bindingOptions.svg, undefined);
+  assert.deepEqual(themeOnly.bindingOptions.theme, { preset: "future-theme" });
+  assert.deepEqual(pipelineOnly.bindingOptions.svg, { pipeline: "readable" });
+  for (const [input, theme] of [[plain, "default"], [themeOnly, "dark"], [pipelineOnly, "neutral"]] as const) {
+    assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
+    assert.equal(input.bindingOptions.site_config?.theme, theme);
+  }
   assert.match(themeOnly.configuredSource, /"theme":"dark"/);
   assert.match(pipelineOnly.configuredSource, /"theme":"neutral"/);
 });
@@ -193,6 +228,7 @@ test("freezes invalid config as operation evidence instead of throwing", () => {
   );
 
   assert.equal(input.configuredSource, input.source);
+  assert.equal(input.bindingOptions.site_config, undefined);
   assert.equal(Object.isFrozen(input.configurationError), true);
   assert.match(input.configurationError?.summary ?? "", /JSON/);
 });
@@ -228,6 +264,7 @@ test("identity covers every render-operation axis", () => {
   const resvg = renderOperationWithSvgPipeline(base, "resvg-safe");
   assert.equal(resvg.svgPipeline, "resvg-safe");
   assert.deepEqual(resvg.bindingOptions.svg, { pipeline: "resvg-safe" });
+  assert.equal(resvg.bindingOptions.site_config, base.bindingOptions.site_config);
   assert.equal(sameRenderOperation(base, resvg), false);
 });
 

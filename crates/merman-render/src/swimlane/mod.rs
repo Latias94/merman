@@ -1,7 +1,13 @@
 mod bounds;
 mod config;
 mod direction;
+#[cfg(feature = "diagram-mindmap")]
+mod flat;
 mod geometry;
+
+#[cfg(feature = "diagram-mindmap")]
+pub(crate) use flat::layout_flat;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod prepare;
 mod routing;
 mod sugiyama;
@@ -9,14 +15,19 @@ mod work_budget;
 mod working;
 
 use crate::Result;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::flowchart::FlowchartConfigView;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::math::MathRenderer;
 use crate::model::{
     Bounds, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneLayout, SwimlaneNodeLayout,
 };
 use crate::resources::OperationWorkMeter;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::text::TextMeasurer;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::MermaidConfig;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -57,6 +68,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 }
 
 /// Lays out a Swimlane model under the resource policy owned by the render operation.
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -84,14 +96,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         svg_label_sidecar,
         edge_style_plan,
     )?;
-    let reversed = sugiyama::run(&mut working, config);
-    for edge in &mut working.original_edges {
-        edge.reversed_for_layout = reversed.contains(&edge.id);
-    }
-    bounds::assign_canonical_group_bounds(&mut working);
-    let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
-    routing::route(&mut working, &mut work_budget)?;
-    direction::post_process(&mut working, &mut work_budget)?;
+    run_layout_core(&mut working, config, work_meter)?;
 
     // Mermaid's swimlane core only normalizes the implicit `basis` curve to
     // `rounded`; an explicit edge/default/config curve remains authoritative.
@@ -126,6 +131,68 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         });
     }
 
+    let transport_plan =
+        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
+    let mut curve_by_id = std::collections::HashMap::new();
+    for (semantic_index, edge) in working.original_edges.iter().enumerate() {
+        let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+        let source = &model.edges[semantic_index];
+        let expected = transport_plan
+            .id(key)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing Swimlane transport id for semantic edge owner {semantic_index}"
+                ),
+            })?;
+        if edge.id != expected
+            || edge.reference_id != expected
+            || edge.from != source.from
+            || edge.to != source.to
+        {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "Swimlane working edge `{}` does not match semantic owner {semantic_index}",
+                    edge.id
+                ),
+            });
+        }
+        curve_by_id.insert(edge.id.as_str(), curve_by_owner[semantic_index]);
+    }
+    let mut layout = project_layout(&working, &curve_by_id);
+    for (edge, semantic) in layout.edges.iter_mut().zip(&model.edges) {
+        edge.id.clone_from(&semantic.id);
+        edge.from.clone_from(&semantic.from);
+        edge.to.clone_from(&semantic.to);
+    }
+    layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::new(
+        (0..model.edges.len())
+            .map(crate::flowchart::FlowchartEdgeKey::new)
+            .collect(),
+    );
+    Ok(layout)
+}
+
+fn run_layout_core(
+    working: &mut working::WorkingLayout,
+    config: config::SwimlaneConfig,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<()> {
+    let reversed = sugiyama::run(working, config);
+    for edge in &mut working.original_edges {
+        edge.reversed_for_layout = reversed.contains(&edge.id);
+    }
+    bounds::assign_canonical_group_bounds(working);
+    let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
+    routing::route(working, &mut work_budget)?;
+    direction::post_process(working, &mut work_budget)?;
+
+    Ok(())
+}
+
+fn project_layout(
+    working: &working::WorkingLayout,
+    curve_by_id: &std::collections::HashMap<&str, &str>,
+) -> SwimlaneLayout {
     let bounds = output_bounds(&working);
     let nodes = working
         .nodes
@@ -174,69 +241,41 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             requested_dir: lane.requested_dir.clone(),
         })
         .collect();
-    let mut edge_owners = Vec::with_capacity(working.original_edges.len());
-    let transport_plan =
-        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
     let edges = working
         .original_edges
         .iter()
-        .enumerate()
-        .map(|(semantic_index, edge)| {
-            let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
-            let semantic_edge = &model.edges[semantic_index];
-            let expected_transport_id =
-                transport_plan
-                    .id(key)
-                    .ok_or_else(|| crate::Error::InvalidModel {
-                        message: format!(
-                            "missing Swimlane transport id for semantic edge owner {semantic_index}"
-                        ),
-                    })?;
-            if edge.id != expected_transport_id || edge.reference_id != expected_transport_id {
-                return Err(crate::Error::InvalidModel {
-                    message: format!(
-                        "Swimlane working edge `{}` is not bound to semantic owner {}",
-                        edge.id, semantic_index
-                    ),
-                });
+        .map(|edge| SwimlaneEdgeLayout {
+            id: edge.id.clone(),
+            from: edge.from.clone(),
+            to: edge.to.clone(),
+            points: edge.points.clone(),
+            label_node_id: edge.label_node_id.clone(),
+            reversed_for_layout: edge.reversed_for_layout,
+            curve: match curve_by_id
+                .get(edge.id.as_str())
+                .copied()
+                .unwrap_or("basis")
+            {
+                "basis" => "rounded",
+                curve => curve,
             }
-            if edge.from != semantic_edge.from || edge.to != semantic_edge.to {
-                return Err(crate::Error::InvalidModel {
-                    message: format!(
-                        "Swimlane working edge `{}` endpoints do not match semantic owner {}",
-                        edge.id, semantic_index
-                    ),
-                });
-            }
-            edge_owners.push(key);
-            Ok(SwimlaneEdgeLayout {
-                id: semantic_edge.id.clone(),
-                from: semantic_edge.from.clone(),
-                to: semantic_edge.to.clone(),
-                points: edge.points.clone(),
-                label_node_id: edge.label_node_id.clone(),
-                reversed_for_layout: edge.reversed_for_layout,
-                curve: match curve_by_owner
-                    .get(semantic_index)
-                    .copied()
-                    .unwrap_or("basis")
-                {
-                    "basis" => "rounded",
-                    curve => curve,
-                }
-                .to_string(),
-            })
+            .to_string(),
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect();
 
-    Ok(SwimlaneLayout {
+    SwimlaneLayout {
         direction: working.direction,
         nodes,
         lanes,
         edges,
-        edge_owners: crate::flowchart::FlowchartEdgeOwners::new(edge_owners),
+        #[cfg(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        ))]
+        edge_owners: crate::flowchart::FlowchartEdgeOwners::default(),
         bounds,
-    })
+    }
 }
 
 fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {

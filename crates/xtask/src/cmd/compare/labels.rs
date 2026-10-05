@@ -65,7 +65,7 @@ pub(crate) struct C4RelationLabelKey {
 enum SemanticLabelAdapter {
     C4,
     FlowchartElk,
-    DagreDataId,
+    DataId,
     Architecture,
 }
 
@@ -271,50 +271,50 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "c4",
         fixture: C4_DYNAMIC_LABEL_FIXTURE,
         input_sha256: "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-        upstream_svg_sha256: "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
+        upstream_svg_sha256: "056421536add5828eadb48794a960f0fbd3b9a1248cd041b836757e875daefcf",
         adapter: SemanticLabelAdapter::C4,
     },
     SemanticLabelFixtureContract {
         diagram: "flowchart",
         fixture: FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE,
         input_sha256: "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
-        upstream_svg_sha256: "709ab9cab13c2c176765d5eb6d793402b1c91b7272e3681ed61510e8445dc9e6",
+        upstream_svg_sha256: "7f814ae26c5b039ea9e9b4469e35261c567dca4296227ae6797adc70393bcf8d",
         adapter: SemanticLabelAdapter::FlowchartElk,
     },
     SemanticLabelFixtureContract {
         diagram: "architecture",
         fixture: ARCHITECTURE_PARALLEL_LABEL_FIXTURE,
         input_sha256: "855b615e05d77a3fdebf0eb28561ba977ce1bee3cec16876c3aa85ab51f9788b",
-        upstream_svg_sha256: "af2a3dcbecef491117c06b16ec3c95580606ea0d38a5966dc1fb25125882fa93",
+        upstream_svg_sha256: "696776a6d467cc50d3e71a47acb5cf43e32157abbdde3836bfe2f1464e6d0d6c",
         adapter: SemanticLabelAdapter::Architecture,
     },
     SemanticLabelFixtureContract {
         diagram: "requirement",
         fixture: REQUIREMENT_TRACES_LABEL_FIXTURE,
         input_sha256: "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-        upstream_svg_sha256: "83fe92b2f61c0154762ce82cea1ba55a3f6731f83f09516e3b1e8c371eca1d46",
-        adapter: SemanticLabelAdapter::DagreDataId,
+        upstream_svg_sha256: "4c64f5c0973cdd4d3f46a2ea3278c28749268141ee0e56f786cd99d647f9a9eb",
+        adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
         diagram: "state",
         fixture: STATE_PARALLEL_LABEL_FIXTURE,
         input_sha256: "1e7eace9ccbdbcdc6fdad8e905cefc62cbeb96dfa47ea84bed79af20c53d251d",
-        upstream_svg_sha256: "beb766e95c7ddeb0f5dbf50affa51a7aa72c85f107286440ad8c7e14aec84885",
-        adapter: SemanticLabelAdapter::DagreDataId,
+        upstream_svg_sha256: "5d5c402f306d82f7983af8737ab6de60666dd667951824a0b6022d608079239a",
+        adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
         diagram: "class",
         fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
         input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-        upstream_svg_sha256: "d7eaa60ac49771be5e424d765bf215274d8201e7a77d52e0350a6ac2da32383d",
-        adapter: SemanticLabelAdapter::DagreDataId,
+        upstream_svg_sha256: "a3887a10fb577785d63a2731f78fb4d3991b5e92ad9bebd51db048a7633ec1a8",
+        adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
         diagram: "er",
         fixture: ER_PARALLEL_RELATION_LABEL_FIXTURE,
         input_sha256: "02bdf0d49b4f771161740ca46046e142f041dbc39d72fdc4209bb1f9f75e51d0",
-        upstream_svg_sha256: "fdde9c56a56eb4530e3c7372e243ee35651a8c7c62e895ae5bc7793732b6c6c4",
-        adapter: SemanticLabelAdapter::DagreDataId,
+        upstream_svg_sha256: "5debbf5df1b34e8efecf9b99162f4440df063cf6a71ffba1a56a1acab7c8d7ce",
+        adapter: SemanticLabelAdapter::DataId,
     },
 ];
 const LABEL_RESIDUAL_SCHEMA_VERSION: u32 = 3;
@@ -676,48 +676,53 @@ fn pair_flowchart_elk_edge_labels(
 }
 
 #[derive(Debug, Clone, Copy)]
-struct DagreDataIdAdapterConfig {
+struct DataIdAdapterConfig {
     diagram: &'static str,
     edge_class: &'static str,
-    allow_empty_labels: bool,
 }
 
-fn dagre_data_id_adapter_config(diagram: &str) -> Option<DagreDataIdAdapterConfig> {
+fn data_id_adapter_config(diagram: &str) -> Option<DataIdAdapterConfig> {
     match diagram {
-        "requirement" => Some(DagreDataIdAdapterConfig {
+        "requirement" => Some(DataIdAdapterConfig {
             diagram: "requirement",
             edge_class: "relationshipLine",
-            allow_empty_labels: false,
         }),
-        "state" => Some(DagreDataIdAdapterConfig {
+        "state" => Some(DataIdAdapterConfig {
             diagram: "state",
             edge_class: "transition",
-            allow_empty_labels: true,
         }),
-        "class" => Some(DagreDataIdAdapterConfig {
+        "class" => Some(DataIdAdapterConfig {
             diagram: "class",
             edge_class: "relation",
-            allow_empty_labels: false,
         }),
-        "er" => Some(DagreDataIdAdapterConfig {
+        "er" => Some(DataIdAdapterConfig {
             diagram: "er",
             edge_class: "relationshipLine",
-            allow_empty_labels: false,
         }),
         _ => None,
     }
 }
 
-fn pair_dagre_data_id_edge_labels(
-    config: DagreDataIdAdapterConfig,
+fn pair_data_id_edge_labels(
+    config: DataIdAdapterConfig,
     upstream_svg: &str,
     local_svg: &str,
 ) -> Result<Vec<SemanticLabelPair<String>>, SemanticLabelError> {
-    pair_stable_edge_label_maps(
-        config.diagram,
-        extract_dagre_data_id_edge_labels(upstream_svg, config)?,
-        extract_dagre_data_id_edge_labels(local_svg, config)?,
-    )
+    let upstream = extract_data_id_edge_labels(upstream_svg, config)?;
+    let local = extract_data_id_edge_labels(local_svg, config)?;
+    // The signed upstream defines which edges actually own labels. Registered layouts
+    // may omit truly unlabelled wrappers; losing a required label still fails pairing.
+    let pairs = pair_stable_edge_label_maps(config.diagram, upstream.labels, local.labels)?;
+    let upstream_edges = upstream.edges.into_keys().collect::<BTreeSet<_>>();
+    let local_edges = local.edges.into_keys().collect::<BTreeSet<_>>();
+    if upstream_edges != local_edges {
+        return Err(SemanticLabelError::StableIdentitySetMismatch {
+            diagram: config.diagram,
+            missing_from_local: upstream_edges.difference(&local_edges).cloned().collect(),
+            missing_from_upstream: local_edges.difference(&upstream_edges).cloned().collect(),
+        });
+    }
+    Ok(pairs)
 }
 
 fn pair_architecture_edge_labels(
@@ -787,6 +792,12 @@ fn c4_residual_pairs(
         .collect()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SemanticLabelComparisonMode {
+    Strict,
+    ReviewCandidates,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn compare_semantic_edge_labels(
     diagram: &str,
@@ -797,6 +808,39 @@ fn compare_semantic_edge_labels(
     local_svg: &str,
     decimals: u32,
     stylesheet_scope: StylesheetScope,
+) -> Result<SemanticLabelGateOutcome, String> {
+    let catalog = load_label_residual_catalog(decimals)?;
+    let fixture_entries = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.diagram == diagram && entry.fixture == stem)
+        .collect::<Vec<_>>();
+    compare_semantic_edge_labels_with_residuals(
+        diagram,
+        stem,
+        input_text,
+        pairs,
+        upstream_svg,
+        local_svg,
+        decimals,
+        stylesheet_scope,
+        &fixture_entries,
+        SemanticLabelComparisonMode::Strict,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compare_semantic_edge_labels_with_residuals(
+    diagram: &str,
+    stem: &str,
+    input_text: &str,
+    pairs: Vec<ResidualAwareSemanticLabelPair>,
+    upstream_svg: &str,
+    local_svg: &str,
+    decimals: u32,
+    stylesheet_scope: StylesheetScope,
+    fixture_entries: &[&LabelResidualEntry],
+    mode: SemanticLabelComparisonMode,
 ) -> Result<SemanticLabelGateOutcome, String> {
     if decimals > MAX_LABEL_GEOMETRY_DECIMALS {
         return Err(format!(
@@ -809,18 +853,12 @@ fn compare_semantic_edge_labels(
         ));
     }
 
-    let catalog = load_label_residual_catalog(decimals)?;
-    let fixture_entries = catalog
-        .entries
-        .iter()
-        .filter(|entry| entry.diagram == diagram && entry.fixture == stem)
-        .collect::<Vec<_>>();
     let input_sha256 = crate::util::sha256_hex(input_text.as_bytes());
     let upstream_svg_sha256 = crate::util::sha256_hex(upstream_svg.as_bytes());
     validate_fixture_residual_digests(
         diagram,
         stem,
-        &fixture_entries,
+        fixture_entries,
         &input_sha256,
         &upstream_svg_sha256,
     )?;
@@ -834,7 +872,9 @@ fn compare_semantic_edge_labels(
             format!("semantic stylesheet extraction failed for {diagram}/{stem}: {error}")
         })?;
     let mut failures = Vec::new();
-    if upstream_stylesheet != local_stylesheet {
+    let mut candidates = Vec::new();
+    let mut semantic_mismatch = upstream_stylesheet != local_stylesheet;
+    if semantic_mismatch {
         failures.push(format!(
             "{diagram}/{stem}: semantic stylesheet source differs"
         ));
@@ -843,6 +883,7 @@ fn compare_semantic_edge_labels(
 
     for pair in &pairs {
         if pair.upstream.text != pair.local.text {
+            semantic_mismatch = true;
             failures.push(format!(
                 "{diagram}/{stem} {:?}: label text differs: upstream={:?}, local={:?}",
                 pair.key, pair.upstream.text, pair.local.text
@@ -850,6 +891,7 @@ fn compare_semantic_edge_labels(
             continue;
         }
         if pair.upstream.presentation != pair.local.presentation {
+            semantic_mismatch = true;
             failures.push(format!(
                 "{diagram}/{stem} {:?}: explicit label presentation differs: upstream={:?}, local={:?}",
                 pair.key, pair.upstream.presentation, pair.local.presentation
@@ -864,6 +906,7 @@ fn compare_semantic_edge_labels(
             (Some(upstream), Some(local)) => (Some(upstream), Some(local)),
             (None, None) => (None, None),
             _ => {
+                semantic_mismatch = true;
                 failures.push(format!(
                     "{diagram}/{stem} {:?}: associated edge presence differs",
                     pair.key
@@ -874,6 +917,7 @@ fn compare_semantic_edge_labels(
         if let (Some(upstream_edge), Some(local_edge)) = (upstream_edge, local_edge)
             && upstream_edge.presentation != local_edge.presentation
         {
+            semantic_mismatch = true;
             failures.push(format!(
                 "{diagram}/{stem} {:?}: associated edge presentation differs: upstream={:?}, local={:?}",
                 pair.key, upstream_edge.presentation, local_edge.presentation
@@ -910,22 +954,19 @@ fn compare_semantic_edge_labels(
                 accepted_entries.insert(*index);
             }
             [] => {
-                let candidate = serde_json::json!({
-                    "diagram": diagram,
-                    "fixture": stem,
-                    "semantic_key": &pair.key,
-                    "text": pair.upstream.text.as_str(),
-                    "input_sha256": input_sha256.as_str(),
-                    "upstream_svg_sha256": upstream_svg_sha256.as_str(),
-                    "classification": "review_required",
-                    "reason": "REVIEW REQUIRED",
-                    "upstream": upstream,
-                    "local": local,
-                });
-                let candidate_json = serde_json::to_string(&candidate)
-                    .expect("serializing residual candidate cannot fail");
-                if std::env::var_os("MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES").is_some() {
-                    eprintln!("LABEL_RESIDUAL_CANDIDATE {candidate_json}");
+                if mode == SemanticLabelComparisonMode::ReviewCandidates {
+                    candidates.push(serde_json::json!({
+                        "diagram": diagram,
+                        "fixture": stem,
+                        "semantic_key": &pair.key,
+                        "text": pair.upstream.text.as_str(),
+                        "input_sha256": input_sha256.as_str(),
+                        "upstream_svg_sha256": upstream_svg_sha256.as_str(),
+                        "classification": "review_required",
+                        "reason": "REVIEW REQUIRED",
+                        "upstream": upstream,
+                        "local": local,
+                    }));
                 }
                 failures.push(format!(
                     "{diagram}/{stem} {:?}: label or associated edge geometry differs without an exact residual contract",
@@ -953,6 +994,19 @@ fn compare_semantic_edge_labels(
         ));
     }
 
+    if mode == SemanticLabelComparisonMode::ReviewCandidates {
+        // Emit only after every label and stylesheet passed semantic validation.
+        if !semantic_mismatch {
+            for candidate in candidates {
+                eprintln!("LABEL_RESIDUAL_CANDIDATE {candidate}");
+            }
+        }
+        failures.push(
+            "semantic label residual candidate collection is review_required and cannot admit a comparison"
+                .to_string(),
+        );
+    }
+
     Ok(SemanticLabelGateOutcome {
         evidence: SemanticLabelGateEvidence {
             compared_samples: pairs.len(),
@@ -970,10 +1024,46 @@ pub(crate) fn compare_registered_semantic_labels(
     local_svg: &str,
     _dom_decimals: u32,
 ) -> Result<Option<SemanticLabelGateOutcome>, String> {
+    let mode = if std::env::var_os("MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES").is_some() {
+        SemanticLabelComparisonMode::ReviewCandidates
+    } else {
+        SemanticLabelComparisonMode::Strict
+    };
+    compare_registered_semantic_labels_with_mode(
+        diagram,
+        stem,
+        input_text,
+        upstream_svg,
+        local_svg,
+        mode,
+    )
+}
+
+fn compare_registered_semantic_labels_with_mode(
+    diagram: &str,
+    stem: &str,
+    input_text: &str,
+    upstream_svg: &str,
+    local_svg: &str,
+    mode: SemanticLabelComparisonMode,
+) -> Result<Option<SemanticLabelGateOutcome>, String> {
     let Some(contract) = semantic_label_fixture_contract(diagram, stem) else {
         return Ok(None);
     };
-    validate_registered_fixture_digests(contract, input_text, upstream_svg)?;
+    match mode {
+        SemanticLabelComparisonMode::Strict => {
+            validate_registered_fixture_digests(contract, input_text, upstream_svg)?;
+        }
+        SemanticLabelComparisonMode::ReviewCandidates => {
+            let actual_input = crate::util::sha256_hex(input_text.as_bytes());
+            if actual_input != contract.input_sha256 {
+                return Err(format!(
+                    "semantic label fixture {diagram}/{stem} input is not bound to the registered source: expected={} actual={actual_input}",
+                    contract.input_sha256,
+                ));
+            }
+        }
+    }
 
     let (pairs, stylesheet_scope) = match contract.adapter {
         SemanticLabelAdapter::C4 => {
@@ -989,13 +1079,16 @@ pub(crate) fn compare_registered_semantic_labels(
                 })?;
             (stable_residual_pairs(pairs), StylesheetScope::ClassicDagre)
         }
-        SemanticLabelAdapter::DagreDataId => {
-            let config = dagre_data_id_adapter_config(diagram).ok_or_else(|| {
-                format!("registered semantic label fixture has no Dagre data-id adapter: {diagram}/{stem}")
+        SemanticLabelAdapter::DataId => {
+            let config = data_id_adapter_config(diagram).ok_or_else(|| {
+                format!(
+                    "registered semantic label fixture has no data-id adapter: {diagram}/{stem}"
+                )
             })?;
-            let pairs = pair_dagre_data_id_edge_labels(config, upstream_svg, local_svg).map_err(
-                |error| format!("semantic label extraction failed for {diagram}/{stem}: {error}"),
-            )?;
+            let pairs =
+                pair_data_id_edge_labels(config, upstream_svg, local_svg).map_err(|error| {
+                    format!("semantic label extraction failed for {diagram}/{stem}: {error}")
+                })?;
             (stable_residual_pairs(pairs), StylesheetScope::ClassicDagre)
         }
         SemanticLabelAdapter::Architecture => {
@@ -1006,16 +1099,32 @@ pub(crate) fn compare_registered_semantic_labels(
             (stable_residual_pairs(pairs), StylesheetScope::Full)
         }
     };
-    let outcome = compare_semantic_edge_labels(
-        diagram,
-        stem,
-        input_text,
-        pairs,
-        upstream_svg,
-        local_svg,
-        LABEL_GEOMETRY_DECIMALS,
-        stylesheet_scope,
-    )?;
+    let outcome = match mode {
+        SemanticLabelComparisonMode::Strict => compare_semantic_edge_labels(
+            diagram,
+            stem,
+            input_text,
+            pairs,
+            upstream_svg,
+            local_svg,
+            LABEL_GEOMETRY_DECIMALS,
+            stylesheet_scope,
+        )?,
+        SemanticLabelComparisonMode::ReviewCandidates => {
+            compare_semantic_edge_labels_with_residuals(
+                diagram,
+                stem,
+                input_text,
+                pairs,
+                upstream_svg,
+                local_svg,
+                LABEL_GEOMETRY_DECIMALS,
+                stylesheet_scope,
+                &[],
+                mode,
+            )?
+        }
+    };
     Ok(Some(outcome))
 }
 
@@ -1138,7 +1247,7 @@ fn validate_label_residual_contract(
             ) if *relation_index > 0 && !entry.text.trim().is_empty() => {}
             (
                 SemanticLabelAdapter::FlowchartElk
-                | SemanticLabelAdapter::DagreDataId
+                | SemanticLabelAdapter::DataId
                 | SemanticLabelAdapter::Architecture,
                 LabelResidualSemanticKey::StableEdge { edge_key },
             ) if !edge_key.trim().is_empty() => {}
@@ -1250,12 +1359,33 @@ fn validate_catalog_geometry_signature(
         if value.trim().is_empty()
             || !matches!(
                 attribute.as_str(),
-                "d" | "data-points" | "x1" | "y1" | "x2" | "y2" | "transform"
+                "d" | "data-points"
+                    | "x1"
+                    | "y1"
+                    | "x2"
+                    | "y2"
+                    | "transform"
+                    | "neo-mask-dasharray"
             )
         {
             return Err(format!(
                 "{context} has invalid associated edge attribute `{attribute}`"
             ));
+        }
+        if attribute == "neo-mask-dasharray" {
+            let values = value
+                .split_whitespace()
+                .map(|value| value.parse::<f64>().ok())
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| format!("{context} has invalid Neo mask geometry"))?;
+            if values.len() < 3
+                || values[0] != 0.0
+                || values.iter().any(|value| {
+                    !value.is_finite() || round_for_comparison(*value, decimals) != *value
+                })
+            {
+                return Err(format!("{context} has invalid Neo mask geometry"));
+            }
         }
         if matches!(attribute.as_str(), "x1" | "y1" | "x2" | "y2") {
             let coordinate = value
@@ -1301,15 +1431,15 @@ fn extract_upstream_residual_evidence(
         SemanticLabelAdapter::FlowchartElk => extract_flowchart_elk_edge_labels(upstream_svg)
             .map(stable_residual_evidence)
             .map_err(extraction_error),
-        SemanticLabelAdapter::DagreDataId => {
-            let config = dagre_data_id_adapter_config(contract.diagram).ok_or_else(|| {
+        SemanticLabelAdapter::DataId => {
+            let config = data_id_adapter_config(contract.diagram).ok_or_else(|| {
                 format!(
-                    "registered semantic label fixture has no Dagre data-id adapter: {}/{}",
+                    "registered semantic label fixture has no data-id adapter: {}/{}",
                     contract.diagram, contract.fixture
                 )
             })?;
-            extract_dagre_data_id_edge_labels(upstream_svg, config)
-                .map(stable_residual_evidence)
+            extract_data_id_edge_labels(upstream_svg, config)
+                .map(|evidence| stable_residual_evidence(evidence.labels))
                 .map_err(extraction_error)
         }
         SemanticLabelAdapter::Architecture => extract_architecture_edge_labels(upstream_svg)
@@ -1431,10 +1561,16 @@ fn validate_fixture_residual_digests(
     Ok(())
 }
 
-fn extract_dagre_data_id_edge_labels(
+#[derive(Debug)]
+struct DataIdEdgeLabelEvidence {
+    labels: BTreeMap<String, SemanticLabelEvidence>,
+    edges: BTreeMap<String, SemanticRelationEdgeEvidence>,
+}
+
+fn extract_data_id_edge_labels(
     svg: &str,
-    config: DagreDataIdAdapterConfig,
-) -> Result<BTreeMap<String, SemanticLabelEvidence>, SemanticLabelError> {
+    config: DataIdAdapterConfig,
+) -> Result<DataIdEdgeLabelEvidence, SemanticLabelError> {
     let normalized = crate::svgdom::normalize_xml_entities(svg);
     let document = roxmltree::Document::parse(normalized.as_ref())
         .map_err(|error| SemanticLabelError::InvalidSvg(error.to_string()))?;
@@ -1488,19 +1624,15 @@ fn extract_dagre_data_id_edge_labels(
                 identity,
             });
         }
-        let edge = edges
-            .remove(&identity)
-            .ok_or_else(|| SemanticLabelError::OrphanEdgeLabel {
-                diagram: config.diagram,
-                identity: identity.clone(),
-            })?;
+        let edge =
+            edges
+                .get(&identity)
+                .cloned()
+                .ok_or_else(|| SemanticLabelError::OrphanEdgeLabel {
+                    diagram: config.diagram,
+                    identity: identity.clone(),
+                })?;
         let text = semantic_edge_label_text(label_root);
-        if text.is_empty() && !config.allow_empty_labels {
-            return Err(SemanticLabelError::EmptyEdgeLabel {
-                diagram: config.diagram,
-                identity,
-            });
-        }
         let geometry_context = if text.is_empty() {
             identity.as_str()
         } else {
@@ -1520,13 +1652,10 @@ fn extract_dagre_data_id_edge_labels(
         );
     }
 
-    if let Some(identity) = edges.into_keys().next() {
-        return Err(SemanticLabelError::MissingEdgeLabel {
-            diagram: config.diagram,
-            identity,
-        });
-    }
-    Ok(evidence)
+    Ok(DataIdEdgeLabelEvidence {
+        labels: evidence,
+        edges,
+    })
 }
 
 fn extract_flowchart_elk_edge_labels(
@@ -1542,7 +1671,7 @@ fn extract_flowchart_elk_edge_labels(
         node.is_element()
             && node.has_tag_name("path")
             && has_class_token(*node, "flowchart-link")
-            // Mermaid 11.17's ELK renderer emits the singular `edgePath` group;
+            // The pinned Mermaid ELK renderer emits the singular `edgePath` group;
             // older baselines used `edgePaths`. Both are the same edge layer.
             && (self_or_ancestor_has_class(*node, "edgePaths")
                 || self_or_ancestor_has_class(*node, "edgePath"))
@@ -1850,6 +1979,7 @@ fn semantic_label_presentation(
         text,
         &["x", "y", "transform"],
         &["width", "height", "transform"],
+        None,
     )
 }
 
@@ -1903,23 +2033,138 @@ fn semantic_flowchart_label_presentation(
     Ok(presentation)
 }
 
+struct NeoEdgeMaskStyle {
+    declarations: Vec<(String, String)>,
+    dasharray: String,
+}
+
+fn source_neo_edge_mask_style(
+    node: roxmltree::Node<'_, '_>,
+) -> Result<Option<NeoEdgeMaskStyle>, SemanticLabelError> {
+    if !node.has_tag_name("path")
+        || node.attribute("data-edge") != Some("true")
+        || node.attribute("data-et") != Some("edge")
+        || node.attribute("data-look") != Some("neo")
+        || node
+            .attribute("class")
+            .unwrap_or_default()
+            .split_whitespace()
+            .any(|class| class.starts_with("edge-animation-"))
+    {
+        return Ok(None);
+    }
+    let style = node.attribute("style").unwrap_or_default();
+    let mut fragments = style.splitn(3, ';');
+    let Some(first) = fragments.next() else {
+        return Ok(None);
+    };
+    let Some(second) = fragments.next() else {
+        return Ok(None);
+    };
+    let Some(remainder) = fragments.next() else {
+        return Ok(None);
+    };
+    let prefix = format!("{first};{second};");
+    let mut declarations = parse_inline_style_declarations(&prefix, "Neo edge mask")?;
+    if declarations.len() != 2
+        || declarations[0].0 != "stroke-dasharray"
+        || declarations[1] != ("stroke-dashoffset".to_string(), "0".to_string())
+    {
+        return Ok(None);
+    }
+    let dasharray = declarations[0].1.clone();
+    let values = dasharray.split_whitespace().collect::<Vec<_>>();
+    if values.len() < 3 || values[0] != "0" {
+        return Ok(None);
+    }
+    let Some(numbers) = values
+        .iter()
+        .map(|value| value.parse::<f64>().ok())
+        .collect::<Option<Vec<_>>>()
+    else {
+        return Ok(None);
+    };
+    if !numbers.iter().all(|value| value.is_finite()) {
+        return Ok(None);
+    }
+    let pattern = if has_class_token(node, "edge-pattern-dashed") {
+        "dashed"
+    } else if has_class_token(node, "edge-pattern-dotted") {
+        "dotted"
+    } else if has_class_token(node, "edge-pattern-solid") {
+        "solid"
+    } else {
+        return Ok(None);
+    };
+    let middle = &values[2..values.len() - 1];
+    let middle_signature = if pattern == "solid" {
+        if middle.len() != 1 {
+            return Ok(None);
+        }
+        "<length>"
+    } else {
+        if middle.len() % 2 != 0 || !middle.iter().all(|value| *value == "2") {
+            return Ok(None);
+        }
+        "<2 2 pairs>"
+    };
+    // Only the exact ER sentinel emitted after the generated prefix is admitted here.
+    // Other malformed suffixes still fail the ordinary CSS declaration parser.
+    let tail = if remainder == "undefined;;;undefined"
+        && has_class_token(node, "relationshipLine")
+        && node.ancestors().any(|ancestor| {
+            ancestor.has_tag_name("svg") && ancestor.attribute("aria-roledescription") == Some("er")
+        }) {
+        parse_inline_style_declarations(remainder, "Neo ER edge")?
+    } else {
+        if remainder.trim() == "undefined;;;undefined" {
+            return Err(SemanticLabelError::InvalidInlineStyle {
+                text: "Neo edge mask".to_string(),
+                declaration: remainder.to_string(),
+            });
+        }
+        parse_inline_style_declarations(remainder, "Neo edge mask")?
+    };
+    if tail
+        .iter()
+        .any(|(property, _)| property.to_ascii_lowercase().starts_with("animation"))
+    {
+        return Ok(None);
+    }
+    declarations[0].1 = format!(
+        "0 {} {middle_signature} {} ({pattern})",
+        values[1],
+        values[values.len() - 1]
+    );
+    declarations.extend(tail);
+    Ok(Some(NeoEdgeMaskStyle {
+        declarations,
+        dasharray,
+    }))
+}
+
 fn semantic_relation_edge_evidence(
     node: roxmltree::Node<'_, '_>,
 ) -> Result<SemanticRelationEdgeEvidence, SemanticLabelError> {
     const GEOMETRY_ATTRIBUTES: &[&str] = &["d", "data-points", "x1", "y1", "x2", "y2", "transform"];
-    let attributes = GEOMETRY_ATTRIBUTES
+    let mut attributes = GEOMETRY_ATTRIBUTES
         .iter()
         .filter_map(|attribute| {
             node.attribute(*attribute)
                 .map(|value| ((*attribute).to_string(), value.trim().to_string()))
         })
         .collect::<BTreeMap<_, _>>();
+    let neo_mask = source_neo_edge_mask_style(node)?;
+    if let Some(mask) = &neo_mask {
+        attributes.insert("neo-mask-dasharray".to_string(), mask.dasharray.clone());
+    }
     Ok(SemanticRelationEdgeEvidence {
         presentation: semantic_element_presentation(
             node,
             "semantic relation edge",
             GEOMETRY_ATTRIBUTES,
             &[],
+            neo_mask.as_ref().map(|mask| mask.declarations.as_slice()),
         )?,
         geometry: SemanticRelationEdgeGeometry {
             tag: node.tag_name().name().to_string(),
@@ -1966,6 +2211,22 @@ fn normalized_edge_geometry(
                         message,
                     }
                 })?
+            }
+            "neo-mask-dasharray" => {
+                let values = value
+                    .split_whitespace()
+                    .map(|value| value.parse::<f64>().ok().filter(|value| value.is_finite()))
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| SemanticLabelError::InvalidEdgeGeometry {
+                        identity: identity.to_string(),
+                        attribute: attribute.clone(),
+                        message: "Neo mask contains a non-finite or invalid coordinate".to_string(),
+                    })?;
+                values
+                    .into_iter()
+                    .map(|value| format!("{:?}", round_for_comparison(value, decimals)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
             }
             "transform" => normalized_transform_signature(value, decimals).map_err(|message| {
                 SemanticLabelError::InvalidEdgeGeometry {
@@ -2183,6 +2444,7 @@ fn semantic_element_presentation(
     context: &str,
     root_geometry_attributes: &[&str],
     descendant_geometry_attributes: &[&str],
+    root_style: Option<&[(String, String)]>,
 ) -> Result<SemanticLabelPresentation, SemanticLabelError> {
     let mut element_structure = Vec::new();
     let mut attributes = BTreeMap::new();
@@ -2206,6 +2468,7 @@ fn semantic_element_presentation(
             context,
             &[],
             true,
+            None,
             &mut attributes,
             &mut inline_style,
             &mut class_tokens,
@@ -2233,6 +2496,7 @@ fn semantic_element_presentation(
                 descendant_geometry_attributes
             },
             false,
+            if element_index == 0 { root_style } else { None },
             &mut attributes,
             &mut inline_style,
             &mut class_tokens,
@@ -2262,6 +2526,7 @@ fn collect_element_presentation(
     context: &str,
     excluded_attributes: &[&str],
     presentation_attributes_only: bool,
+    style_override: Option<&[(String, String)]>,
     attributes: &mut BTreeMap<String, String>,
     inline_style: &mut Vec<(String, String)>,
     class_tokens: &mut BTreeSet<String>,
@@ -2311,8 +2576,15 @@ fn collect_element_presentation(
             .split_whitespace()
             .map(|token| format!("{scope}@{token}")),
     );
+    let declarations = match style_override {
+        Some(declarations) => declarations.to_vec(),
+        None => parse_inline_style_declarations(
+            element.attribute("style").unwrap_or_default(),
+            context,
+        )?,
+    };
     inline_style.extend(
-        parse_inline_style_declarations(element.attribute("style").unwrap_or_default(), context)?
+        declarations
             .into_iter()
             .filter(|(property, _)| {
                 !presentation_attributes_only
@@ -2371,8 +2643,7 @@ fn parse_inline_style_declarations(
         )]);
     }
 
-    let mut input = cssparser::ParserInput::new(style);
-    let mut parser = cssparser::Parser::new(&mut input);
+    let mut parser = cssparser::Parser::new(style);
     let mut declarations = Vec::new();
 
     loop {
@@ -2392,9 +2663,9 @@ fn parse_inline_style_declarations(
             while declaration.next_including_whitespace_and_comments().is_ok() {}
             let value = declaration.slice_from(value_start).trim().to_string();
             if value.is_empty() {
-                return Err(declaration.new_custom_error(()));
+                return Err(cssparser::ParseError::custom(()));
             }
-            Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
+            Ok::<_, cssparser::ParseError<()>>((property, value))
         });
         match parsed {
             Ok(declaration) => declarations.push(declaration),
@@ -2432,28 +2703,28 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for SemanticStylesheetParser {
     type QualifiedRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
         let selector = input.slice_from(start).trim().to_string();
         if selector.is_empty() {
-            Err(input.new_custom_error(()))
+            Err(cssparser::ParseError::custom(()))
         } else {
             Ok(selector)
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::QualifiedRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2471,11 +2742,11 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
     type AtRule = Option<StylesheetRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         name: cssparser::CowRcStr<'i>,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2500,12 +2771,12 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
         }))
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &cssparser::ParserState,
-        input: &mut cssparser::Parser<'i, 't>,
-    ) -> Result<Self::AtRule, cssparser::ParseError<'i, Self::Error>> {
+        input: &mut cssparser::Parser<'i>,
+    ) -> Result<Self::AtRule, cssparser::ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -2563,13 +2834,17 @@ fn extract_stylesheet_signature(
         .trim();
     let mut signature = Vec::new();
     for stylesheet in stylesheets {
-        let mut input = cssparser::ParserInput::new(&stylesheet);
-        let mut input = cssparser::Parser::new(&mut input);
+        let mut input = cssparser::Parser::new(&stylesheet);
         let mut rule_parser = SemanticStylesheetParser;
         for parsed in cssparser::StyleSheetParser::new(&mut input, &mut rule_parser) {
-            let rule = parsed.map_err(|(error, rule)| SemanticLabelError::InvalidStylesheet {
-                rule: rule.trim().to_string(),
-                message: format!("{error:?}"),
+            let rule = parsed.map_err(|(error, rule, location)| {
+                SemanticLabelError::InvalidStylesheet {
+                    rule: rule.trim().to_string(),
+                    message: format!(
+                        "{error:?} at rule line {}, column {}",
+                        location.line, location.column
+                    ),
+                }
             })?;
             let Some(rule) = rule else {
                 continue;
@@ -3501,7 +3776,7 @@ mod tests {
         assert_eq!(labels.len(), 5);
         assert_eq!(message.text, "2: Calls isAuthenticated() on");
         assert_eq!(message.geometry.anchor_x, 501.0);
-        assert_eq!(message.geometry.anchor_y, 650.9805393218994);
+        assert_eq!(message.geometry.anchor_y, 650.2998428344727);
     }
 
     #[test]
@@ -3570,71 +3845,110 @@ mod tests {
         let upper = labels.get("L_a1_a2_2").unwrap();
         assert_eq!(lower.text, "l1");
         assert_eq!(upper.text, "l2");
-        assert_eq!(lower.geometry.anchor_x, 130.796875);
-        assert_eq!(lower.geometry.anchor_y, 96.5);
-        assert_eq!(upper.geometry.anchor_x, 130.796875);
-        assert_eq!(upper.geometry.anchor_y, 56.5);
+        assert_eq!(lower.geometry.anchor_x, 248.0);
+        assert_eq!(lower.geometry.anchor_y, 102.0);
+        assert_eq!(upper.geometry.anchor_x, 248.0);
+        assert_eq!(upper.geometry.anchor_y, 60.0);
         assert!(
             lower.associated_edge.as_ref().unwrap().geometry.attributes["d"]
-                .contains("101.92893218813452")
+                .contains("102.97106781186548")
         );
         assert_eq!(
             upper.associated_edge.as_ref().unwrap().geometry.attributes["d"],
-            "M173.90625,69L104.796875,69"
+            "M318.90625,88.1L295.9773178118655,88.1Q288.90625,88.1 288.90625,81.02893218813452L288.90625,78.07106781186548Q288.90625,71 281.8351821881345,71L225.07106781186548,71Q218,71 218,78.07106781186548L218,81.02893218813452Q218,88.1 210.92893218813452,88.1L192,88.1"
         );
     }
 
     #[test]
-    fn dagre_family_labels_bind_shared_data_ids_to_their_paths() {
+    fn data_id_family_labels_bind_shared_data_ids_to_their_paths() {
         for (diagram, fixture, expected_samples) in [
             ("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE, 8),
-            ("state", STATE_PARALLEL_LABEL_FIXTURE, 5),
+            ("state", STATE_PARALLEL_LABEL_FIXTURE, 3),
             ("class", CLASS_MANY_RELATION_LABEL_FIXTURE, 8),
             ("er", ER_PARALLEL_RELATION_LABEL_FIXTURE, 2),
         ] {
             let svg = signed_semantic_svg(diagram, fixture);
-            let config = dagre_data_id_adapter_config(diagram).unwrap();
-            let labels = extract_dagre_data_id_edge_labels(&svg, config).unwrap();
+            let config = data_id_adapter_config(diagram).unwrap();
+            let labels = extract_data_id_edge_labels(&svg, config).unwrap();
 
-            assert_eq!(labels.len(), expected_samples, "{diagram}/{fixture}");
-            assert!(labels.values().all(|label| label.associated_edge.is_some()));
+            assert_eq!(labels.labels.len(), expected_samples, "{diagram}/{fixture}");
+            assert!(
+                labels
+                    .labels
+                    .values()
+                    .all(|label| label.associated_edge.is_some())
+            );
         }
 
-        let state = extract_dagre_data_id_edge_labels(
+        let state = extract_data_id_edge_labels(
             &signed_semantic_svg("state", STATE_PARALLEL_LABEL_FIXTURE),
-            dagre_data_id_adapter_config("state").unwrap(),
+            data_id_adapter_config("state").unwrap(),
         )
         .unwrap();
-        assert_eq!(state["edge1"].text, "fast");
-        assert_eq!(state["edge2"].text, "slow");
-        assert_eq!(state["edge3"].text, "retry");
-        assert!(state["edge0"].text.is_empty());
-        assert!(state["edge4"].text.is_empty());
+        assert_eq!(state.labels["edge1"].text, "fast");
+        assert_eq!(state.labels["edge2"].text, "slow");
+        assert_eq!(state.labels["edge3"].text, "retry");
+        assert_eq!(
+            state
+                .edges
+                .keys()
+                .filter(|id| !state.labels.contains_key(*id))
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["edge0", "edge4"]
+        );
 
-        let requirement = extract_dagre_data_id_edge_labels(
-            &signed_semantic_svg("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE),
-            dagre_data_id_adapter_config("requirement").unwrap(),
+        let requirement_svg = signed_semantic_svg("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE);
+        let requirement = extract_data_id_edge_labels(
+            &requirement_svg,
+            data_id_adapter_config("requirement").unwrap(),
         )
         .unwrap();
-        let traces = &requirement["test_req-test_req2-1"];
+        let traces = &requirement.labels["test_req-test_req2-1"];
         assert_eq!(traces.text, "<<traces>>");
-        assert_eq!(traces.geometry.anchor_x, 242.40006);
-        assert_eq!(traces.geometry.anchor_y, 426.14623);
+        // The common renderer positions the label wrapper at its layout anchor;
+        // the inner label transform only centers the measured text around that point.
+        let document = roxmltree::Document::parse(&requirement_svg).unwrap();
+        let inner = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("data-id") == Some("test_req-test_req2-1")
+            })
+            .unwrap();
+        let wrapper = inner.parent_element().unwrap();
+        assert!(has_class_token(wrapper, "edgeLabel"));
+        assert!(
+            wrapper
+                .ancestors()
+                .skip(1)
+                .filter(|node| node.is_element())
+                .all(|node| node.attribute("transform").is_none())
+        );
+        let translation = wrapper
+            .attribute("transform")
+            .unwrap()
+            .strip_prefix("translate(")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let (x, y) = translation.split_once(',').unwrap();
+        assert_eq!(traces.geometry.anchor_x, x.trim().parse::<f64>().unwrap());
+        assert_eq!(traces.geometry.anchor_y, y.trim().parse::<f64>().unwrap());
     }
 
     #[test]
-    fn dagre_family_semantic_gates_accept_exact_geometry_without_catalog() {
+    fn data_id_family_semantic_gates_accept_exact_geometry_without_catalog() {
         for (diagram, fixture, expected_samples) in [
             ("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE, 8),
-            ("state", STATE_PARALLEL_LABEL_FIXTURE, 5),
+            ("state", STATE_PARALLEL_LABEL_FIXTURE, 3),
             ("class", CLASS_MANY_RELATION_LABEL_FIXTURE, 8),
             ("er", ER_PARALLEL_RELATION_LABEL_FIXTURE, 2),
         ] {
             let source = signed_semantic_source(diagram, fixture);
             let upstream = signed_semantic_svg(diagram, fixture);
-            let config = dagre_data_id_adapter_config(diagram).unwrap();
-            let pairs = pair_dagre_data_id_edge_labels(config, &upstream, &upstream).unwrap();
-            let outcome = compare_semantic_edge_labels(
+            let config = data_id_adapter_config(diagram).unwrap();
+            let pairs = pair_data_id_edge_labels(config, &upstream, &upstream).unwrap();
+            let outcome = compare_semantic_edge_labels_with_residuals(
                 diagram,
                 "unregistered-exact-geometry-probe",
                 &source,
@@ -3643,6 +3957,8 @@ mod tests {
                 &upstream,
                 3,
                 StylesheetScope::ClassicDagre,
+                &[],
+                SemanticLabelComparisonMode::Strict,
             )
             .unwrap();
 
@@ -3653,7 +3969,7 @@ mod tests {
     }
 
     #[test]
-    fn dagre_family_semantic_gate_rejects_identity_geometry_and_style_mutations() {
+    fn data_id_family_semantic_gate_rejects_identity_geometry_and_style_mutations() {
         let diagram = "er";
         let fixture = ER_PARALLEL_RELATION_LABEL_FIXTURE;
         let source = signed_semantic_source(diagram, fixture);
@@ -3665,12 +3981,9 @@ mod tests {
             &format!(r#"<g class="label" data-id="{first_id}""#),
             &format!(r#"<g class="label" data-id="{second_id}""#),
         );
-        let changed_path = upstream.replacen("M72.528,92", "M82.528,92", 1);
-        let changed_data_points = upstream.replacen(
-            "W3sieCI6NzIuNTI3NTEyNjY4OTE4OTIsInkiOjkyfSx7IngiOjQyLjc1LCJ5IjoxNDIuNX0seyJ4Ijo3Mi41Mjc1MTI2Njg5MTg5MiwieSI6MTkzfV0=",
-            "W3sieCI6ODIuNTI3NTEyNjY4OTE4OTIsInkiOjkyfSx7IngiOjQyLjc1LCJ5IjoxNDIuNX0seyJ4Ijo3Mi41Mjc1MTI2Njg5MTg5MiwieSI6MTkzfV0=",
-            1,
-        );
+        let changed_path = upstream.replacen("M83.07552083333333,93", "M93.07552083333333,93", 1);
+        let changed_data_points =
+            upstream.replacen("ODMuMDc1NTIwODMzMzMzMzMs", "OTMuMDc1NTIwODMzMzMzMzMs", 1);
         assert_ne!(changed_data_points, upstream);
         let changed_style = upstream.replacen(
             r#"class="edge-thickness-normal edge-pattern-solid relationshipLine""#,
@@ -3684,14 +3997,14 @@ mod tests {
         );
         assert_ne!(changed_stylesheet, upstream);
         let changed_descendant_width = upstream.replacen(
-            r#"<foreignObject width="69.5" height="21">"#,
-            r#"<foreignObject width="79.5" height="21">"#,
+            r#"<foreignObject width="66.9375" height="21">"#,
+            r#"<foreignObject width="76.9375" height="21">"#,
             1,
         );
         assert_ne!(changed_descendant_width, upstream);
         let changed_descendant_transform = upstream.replacen(
-            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-34.75, -10.5)">"#,
-            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-24.75, -10.5)">"#,
+            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-33.46875, -10.5)">"#,
+            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-23.46875, -10.5)">"#,
             1,
         );
         assert_ne!(changed_descendant_transform, upstream);
@@ -3824,12 +4137,12 @@ mod tests {
         let upstream = signed_semantic_svg("flowchart", FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE);
         let swapped_transforms = swap_all(
             &upstream,
-            "translate(137.3515625, 108.5)",
-            "translate(137.3515625, 68.5)",
+            "translate(253.453125, 112.5)",
+            "translate(253.453125, 70.5)",
         );
         let transformed_edge_root = upstream.replacen(
-            r#"class="edges edgePath""#,
-            r#"class="edges edgePath" transform="translate(10 0)""#,
+            r#"class="edges edgePaths""#,
+            r#"class="edges edgePaths" transform="translate(10 0)""#,
             1,
         );
         let swapped_identities = swap_all(&upstream, "L_a1_a2_0", "L_a1_a2_2");
@@ -4039,7 +4352,7 @@ mod tests {
             .unwrap()
         };
 
-        let changed_path = upstream.replacen("M173.90625,87", "M183.90625,87", 1);
+        let changed_path = upstream.replacen("M318.90625,88.1", "M328.90625,88.1", 1);
         assert!(
             compare(&changed_path)
                 .issues
@@ -4060,8 +4373,8 @@ mod tests {
         );
 
         let changed_label_presentation = upstream.replacen(
-            r#"<foreignObject width="13.109375" height="24">"#,
-            r#"<foreignObject width="13.109375" height="24" style="overflow: hidden;">"#,
+            r#"<foreignObject width="10.90625" height="21">"#,
+            r#"<foreignObject width="10.90625" height="21" style="overflow: hidden;">"#,
             1,
         );
         assert!(
@@ -4085,7 +4398,7 @@ mod tests {
         );
 
         let changed_css = upstream.replacen(
-            ".flowchart-link{stroke:#333333;fill:none;}",
+            ".flowchart-link{stroke:#000000;fill:none;}",
             ".flowchart-link{stroke:#abcdef;fill:none;}",
             1,
         );
@@ -4239,8 +4552,8 @@ mod tests {
         let padded_identity = state.replace(r#"data-id="edge1""#, r#"data-id=" edge1 ""#);
         assert_eq!(padded_identity.matches(r#"data-id=" edge1 ""#).count(), 2);
         assert!(matches!(
-            pair_dagre_data_id_edge_labels(
-                dagre_data_id_adapter_config("state").unwrap(),
+            pair_data_id_edge_labels(
+                data_id_adapter_config("state").unwrap(),
                 &state,
                 &padded_identity,
             ),
@@ -4521,6 +4834,66 @@ mod tests {
     }
 
     #[test]
+    fn label_candidate_diagnostics_never_admit_exact_geometry() {
+        let diagram = "state";
+        let fixture = STATE_PARALLEL_LABEL_FIXTURE;
+        let source = signed_semantic_source(diagram, fixture);
+        let upstream = format!(
+            "{}<!-- upgraded upstream artifact -->",
+            signed_semantic_svg(diagram, fixture)
+        );
+        let outcome = compare_registered_semantic_labels_with_mode(
+            diagram,
+            fixture,
+            &source,
+            &upstream,
+            &upstream,
+            SemanticLabelComparisonMode::ReviewCandidates,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(outcome.evidence.compared_samples, 3);
+        assert_eq!(outcome.evidence.accepted_residuals, 0);
+        assert_eq!(outcome.issues.len(), 1, "{:?}", outcome.issues);
+        assert!(outcome.issues[0].contains("review_required and cannot admit"));
+
+        let error = compare_registered_semantic_labels_with_mode(
+            diagram,
+            fixture,
+            &format!("{source}\n"),
+            &upstream,
+            &upstream,
+            SemanticLabelComparisonMode::ReviewCandidates,
+        )
+        .unwrap_err();
+        assert!(error.contains("input is not bound to the registered source"));
+    }
+
+    #[test]
+    fn strict_label_comparison_rejects_old_svg_receipt_after_upgrade() {
+        let diagram = "state";
+        let fixture = STATE_PARALLEL_LABEL_FIXTURE;
+        let source = signed_semantic_source(diagram, fixture);
+        let upstream = format!(
+            "{}<!-- upgraded upstream artifact -->",
+            signed_semantic_svg(diagram, fixture)
+        );
+        let error = compare_registered_semantic_labels_with_mode(
+            diagram,
+            fixture,
+            &source,
+            &upstream,
+            &upstream,
+            SemanticLabelComparisonMode::Strict,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("is not bound to the compared artifacts"));
+        assert!(error.contains("upstream SVG expected="));
+    }
+
+    #[test]
     fn semantic_label_residuals_are_bound_to_compared_artifact_bytes() {
         let source = signed_c4_dynamic_source();
         let upstream = signed_c4_dynamic_svg();
@@ -4547,6 +4920,111 @@ mod tests {
 
         assert!(input_error.contains("is not bound to the compared artifacts"));
         assert!(upstream_error.contains("is not bound to the compared artifacts"));
+    }
+
+    fn neo_mask_edge(svg: &str) -> Result<SemanticRelationEdgeEvidence, SemanticLabelError> {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        semantic_world_relation_edge_evidence(
+            document
+                .descendants()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn neo_mask_lengths_and_pair_counts_remain_exact_edge_geometry() {
+        for (pattern, upstream_mask, local_mask) in [
+            ("solid", "0 0 40.1251 0", "0 0 41.2501 0"),
+            ("dashed", "0 0 2 2 2 2 0", "0 0 2 2 2 2 2 2 0"),
+        ] {
+            let svg = |mask| {
+                format!(
+                    r#"<svg><path d="M0 0L40 0" data-edge="true" data-et="edge" data-look="neo" class="edge-pattern-{pattern}" style="stroke-dasharray: {mask}; stroke-dashoffset: 0;fill:none;stroke-dasharray:10,7"/></svg>"#
+                )
+            };
+            let upstream = neo_mask_edge(&svg(upstream_mask)).unwrap();
+            let local = neo_mask_edge(&svg(local_mask)).unwrap();
+            assert_eq!(upstream.presentation, local.presentation);
+            assert_ne!(
+                normalized_edge_geometry("edge", &upstream, 3).unwrap(),
+                normalized_edge_geometry("edge", &local, 3).unwrap()
+            );
+            assert_eq!(
+                upstream.geometry.attributes["neo-mask-dasharray"],
+                upstream_mask
+            );
+            assert_eq!(
+                upstream.presentation.inline_style.last().unwrap(),
+                &("root@stroke-dasharray".to_string(), "10,7".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn neo_mask_classification_preserves_semantic_mutations() {
+        let svg = r##"<svg><path d="M0 0L40 0" data-edge="true" data-et="edge" data-look="neo" class="edge-pattern-solid" marker-end="url(#arrow)" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;fill:none;stroke:red"/></svg>"##;
+        let expected = neo_mask_edge(svg).unwrap();
+        for changed in [
+            svg.replace("stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;", ""),
+            svg.replace("0 0 40 0", "1 0 40 0"),
+            svg.replace("0 0 40 0", "0 4 40 0"),
+            svg.replace("0 0 40 0", "0 0 40 4"),
+            svg.replace("0 0 40 0", "9,5"),
+            svg.replace("stroke-dashoffset: 0", "stroke-dashoffset: 1"),
+            svg.replace("fill:none", "fill:red"),
+            svg.replace("stroke:red", "stroke:blue"),
+            svg.replace("url(#arrow)", "url(#other)"),
+            svg.replace("edge-pattern-solid", "edge-pattern-dashed"),
+            svg.replace(
+                "edge-pattern-solid",
+                "edge-pattern-solid edge-animation-fast",
+            ),
+            svg.replace("data-look=\"neo\"", "data-look=\"classic\""),
+            svg.replace("stroke:red", "stroke:red;animation:dash 2s"),
+        ] {
+            let actual = neo_mask_edge(&changed).unwrap();
+            assert_ne!(expected.presentation, actual.presentation, "{changed}");
+        }
+        let dashed = svg
+            .replace("edge-pattern-solid", "edge-pattern-dashed")
+            .replace("0 0 40 0", "0 0 2 2 2 2 0");
+        let malformed = dashed.replace("2 2 2 2", "2 3 2 3");
+        assert_ne!(
+            neo_mask_edge(&dashed).unwrap().presentation,
+            neo_mask_edge(&malformed).unwrap().presentation
+        );
+    }
+
+    #[test]
+    fn neo_er_mask_accepts_only_the_exact_source_invalid_style_sentinel() {
+        let svg = r#"<svg aria-roledescription="er"><path d="M0 0L40 0" data-edge="true" data-et="edge" data-look="neo" class="edge-pattern-solid relationshipLine" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;undefined;;;undefined"/></svg>"#;
+        let evidence = neo_mask_edge(svg).unwrap();
+        assert!(
+            evidence
+                .geometry
+                .attributes
+                .contains_key("neo-mask-dasharray")
+        );
+        assert_eq!(
+            evidence.presentation.inline_style.last().unwrap(),
+            &(
+                "root@@mermaid-invalid-style-sentinel".to_string(),
+                "undefined;;;undefined".to_string()
+            )
+        );
+        for changed in [
+            svg.replace("undefined;;;undefined", "undefined;;undefined"),
+            svg.replace("undefined;;;undefined", "undefined;;;;undefined"),
+            svg.replace("undefined;;;undefined", "undefined;;;undefined;fill:red"),
+            svg.replace("undefined;;;undefined", " undefined;;;undefined"),
+            svg.replace(
+                "aria-roledescription=\"er\"",
+                "aria-roledescription=\"stateDiagram\"",
+            ),
+        ] {
+            assert!(neo_mask_edge(&changed).is_err(), "{changed}");
+        }
     }
 
     #[test]
@@ -4713,22 +5191,48 @@ mod tests {
     }
 
     #[test]
-    fn state_empty_label_residuals_keep_stable_edge_identity() {
-        let catalog = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
-        let mut empty_state_edges = catalog
-            .entries
-            .iter()
-            .filter(|entry| entry.diagram == "state" && entry.text.is_empty())
-            .map(|entry| match &entry.semantic_key {
-                LabelResidualSemanticKey::StableEdge { edge_key } => edge_key.as_str(),
-                LabelResidualSemanticKey::C4Relation { .. } => {
-                    panic!("State residuals must use stable edge identities")
-                }
-            })
-            .collect::<Vec<_>>();
-        empty_state_edges.sort_unstable();
+    fn data_id_unlabelled_edges_keep_identity_without_empty_label_receipts() {
+        for diagram in ["state", "class", "requirement", "er"] {
+            let config = data_id_adapter_config(diagram).unwrap();
+            let upstream = r#"<svg><g class="edgePaths"><path class="transition" data-id="edge0" d="M0 0L1 1"/><path class="transition" data-id="edge1" d="M1 1L2 2"/></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="edge1"><text>fast</text></g></g></g></svg>"#;
+            let upstream = upstream.replace("transition", config.edge_class);
+            let upstream = upstream.as_str();
+            let pairs = pair_data_id_edge_labels(config, upstream, upstream).unwrap();
+            assert_eq!(pairs.len(), 1);
+            assert_eq!(pairs[0].key, "edge1");
+            assert_eq!(pairs[0].upstream.text, "fast");
 
-        assert_eq!(empty_state_edges, ["edge0", "edge4"]);
+            let missing_label = upstream.replace(
+            r#"<g class="edgeLabel"><g class="label" data-id="edge1"><text>fast</text></g></g>"#,
+            "",
+        );
+            let unknown_edge = upstream.replace("edge0", "unknown");
+            let extra_edge = upstream.replace("</svg>", &format!(r#"<g class="edgePaths"><path class="{}" data-id="extra" d="M0 0L1 1"/></g></svg>"#, config.edge_class));
+            let missing_edge = upstream.replace(
+                &format!(
+                    r#"<path class="{}" data-id="edge0" d="M0 0L1 1"/>"#,
+                    config.edge_class
+                ),
+                "",
+            );
+            for local in [missing_label, unknown_edge, extra_edge, missing_edge] {
+                assert!(matches!(
+                    pair_data_id_edge_labels(config, upstream, &local),
+                    Err(SemanticLabelError::StableIdentitySetMismatch { diagram: _, .. })
+                ));
+            }
+            let orphan_label = upstream.replace(
+                &format!(
+                    r#"<path class="{}" data-id="edge1" d="M1 1L2 2"/>"#,
+                    config.edge_class
+                ),
+                "",
+            );
+            assert!(matches!(
+                pair_data_id_edge_labels(config, upstream, &orphan_label),
+                Err(SemanticLabelError::OrphanEdgeLabel { diagram: _, .. })
+            ));
+        }
     }
 
     #[test]

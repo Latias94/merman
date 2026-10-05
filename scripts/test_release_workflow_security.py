@@ -97,6 +97,23 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             with self.subTest(workflow=path.name):
                 self.assertNotIn("  pull_request:", read(path))
 
+    def test_performance_contracts_use_the_workflow_merge_revision(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "performance.yml")
+        contracts = workflow_job(workflow, "contracts")
+        self.assertIn("ref: ${{ inputs.head_ref || github.sha }}", contracts)
+        self.assertIn(
+            "repository: ${{ inputs.head_repository || github.repository }}",
+            contracts,
+        )
+        self.assertNotIn("github.event.pull_request.head", contracts)
+
+        # Measurements intentionally compare the actual branch revisions.
+        for job in ("measurement-plan", "measurement"):
+            with self.subTest(job=job):
+                self.assertIn(
+                    "github.event.pull_request.head.sha", workflow_job(workflow, job)
+                )
+
     def test_main_security_calls_the_full_dependency_closure(self) -> None:
         ci = read(CI_WORKFLOW)
         self.assertIn(
@@ -282,6 +299,25 @@ jobs:
         self.assertIn("npm run test:corpus --prefix distribution/tree-sitter-mermaid", workflow)
         self.assertIn("npm run test:wasm --prefix distribution/tree-sitter-mermaid", workflow)
         self.assertIn("npm run test:package-smoke --prefix distribution/tree-sitter-mermaid", workflow)
+
+    def test_grammar_wasm_jobs_install_the_provenance_pinned_wasi_sdk(self) -> None:
+        for workflow, job in (
+            ("tree-sitter-mermaid.yml", "wasm"),
+            ("release-tree-sitter-mermaid.yml", "verify"),
+        ):
+            with self.subTest(workflow=workflow):
+                text = workflow_job(read(WORKFLOW_ROOT / workflow), job)
+                self.assertIn("metadata/provenance.json", text)
+                self.assertIn('provenance["toolchain"]["wasiSdk"]', text)
+                self.assertRegex(
+                    text,
+                    r"uses: bytecodealliance/setup-wasi-sdk-action@[0-9a-f]{40}",
+                )
+                self.assertIn("version: ${{ steps.wasi-version.outputs.version }}", text)
+                self.assertIn(
+                    "TREE_SITTER_WASI_SDK_PATH: ${{ steps.wasi-sdk.outputs.wasi-sdk-path }}",
+                    text,
+                )
 
     def test_workspace_release_accepts_only_canonical_workspace_tags(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
@@ -796,6 +832,58 @@ jobs:
         self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
         self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
 
+    def test_npm_recovery_restores_attempt_report_and_preserves_input_artifacts(self) -> None:
+        for surface in ("web", "node"):
+            with self.subTest(surface=surface):
+                publish = workflow_job(read(WORKFLOW_ROOT / f"release-{surface}.yml"), "publish")
+                self.assertIn("Restore prior npm reconciliation report", publish)
+                self.assertIn("github.run_attempt > 1", publish)
+                self.assertIn("github.run_attempt > 1 && github.run_id || needs.validate-inputs.outputs.recovery_run_id", publish)
+                self.assertIn("--paginate --slurp", publish)
+                self.assertIn("prior_attempt=$((RUN_ATTEMPT - 1))", publish)
+                self.assertIn("--publication-run-id", publish)
+                self.assertIn("--recovery-run-id", publish)
+                self.assertIn('RECOVERY_RUN_ID="$ANCESTOR_RUN_ID"', publish)
+                self.assertNotIn("sort_by(.id) | last", publish)
+                self.assertIn("--recovery-report target/npm-recovery/reconciliation-report.json", publish)
+                self.assertIn("recovery_args+=(--observe-only)", publish)
+                self.assertIn("scripts/release_attempt_history.py", publish)
+                self.assertIn('if [ "$history" != "never-attempted" ]; then', publish)
+                self.assertIn("Retain the exact recovery package group", publish)
+                self.assertIn("github.run_attempt == 1", publish)
+                self.assertIn(f"merman-{surface}-npm-reconciliation-report-attempt-", publish)
+                self.assertLess(publish.index("Verify downloaded"), publish.index("Retain the exact"))
+                self.assertLess(publish.index("Restore prior"), publish.index("Publish npm package group"))
+
+    def test_grammar_retry_only_observes_the_original_candidate(self) -> None:
+        publish = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-npm")
+        self.assertIn("ref: ${{ github.workflow_sha }}", publish)
+        self.assertIn('if [ "$history" = "never-attempted" ]; then', publish)
+        self.assertIn("--owner grammar-npm", publish)
+        self.assertIn("npm_package_group.py inspect", publish)
+        self.assertIn("python3 trusted/scripts/npm_package_group.py observe", publish)
+        self.assertIn('cmp "$candidate" "$registry_copy"', publish)
+        self.assertNotIn("for _ in {1..6}", publish)
+        self.assertLess(publish.index("npm publish"), publish.rindex("npm_package_group.py observe"))
+        crates = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-crates")
+        self.assertIn("--owner grammar-crates", crates)
+        self.assertIn('if [ "$history" = "never-attempted" ]; then', crates)
+        self.assertIn("deadline=$((SECONDS + 300))", crates)
+        self.assertIn('--max-time "$timeout"', crates)
+        self.assertIn('elif [[ "$registry_status" != "404" ]]; then', crates)
+        self.assertNotIn("for _ in {1..6}", crates)
+        for job, surface, actual in ((publish, "npm", "Publish npm package"), (crates, "crate", "Publish crate")):
+            with self.subTest(surface=surface):
+                inspect = job.index(f"- name: Inspect {surface} publication state")
+                verify = job.index(f"- name: Verify {surface} release tag before upload")
+                send = job.index(f"- name: {actual}\n")
+                observe = job.index("- name: Observe the original", send)
+                self.assertLess(inspect, verify)
+                self.assertLess(verify, send)
+                self.assertLess(send, observe)
+                self.assertNotIn("gh api", job[send:observe])
+                self.assertNotIn("registry_state", job[send:observe])
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)
@@ -808,8 +896,22 @@ jobs:
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         self.assertIn("scripts/release_registry_dependents.py", preflight)
         self.assertIn("--candidate-path crates/roughr", preflight)
-        self.assertIn("--dependent merman-render=0.7.0", preflight)
-        self.assertIn("--dependent merman-render=0.8.0-alpha.5", preflight)
+        self.assertIn('--dependent "merman-render=${stable_tag#v}"', preflight)
+        self.assertIn('--dependent "merman-render=${prerelease_tag#v}"', preflight)
+        for workflow in (preflight, independent):
+            with self.subTest(workflow="workspace" if workflow is preflight else "independent"):
+                self.assertIn("--match 'v[0-9]*' --exclude '*-*' HEAD", workflow)
+                self.assertIn("--match 'v[0-9]*-*' HEAD", workflow)
+                self.assertNotRegex(workflow, r"--dependent merman-render=0\.")
+        candidate = workflow_job(independent, "preflight")
+        self.assertIn("fetch-depth: 0", candidate)
+        self.assertIn("steps.dependent-versions.outputs.stable_version", candidate)
+        self.assertIn("steps.dependent-versions.outputs.prerelease_version", candidate)
+        self.assertIn("needs.preflight.outputs.stable_dependent_version", publish)
+        self.assertIn("needs.preflight.outputs.prerelease_dependent_version", publish)
+        for job in (candidate, publish):
+            self.assertIn('--dependent "merman-render=$STABLE_DEPENDENT_VERSION"', job)
+            self.assertIn('--dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"', job)
         self.assertIn("preflight-independent", independent)
         self.assertGreaterEqual(publish.count("preflight-independent"), 3)
         self.assertIn("Verify published dependent lanes", independent)

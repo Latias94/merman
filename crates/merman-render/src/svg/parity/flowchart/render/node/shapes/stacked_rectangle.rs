@@ -46,7 +46,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let rect_offset = 5.0;
+    let rect_offset = if common.look_is_neo() { 10.0 } else { 5.0 };
     let total_w = common.layout_node.width.max(1.0);
     let total_h = common.layout_node.height.max(1.0);
     let w = (total_w - 2.0 * rect_offset).max(1.0);
@@ -101,8 +101,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_svg_path(
                     path_data,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,

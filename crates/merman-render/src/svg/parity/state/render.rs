@@ -10,17 +10,41 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    label_sidecar.validate_for_render(model, layout)?;
-    let timing = options.timing();
-    let mut timings = super::timing::RenderTimings::default();
-    let total_timer = timing.start();
-
-    let diagram_id = options.diagram_id_or("merman");
     let style_plan = options
         .state_style_plan()
         .ok_or_else(|| Error::InvalidModel {
             message: "state SVG rendering requires the pre-layout family style plan".to_string(),
         })?;
+    render_state_diagram_svg_with_plan(
+        layout,
+        model,
+        label_sidecar,
+        effect_evidence,
+        style_plan,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_state_diagram_svg_with_plan(
+    layout: &StateDiagramLayout,
+    model: &StateSvgModel,
+    label_sidecar: &crate::state::StateLabelSidecar,
+    effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
+    style_plan: &crate::state::StateStylePlan,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    label_sidecar.validate_for_render(model, layout)?;
+    let timing = options.timing();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_timer = timing.start();
+    let diagram_id = options.diagram_id_or("merman");
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
@@ -111,11 +135,16 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     let mut ctx = StateRenderCtx {
         diagram_id,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        elk_edge_paths: &layout.elk_edge_paths,
+        elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
         serialized_diagram_look,
+        palette_size: state_palette_size(effective_config),
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
+        label_min_width: state_render_settings.label_min_width,
         state_padding: state_render_settings.state_padding,
         node_order,
         nodes_by_id,
@@ -278,7 +307,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         out
     }
 
-    ctx.nested_roots = compute_state_nested_roots(&ctx);
+    if layout.uses_elk_adapter_dom {
+        ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
+    } else {
+        ctx.nested_roots = compute_state_nested_roots(&ctx);
+    }
 
     drop(_g_build_ctx);
 
@@ -330,7 +363,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(&mut out, diagram_id, style_plan)?;
+    write_state_css(&mut out, diagram_id, style_plan, effective_config)?;
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -489,6 +522,89 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     root_document.complete(out)
 }
 
+fn prepare_state_line_hop_paths(
+    ctx: &StateRenderCtx<'_>,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<FxHashMap<String, String>> {
+    use crate::svg::parity::line_hops::{LineHopEdge, elk_line_hop_paths};
+
+    if effective_config
+        .pointer("/elk/lineHops")
+        .and_then(serde_json::Value::as_bool)
+        == Some(false)
+    {
+        return Ok(FxHashMap::default());
+    }
+    options.work_meter().charge(ctx.edges.len())?;
+    let point_count = ctx
+        .edges
+        .iter()
+        .filter_map(|edge| ctx.layout_edges_by_id.get(edge.id.as_str()))
+        .map(|edge| {
+            ctx.elk_edge_paths
+                .get(&edge.id)
+                .map_or(edge.points.len(), Vec::len)
+        })
+        .fold(0usize, usize::saturating_add);
+    options.work_meter().charge(point_count.saturating_mul(2))?;
+
+    struct OwnedEdge<'a> {
+        id: &'a str,
+        points: Vec<crate::model::LayoutPoint>,
+        curve: Option<&'static str>,
+        arrow_type_end: Option<&'a str>,
+    }
+
+    let mut owned_edges = Vec::new();
+    for edge in ctx.edges {
+        if state_is_hidden(ctx, edge.start.as_str())
+            || state_is_hidden(ctx, edge.end.as_str())
+            || state_is_hidden(ctx, edge.id.as_str())
+        {
+            continue;
+        }
+        let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+            continue;
+        };
+        let geometry = state_edge_prepare_geometry(
+            ctx,
+            layout_edge,
+            Some(edge.arrow_type_end.as_str()),
+            0.0,
+            0.0,
+        );
+        let curve = if layout_edge.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        };
+        owned_edges.push(OwnedEdge {
+            id: edge.id.as_str(),
+            points: geometry.data_points,
+            curve: Some(curve),
+            arrow_type_end: Some(edge.arrow_type_end.as_str()),
+        });
+    }
+
+    let edges: Vec<_> = owned_edges
+        .iter()
+        .map(|edge| LineHopEdge {
+            id: edge.id,
+            points: &edge.points,
+            curve: edge.curve,
+            arrow_type_start: None,
+            arrow_type_end: edge.arrow_type_end,
+        })
+        .collect();
+    Ok(
+        elk_line_hop_paths(effective_config, &edges, options.work_meter())?
+            .into_iter()
+            .map(|(id, path)| (id.to_owned(), path))
+            .collect(),
+    )
+}
+
 fn render_state_root(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
@@ -628,7 +744,11 @@ fn render_state_root(
 
     // edge paths
     let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-    out.push_str(r#"<g class="edgePaths">"#);
+    out.push_str(if ctx.uses_elk_adapter_dom {
+        r#"<g class="edges edgePaths">"#
+    } else {
+        r#"<g class="edgePaths">"#
+    });
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -643,8 +763,15 @@ fn render_state_root(
             if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
             }
-            render_state_edge_path(out, ctx, edge, origin_x, origin_y);
-            out.checkpoint()?;
+            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                let original_path_work = ctx
+                    .elk_edge_paths
+                    .get(&layout_edge.id)
+                    .map_or(layout_edge.points.len(), Vec::len);
+                options.work_meter().charge(original_path_work)?;
+            }
+            render_state_edge_path(out, ctx, edge, origin_x, origin_y, options.work_meter())?;
+            options.checkpoint_emit()?;
         }
     }
     out.push_str("</g>");
@@ -666,6 +793,13 @@ fn render_state_root(
             }
             if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
+            }
+            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                let original_path_work = ctx
+                    .elk_edge_paths
+                    .get(&layout_edge.id)
+                    .map_or(layout_edge.points.len(), Vec::len);
+                options.work_meter().charge(original_path_work)?;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
             out.checkpoint()?;
@@ -743,8 +877,8 @@ fn render_state_root(
         }
     }
 
-    // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
-    if ctx.include_edges {
+    // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
+    if ctx.include_edges && !ctx.uses_elk_adapter_dom {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -823,15 +957,8 @@ fn state_hand_drawn_rect_paths(
         x,
         y + height,
     );
-    roughjs_paths_for_svg_path(
-        &path,
-        "#ECECFF",
-        "#9370DB",
-        stroke_width as f32,
-        stroke_dasharray,
-        randomness,
-    )
-    .unwrap_or_else(|| (path.clone(), path))
+    roughjs_paths_for_svg_path(&path, stroke_width as f32, stroke_dasharray, randomness)
+        .unwrap_or_else(|| (path.clone(), path))
 }
 
 fn state_hand_drawn_terminal_style(property: &str, compatibility: &str, direct: &str) -> String {
@@ -930,6 +1057,30 @@ fn render_state_cluster(
         })
         .unwrap_or_default();
 
+    let _ = write!(
+        out,
+        r#"<g class="{}" id="{}""#,
+        escape_attr(class),
+        dom_id.attr()
+    );
+    if shape != "divider" {
+        let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+    }
+    let _ = write!(out, r#" data-look="{}""#, escape_attr(data_look));
+    if ctx.palette_size > 0
+        && let Some(color_index) = ctx
+            .nodes_by_id
+            .get(cluster_id)
+            .and_then(|node| node.color_index)
+    {
+        let _ = write!(
+            out,
+            r#" data-color-id="color-{}""#,
+            color_index % ctx.palette_size
+        );
+    }
+    out.push('>');
+
     if shape == "divider" {
         if effective_look == "handDrawn" {
             let compatibility = ctx.style_plan.compatibility();
@@ -964,10 +1115,7 @@ fn render_state_cluster(
                 state_hand_drawn_terminal_style("stroke", &stroke, body_stroke_path_style);
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}" data-look="{}"><g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="5" style="{}"/></g></g>"#,
-                escape_attr(class),
-                dom_id.attr(),
-                escape_attr(data_look),
+                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="5" style="{}"/></g></g>"#,
                 escape_attr(&fill_d),
                 escape_attr(&fill),
                 escape_attr(&fill_style),
@@ -985,10 +1133,7 @@ fn render_state_cluster(
         }
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(data_look),
+            r#"<g><rect class="divider" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(body_style),
             radius_attrs,
             fmt(x),
@@ -1128,11 +1273,7 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>{}</g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"#,
             outer_shape,
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
@@ -1141,8 +1282,13 @@ fn render_state_cluster(
             fmt(cluster.title_label.width.max(0.0)),
             fmt(title_height),
             escape_attr(&label_div_style),
-            prepared_title.map_or_else(|| escape_xml(&title), state_prepared_html_lines,),
-            inner_shape,
+            prepared_title
+                .map(|prepared| state_prepared_node_label_html_with_style(
+                    prepared,
+                    (!title_style.is_empty()).then_some(title_style)
+                ))
+                .unwrap_or_else(|| state_node_label_plain_html(&title)),
+            inner_shape
         );
     } else {
         let title_dom = state_native_svg_text_label(
@@ -1154,17 +1300,12 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})">{}</g>{}</g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g>{}</g><g class="cluster-label" transform="translate({}, {})">{}</g>{}</g>"#,
             outer_shape,
-            escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y - 2.0),
             title_dom,
-            inner_shape,
+            inner_shape
         );
     }
     ctx.style_plan.record_node_terminal_emission(
@@ -1172,4 +1313,169 @@ fn render_state_cluster(
         cluster_id,
         terminal_start..out.len(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_elk_neo_note_crossing_rewrites_the_complete_original_mask() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nA --> B: move\nC --> D\nnote right of A: annotation\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected State render model");
+        };
+        let note = model
+            .edges
+            .iter()
+            .find(|edge| edge.classes.contains("note-edge"))
+            .unwrap();
+        // Supply controlled provider routes to the real State paint path. The note crosses an
+        // unrelated transition, while the labelled transition is deliberately away from both.
+        let edges: Vec<crate::model::LayoutEdge> = model
+            .edges
+            .iter()
+            .map(|edge| {
+                let points = if edge.id == note.id {
+                    vec![
+                        crate::model::LayoutPoint { x: 0.0, y: 50.0 },
+                        crate::model::LayoutPoint { x: 100.0, y: 50.0 },
+                    ]
+                } else if edge.start == "C" {
+                    vec![
+                        crate::model::LayoutPoint { x: 50.0, y: 0.0 },
+                        crate::model::LayoutPoint { x: 50.0, y: 100.0 },
+                    ]
+                } else {
+                    vec![
+                        crate::model::LayoutPoint { x: 0.0, y: 200.0 },
+                        crate::model::LayoutPoint { x: 100.0, y: 200.0 },
+                    ]
+                };
+                crate::model::LayoutEdge {
+                    id: edge.id.clone(),
+                    from: edge.start.clone(),
+                    to: edge.end.clone(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points,
+                    label: (!edge.label.is_empty()).then_some(crate::model::LayoutLabel {
+                        x: 50.0,
+                        y: 200.0,
+                        width: 32.0,
+                        height: 24.0,
+                    }),
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                }
+            })
+            .collect();
+        let layout = StateDiagramLayout {
+            nodes: Vec::new(),
+            clusters: Vec::new(),
+            edges,
+            bounds: None,
+            uses_elk_adapter_dom: true,
+            elk_edge_paths: Default::default(),
+        };
+        let render = |hops: serde_json::Value| {
+            let config =
+                serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
+            let plan = crate::state::StateStylePlan::resolve_unthemed(model, &config);
+            let labels = crate::state::StateLabelSidecarBuilder::new(None).finish();
+            let effects = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
+            crate::svg::with_test_svg_execution(
+                crate::DiagramFamilyId::STATE,
+                &SvgRenderOptions::default(),
+                |execution| {
+                    render_state_diagram_svg_with_plan(
+                        &layout,
+                        model,
+                        &labels,
+                        &effects,
+                        &plan,
+                        &config,
+                        None,
+                        &crate::text::DeterministicTextMeasurer::default(),
+                        execution,
+                    )
+                    .unwrap()
+                    .into_string_for(crate::DiagramFamilyId::STATE)
+                    .unwrap()
+                },
+            )
+        };
+        let baseline = render(serde_json::json!(false));
+        let baseline_doc = roxmltree::Document::parse(&baseline).unwrap();
+        for hops in [serde_json::json!(true), serde_json::json!("gap")] {
+            let svg = render(hops);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            for expected in baseline_doc
+                .descendants()
+                .filter(|node| node.attribute("data-edge") == Some("true"))
+            {
+                let actual = doc
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-id") == expected.attribute("data-id")
+                            && node.has_tag_name("path")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    actual.attribute("data-points"),
+                    expected.attribute("data-points")
+                );
+                assert_eq!(
+                    actual.attribute("marker-end"),
+                    expected.attribute("marker-end")
+                );
+                if expected.attribute("data-id") != Some(note.id.as_str()) {
+                    assert_eq!(actual.attribute("d"), expected.attribute("d"));
+                    assert_eq!(actual.attribute("style"), expected.attribute("style"));
+                    continue;
+                }
+                let d = actual.attribute("d").unwrap();
+                assert_ne!(Some(d), expected.attribute("d"));
+                let style = actual.attribute("style").unwrap();
+                let mask = style
+                    .split(';')
+                    .find_map(|declaration| declaration.trim().strip_prefix("stroke-dasharray:"))
+                    .unwrap();
+                let mask: Vec<f64> = mask
+                    .split_whitespace()
+                    .map(|number| number.parse().unwrap())
+                    .collect();
+                assert_eq!(mask.len(), 4, "{style}");
+                assert_eq!((mask[0], mask[1], mask[3]), (0.0, 0.0, 2.0));
+                let length = crate::svg::parity::svg_path_length_from_d(d).unwrap();
+                assert!(
+                    (mask[2] + 2.0 - length).abs() < 1e-6,
+                    "{style}: length={length}"
+                );
+            }
+            let label = |document: &roxmltree::Document<'_>| {
+                let group = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("edgeLabels"))
+                    .unwrap();
+                group
+                    .descendants()
+                    .filter_map(|node| node.attribute("transform"))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(label(&doc), label(&baseline_doc));
+        }
+    }
 }

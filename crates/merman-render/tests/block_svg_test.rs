@@ -3312,3 +3312,129 @@ fn block_marker_unsupported_ordinal_does_not_repaint_other_references() {
     assert_eq!(evidence.applied_count(), 1);
     assert!(evidence.theme_residual_count() > 0);
 }
+
+#[test]
+fn block_look_resources_precede_markers_and_follow_theme_configuration() {
+    for (theme, gradient, flood) in [("redux", false, "#000000"), ("redux-dark", true, "#FFFFFF")] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": theme,
+            "look": "neo",
+            "themeVariables": {
+                "useGradient": gradient,
+                "gradientStart": "#123456",
+                "gradientStop": "#abcdef"
+            }
+        })));
+        let svg = render_block_svg_from_text_with_engine(&engine, "block-beta\n  A[\"Alpha\"]\n");
+        let document = roxmltree::Document::parse(&svg).expect("Block SVG");
+        let root = document.root_element();
+        let diagram_id = root.attribute("id").expect("diagram id");
+        let children = root
+            .children()
+            .filter(|node| node.is_element())
+            .collect::<Vec<_>>();
+        let marker_index = children
+            .iter()
+            .position(|node| node.has_tag_name("marker"))
+            .expect("marker");
+        for (suffix, size, offset) in [
+            ("drop-shadow", "130%", "4"),
+            ("drop-shadow-small", "150%", "2"),
+        ] {
+            let id = format!("{diagram_id}-{suffix}");
+            let matches = root
+                .descendants()
+                .filter(|node| node.attribute("id") == Some(id.as_str()))
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1, "look resources must have unique ids");
+            let filter = matches[0];
+            assert!(filter.has_tag_name("filter"));
+            assert_eq!(filter.attribute("height"), Some(size));
+            assert_eq!(filter.attribute("width"), Some(size));
+            let defs = filter.parent().unwrap();
+            assert!(defs.has_tag_name("defs"));
+            assert!(children.iter().position(|node| *node == defs).unwrap() < marker_index);
+            let shadow = filter
+                .children()
+                .find(|node| node.has_tag_name("feDropShadow"))
+                .unwrap();
+            assert_eq!(shadow.attribute("dx"), Some(offset));
+            assert_eq!(shadow.attribute("dy"), Some(offset));
+            assert_eq!(shadow.attribute("flood-color"), Some(flood));
+        }
+        let gradient_node = children
+            .iter()
+            .find(|node| node.has_tag_name("linearGradient"));
+        assert_eq!(gradient_node.is_some(), gradient);
+        if let Some(node) = gradient_node {
+            assert_eq!(
+                node.attribute("id"),
+                Some(format!("{diagram_id}-gradient").as_str())
+            );
+            assert!(children.iter().position(|child| child == node).unwrap() < marker_index);
+            let stops = node
+                .children()
+                .filter(|node| node.has_tag_name("stop"))
+                .collect::<Vec<_>>();
+            assert_eq!(stops.len(), 2);
+            assert_eq!(stops[0].attribute("stop-color"), Some("#123456"));
+            assert_eq!(stops[1].attribute("stop-color"), Some("#abcdef"));
+        }
+    }
+}
+
+#[test]
+fn block_composite_palette_wraps_slots_and_preserves_author_styles() {
+    let source = "block-beta\nblock:outer\nblock:inner\nA\nend\nend\nblock:sibling\nB\nend\nstyle inner fill:#112233,stroke:#445566\n";
+    for (theme, tinted) in [
+        ("redux-color", true),
+        ("redux-dark-color", false),
+        ("redux", false),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": theme, "look": "classic",
+            "themeVariables": {"borderColorArray": ["#aa0000", "#00aa00"],
+                "bkgColorArray": if tinted { vec!["#eeeeee"] } else { vec![] }, "THEME_COLOR_LIMIT": 1}
+        })));
+        let svg = render_block_svg_from_text_with_engine(&engine, source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let id = document.root_element().attribute("id").unwrap();
+        for (name, slot) in [
+            ("outer", "color-0"),
+            ("inner", "color-1"),
+            ("sibling", "color-0"),
+            ("A", ""),
+            ("B", ""),
+        ] {
+            let node_id = format!("{id}-{name}");
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(node_id.as_str()))
+                .unwrap();
+            assert_eq!(node.attribute("data-look"), Some("classic"));
+            assert_eq!(
+                node.attribute("data-color-id"),
+                (theme != "redux" && !slot.is_empty()).then_some(slot)
+            );
+            if name == "inner" {
+                let rect = node
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                let style = rect.attribute("style").unwrap();
+                assert!(style.contains("fill:#112233") && style.contains("stroke:#445566"));
+            }
+        }
+        let rule = format!(
+            r#"#{id} [data-look="classic"][data-color-id="color-1"].node rect.composite{{stroke:#00aa00;{}}}"#,
+            if tinted { "fill:#eeeeee;" } else { "" }
+        );
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(css.contains(&rule), theme != "redux");
+    }
+}

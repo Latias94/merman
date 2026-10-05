@@ -121,7 +121,7 @@ PDF_PAGE_TYPE = re.compile(
 )
 REPOSITORY_CONTRACT_MAX_BYTES = 4 * 1024 * 1024
 
-ARTIFACT_PROFILES_PATH = "capabilities/artifact-profiles-v1.json"
+ARTIFACT_PROFILES_PATH = "capabilities/artifact-profiles-v2.json"
 CAPABILITY_SURFACE_PATH = "capabilities/feature-surface-v1.json"
 UPSTREAM_REPOS_PATH = "tools/upstreams/REPOS.lock.json"
 MERMAID_REFERENCE_BUNDLE_PATH = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json"
@@ -380,7 +380,9 @@ def _cli_release_runtime_ids(
     profiles: dict[str, object],
     *,
     surface: dict[str, object],
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
+    if profiles.get("schema_version") != 2:
+        raise ArchiveVerificationError("artifact profiles schema_version must be 2")
     candidates = []
     for index, value in enumerate(
         _require_json_array(profiles.get("profiles"), label="artifact profiles")
@@ -422,8 +424,13 @@ def _cli_release_runtime_ids(
     expected = _require_json_object(
         profile.get("expected"),
         label="cli-release expected",
-        fields={"capabilities", "runtime_ids", "outputs"},
+        fields={"capabilities", "runtime_ids", "outputs", "diagram_families"},
     )
+    diagram_families = _require_string_array(
+        expected["diagram_families"], label="cli-release expected diagram_families"
+    )
+    if diagram_families != sorted(diagram_families) or "error" in diagram_families:
+        raise ArchiveVerificationError("cli-release diagram_families must be sorted and exclude error")
     capability_ids = _require_string_array(
         expected["capabilities"],
         label="cli-release expected capabilities",
@@ -444,7 +451,7 @@ def _cli_release_runtime_ids(
     _require_exact_json(
         "cli-release cargo.features",
         cargo_features,
-        runtime_ids,
+        sorted(["all-diagrams", *runtime_ids]),
     )
     for label, values in (
         ("cli-release expected runtime_ids", runtime_ids),
@@ -461,7 +468,7 @@ def _cli_release_runtime_ids(
         raise ArchiveVerificationError(
             "cli-release references unknown capabilities: " + ", ".join(unknown)
         )
-    return runtime_ids, output_ids
+    return runtime_ids, output_ids, diagram_families
 
 
 def _repository_compatibility(repo_root: Path) -> dict[str, str]:
@@ -583,7 +590,7 @@ def _release_capabilities_contract(
         require_sorted_compiled_prerequisites=True,
     )
     digest = capability_surface_digest(surface)
-    runtime_ids, expected_output_ids = _cli_release_runtime_ids(
+    runtime_ids, expected_output_ids, diagram_families = _cli_release_runtime_ids(
         profiles,
         surface=surface,
     )
@@ -619,6 +626,7 @@ def _release_capabilities_contract(
             "digest": digest,
         },
         "commands": _cli_release_commands(runtime_ids),
+        "diagram_families": diagram_families,
         "capabilities": capabilities,
         "outputs": outputs,
     }
@@ -889,7 +897,8 @@ def verify_runtime_contract(
         )
         validator(payload)
 
-    _verify_rustdoc_runtime(command, runner=runner)
+    if "rustdoc" in expected_capabilities["commands"]:
+        _verify_rustdoc_runtime(command, runner=runner)
 
 
 def verify_release_archive(

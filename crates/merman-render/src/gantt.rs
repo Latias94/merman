@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
-use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, mermaid_html_breaks_to_newlines};
 use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt::Write as _;
@@ -1338,7 +1338,10 @@ pub(crate) fn layout_gantt_diagram_typed(
     let mut section_titles: Vec<GanttSectionTitleLayout> = Vec::new();
     let mut prev_gap: i64 = 0;
     for (idx, (sec, h)) in category_heights.iter().enumerate() {
-        let lines = DeterministicTextMeasurer::normalized_text_lines(sec);
+        let lines = mermaid_html_breaks_to_newlines(sec)
+            .split('\n')
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
         let dy_em = -((lines.len().saturating_sub(1)) as f64) / 2.0;
 
         let sec_num = gantt_section_class_suffix(sec, &categories, number_section_styles);
@@ -1453,7 +1456,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-gantt"))]
 mod tests {
     use super::{
         ElapsedTickState, ceil_elapsed_tick_start_with, ceil_tick_start, format_axis_tick_label,

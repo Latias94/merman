@@ -1002,7 +1002,7 @@ fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
     }
 }
 fn marker_color_id(color: &str) -> String {
-    // Mermaid's DOM marker id coloring logic (Mermaid@11.16.1) uses:
+    // Mermaid's DOM marker id coloring logic (Mermaid 12) uses:
     // `strokeColor.replace(/[^\dA-Za-z]/g, '_')`
     //
     // Important: this does not trim whitespace. As a result, values like `" orange"` (leading
@@ -1059,11 +1059,16 @@ fn push_extra_marker(
 ) {
     let raw_color = raw_color.trim_end_matches(';');
     let color = if security_level_loose {
-        raw_color
+        Some(raw_color)
+    } else if raw_color
+        .trim_start()
+        .strip_prefix("stroke:")
+        .is_some_and(|value| !value.trim_start().starts_with('#'))
+    {
+        // Strict/sandbox sanitization drops raw stroke tokens without changing marker identity.
+        None
     } else {
-        // Mermaid writes the regex capture verbatim, then DOMPurify trims ordinary SVG attribute
-        // values for strict and sandbox output.
-        raw_color.trim()
+        Some(raw_color.trim())
     };
     let spec = flowchart_marker_shape_spec(key.base, key.margin);
 
@@ -1083,7 +1088,9 @@ fn push_extra_marker(
         escape_xml_display(diagram_type)
     );
     let _ = out.write_str(spec.shape);
-    key.paint(hand_drawn).push(out, color);
+    if let Some(color) = color {
+        key.paint(hand_drawn).push(out, color);
+    }
     let _ = out.write_str("/></marker>");
 }
 
@@ -1139,7 +1146,7 @@ mod tests {
         crate::resources::OperationWorkMeter::new(policy)
     }
 
-    fn edge(id: &str, edge_type: &str) -> crate::flowchart::FlowEdge {
+    pub(super) fn edge(id: &str, edge_type: &str) -> crate::flowchart::FlowEdge {
         crate::flowchart::FlowEdge {
             id: id.to_string(),
             from: "A".to_string(),
@@ -2103,5 +2110,59 @@ mod tests {
         assert!(evidence.applied().is_empty());
         assert!(evidence.residuals().is_empty());
         assert!(evidence.not_applicable_mechanisms().is_empty());
+    }
+}
+#[cfg(test)]
+mod paint_security_tests {
+    use super::*;
+
+    #[test]
+    fn strict_mode_drops_raw_stroke_tokens_but_loose_mode_preserves_them() {
+        for (raw, loose, expected) in [
+            ("stroke:DarkGray", false, None),
+            (" stroke:DarkGray", false, None),
+            ("#333", false, Some("#333")),
+            ("stroke:#123456", false, Some("stroke:#123456")),
+            ("stroke:DarkGray", true, Some("stroke:DarkGray")),
+        ] {
+            let work = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let edge = super::tests::edge("edge", "arrow_point");
+            let mut plan = FlowchartMarkerEmissionPlan::new(false);
+            plan.register_edge(&edge, Some(raw), &work).unwrap();
+            plan.finalize_svg_budget("diagram", "flowchart-v2", loose, &work)
+                .unwrap();
+            let defs = FlowchartDefs {
+                diagram_id: "diagram",
+                diagram_type: "flowchart-v2",
+                marker_plan: &plan,
+                security_level_loose: loose,
+                work_meter: &work,
+            };
+            let mut out = String::from("<svg><defs>");
+            defs.push_extra_markers(&mut out).unwrap();
+            out.push_str("</defs></svg>");
+            let document = roxmltree::Document::parse(&out).unwrap();
+            let marker = document
+                .descendants()
+                .find(|node| node.has_tag_name("marker"))
+                .expect("colored marker retains its identity");
+            assert_eq!(
+                marker.attribute("id"),
+                Some(format!("diagram_flowchart-v2-pointEnd_{}", marker_color_id(raw)).as_str()),
+            );
+            let shape = marker
+                .children()
+                .find(|node| node.is_element())
+                .expect("colored marker shape");
+            for attribute in ["stroke", "fill"] {
+                assert_eq!(
+                    shape.attribute(attribute),
+                    expected,
+                    "raw={raw:?}, loose={loose}, attribute={attribute}: {out}",
+                );
+            }
+        }
     }
 }

@@ -32,6 +32,7 @@ impl FamilyPaintDefaultPaths {
     }
 }
 
+#[cfg(feature = "diagram-requirement")]
 const REQUIREMENT_TEXT_PAINT_DEFAULTS: FamilyPaintDefaultPaths = FamilyPaintDefaultPaths::new(
     DiagramFamilyId::REQUIREMENT,
     &[ThemeTarget::Text],
@@ -45,12 +46,17 @@ pub(crate) fn bind_theme_parse_defaults(
     mut plan: ThemeCompatibilityPlan,
     spec: &DiagramThemeSpec,
 ) -> ThemeCompatibilityPlan {
-    for defaults in [
+    let defaults: &[&FamilyPaintDefaultPaths] = &[
+        #[cfg(feature = "diagram-git-graph")]
         &crate::gitgraph::GITGRAPH_NODE_PAINT_DEFAULTS,
+        #[cfg(feature = "diagram-er")]
         &crate::er::ER_PAINT_DEFAULTS,
+        #[cfg(feature = "diagram-requirement")]
         &crate::requirement::REQUIREMENT_RELATION_PAINT_DEFAULTS,
+        #[cfg(feature = "diagram-requirement")]
         &REQUIREMENT_TEXT_PAINT_DEFAULTS,
-    ] {
+    ];
+    for defaults in defaults {
         if defaults.requested_by(spec) {
             plan = plan
                 .try_with_post_detection_default_paths(defaults.family.as_str(), defaults.paths)

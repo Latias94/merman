@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 import {
@@ -9,10 +10,14 @@ import {
   type RootViewportAudit,
 } from "./root-viewport-oracle.ts";
 import {
+  FILTERED_TITLE_FONT_RESIDUAL_REASON,
+  filteredTitleFontAuditSha256,
   matchingRootViewportResidual,
   parseRootViewportResidualCatalog,
   rootViewportResidualAuditEvidenceSha256,
   unusedRootViewportResidualFixtures,
+  type RootViewportAuditEnvironment,
+  type RootViewportReportedAudit,
 } from "./root-viewport-residuals.ts";
 
 test("exact root viewport residuals bind SVGs and live audit evidence", () => {
@@ -349,6 +354,140 @@ test("exact residual eligibility remains fail closed", () => {
     ).toBe(false);
   }
 });
+
+test("filtered title receipts require both SVGs and the reviewed audit fingerprint", () => {
+  const { environment, local, upstream, receipt, catalog } = filteredTitleReceiptFixture();
+  const fingerprint = filteredTitleFontAuditSha256(environment, local, upstream)!;
+  expect(matchingRootViewportResidual(catalog, receipt.fixture,
+    receipt.localSvgSha256, receipt.upstreamSvgSha256, receipt.auditEvidenceSha256, fingerprint)).toEqual(receipt);
+  expect(matchingRootViewportResidual(catalog, receipt.fixture,
+    receipt.localSvgSha256, receipt.upstreamSvgSha256, "c".repeat(64), fingerprint)).toBeNull();
+  for (const [localSha, upstreamSha, auditSha] of [
+    ["c".repeat(64), receipt.upstreamSvgSha256, fingerprint],
+    [receipt.localSvgSha256, "c".repeat(64), fingerprint],
+    [receipt.localSvgSha256, null, fingerprint],
+    [receipt.localSvgSha256, receipt.upstreamSvgSha256, "c".repeat(64)],
+    [receipt.localSvgSha256, receipt.upstreamSvgSha256, undefined],
+  ] as const) {
+    expect(matchingRootViewportResidual(catalog, receipt.fixture,
+      localSha, upstreamSha, receipt.auditEvidenceSha256, auditSha)).toBeNull();
+  }
+  for (const auditSha256 of [undefined, null, "bad", "0".repeat(64)]) {
+    expect(() => parseRootViewportResidualCatalog(JSON.stringify({
+      ...catalog, entries: [{ ...receipt, auditSha256 }],
+    }))).toThrow(/requires an exact audit/u);
+  }
+  expect(() => parseRootViewportResidualCatalog(JSON.stringify({
+    ...catalog, entries: [{ ...receipt, reason: "unknown" }],
+  }))).toThrow(/unsupported reason/u);
+  expect(() => parseRootViewportResidualCatalog(JSON.stringify({
+    ...catalog, entries: [{ ...receipt,
+      reason: "deterministic-text-measurement-out-of-domain-extrapolation" }],
+  }))).toThrow(/does not support an audit/u);
+});
+
+test("filtered title fingerprint binds each environment and paired paint field", () => {
+  const { environment, local, upstream, receipt } = filteredTitleReceiptFixture();
+  for (const key of Object.keys(environment) as (keyof RootViewportAuditEnvironment)[]) {
+    expect(filteredTitleFontAuditSha256({ ...environment, [key]: `${environment[key]}-changed` },
+      local, upstream), key).not.toBe(receipt.auditSha256);
+  }
+  const mutations: ((audit: RootViewportReportedAudit) => void)[] = [
+    (audit) => { audit.root!.width += 1; },
+    (audit) => { audit.geometryUnion!.right += 1; },
+    (audit) => { audit.paintedElementCount += 1; },
+    (audit) => { audit.paintAudit.guardCssPx += 1; },
+    (audit) => { audit.paintAudit.captureWidthCssPx! += 1; },
+    (audit) => { audit.paintAudit.captureHeightCssPx! += 1; },
+    (audit) => { audit.violations[0].paintedPixelCount += 1; },
+    (audit) => { audit.violations[0].rect.left += 1; },
+    (audit) => { audit.violations[0].edge = "bottom"; },
+    (audit) => { audit.structuralViolations[0].rect.right += 1; },
+    (audit) => { audit.structuralViolations[0].paintedPixelCount += 1; },
+    (audit) => { audit.paintedPixelCount += 1; },
+    (audit) => { audit.structuralPaintedPixelCount += 1; },
+    (audit) => { audit.structuralPixelSha256 = "d".repeat(64); },
+  ];
+  for (const mutate of mutations) {
+    for (const side of ["local", "upstream"] as const) {
+      const pair = structuredClone({ local, upstream });
+      mutate(pair[side]);
+      expect(filteredTitleFontAuditSha256(environment, pair.local, pair.upstream))
+        .not.toBe(receipt.auditSha256);
+    }
+  }
+});
+
+test("filtered title receipts reject incomplete roots and unbounded capture evidence", () => {
+  const { environment, local, upstream } = filteredTitleReceiptFixture();
+  expect(filteredTitleFontAuditSha256(environment, local, null)).toBeNull();
+  expect(filteredTitleFontAuditSha256({ ...environment, browser: "" }, local, upstream)).toBeNull();
+  for (const reason of [
+    "capture-boundary", "capture-limit", "marker-capture-unbounded",
+    "image-decode-failed", "image-decode-unavailable", "active-box-shadow", "active-text-shadow",
+  ] as const) {
+    for (const side of ["local", "upstream"] as const) {
+      const pair = structuredClone({ local, upstream });
+      pair[side].paintAudit.indeterminateReasons.push(reason);
+      expect(filteredTitleFontAuditSha256(environment, pair.local, pair.upstream), reason).toBeNull();
+    }
+  }
+  const mutations: ((audit: RootViewportReportedAudit) => void)[] = [
+    (audit) => { audit.root = null; },
+    (audit) => { audit.root!.height = 0; },
+    (audit) => { audit.root!.width = Number.NaN; },
+    (audit) => { audit.paintAudit.status = "missing-root"; },
+    (audit) => { audit.paintAudit.status = "collected"; },
+    (audit) => { audit.paintAudit.captureWidthCssPx = null; },
+    (audit) => { audit.paintAudit.captureHeightCssPx = 1; },
+    (audit) => { audit.paintAudit.indeterminateReasons = []; },
+    (audit) => { audit.paintAudit.indeterminateReasons.push("active-filter"); },
+    (audit) => { audit.violations[0].reachesAuditBoundary = true; },
+    (audit) => { audit.structuralViolations[0].reachesAuditBoundary = true; },
+  ];
+  for (const mutate of mutations) {
+    for (const side of ["local", "upstream"] as const) {
+      const pair = structuredClone({ local, upstream });
+      mutate(pair[side]);
+      expect(filteredTitleFontAuditSha256(environment, pair.local, pair.upstream)).toBeNull();
+    }
+  }
+});
+
+function filteredTitleReceiptFixture() {
+  const environment: RootViewportAuditEnvironment = {
+    playwright: "1.62.1", browser: "Chromium 151.0.7922.34", platform: "linux-x64",
+    locale: "en-US", timezone: "UTC", localPaintAudit: "transparent Chromium screenshot alpha",
+    upstreamPaintAudit: "collected after any local overflow or indeterminate evidence; otherwise omitted",
+  };
+  const localAudit = fixtureAudit({ status: "indeterminate", indeterminateReasons: ["active-filter"],
+    structuralOverflows: [{ edge: "right", depth: 2 }] });
+  const upstreamAudit = fixtureAudit({ status: "indeterminate", indeterminateReasons: ["active-filter"],
+    structuralOverflows: [{ edge: "right", depth: 1 }] });
+  expect(classifyRootViewportContainment(localAudit, upstreamAudit)).toBe("blocking");
+  expect(exactRootViewportResidualEvidenceIsEligible(localAudit, upstreamAudit)).toBe(false);
+  function reported({ structuralPixelKeys, ...audit }: RootViewportAudit): RootViewportReportedAudit {
+    return { ...audit,
+      paintedPixelCount: audit.violations.reduce((sum, item) => sum + item.paintedPixelCount, 0),
+      structuralPaintedPixelCount: structuralPixelKeys.length,
+      structuralPixelSha256: createHash("sha256").update(structuralPixelKeys.join("\n")).digest("hex"),
+    };
+  }
+  const local = reported(localAudit);
+  const upstream = reported(upstreamAudit);
+  const auditSha256 = filteredTitleFontAuditSha256(environment, local, upstream)!;
+  expect(auditSha256).toMatch(/^[0-9a-f]{64}$/u);
+  const auditEvidenceSha256 = rootViewportResidualAuditEvidenceSha256(
+    localAudit, upstreamAudit, "blocking",
+  );
+  const receipt = { fixture: "flowchart/title", localSvgSha256: "a".repeat(64),
+    upstreamSvgSha256: "b".repeat(64), reason: FILTERED_TITLE_FONT_RESIDUAL_REASON,
+    auditEvidenceSha256, auditSha256 };
+  const catalog = parseRootViewportResidualCatalog(JSON.stringify({ schemaVersion: 2,
+    comparisonRevision: "browser-root-paint-containment-v11", auditFingerprintVersion: 1,
+    entries: [receipt] }));
+  return { environment, local, upstream, receipt, catalog };
+}
 
 test("upstream comparison blocks new edges and deeper structural overflow", () => {
   const upstreamOverflow = fixtureAudit({

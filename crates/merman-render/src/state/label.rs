@@ -332,6 +332,16 @@ mod tests {
     }
 
     #[test]
+    fn elk_edge_breaks_follow_mermaid_regex_before_markdown() {
+        assert_eq!(
+            state_edge_label_xhtml(&crate::text::mermaid_html_breaks_to_newlines(
+                "Hello<br/>- l1<br/>- l2"
+            )),
+            "<p>Hello</p>- l1 - l2"
+        );
+    }
+
+    #[test]
     fn edge_xhtml_keeps_trailing_underscores_literal() {
         assert_eq!(
             state_edge_label_xhtml("Transition1_____"),

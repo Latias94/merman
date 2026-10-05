@@ -5,20 +5,20 @@
       "nodes": [
         {
           "id": "Animal",
-          "x": 71.119,
-          "y": 72.0,
-          "width": 142.238,
-          "height": 144.0,
+          "x": 75.731,
+          "y": 79.5,
+          "width": 127.462,
+          "height": 135.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 142.238,
-        "max_y": 144.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 139.462,
+        "max_y": 147.0
       }
     }
   }

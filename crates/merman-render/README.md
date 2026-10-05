@@ -25,7 +25,15 @@ Direct use is reserved for Merman maintainers and advanced integrations that del
 
 ## Feature Selection
 
-The base crate provides SVG and the shared Mermaid/Dagre rendering path with no Cargo features. Optional features add only distinct backends or system adapters:
+Defaults are empty. Select `all-diagrams` or the required `diagram-*` families for layout and SVG
+handlers; these selectors also forward to core. SVG itself is intrinsic to this crate. For example,
+`default-features = false, features = ["diagram-flowchart", "diagram-gantt"]` selects those two
+families without optional engines or math. Family payloads and artifacts are conditional public
+types. If another dependency widens core, a family missing its local render handler returns an
+explicit unsupported result before backend planning. See the
+[migration guide](../../docs/FEATURES.md#select-diagram-families).
+
+Optional features add distinct backends or system adapters:
 
 | Feature | Adds |
 | --- | --- |
@@ -34,7 +42,7 @@ The base crate provides SVG and the shared Mermaid/Dagre rendering path with no 
 | `math` | RaTeX parsing, layout, SVG output, and embedded math fonts. |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Explicit host runtime adapters; none are selected by default. |
 
-Omitting an optional layout or math backend preserves parsing and semantic support. Rendering a diagram that needs the missing backend returns a typed capability error instead of silently choosing a different layout.
+Omitting an optional backend preserves parsing and semantic support. Flowchart, Class, and ER follow Mermaid 12's registered-layout lookup: an unknown layout, or an ELK request in a build without `layout-elk`, resolves to Dagre before capability admission. The original requested configuration remains available in the prepared artifact metadata. An installed backend denied by the host policy still returns a typed capability error. Layout failures, cancellation, work limits, and missing math support do not trigger layout fallback.
 
 ## Render Environment
 
@@ -50,6 +58,8 @@ once and also applies its frozen date and timezone to date-sensitive parsing; di
 callers are responsible for configuring the core `Engine` consistently.
 
 `TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The built-in deterministic measurer is a font-agnostic fallback, not a named-font or browser formula; an authoritative host measurement bypasses it.
+
+Use `DeterministicTextMeasurer::with_width_callback(...)` when the application can always return a width for a complete string and Merman should handle wrapping. If measurement can fail or must vary by operation, use `HostTextMeasurer` so Merman can validate the result, fall back, and report which source it used.
 
 This is a breaking replacement for independently configured layout and SVG services. Text and math adapters no longer live in `LayoutOptions`, and render code does not read process-global policy. Production request values stay in `SvgRenderOptions`; diagnostics, including timing output, live in `SvgDebugOptions` and are accepted only by the explicit `*_with_debug` entry points.
 

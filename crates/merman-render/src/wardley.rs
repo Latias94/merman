@@ -1249,6 +1249,6 @@ fn layout_wardley_diagram_with_font_family(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-wardley"))]
 #[path = "wardley_layout_tests.rs"]
 mod wardley_layout_tests;

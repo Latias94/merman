@@ -3,7 +3,7 @@
 This matrix records the current product readiness bar for Mermaid families and editor features.
 It is intentionally conservative: only parser-backed facts count as mature body semantics.
 
-This table is the explicit maturity contract for 35 admitted public diagram types. Every public
+This table is the explicit maturity contract for 37 admitted public diagram types. Every public
 type in the current release is admitted, but the LSP contract remains independent from the render
 catalog: a future type returned by `merman_core::supported_diagrams()` requires its own editor-evidence
 review before joining this matrix. The lower-level family catalog also contains syntax aliases,
@@ -119,10 +119,12 @@ entity. It does not mean that every family grammar exposes renameable entities a
 | Wardley | `wardley` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for anchors, components, pipelines, links, evolution references, notes, and source-mapped coordinates. |
 | XY Chart | `xychart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
 | ZenUML | `zenuml` | Yes | Yes | Yes | Yes | Yes | Yes | Grammar-derived family facts cover source-mapped participants, groups, messages, creation, calls, assignments, returns, references, fragments, titles, and payload spans. |
+| Agentflow | `agentflow` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for flow containers, nodes, edges, directives, diagnostics, and source-mapped entity facts. |
+| Usecase | `usecase` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for actors, use cases, boundaries, relationships, notes, directives, and source-mapped entity facts. |
 
 ## Coverage Boundary
 
-The matrix above explicitly admits all 35 public types in the current release. Lower-level catalog
+The matrix above explicitly admits all 37 public types in the current release. Lower-level catalog
 ids such as `flowchart-v2`, `flowchart-elk`, `stateDiagram`, and `classDiagram` inherit the matching
 public product row. Source headers such as `stateDiagram-v2` and `classDiagram-v2` map to the latter
 two catalog ids; they are not separate product types. The following logical family is the only

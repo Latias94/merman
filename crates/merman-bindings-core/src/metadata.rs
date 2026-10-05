@@ -170,6 +170,8 @@ pub struct RuntimeEmbeddedImageLimits {
 #[non_exhaustive]
 pub struct RuntimeRegistryContract {
     pub diagram_family_count: usize,
+    /// Sorted logical families with a semantic parser in this consumer.
+    pub diagram_families: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -336,6 +338,15 @@ impl ValidatedArtifactContract {
             output_contracts: runtime_output_contracts_for(&capabilities),
             registry: RuntimeRegistryContract {
                 diagram_family_count: diagram_family_capabilities().len(),
+                diagram_families: diagram_family_capabilities()
+                    .iter()
+                    .filter(|family| {
+                        family.has_semantic_parser && family.logical_family_kind != "error"
+                    })
+                    .map(|family| family.logical_family_kind)
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
             },
             resources: runtime_resource_contract_for(self, &capabilities),
             capabilities,
@@ -1300,6 +1311,16 @@ mod tests {
             diagram_family_capabilities().len()
         );
 
+        let expected_families = diagram_family_capabilities()
+            .into_iter()
+            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+            .map(|family| family.logical_family_kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            catalog.registry.diagram_families,
+            expected_families.into_iter().collect::<Vec<_>>()
+        );
+
         let resources = &catalog.resources;
         let expected_limit_count = crate::binding_resource_contract().limits.len();
         assert_eq!(resources.profiles.len(), 4);
@@ -1412,7 +1433,21 @@ mod tests {
         #[cfg(not(feature = "svg"))]
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
-        assert_eq!(interactive.limits["max_layout_work_units"], Some(800_000));
+        {
+            assert_eq!(
+                interactive.limits["max_layout_work_units"],
+                Some(14_100_000)
+            );
+            let trusted_native = resources
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "trusted-native")
+                .expect("trusted-native profile");
+            assert_eq!(
+                trusted_native.limits["max_layout_work_units"],
+                Some(15_000_000)
+            );
+        }
         let json: Value =
             serde_json::from_slice(&contract.runtime_catalog_json(2).unwrap()).unwrap();
         assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);
@@ -1648,13 +1683,45 @@ mod tests {
             .expect("flowchart capability should be present");
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
         assert_eq!(flowchart.family_id, merman::DiagramFamilyId::FLOWCHART);
-        assert!(flowchart.has_detector);
+        assert_eq!(flowchart.logical_family_kind, "flowchart");
+        assert_eq!(flowchart.render_model_kind, Some("flowchart"));
+        assert!(!flowchart.has_detector);
         assert!(flowchart.has_semantic_parser);
         assert!(flowchart.has_editor_parser);
         assert!(flowchart.has_combined_parser);
         assert!(flowchart.has_render_parser);
         assert!(!flowchart.has_header);
         assert_eq!(flowchart.config_namespace, Some("flowchart"));
+
+        let flowchart_v2 = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "flowchart-v2")
+            .expect("detectable flowchart variant should be present");
+        assert_eq!(flowchart_v2.metadata_id, Some("flowchart"));
+        assert_eq!(flowchart_v2.logical_family_kind, "flowchart");
+        assert_eq!(flowchart_v2.render_model_kind, Some("flowchart"));
+        assert!(flowchart_v2.has_detector);
+        assert!(flowchart_v2.has_header);
+
+        for (diagram_type, metadata_id) in [
+            ("agentflow", Some("agentflow")),
+            ("usecase", Some("usecase")),
+        ] {
+            let capability = capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == diagram_type)
+                .unwrap_or_else(|| panic!("{diagram_type} capability should be present"));
+            assert_eq!(capability.metadata_id, metadata_id);
+            assert_eq!(capability.logical_family_kind, diagram_type);
+            assert_eq!(capability.render_model_kind, Some(diagram_type));
+            assert!(capability.has_detector);
+            assert!(capability.has_semantic_parser);
+            assert!(capability.has_editor_parser);
+            assert!(capability.has_combined_parser);
+            assert!(capability.has_render_parser);
+            assert!(capability.has_header);
+            assert_eq!(capability.config_namespace, Some(diagram_type));
+        }
 
         let swimlane = capabilities
             .iter()
@@ -1933,6 +2000,7 @@ mod tests {
                     "packet",
                     "sequence",
                     "state",
+                    "swimlane",
                     "timeline",
                     "treeView",
                     "xychart",
@@ -2029,7 +2097,7 @@ mod tests {
                     == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 34);
         let zenuml = ascii_capability(&capabilities, "zenuml");
         assert_eq!(zenuml.semantic_coverage, None);
         assert_eq!(zenuml.primary_projection, "none");
@@ -2101,13 +2169,21 @@ mod tests {
             .find(|capability| capability["diagram_type"] == "flowchart")
             .expect("flowchart family capability should be present");
         assert_eq!(flowchart["family_id"], "flowchart");
-        assert!(flowchart.get("logical_family_kind").is_none());
-        assert!(flowchart.get("render_model_kind").is_none());
-        assert_eq!(flowchart["has_detector"], true);
+        assert_eq!(flowchart["logical_family_kind"], "flowchart");
+        assert_eq!(flowchart["render_model_kind"], "flowchart");
+        assert_eq!(flowchart["has_detector"], false);
         assert_eq!(flowchart["has_editor_parser"], true);
         assert_eq!(flowchart["has_combined_parser"], true);
         assert_eq!(flowchart["has_header"], false);
         assert_eq!(flowchart["config_namespace"], "flowchart");
+        let flowchart_v2 = family_capabilities
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|capability| capability["diagram_type"] == "flowchart-v2")
+            .expect("detectable flowchart variant should be present");
+        assert_eq!(flowchart_v2["has_detector"], true);
+        assert_eq!(flowchart_v2["has_header"], true);
         if cfg!(feature = "analysis") {
             let lint_rules: Value =
                 serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();

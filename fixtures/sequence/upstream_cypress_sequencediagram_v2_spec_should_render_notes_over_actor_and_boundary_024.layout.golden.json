@@ -6,23 +6,23 @@
         {
           "id": "actor-top-Alice",
           "x": 75.0,
-          "y": 32.5,
+          "y": 37.0,
           "width": 150.0,
-          "height": 65.0,
+          "height": 74.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-Charlie",
           "x": 275.0,
-          "y": 32.0,
+          "y": 37.0,
           "width": 150.0,
-          "height": 64.0,
+          "height": 74.0,
           "is_cluster": false
         },
         {
           "id": "note-0",
           "x": 75.0,
-          "y": 94.5,
+          "y": 103.5,
           "width": 150.0,
           "height": 39.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "note-1",
           "x": 275.0,
-          "y": 143.5,
+          "y": 152.5,
           "width": 150.0,
           "height": 39.0,
           "is_cluster": false
@@ -38,17 +38,17 @@
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 215.5,
+          "y": 229.0,
           "width": 150.0,
-          "height": 65.0,
+          "height": 74.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Charlie",
           "x": 275.0,
-          "y": 215.0,
+          "y": 229.0,
           "width": 150.0,
-          "height": 64.0,
+          "height": 74.0,
           "is_cluster": false
         }
       ],
@@ -62,11 +62,11 @@
           "points": [
             {
               "x": 75.0,
-              "y": 80.0
+              "y": 74.0
             },
             {
               "x": 75.0,
-              "y": 183.0
+              "y": 192.0
             }
           ],
           "label": null,
@@ -87,11 +87,11 @@
           "points": [
             {
               "x": 275.0,
-              "y": 80.0
+              "y": 74.0
             },
             {
               "x": 275.0,
-              "y": 183.0
+              "y": 192.0
             }
           ],
           "label": null,
@@ -109,7 +109,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 400.0,
-        "max_y": 259.0
+        "max_y": 277.0
       }
     }
   }

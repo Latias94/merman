@@ -320,12 +320,8 @@ fn quote_html_attributes<'a>(tag: &'a str, max: usize) -> Result<Cow<'a, str>, X
             // Leave malformed input for the final validator; never drop a partial attribute.
             return Ok(Cow::Borrowed(tag));
         };
-        let (Ok(name), Ok(value)) = (
-            std::str::from_utf8(attribute.key.as_ref()),
-            std::str::from_utf8(attribute.value.as_ref()),
-        ) else {
-            return Ok(Cow::Borrowed(tag));
-        };
+        let name = attribute.key.as_ref();
+        let value = attribute.value.as_ref();
         let name = if value.is_empty() && name.ends_with('/') && inner.ends_with(name) {
             self_closed = true;
             name.trim_end_matches('/')

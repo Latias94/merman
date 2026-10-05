@@ -131,7 +131,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
     for (key, e) in layout.edge_owners.iter().zip(&layout.edges) {
         let root = hierarchy_plan.edge_root(key)?;
         let y_off = y_offset_for_root(root);
-        for lbl in [
+        let missing_section_label =
+            edge_geom::missing_section_label_position(ctx, key, e, ctx.tx, ctx.ty);
+        for (label_index, lbl) in [
             e.label.as_ref(),
             e.start_label_left.as_ref(),
             e.start_label_right.as_ref(),
@@ -139,18 +141,26 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
             e.end_label_right.as_ref(),
         ]
         .into_iter()
-        .flatten()
+        .enumerate()
+        .filter_map(|(index, label)| label.map(|label| (index, label)))
         {
+            // ELK main labels may move after clipping. Include their final painted position
+            // below, after terminal straightening and paired-label separation.
+            if ctx.uses_elk_adapter_dom && label_index == 0 {
+                continue;
+            }
             let label_width = lbl.width;
             let hw = label_width / 2.0;
             let label_height = lbl.height;
             let hh = label_height / 2.0;
-            include_rect(
-                lbl.x - hw,
-                lbl.y + y_off - hh,
-                lbl.x + hw,
-                lbl.y + y_off + hh,
-            );
+            let (x, y) = if label_index == 0
+                && let Some(point) = &missing_section_label
+            {
+                (point.x, point.y)
+            } else {
+                (lbl.x, lbl.y)
+            };
+            include_rect(x - hw, y + y_off - hh, x + hw, y + y_off + hh);
         }
     }
 
@@ -215,6 +225,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
         let hand_drawn = flowchart_config_diagram_look(ctx.config).is_hand_drawn();
         let _g = timing.section(viewbox_edge_curve_bounds);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
+        let mut prepared_routes = Vec::new();
+        let mut prepared_edges = Vec::new();
         for e in render_edges {
             let edge_ref = e.as_ref();
             let key = edge_ref.key;
@@ -234,23 +246,26 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                     })
             };
 
-            let Some(geom) = ({
-                detail.viewbox_edge_curve_geom_calls += 1;
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
-                flowchart_compute_edge_path_geom(
-                    FlowchartEdgePathGeomRequest {
-                        ctx,
-                        key,
-                        edge,
-                        origin_x: off.origin_x,
-                        origin_y: off.origin_y,
-                        trace_enabled: false,
-                        collapse_degenerate_subgraph_route: hierarchy_plan
-                            .is_degenerate_subgraph_descendant_edge(ctx, edge),
-                    },
-                    &mut scratch,
-                )
-            }) else {
+            let request = FlowchartEdgePathGeomRequest {
+                ctx,
+                key,
+                edge,
+                origin_x: off.origin_x,
+                origin_y: off.origin_y,
+                trace_enabled: false,
+                collapse_degenerate_subgraph_route: hierarchy_plan
+                    .is_degenerate_subgraph_descendant_edge(ctx, edge),
+            };
+            if ctx.uses_elk_adapter_dom {
+                if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
+                    prepared_routes.push(route);
+                    prepared_edges.push((edge_ref, off));
+                }
+                continue;
+            }
+            detail.viewbox_edge_curve_geom_calls += 1;
+            let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
+            let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch) else {
                 continue;
             };
             if geom.bounds_skipped_for_viewbox {
@@ -289,12 +304,87 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
             }
         }
 
-        if ctx.swimlane_direction.is_some() {
+        if ctx.uses_elk_adapter_dom {
+            if ctx
+                .config
+                .as_value()
+                .get("elk")
+                .and_then(|elk| elk.get("straightenEdges"))
+                .and_then(serde_json::Value::as_bool)
+                != Some(false)
+            {
+                edge_geom::straighten_edge_terminals(&mut prepared_routes, ctx.work_meter)?;
+            }
+            edge_geom::separate_edge_labels(
+                &mut prepared_routes,
+                prepared_edges.iter().map(|(edge, _)| {
+                    (
+                        edge.edge.from.as_str(),
+                        edge.edge.to.as_str(),
+                        ctx.model
+                            .edge_label_for_render(edge.key.semantic_index(), edge.edge)
+                            .is_some_and(|label| !label.is_empty()),
+                    )
+                }),
+                ctx.work_meter,
+            )?;
+            for ((edge, off), route) in prepared_edges.into_iter().zip(prepared_routes) {
+                let key = edge.key;
+                let edge = edge.edge;
+                detail.viewbox_edge_curve_geom_calls += 1;
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
+                let Some(geom) = edge_geom::finish_edge_route(
+                    FlowchartEdgePathGeomRequest {
+                        ctx,
+                        key,
+                        edge,
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        trace_enabled: false,
+                        collapse_degenerate_subgraph_route: hierarchy_plan
+                            .is_degenerate_subgraph_descendant_edge(ctx, edge),
+                    },
+                    route,
+                    &mut scratch,
+                ) else {
+                    continue;
+                };
+                let paint_outset = ctx
+                    .edge_style_plan
+                    .resolve_edge_stroke_width_for(
+                        key,
+                        edge,
+                        ctx.edge_theme,
+                        ctx.node_stroke_width,
+                        hand_drawn,
+                    )?
+                    .paint_outset()
+                    .unwrap_or(0.0);
+                if let Some(pb) = geom.pb {
+                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x - paint_outset);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform - paint_outset);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x + paint_outset);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform + paint_outset);
+                }
+                edge_path_cache.insert(
+                    key,
+                    FlowchartEdgePathCacheEntry {
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
+                        geom,
+                    },
+                );
+            }
+        }
+
+        if ctx.swimlane_direction.is_some() || ctx.uses_elk_adapter_dom {
             super::swimlane::apply_line_hops_to_edge_geometries(
                 edge_path_cache,
                 render_edges,
                 ctx.config,
                 ctx.work_meter,
+                ctx.uses_elk_adapter_dom,
             )?;
 
             // Line hops are a render-time replacement of the original path. Rebuild edge bounds
@@ -376,6 +466,34 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     ctx.label_effects
         .set(label_effects)
         .expect("label effects are prepared once");
+    if ctx.uses_elk_adapter_dom {
+        ctx.work_meter.charge(render_edges.len())?;
+        for edge in render_edges {
+            let key = edge.as_ref().key;
+            let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) else {
+                continue;
+            };
+            let Some(label) = layout_edge.label.as_ref() else {
+                continue;
+            };
+            let anchor = render::resolve_flowchart_edge_label_position(
+                ctx,
+                key,
+                layout_edge,
+                label,
+                0.0,
+                0.0,
+                edge_path_cache,
+                false,
+            );
+            let half_width = label.width / 2.0;
+            let half_height = label.height / 2.0;
+            bbox_min_x = bbox_min_x.min(anchor.x - half_width);
+            bbox_min_y = bbox_min_y.min(anchor.y - half_height);
+            bbox_max_x = bbox_max_x.max(anchor.x + half_width);
+            bbox_max_y = bbox_max_y.max(anchor.y + half_height);
+        }
+    }
 
     // Mermaid centers the title using the pre-title `getBBox()` of the rendered root group.
     let title_anchor_x = (bbox_min_x + bbox_max_x) / 2.0;

@@ -1,5 +1,7 @@
+#[cfg(any(feature = "diagram-class", feature = "diagram-sequence"))]
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "diagram-class")]
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,12 +47,14 @@ pub struct LayoutLabel {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassNodeRowMetrics {
     pub members: Vec<crate::text::TextMetrics>,
     pub methods: Vec<crate::text::TextMetrics>,
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassPreparedHtmlLabel {
     pub metrics: crate::text::TextMetrics,
     pub max_width_px: i64,
@@ -59,6 +63,7 @@ pub struct ClassPreparedHtmlLabel {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassPreparedHtmlNodeLabels {
     pub title: ClassPreparedHtmlLabel,
     pub annotation: Option<ClassPreparedHtmlLabel>,
@@ -67,6 +72,7 @@ pub struct ClassPreparedHtmlNodeLabels {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub enum ClassNodeLabelPlan {
     RowMetrics(ClassNodeRowMetrics),
     PreparedHtml(ClassPreparedHtmlNodeLabels),
@@ -137,6 +143,7 @@ pub struct LayoutEdge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-block")]
 pub struct BlockDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -150,6 +157,7 @@ pub struct BlockDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-requirement")]
 pub struct RequirementDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -157,6 +165,7 @@ pub struct RequirementDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-architecture")]
 pub struct ArchitectureDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -176,12 +185,14 @@ pub struct ArchitectureDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-architecture")]
 pub struct ArchitectureCompoundBounds {
     pub id: String,
     pub bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-architecture")]
 pub struct ArchitectureCytoscapeServiceBounds {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -195,19 +206,25 @@ pub struct ArchitectureCytoscapeServiceBounds {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-architecture")]
 pub struct ArchitectureCytoscapeServiceLabelMetrics {
     pub text_width: f64,
     pub half_width: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-mindmap")]
 pub struct MindmapDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub bounds: Option<Bounds>,
+    /// Swimlane decoration owned by the selected renderer, not semantic Mindmap nodes.
+    #[serde(skip)]
+    pub swimlane_lanes: Vec<LayoutCluster>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sankey")]
 pub struct SankeyNodeLayout {
     pub id: String,
     pub index: usize,
@@ -222,6 +239,7 @@ pub struct SankeyNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sankey")]
 pub struct SankeyLinkLayout {
     pub index: usize,
     pub source: String,
@@ -233,6 +251,7 @@ pub struct SankeyLinkLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sankey")]
 pub struct SankeyDiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -244,6 +263,7 @@ pub struct SankeyDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-radar")]
 pub struct RadarAxisLayout {
     pub label: String,
     pub angle: f64,
@@ -254,6 +274,7 @@ pub struct RadarAxisLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-radar")]
 pub struct RadarGraticuleShapeLayout {
     pub kind: String,
     pub r: Option<f64>,
@@ -262,6 +283,7 @@ pub struct RadarGraticuleShapeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-radar")]
 pub struct RadarCurveLayout {
     pub label: String,
     pub class_index: i64,
@@ -271,6 +293,7 @@ pub struct RadarCurveLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-radar")]
 pub struct RadarLegendItemLayout {
     pub label: String,
     pub class_index: i64,
@@ -279,6 +302,7 @@ pub struct RadarLegendItemLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-radar")]
 pub struct RadarDiagramLayout {
     pub bounds: Option<Bounds>,
     pub svg_width: f64,
@@ -299,6 +323,7 @@ pub struct RadarDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-treemap")]
 pub struct TreemapSectionLayout {
     pub name: String,
     pub depth: i64,
@@ -314,6 +339,7 @@ pub struct TreemapSectionLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-treemap")]
 pub struct TreemapLeafLayout {
     pub name: String,
     pub value: f64,
@@ -330,6 +356,7 @@ pub struct TreemapLeafLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-treemap")]
 pub struct TreemapDiagramLayout {
     pub title_height: f64,
     pub width: f64,
@@ -351,6 +378,7 @@ pub struct TreemapDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennCircleLayout {
     pub set: String,
     pub x: f64,
@@ -359,6 +387,7 @@ pub struct VennCircleLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennAreaLayout {
     pub sets: Vec<String>,
     pub size: f64,
@@ -373,6 +402,7 @@ pub struct VennAreaLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennTextDebugCellLayout {
     pub x: f64,
     pub y: f64,
@@ -381,6 +411,7 @@ pub struct VennTextDebugCellLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennTextAreaLayout {
     pub sets: Vec<String>,
     pub center_x: f64,
@@ -392,6 +423,7 @@ pub struct VennTextAreaLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennTextNodeLayout {
     pub sets: Vec<String>,
     pub id: String,
@@ -404,6 +436,7 @@ pub struct VennTextNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-venn")]
 pub struct VennDiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -423,6 +456,7 @@ pub struct VennDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-xychart")]
 pub struct XyChartRectData {
     pub x: f64,
     pub y: f64,
@@ -436,6 +470,7 @@ pub struct XyChartRectData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-xychart")]
 pub struct XyChartTextData {
     pub text: String,
     pub x: f64,
@@ -452,6 +487,7 @@ pub struct XyChartTextData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-xychart")]
 pub struct XyChartPathData {
     pub path: String,
     #[serde(default)]
@@ -464,6 +500,7 @@ pub struct XyChartPathData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[cfg(feature = "diagram-xychart")]
 pub enum XyChartDrawableElem {
     #[serde(rename = "rect")]
     Rect {
@@ -486,6 +523,7 @@ pub enum XyChartDrawableElem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-xychart")]
 pub struct XyChartDiagramLayout {
     pub width: f64,
     pub height: f64,
@@ -504,6 +542,7 @@ pub struct XyChartDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub struct QuadrantChartTextData {
     pub text: String,
     pub x: f64,
@@ -519,9 +558,11 @@ pub struct QuadrantChartTextData {
     pub horizontal_pos: String,
 }
 
+#[cfg(feature = "diagram-quadrant-chart")]
 pub type QuadrantChartAxisLabelData = QuadrantChartTextData;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub struct QuadrantChartQuadrantData {
     pub x: f64,
     pub y: f64,
@@ -532,6 +573,7 @@ pub struct QuadrantChartQuadrantData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub struct QuadrantChartBorderLineData {
     #[serde(rename = "strokeWidth")]
     pub stroke_width: f64,
@@ -544,6 +586,7 @@ pub struct QuadrantChartBorderLineData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub struct QuadrantChartPointData {
     pub x: f64,
     pub y: f64,
@@ -557,6 +600,7 @@ pub struct QuadrantChartPointData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub struct QuadrantChartDiagramLayout {
     pub width: f64,
     pub height: f64,
@@ -571,6 +615,11 @@ pub struct QuadrantChartDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -591,6 +640,12 @@ pub struct FlowchartLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub enum SwimlaneDirection {
     #[serde(rename = "TB")]
     Tb,
@@ -602,6 +657,12 @@ pub enum SwimlaneDirection {
     Rl,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 impl SwimlaneDirection {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -614,6 +675,12 @@ impl SwimlaneDirection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneTitleRect {
     pub left: f64,
     pub right: f64,
@@ -622,6 +689,12 @@ pub struct SwimlaneTitleRect {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneNodeLayout {
     pub id: String,
     pub label: String,
@@ -643,6 +716,12 @@ pub struct SwimlaneNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneLaneLayout {
     pub id: String,
     pub title: String,
@@ -666,6 +745,12 @@ pub struct SwimlaneLaneLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneEdgeLayout {
     pub id: String,
     pub from: String,
@@ -678,26 +763,44 @@ pub struct SwimlaneEdgeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneLayout {
     pub direction: SwimlaneDirection,
     pub nodes: Vec<SwimlaneNodeLayout>,
     pub lanes: Vec<SwimlaneLaneLayout>,
     pub edges: Vec<SwimlaneEdgeLayout>,
     /// Render-only semantic occurrence ownership aligned with `edges`.
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     #[serde(skip)]
     pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
     pub bounds: Option<Bounds>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-state")]
 pub struct StateDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Registered ELK layout uses its own edge painting projection.
+    #[serde(skip)]
+    pub uses_elk_adapter_dom: bool,
+    #[serde(skip)]
+    pub elk_edge_paths: std::collections::HashMap<String, Vec<LayoutPoint>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -717,6 +820,7 @@ pub struct ClassDiagramLayout {
 }
 
 #[derive(Debug, Clone, Default)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassRenderRoot {
     pub namespace_id: Option<String>,
     pub cluster_ids: Vec<String>,
@@ -725,14 +829,17 @@ pub struct ClassRenderRoot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassRenderRootId(pub usize);
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub struct ClassRenderTree {
     pub roots: Vec<ClassRenderRoot>,
     pub top: ClassRenderRootId,
 }
 
+#[cfg(feature = "diagram-class")]
 impl Default for ClassRenderTree {
     fn default() -> Self {
         Self {
@@ -743,12 +850,14 @@ impl Default for ClassRenderTree {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub enum ClassRenderItem {
     Node(String),
     Subgraph(ClassRenderRootId),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-er")]
 pub struct ErDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -769,6 +878,7 @@ pub struct ErDiagramLayout {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-sequence")]
 pub struct SequenceBlockLayout {
     pub start_y: f64,
     pub stop_y: f64,
@@ -780,6 +890,7 @@ pub struct SequenceBlockLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sequence")]
 pub struct SequenceDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -793,12 +904,14 @@ pub struct SequenceDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-info")]
 pub struct InfoDiagramLayout {
     pub bounds: Option<Bounds>,
     pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-packet")]
 pub struct PacketBlockLayout {
     pub start: i64,
     pub end: i64,
@@ -810,11 +923,13 @@ pub struct PacketBlockLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-packet")]
 pub struct PacketWordLayout {
     pub blocks: Vec<PacketBlockLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-packet")]
 pub struct PacketDiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -829,6 +944,7 @@ pub struct PacketDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-pie")]
 pub struct PieSliceLayout {
     pub label: String,
     pub value: f64,
@@ -842,6 +958,7 @@ pub struct PieSliceLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-pie")]
 pub struct PieLegendItemLayout {
     pub label: String,
     pub value: f64,
@@ -850,6 +967,7 @@ pub struct PieLegendItemLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-pie")]
 pub struct PieDiagramLayout {
     pub bounds: Option<Bounds>,
     #[serde(default)]
@@ -866,6 +984,7 @@ pub struct PieDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-timeline")]
 pub struct TimelineNodeLayout {
     pub x: f64,
     pub y: f64,
@@ -883,6 +1002,7 @@ pub struct TimelineNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-timeline")]
 pub struct TimelineLineLayout {
     pub kind: String,
     pub x1: f64,
@@ -892,6 +1012,7 @@ pub struct TimelineLineLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-timeline")]
 pub struct TimelineTaskLayout {
     pub node: TimelineNodeLayout,
     #[serde(default)]
@@ -900,12 +1021,14 @@ pub struct TimelineTaskLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-timeline")]
 pub struct TimelineSectionLayout {
     pub node: TimelineNodeLayout,
     pub tasks: Vec<TimelineTaskLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-timeline")]
 pub struct TimelineDiagramLayout {
     pub direction: merman_core::diagrams::timeline::TimelineDirection,
     pub bounds: Option<Bounds>,
@@ -926,6 +1049,7 @@ pub struct TimelineDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyActorLegendLineLayout {
     pub text: String,
     pub x: f64,
@@ -935,6 +1059,7 @@ pub struct JourneyActorLegendLineLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyActorLegendItemLayout {
     pub actor: String,
     pub pos: i64,
@@ -946,6 +1071,7 @@ pub struct JourneyActorLegendItemLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub enum JourneyMouthKind {
     Smile,
     Sad,
@@ -953,6 +1079,7 @@ pub enum JourneyMouthKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyTaskActorCircleLayout {
     pub actor: String,
     pub pos: i64,
@@ -963,6 +1090,7 @@ pub struct JourneyTaskActorCircleLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyTaskLayout {
     pub index: i64,
     pub section: String,
@@ -987,6 +1115,7 @@ pub struct JourneyTaskLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneySectionLayout {
     pub section: String,
     pub num: i64,
@@ -999,6 +1128,7 @@ pub struct JourneySectionLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyLineLayout {
     pub x1: f64,
     pub y1: f64,
@@ -1007,6 +1137,7 @@ pub struct JourneyLineLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-journey")]
 pub struct JourneyDiagramLayout {
     pub bounds: Option<Bounds>,
     pub left_margin: f64,
@@ -1026,6 +1157,7 @@ pub struct JourneyDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-kanban")]
 pub struct KanbanSectionLayout {
     pub id: String,
     pub label: String,
@@ -1043,6 +1175,7 @@ pub struct KanbanSectionLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-kanban")]
 pub struct KanbanItemLayout {
     pub id: String,
     pub label: String,
@@ -1064,6 +1197,7 @@ pub struct KanbanItemLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-kanban")]
 pub struct KanbanDiagramLayout {
     pub bounds: Option<Bounds>,
     pub section_width: f64,
@@ -1077,6 +1211,7 @@ pub struct KanbanDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-git-graph")]
 pub struct GitGraphBranchLayout {
     pub name: String,
     pub index: i64,
@@ -1086,6 +1221,7 @@ pub struct GitGraphBranchLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-git-graph")]
 pub struct GitGraphCommitLayout {
     pub id: String,
     pub message: String,
@@ -1107,6 +1243,7 @@ pub struct GitGraphCommitLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-git-graph")]
 pub struct GitGraphArrowLayout {
     pub from: String,
     pub to: String,
@@ -1115,6 +1252,7 @@ pub struct GitGraphArrowLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-git-graph")]
 pub struct GitGraphDiagramLayout {
     pub bounds: Option<Bounds>,
     pub direction: String,
@@ -1130,6 +1268,7 @@ pub struct GitGraphDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-tree-view")]
 pub struct TreeViewNodeLayout {
     pub id: i64,
     pub level: i64,
@@ -1160,6 +1299,7 @@ pub struct TreeViewNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-tree-view")]
 pub struct TreeViewLineLayout {
     pub x1: f64,
     pub y1: f64,
@@ -1170,6 +1310,7 @@ pub struct TreeViewLineLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-tree-view")]
 pub struct TreeViewDiagramLayout {
     pub bounds: Option<Bounds>,
     pub total_width: f64,
@@ -1185,6 +1326,7 @@ pub struct TreeViewDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaLineLayout {
     pub x1: f64,
     pub y1: f64,
@@ -1195,6 +1337,7 @@ pub struct IshikawaLineLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaTextLayout {
     pub text: String,
     pub lines: Vec<String>,
@@ -1208,6 +1351,7 @@ pub struct IshikawaTextLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaLabelBoxLayout {
     pub x: f64,
     pub y: f64,
@@ -1216,18 +1360,21 @@ pub struct IshikawaLabelBoxLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaCauseLabelGroupLayout {
     pub label_box: IshikawaLabelBoxLayout,
     pub label: IshikawaTextLayout,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaSubGroupLayout {
     pub line: IshikawaLineLayout,
     pub label: IshikawaTextLayout,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaBranchLayout {
     pub line: IshikawaLineLayout,
     pub label_group: IshikawaCauseLabelGroupLayout,
@@ -1235,12 +1382,14 @@ pub struct IshikawaBranchLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaPairLayout {
     pub upper: IshikawaBranchLayout,
     pub lower: Option<IshikawaBranchLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaHeadLayout {
     pub x: f64,
     pub y: f64,
@@ -1251,6 +1400,7 @@ pub struct IshikawaHeadLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-ishikawa")]
 pub struct IshikawaDiagramLayout {
     pub bounds: Option<Bounds>,
     pub total_width: f64,
@@ -1267,6 +1417,7 @@ pub struct IshikawaDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-event-modeling")]
 pub struct EventModelingSwimlaneLayout {
     pub index: i64,
     pub label: String,
@@ -1278,6 +1429,7 @@ pub struct EventModelingSwimlaneLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-event-modeling")]
 pub struct EventModelingBoxLayout {
     pub index: usize,
     pub frame_name: String,
@@ -1295,6 +1447,7 @@ pub struct EventModelingBoxLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-event-modeling")]
 pub struct EventModelingRelationLayout {
     pub source_frame: String,
     pub target_frame: String,
@@ -1306,6 +1459,7 @@ pub struct EventModelingRelationLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-event-modeling")]
 pub struct EventModelingDiagramLayout {
     pub bounds: Option<Bounds>,
     pub total_width: f64,
@@ -1320,6 +1474,7 @@ pub struct EventModelingDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-cynefin")]
 pub struct CynefinDomainLayout {
     pub name: String,
     pub cx: f64,
@@ -1331,6 +1486,7 @@ pub struct CynefinDomainLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-cynefin")]
 pub struct CynefinItemLayout {
     pub domain: String,
     pub label: String,
@@ -1344,6 +1500,7 @@ pub struct CynefinItemLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-cynefin")]
 pub struct CynefinTransitionLayout {
     pub from: String,
     pub to: String,
@@ -1357,6 +1514,7 @@ pub struct CynefinTransitionLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-cynefin")]
 pub struct CynefinDiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -1375,6 +1533,7 @@ pub struct CynefinDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-railroad")]
 pub struct RailroadDiagramLayout {
     pub bounds: Option<Bounds>,
     pub diagram_type: String,
@@ -1385,6 +1544,7 @@ pub struct RailroadDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-railroad")]
 pub struct RailroadRuleLayout {
     pub name: String,
     pub x: f64,
@@ -1402,6 +1562,7 @@ pub struct RailroadRuleLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-railroad")]
 pub struct RailroadElementLayout {
     pub kind: String,
     pub label: String,
@@ -1414,6 +1575,7 @@ pub struct RailroadElementLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-railroad")]
 pub struct RailroadPathLayout {
     #[serde(default)]
     pub x: f64,
@@ -1423,6 +1585,7 @@ pub struct RailroadPathLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttAxisTickLayout {
     pub time_ms: i64,
     pub x: f64,
@@ -1430,6 +1593,7 @@ pub struct GanttAxisTickLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttExcludeRangeLayout {
     pub id: String,
     pub start_ms: i64,
@@ -1441,6 +1605,7 @@ pub struct GanttExcludeRangeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttSectionTitleLayout {
     pub section: String,
     pub index: i64,
@@ -1452,6 +1617,7 @@ pub struct GanttSectionTitleLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttRowLayout {
     pub index: i64,
     pub x: f64,
@@ -1462,6 +1628,7 @@ pub struct GanttRowLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttTaskLabelLayout {
     pub id: String,
     pub text: String,
@@ -1473,6 +1640,7 @@ pub struct GanttTaskLabelLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttTaskBarLayout {
     pub id: String,
     pub x: f64,
@@ -1485,6 +1653,7 @@ pub struct GanttTaskBarLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttTaskLayout {
     pub id: String,
     pub task: String,
@@ -1502,6 +1671,7 @@ pub struct GanttTaskLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-gantt")]
 pub struct GanttDiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -1539,6 +1709,7 @@ pub struct GanttDiagramLayout {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-c4")]
 pub(crate) struct C4TextRowLayout {
     /// Source words emitted into one Mermaid `createText` outer tspan.
     ///
@@ -1548,6 +1719,7 @@ pub(crate) struct C4TextRowLayout {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-c4")]
 pub(crate) struct C4TextRenderPlan {
     /// Wrapped source-word rows consumed by the C4 SVG emitter.
     pub(crate) rows: Vec<C4TextRowLayout>,
@@ -1558,6 +1730,7 @@ pub(crate) struct C4TextRenderPlan {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-c4")]
 pub struct C4TextBlockLayout {
     pub text: String,
     pub y: f64,
@@ -1574,6 +1747,7 @@ pub struct C4TextBlockLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-c4")]
 pub struct C4ImageLayout {
     pub width: f64,
     pub height: f64,
@@ -1581,6 +1755,7 @@ pub struct C4ImageLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-c4")]
 pub struct C4ShapeLayout {
     pub alias: String,
     pub parent_boundary: String,
@@ -1602,6 +1777,7 @@ pub struct C4ShapeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-c4")]
 pub struct C4BoundaryLayout {
     pub alias: String,
     pub parent_boundary: String,
@@ -1618,6 +1794,7 @@ pub struct C4BoundaryLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "diagram-c4")]
 pub struct C4RelLayout {
     pub from: String,
     pub to: String,
@@ -1637,6 +1814,7 @@ pub struct C4RelLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
+#[cfg(feature = "diagram-c4")]
 pub struct C4DiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,

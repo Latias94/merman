@@ -48,3 +48,24 @@ parity-gated against upstream SVG baselines:
   must first add an explicit executable collector scope and reviewed manifest.
 - Baselines: `fixtures/upstream-svgs/packet/upstream_cypress_*.svg`
 - SVG DOM compare: `cargo run --release -p xtask -- compare-packet-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+
+## Mermaid 12.1 bit numbering order
+
+Source: Mermaid `12.1.0` commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`,
+`packages/mermaid/src/diagrams/packet/renderer.ts` and `renderer.spec.ts`, the Packet
+configuration schema, and `docs/syntax/packet.md`'s hardware-register example.
+
+- `fixtures/packet/bit_order_descending.mmd` extends the documented
+  16-bit register example with a field that crosses a row boundary and an incomplete final row.
+- `crates/merman-render/tests/packet_svg_test.rs` checks default/explicit ascending equivalence,
+  mirrored layout coordinates, unchanged field widths and semantic ranges, absolute leading and
+  trailing bit labels, centered single-bit labels, hidden bit labels, and one-bit rows.
+- `packet_bit_order_preserves_typed_model_and_semantic_ranges` in the core Packet tests checks
+  typed/compatibility-JSON agreement, configuration preservation, and unchanged rejection of a
+  reversed semantic range.
+
+The descending fixture is the same input admitted by the selected Mermaid 12.1 runtime matrix's
+`packet-descending-bit-labels` case. It moved from the family-local test directory into the primary
+Packet corpus; `packet_svg_test.rs` includes that single shared source. Its semantic/layout goldens
+and reference SVG are generated through the selected-release workflow. The historical provenance
+above is not relabeled by this fixture promotion.

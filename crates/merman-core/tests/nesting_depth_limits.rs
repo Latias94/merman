@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 use futures::executor::block_on;
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
 

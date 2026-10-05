@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, Cytoscape layout, math, icons, completions, and native runtime adapters. ELK layout remains an explicit opt-in because it adds the EPL-2.0 ELK closure.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.8.0` source candidate, planned release archives, and published `0.8.0-alpha.7` default all include the Rustdoc fragment command. ELK remains in both the alpha.7 and stable-candidate defaults, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
 The command line has four explicit workflows:
 
@@ -10,22 +10,18 @@ The command line has four explicit workflows:
 | --- | --- | --- |
 | One native render | `merman-cli render` | You want concise Rust-native defaults and strict option validation |
 | Native Markdown batch | `merman-cli batch` | You want a recoverable, tool-owned multi-file generation |
-| Static Rustdoc fragments | `merman-cli rustdoc` | You want Mermaid in crate or item docs without adding a renderer to the crate's Cargo graph |
+| Static Rustdoc fragments | `merman-cli rustdoc` (included by default) | You want Mermaid in crate or item docs without adding a renderer to the crate's Cargo graph |
 | Pinned compatibility | `merman-cli mmdc` | You are migrating an `mmdc@11.16.0` command or need its naming and scanner rules |
 
 ## Install
 
-This README documents the current source checkout. The installation examples below pin the
-published `merman-cli` `0.8.0-alpha.6` package and binary channel; development features such as ASCII
-`auto` layout and report schema 3 require a build containing those changes. For the published
-contract, use the README at tag `v0.8.0-alpha.6`. Prefer the complete prebuilt binary from the selected
-release, with a source-build fallback when no official archive is available for the current target:
+This guide and the version-pinned commands below target `0.8.0-alpha.7`. Install its complete prebuilt binary:
 
 ```sh
-cargo binstall merman-cli@0.8.0-alpha.6
+cargo binstall merman-cli@0.8.0-alpha.7
 ```
 
-The alpha.6 binary channel is published. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at tag `v0.8.0-alpha.6` when you need that published source contract.
+Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
 
 Homebrew users can install the stable formula:
 
@@ -37,13 +33,13 @@ The formula follows stable releases and may trail this pre-release documentation
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
-From a checkout at tag `v0.8.0-alpha.6`:
+From the matching reviewed alpha.7 source checkout:
 
 ```sh
 cargo install --path crates/merman-cli --locked
 ```
 
-The standard source-install command uses the default capability set, which deliberately omits ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
+The alpha.7 source default includes ELK; alpha.6 source defaults omitted it. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
@@ -337,30 +333,35 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The default feature set is the complete local product. Cargo features are additive capabilities, not diagram-family switches. For a slim binary, disable defaults and select only the required leaves:
+The `0.8.0` source candidate defaults to the standard diagram CLI with `all-diagrams`.
+The Rustdoc authoring command remains available in the default and release builds, as in the
+published alpha.7 archives. The commands below for alpha.7 remain version-pinned to that release.
+For a slim current-source binary, disable defaults and select the required `diagram-*` families
+plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
+explicitly:
 
 | Build | Capabilities |
 | --- | --- |
-| `--no-default-features` | `detect`, `parse`, and `capabilities` |
-| `--no-default-features --features analysis` | Lint, fixes, and rule metadata without render dependencies |
-| `--no-default-features --features svg` | Basic deterministic SVG |
-| `--no-default-features --features ascii` | ASCII/Unicode without SVG |
-| `--no-default-features --features markdown` | Sequential native Markdown batch and SVG |
-| `--no-default-features --features rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
-| `--no-default-features --features icons` | SVG plus bounded local Iconify packs |
-| `--no-default-features --features png` | SVG plus PNG only |
-| `--no-default-features --features pdf` | SVG plus vector PDF only |
+| `--no-default-features --features all-diagrams` | `detect`, `parse`, and `capabilities` |
+| `--no-default-features --features all-diagrams,analysis` | Lint, fixes, and rule metadata without render dependencies |
+| `--no-default-features --features all-diagrams,svg` | Basic deterministic SVG |
+| `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |
+| `--no-default-features --features all-diagrams,markdown` | Sequential native Markdown batch and SVG |
+| `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
+| `--no-default-features --features all-diagrams,icons` | SVG plus bounded local Iconify packs |
+| `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
+| `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |
 
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.6 --locked \
-  --no-default-features --features analysis
+cargo install merman-cli --version 0.8.0-alpha.7 --locked \
+  --no-default-features --features all-diagrams,analysis
 ```
 
-Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. `layout-elk` is the explicit EPL-2.0 boundary; add it only when the resulting artifact will distribute the corresponding notices and provenance. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The alpha.7 source default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 6 adds `theme_presets` for SVG-enabled artifacts, using the same compiler-policy discovery as bindings. Its alpha entries have empty built-in qualification scope; archive qualification is a separate host-scoped companion. Contract 6 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 6 adds `theme_presets` for SVG-enabled artifacts, using the same compiler-policy discovery as bindings. Its alpha entries have empty built-in qualification scope; archive qualification is a separate host-scoped companion. Contract 6 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 
@@ -500,8 +501,9 @@ omitted commands, options, and values stay omitted. A build without that feature
 
 ## License
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The ordinary Cargo
-default intentionally excludes the optional EPL-2.0 ELK implementation, but the `cli-release`
-archive includes ELK and the math/font closure selected by its profile. Release archives include
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The current alpha.7
+Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation and the
+math/font closure. Explicit lean source builds can exclude ELK by disabling default features.
+Release archives include
 the matching `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES/`; source-built distributions must
 carry the notices for the features they select.

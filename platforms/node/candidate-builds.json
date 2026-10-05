@@ -12,7 +12,10 @@
   },
   "cargo": {
     "manifest": "crates/merman-node/Cargo.toml",
-    "default_features": false
+    "default_features": false,
+    "features": [
+      "all-diagrams"
+    ]
   },
   "candidates": {
     "node-wasm": {
@@ -25,9 +28,9 @@
     "napi": {
       "transport_feature": "transport-napi",
       "versions": {
-        "napi": "3.11.0",
-        "napi_derive": "3.6.0",
-        "napi_build": "2.3.2",
+        "napi": "3.14.0",
+        "napi_derive": "3.6.10",
+        "napi_build": "2.6.0",
         "napi_cli": "3.7.4"
       },
       "postinstall_download": false,
@@ -61,5 +64,41 @@
         }
       ]
     }
+  },
+  "expected": {
+    "diagram_families": [
+      "agentflow", "architecture",
+      "block",
+      "c4",
+      "class",
+      "cynefin",
+      "er",
+      "eventmodeling",
+      "flowchart",
+      "gantt",
+      "gitGraph",
+      "info",
+      "ishikawa",
+      "journey",
+      "kanban",
+      "mindmap",
+      "packet",
+      "pie",
+      "quadrantChart",
+      "radar",
+      "railroad",
+      "requirement",
+      "sankey",
+      "sequence",
+      "state",
+      "swimlane",
+      "timeline",
+      "treeView",
+      "treemap",
+      "usecase", "venn",
+      "wardley",
+      "xychart",
+      "zenuml"
+    ]
   }
 }

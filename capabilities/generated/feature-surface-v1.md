@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781`
+Semantic digest: `sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2`
 
 ## Public Leaves
 

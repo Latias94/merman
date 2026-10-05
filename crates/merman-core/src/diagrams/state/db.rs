@@ -573,6 +573,7 @@ struct NodeScratch {
     explicit_dir: Option<bool>,
     is_group: bool,
     parent_id: Option<String>,
+    color_index: Option<usize>,
 }
 
 fn apply_state_descriptions(
@@ -734,6 +735,8 @@ fn build_layout_data_typed(
         edges: &'a mut Vec<StateDiagramRenderEdge>,
         node_db: &'a mut HashMap<String, NodeScratch>,
         graph_item_count: &'a mut usize,
+        next_color_index: usize,
+        container_color_index: HashMap<String, Option<usize>>,
     }
 
     fn setup_doc(
@@ -801,6 +804,38 @@ fn build_layout_data_typed(
         Ok(())
     }
 
+    fn config_state_number(config: &MermaidConfig, key: &str) -> Option<f64> {
+        config
+            .as_value()
+            .get("state")
+            .and_then(Value::as_object)
+            .and_then(|state| state.get(key))
+            .and_then(value_as_f64)
+    }
+
+    fn color_slot_for(
+        next_color_index: &mut usize,
+        container_color_index: &mut HashMap<String, Option<usize>>,
+        shape: &str,
+        item_id: &str,
+        parent: Option<&StateStmt>,
+        user_styled: bool,
+    ) -> Option<usize> {
+        if shape == SHAPE_DIVIDER
+            && let Some(parent_id) = parent.map(|parent| parent.id.as_str())
+            && let Some(inherited) = container_color_index.get(parent_id).copied()
+        {
+            container_color_index.insert(item_id.to_string(), inherited);
+            return inherited;
+        }
+
+        let slot = *next_color_index;
+        *next_color_index += 1;
+        let effective = (!user_styled).then_some(slot);
+        container_color_index.insert(item_id.to_string(), effective);
+        effective
+    }
+
     fn data_fetcher(
         ctx: &mut TypedLayoutContext<'_>,
         parent: Option<&StateStmt>,
@@ -819,8 +854,13 @@ fn build_layout_data_typed(
         let db_state = states.get(&item_id);
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
+        let user_styled = !class_str.trim().is_empty() || !styles.is_empty();
+        let wrapping_width = config_state_number(config, "wrappingWidth");
+        let min_width = config_state_number(config, "minNodeWidth");
+        let needs_color_slot =
+            parsed_item.doc.is_some() && !ctx.container_color_index.contains_key(&item_id);
 
-        let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
+        let mut entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
             if !class_str.trim().is_empty() {
                 css_classes.push_str(class_str.trim());
@@ -849,6 +889,7 @@ fn build_layout_data_typed(
                 explicit_dir: None,
                 is_group: false,
                 parent_id: None,
+                color_index: None,
             }
         });
 
@@ -874,7 +915,6 @@ fn build_layout_data_typed(
             } else {
                 SHAPE_GROUP.to_string()
             };
-
             let mut css = entry.css_classes.clone();
             css.push(' ');
             css.push_str(CSS_DIAGRAM_CLUSTER);
@@ -889,6 +929,24 @@ fn build_layout_data_typed(
             && p.id != "root"
         {
             entry.parent_id = Some(p.id.clone());
+        }
+
+        if needs_color_slot {
+            let shape = entry.shape.clone();
+            let _ = entry;
+            let color_index = color_slot_for(
+                &mut ctx.next_color_index,
+                &mut ctx.container_color_index,
+                &shape,
+                &item_id,
+                parent,
+                user_styled,
+            );
+            entry = ctx
+                .node_db
+                .get_mut(&item_id)
+                .expect("state node inserted before color assignment");
+            entry.color_index = color_index;
         }
 
         let dom_id = state_dom_id(&item_id, *ctx.graph_item_count, None);
@@ -916,6 +974,9 @@ fn build_layout_data_typed(
             ry: Some(10.0),
             shape: entry.shape.clone(),
             position: None,
+            color_index: entry.color_index,
+            wrapping_width,
+            min_width: (!entry.is_group).then_some(min_width).flatten(),
         };
         node.css_compiled_styles = compiled_styles(&node.css_classes, classes);
 
@@ -962,6 +1023,9 @@ fn build_layout_data_typed(
                 ry: None,
                 shape: SHAPE_NOTEGROUP.to_string(),
                 position: n.position.clone(),
+                color_index: None,
+                wrapping_width,
+                min_width: None,
             };
             group_node.css_compiled_styles = compiled_styles(&group_node.css_classes, classes);
 
@@ -971,8 +1035,10 @@ fn build_layout_data_typed(
                 label: Some(Value::String(n.text.clone())),
                 description: None,
                 dom_id: note_dom_id,
-                is_group: entry.is_group,
-                node_type: entry.node_type.clone(),
+                // Mermaid's generated note node is always a leaf, even when the
+                // annotated state is a composite.
+                is_group: false,
+                node_type: Some("node".to_string()),
                 parent_id: Some(parent_node_id.clone()),
                 css_classes: CSS_DIAGRAM_NOTE.to_string(),
                 css_compiled_styles: Vec::new(),
@@ -984,6 +1050,9 @@ fn build_layout_data_typed(
                 ry: None,
                 shape: SHAPE_NOTE.to_string(),
                 position: n.position.clone(),
+                color_index: None,
+                wrapping_width,
+                min_width,
             };
             note_node.css_compiled_styles = compiled_styles(&note_node.css_classes, classes);
 
@@ -1036,6 +1105,8 @@ fn build_layout_data_typed(
             edges: &mut edges,
             node_db: &mut node_db,
             graph_item_count: &mut graph_item_count,
+            next_color_index: 0,
+            container_color_index: HashMap::new(),
         };
         setup_doc(&mut ctx, None, root_doc, false)?;
     }
@@ -1191,13 +1262,16 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
 }
 
 fn normalize_multiline_ws(input: &str) -> String {
-    let trimmed = input.trim();
+    let trimmed = input.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
     let mut out = String::with_capacity(trimmed.len());
     let mut chars = trimmed.chars().peekable();
     while let Some(ch) = chars.next() {
         out.push(ch);
         if ch == '\n' {
-            while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            while chars
+                .peek()
+                .is_some_and(|c| crate::diagrams::scan::is_ecmascript_whitespace(*c))
+            {
                 chars.next();
             }
         }
@@ -1207,7 +1281,79 @@ fn normalize_multiline_ws(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Engine, ParseOptions};
+    use crate::diagrams::state::parse_state_model_for_render_controlled;
+    use crate::{Engine, MermaidConfig, OperationControl, ParseMetadata, ParseOptions};
+    use serde_json::json;
+
+    fn meta(config: serde_json::Value) -> ParseMetadata {
+        let config = MermaidConfig::from_value(config);
+        ParseMetadata {
+            diagram_type: "stateDiagram".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+        }
+    }
+
+    #[test]
+    fn state_render_nodes_carry_mermaid12_width_fields() {
+        let metadata = meta(json!({
+            "state": { "wrappingWidth": 144, "minNodeWidth": 132 }
+        }));
+        let model = parse_state_model_for_render_controlled(
+            "stateDiagram-v2\nIdle --> Active\nnote right of Idle : state note\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .expect("state parse control")
+        .expect("state render model");
+        let idle = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "Idle")
+            .expect("Idle node");
+        assert_eq!(idle.wrapping_width, Some(144.0));
+        assert_eq!(idle.min_width, Some(132.0));
+        assert_eq!(idle.color_index, None);
+        let note = model
+            .nodes
+            .iter()
+            .find(|node| node.shape == "note")
+            .expect("generated note node");
+        assert!(!note.is_group);
+        assert_eq!(note.node_type.as_deref(), Some("node"));
+        assert_eq!(note.min_width, Some(132.0));
+
+        let compatibility = crate::diagrams::state::render_model_to_compat_json(&model, &metadata)
+            .expect("state compatibility projection");
+        assert_eq!(compatibility["nodes"][0]["wrappingWidth"], json!(144));
+        assert_eq!(compatibility["nodes"][0]["minWidth"], json!(132));
+        assert!(compatibility["nodes"][0].get("colorIndex").is_some());
+    }
+
+    #[test]
+    fn state_container_color_slots_follow_mermaid_depth_first_order() {
+        let metadata = meta(json!({}));
+        let model = parse_state_model_for_render_controlled(
+            "stateDiagram-v2\nstate A {\n  [*] --> A1\n}\nstate B {\n  [*] --> B1\n}\n",
+            &metadata,
+            &OperationControl::new(),
+        )
+        .expect("state parse control")
+        .expect("state render model");
+        let a = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .expect("A group");
+        let b = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "B")
+            .expect("B group");
+        assert_eq!(a.color_index, Some(0));
+        assert_eq!(b.color_index, Some(1));
+    }
 
     #[test]
     fn state_note_generated_id_collision_is_rejected_independent_of_declaration_order() {

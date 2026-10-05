@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 use merman_core::time::CivilDate;
 use merman_core::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,
@@ -46,13 +48,16 @@ fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
 }
 
 fn list_formal_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
+    // Generated reference SVGs and temporary/private trees are not authored source fixtures.
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         if dir
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with('_'))
+            .is_some_and(|name| {
+                name.starts_with('_') || name.starts_with('.') || name == "upstream-svgs"
+            })
         {
             continue;
         }
@@ -65,7 +70,9 @@ fn list_formal_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
                 if path
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with('_'))
+                    .is_some_and(|name| {
+                        name.starts_with('_') || name.starts_with('.') || name == "upstream-svgs"
+                    })
                 {
                     continue;
                 }

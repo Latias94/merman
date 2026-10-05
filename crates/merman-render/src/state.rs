@@ -1,6 +1,6 @@
 //! State diagram (stateDiagram-v2) layout.
 //!
-//! Source semantics: Mermaid 11.16.
+//! Source semantics: Mermaid 12.0.0.
 
 type StateDiagramModel = merman_core::diagrams::state::StateDiagramRenderModel;
 type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
@@ -66,6 +66,8 @@ impl RectWithTitleGeometry {
 mod compatibility;
 mod config;
 mod effect_plan;
+#[cfg(feature = "layout-elk")]
+mod elk;
 mod layout;
 mod style_plan;
 mod theme_evidence;
@@ -88,7 +90,7 @@ pub use layout::{
     debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
 };
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-state"))]
 mod tests {
     use super::RectWithTitleGeometry;
 

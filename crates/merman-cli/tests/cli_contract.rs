@@ -960,8 +960,12 @@ fn theme_preset_composes_with_config_regardless_of_argument_order() {
     let svg = String::from_utf8(preset_first.stdout).expect("stdout should be utf8");
     assert!(svg.contains("#123456"), "explicit config should win: {svg}");
     assert!(svg.contains("#654321"), "explicit config should win: {svg}");
+    let rendered_dom = svg
+        .split_once("</style>")
+        .map(|(_, dom)| dom)
+        .expect("SVG should contain a style block");
     assert!(
-        !svg.contains(r#"data-look="neo""#),
+        !rendered_dom.contains(r#"data-look="neo""#),
         "theme presets must not introduce a Mermaid look: {svg}"
     );
 }
@@ -1606,16 +1610,25 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         "png",
         "shell-completions",
         "svg",
-        "system-clock",
-        "system-random",
-        "system-timezone",
-        "system-timing",
     ] {
         assert!(
             capabilities
                 .iter()
                 .any(|capability| capability["id"].as_str() == Some(id)),
             "missing compiled capability {id}: {payload}"
+        );
+    }
+
+    for (id, enabled) in [
+        ("system-clock", cfg!(feature = "system-clock")),
+        ("system-random", cfg!(feature = "system-random")),
+        ("system-timezone", cfg!(feature = "system-timezone")),
+        ("system-timing", cfg!(feature = "system-timing")),
+    ] {
+        assert_eq!(
+            capabilities.iter().any(|capability| capability["id"] == id),
+            enabled,
+            "system adapter {id} must match the selected Cargo features"
         );
     }
 
@@ -1645,7 +1658,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         family_ids.windows(2).all(|pair| pair[0] < pair[1]),
         "ASCII family ids must be sorted and unique: {family_ids:?}"
     );
-    for family_id in ["flowchart", "sequence"] {
+    for family_id in ["flowchart", "sequence", "swimlane"] {
         let family = families
             .iter()
             .find(|family| family["family"] == family_id)

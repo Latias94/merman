@@ -26,6 +26,42 @@ fn product_families_are_parser_backed_and_role_aware() {
 
     let cases = [
         CapabilityCase {
+            label: "agentflow",
+            expected_source: FenceTextIndexSource::ParserComplete,
+            snippet: "agentflow-beta\nflow Team\nA[Worker]-->B[Result]\nend\n",
+            required_ids: &["A", "B"],
+            required_outline: &["Team"],
+            required_prefixes: &[],
+            forbidden_ids: &[],
+        },
+        CapabilityCase {
+            label: "usecase",
+            expected_source: FenceTextIndexSource::ParserComplete,
+            snippet: "usecase-beta\nactor User\nsystemBoundary System\nLogin(Sign in)\nend\nUser --> Login\n",
+            required_ids: &["User", "Login"],
+            required_outline: &["System"],
+            required_prefixes: &[],
+            forbidden_ids: &[],
+        },
+        CapabilityCase {
+            label: "agentflow-recovered",
+            expected_source: FenceTextIndexSource::ParserRecovered,
+            snippet: "agentflow-beta\nflow Team\nA[Worker]-->B[Result]\nend\nC -->",
+            required_ids: &["A", "B"],
+            required_outline: &["Team"],
+            required_prefixes: &[],
+            forbidden_ids: &["Worker", "Result"],
+        },
+        CapabilityCase {
+            label: "usecase-recovered",
+            expected_source: FenceTextIndexSource::ParserRecovered,
+            snippet: "usecase-beta\nactor User\nsystemBoundary System\nLogin(Sign in)\nend\nUser --> Login\nUser -->",
+            required_ids: &["User", "Login"],
+            required_outline: &["System"],
+            required_prefixes: &[],
+            forbidden_ids: &["Sign in"],
+        },
+        CapabilityCase {
             label: "flowchart",
             expected_source: FenceTextIndexSource::ParserComplete,
             snippet: "flowchart TD\nA-->B\n",

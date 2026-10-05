@@ -4,7 +4,7 @@
 //! roughness is zero. These helpers mirror Mermaid's RoughJS call ordering to keep SVG DOM parity.
 
 use crate::resources::OperationWorkMeter;
-use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use crate::svg::parity::roughjs_common::ops_to_svg_path_d;
 use merman_core::OperationPhase;
 use roughr::core::RoughRandomness;
 
@@ -13,6 +13,8 @@ use roughr::core::RoughRandomness;
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const CIRCLE_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const CIRCLE_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 // These estimates intentionally describe the allocations that RoughJS performs before the SVG
 // sink can observe the result: points sampled along the path plus hachure scanlines. They are
@@ -194,22 +196,16 @@ fn parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
 
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
-        .fill(fill)
         .fill_style(roughr::core::FillStyle::Solid)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -281,8 +277,6 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
 
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     randomness: &RoughRandomness,
@@ -290,16 +284,12 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     // Variant of `roughjs_paths_for_svg_path(...)` that always takes RoughJS' `sets.length === 1`
     // branch (fill path via `svgPath(...)` with `disableMultiStroke=true`), avoiding the
     // `pointsOnPath(...)` step which can overflow on complex paths.
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
-        .fill(fill)
         .fill_style(roughr::core::FillStyle::Solid)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -346,18 +336,15 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
 
 pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
     svg_path_data: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     randomness: &RoughRandomness,
 ) -> Option<String> {
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -388,8 +375,6 @@ pub(in crate::svg::parity) fn roughjs_hand_drawn_stroke_path_for_svg_path(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     fill_weight: f32,
@@ -398,20 +383,14 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill =
-        parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
-    let stroke =
-        parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let reservation = admit_hand_drawn_path(svg_path_data, hachure_gap, roughness, work_meter)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let options = roughr::core::OptionsBuilder::default()
+    let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(roughness)
-        .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
         .fill_weight(fill_weight)
         .hachure_gap(hachure_gap)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -422,48 +401,27 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
         .build()
         .ok()?;
 
-    let generator = roughr::generator::Generator::default();
-    let drawable = generator.path::<f64>(svg_path_data.to_string(), &Some(options));
-    let mut fill_d = None;
-    let mut stroke_d = None;
-
-    for set in drawable.sets {
-        let d = ops_to_svg_path_d(&set);
-        match set.op_set_type {
-            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
-                fill_d = Some(d);
-            }
-            roughr::core::OpSetType::Path => {
-                stroke_d = Some(d);
-            }
-        }
-    }
-
-    let paths = match (fill_d, stroke_d) {
-        (Some(fill_d), Some(stroke_d)) => Some((fill_d, stroke_d)),
-        _ => None,
-    };
+    let sets = roughr::points_on_path::points_on_path::<f64>(
+        svg_path_data.to_owned(),
+        Some(1.0),
+        Some((1.0 + roughness as f64) / 2.0),
+    );
+    let fill = roughr::renderer::pattern_fill_polygons(sets, &mut options);
+    let stroke = roughr::renderer::svg_path(svg_path_data.to_owned(), &mut options);
+    let paths = Some((ops_to_svg_path_d(&fill), ops_to_svg_path_d(&stroke)));
     reconcile_hand_drawn_path(work_meter, reservation, paths)
 }
 
 /// Render a path with Mermaid's default hand-drawn node options.
 pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    // Object-shape renderers use this helper alongside the hand-drawn circle path. Keep both
-    // branches on the same fallback boundary when a CSS color is not representable by roughr.
-    parse_hex_color_to_srgba(fill)?;
-    parse_hex_color_to_srgba(stroke)?;
     roughjs_hachure_paths_for_svg_path(
         svg_path_data,
-        fill,
-        stroke,
         stroke_width,
         stroke_dasharray,
         HAND_DRAWN_FILL_WEIGHT,
@@ -481,15 +439,14 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
 /// choice here avoids making individual shape renderers emulate RoughJS configuration.
 pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_solid_svg_path(
     svg_path_data: &str,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
+    // Generator.path uses paint presence to select operation sets. Actual CSS paint belongs to
+    // SVG emission, so neutral colors activate both sets without constraining source colors.
+    let geometry_paint = roughr::Srgba::new(0.0, 0.0, 0.0, 1.0);
     let reservation = admit_hand_drawn_path(
         svg_path_data,
         HAND_DRAWN_HACHURE_GAP,
@@ -500,9 +457,9 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_solid_svg_path(
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(HAND_DRAWN_ROUGHNESS)
-        .fill(fill)
+        .fill(geometry_paint)
         .fill_style(roughr::core::FillStyle::Solid)
-        .stroke(stroke)
+        .stroke(geometry_paint)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -543,8 +500,6 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     y: f64,
     w: f64,
     h: f64,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     fill_weight: f32,
@@ -553,20 +508,14 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill =
-        parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
-    let stroke =
-        parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let reservation = admit_hand_drawn_rect(w, h, hachure_gap, roughness, work_meter)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let options = roughr::core::OptionsBuilder::default()
+    let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(roughness)
-        .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
         .fill_weight(fill_weight)
         .hachure_gap(hachure_gap)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -577,24 +526,19 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
         .build()
         .ok()?;
 
-    let generator = roughr::generator::Generator::default();
-    let drawable = generator.rectangle::<f64>(x, y, w, h, &Some(options));
-    let mut fill_d = None;
-    let mut stroke_d = None;
-
-    for set in drawable.sets {
-        let d = ops_to_svg_path_d(&set);
-        match set.op_set_type {
-            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
-                fill_d = Some(d);
-            }
-            roughr::core::OpSetType::Path => {
-                stroke_d = Some(d);
-            }
-        }
-    }
-
-    reconcile_hand_drawn_path(work_meter, reservation, Some((fill_d?, stroke_d?)))
+    let stroke = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut options);
+    let points = vec![
+        roughr::Point2D::new(x, y),
+        roughr::Point2D::new(x + w, y),
+        roughr::Point2D::new(x + w, y + h),
+        roughr::Point2D::new(x, y + h),
+    ];
+    let fill = roughr::renderer::pattern_fill_polygons(vec![points], &mut options);
+    reconcile_hand_drawn_path(
+        work_meter,
+        reservation,
+        Some((ops_to_svg_path_d(&fill), ops_to_svg_path_d(&stroke))),
+    )
 }
 
 /// Render a rectangle with Mermaid's default hand-drawn fill and stroke options.
@@ -603,26 +547,16 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_rect(
     y: f64,
     w: f64,
     h: f64,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    // Keep the hand-drawn path and classic fallback on the same admission boundary. The generic
-    // rectangle helper intentionally substitutes black for unsupported colors for older callers;
-    // a hand-drawn object shape must instead fall back as a whole when either color is not
-    // representable by roughr.
-    parse_hex_color_to_srgba(fill)?;
-    parse_hex_color_to_srgba(stroke)?;
     roughjs_hachure_paths_for_rect(
         x,
         y,
         w,
         h,
-        fill,
-        stroke,
         stroke_width,
         stroke_dasharray,
         HAND_DRAWN_FILL_WEIGHT,
@@ -638,18 +572,15 @@ pub(in crate::svg::parity) fn roughjs_hand_drawn_line_path(
     y1: f64,
     x2: f64,
     y2: f64,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     randomness: &RoughRandomness,
 ) -> Option<String> {
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(HAND_DRAWN_ROUGHNESS)
         .bowing(1.0)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -668,21 +599,15 @@ pub(in crate::svg::parity) fn roughjs_hand_drawn_line_path(
 
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     points: &[(f64, f64)],
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     // Mirror RoughJS `generator.polygon(...)` generation order: outline first, then fill, then
     // emit fill before outline.
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let mut opts = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
-        .fill(fill)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![0.0, 0.0])
         .stroke_line_dash_offset(0.0)
@@ -709,39 +634,33 @@ pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
 
 pub(in crate::svg::parity) fn roughjs_paths_for_circle(
     diameter: f64,
-    fill: &str,
-    stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
     hand_drawn: bool,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
     let reservation = hand_drawn
-        .then(|| admit_hand_drawn_circle(diameter, HAND_DRAWN_HACHURE_GAP, work_meter))
+        .then(|| admit_hand_drawn_circle(diameter, CIRCLE_HAND_DRAWN_HACHURE_GAP, work_meter))
         .flatten();
     if hand_drawn && reservation.is_none() {
         return None;
     }
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let options = roughr::core::OptionsBuilder::default()
+    let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(if hand_drawn {
             HAND_DRAWN_ROUGHNESS
         } else {
             0.0
         })
-        .fill(fill)
         .fill_style(if hand_drawn {
             roughr::core::FillStyle::Hachure
         } else {
             roughr::core::FillStyle::Solid
         })
-        .fill_weight(HAND_DRAWN_FILL_WEIGHT)
-        .hachure_gap(HAND_DRAWN_HACHURE_GAP)
-        .stroke(stroke)
+        .fill_weight(CIRCLE_HAND_DRAWN_FILL_WEIGHT)
+        .hachure_gap(CIRCLE_HAND_DRAWN_HACHURE_GAP)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -752,27 +671,14 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
         .build()
         .ok()?;
 
-    let generator = roughr::generator::Generator::default();
-    let drawable = generator.circle::<f64>(0.0, 0.0, diameter, &Some(options.clone()));
-    let mut fill_d = None;
-    let mut stroke_d = None;
-
-    for set in drawable.sets {
-        let d = ops_to_svg_path_d(&set);
-        match set.op_set_type {
-            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
-                fill_d = Some(d);
-            }
-            roughr::core::OpSetType::Path => {
-                stroke_d = Some(d);
-            }
-        }
-    }
-
-    let paths = match (fill_d, stroke_d) {
-        (Some(fill_d), Some(stroke_d)) => Some((fill_d, stroke_d)),
-        _ => None,
+    let params = roughr::renderer::generate_ellipse_params(diameter, diameter, &mut options);
+    let stroke = roughr::renderer::ellipse_with_params(0.0, 0.0, &mut options, &params);
+    let fill = if hand_drawn {
+        roughr::renderer::pattern_fill_polygons(vec![stroke.estimated_points], &mut options)
+    } else {
+        roughr::renderer::ellipse_with_params(0.0, 0.0, &mut options, &params).opset
     };
+    let paths = Some((ops_to_svg_path_d(&fill), ops_to_svg_path_d(&stroke.opset)));
     match (hand_drawn, reservation) {
         (true, Some(reservation)) => reconcile_hand_drawn_path(work_meter, reservation, paths),
         (false, None) => paths,
@@ -836,16 +742,8 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
 
         assert!(
-            roughjs_paths_for_hand_drawn_svg_path(
-                path(),
-                "#ffffff",
-                "#000000",
-                1.0,
-                "0 0",
-                &meter,
-                &randomness(),
-            )
-            .is_none()
+            roughjs_paths_for_hand_drawn_svg_path(path(), 1.0, "0 0", &meter, &randomness(),)
+                .is_none()
         );
         assert_limit(
             meter
@@ -867,16 +765,8 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
 
         assert!(
-            roughjs_paths_for_hand_drawn_svg_path(
-                path(),
-                "#ffffff",
-                "#000000",
-                1.0,
-                "0 0",
-                &meter,
-                &randomness(),
-            )
-            .is_none()
+            roughjs_paths_for_hand_drawn_svg_path(path(), 1.0, "0 0", &meter, &randomness(),)
+                .is_none()
         );
         assert_limit(
             meter
@@ -900,8 +790,6 @@ mod tests {
         assert!(
             roughjs_paths_for_hand_drawn_svg_path(
                 "M0 0 H80 V40 H0 Z",
-                "#ffffff",
-                "#000000",
                 1.0,
                 "0 0",
                 &meter,
@@ -927,16 +815,9 @@ mod tests {
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
 
-        let (fill_d, stroke_d) = roughjs_paths_for_hand_drawn_svg_path(
-            path,
-            "#ffffff",
-            "#000000",
-            1.0,
-            "0 0",
-            &meter,
-            &randomness(),
-        )
-        .expect("bounded ordinary path must remain renderable");
+        let (fill_d, stroke_d) =
+            roughjs_paths_for_hand_drawn_svg_path(path, 1.0, "0 0", &meter, &randomness())
+                .expect("bounded ordinary path must remain renderable");
         assert!(!fill_d.is_empty());
         assert!(!stroke_d.is_empty());
         assert!(meter.projected_svg_bytes() <= budget.svg_bytes);

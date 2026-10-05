@@ -63,9 +63,10 @@ impl DetectorRegistry {
     ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        let no_frontmatter = remove_frontmatter(text);
+        let no_frontmatter = crate::preprocess::locate_frontmatter_block_controlled(text, control)?
+            .map_or(text, |block| block.stripped);
         control.checkpoint()?;
-        let no_directives = remove_directives_controlled(no_frontmatter.as_ref(), control)?;
+        let no_directives = remove_directives_controlled(no_frontmatter, control)?;
         control.checkpoint()?;
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
         control.checkpoint()?;
@@ -140,12 +141,6 @@ impl DetectorRegistry {
     }
 }
 
-fn remove_frontmatter(text: &str) -> Cow<'_, str> {
-    crate::preprocess::split_frontmatter_block(text)
-        .map(|block| Cow::Borrowed(block.stripped))
-        .unwrap_or(Cow::Borrowed(text))
-}
-
 #[cfg(test)]
 fn remove_directives(text: &str) -> Cow<'_, str> {
     let control = OperationControl::new();
@@ -205,20 +200,8 @@ pub(crate) fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("kanban")
 }
 
-pub(crate) fn detector_class_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
-    if config.get_str("class.defaultRenderer") == Some("dagre-wrapper") {
-        return false;
-    }
+pub(crate) fn detector_class_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("classDiagram")
-}
-
-pub(crate) fn detector_class_v2(txt: &str, config: &mut MermaidConfig) -> bool {
-    if txt.trim_start().starts_with("classDiagram")
-        && config.get_str("class.defaultRenderer") == Some("dagre-wrapper")
-    {
-        return true;
-    }
-    txt.trim_start().starts_with("classDiagram-v2")
 }
 
 pub(crate) fn detector_er(txt: &str, _config: &mut MermaidConfig) -> bool {
@@ -251,40 +234,15 @@ pub(crate) fn detector_swimlane(txt: &str, _config: &mut MermaidConfig) -> bool 
 
 pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
     let trimmed = txt.trim_start();
-    if trimmed.starts_with("flowchart-elk")
-        || ((trimmed.starts_with("flowchart") || trimmed.starts_with("graph"))
-            && config.get_str("flowchart.defaultRenderer") == Some("elk"))
-    {
+    if trimmed.starts_with("flowchart-elk") {
         config.set_value("layout", serde_json::Value::String("elk".to_string()));
         return true;
     }
     false
 }
 
-pub(crate) fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
-    if config.get_str("flowchart.defaultRenderer") == Some("dagre-d3") {
-        return false;
-    }
-    if config.get_str("flowchart.defaultRenderer") == Some("elk") {
-        config.set_value("layout", serde_json::Value::String("elk".to_string()));
-    }
-
-    if txt.trim_start().starts_with("graph")
-        && config.get_str("flowchart.defaultRenderer") == Some("dagre-wrapper")
-    {
-        return true;
-    }
-    txt.trim_start().starts_with("flowchart")
-}
-
-pub(crate) fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> bool {
-    if matches!(
-        config.get_str("flowchart.defaultRenderer"),
-        Some("dagre-wrapper" | "elk")
-    ) {
-        return false;
-    }
-    txt.trim_start().starts_with("graph")
+pub(crate) fn detector_flowchart_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start().starts_with("graph") || txt.trim_start().starts_with("flowchart")
 }
 
 pub(crate) fn detector_timeline(txt: &str, _config: &mut MermaidConfig) -> bool {
@@ -295,20 +253,18 @@ pub(crate) fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool
     txt.trim_start().starts_with("gitGraph")
 }
 
-pub(crate) fn detector_state_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
-    if config.get_str("state.defaultRenderer") == Some("dagre-wrapper") {
-        return false;
-    }
-    txt.trim_start().starts_with("stateDiagram")
+pub(crate) fn detector_usecase(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start()
+        .strip_prefix("usecase-beta")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
 }
 
-pub(crate) fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
-    let trimmed = txt.trim_start();
-    if trimmed.starts_with("stateDiagram-v2") {
-        return true;
-    }
-    trimmed.starts_with("stateDiagram")
-        && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
+pub(crate) fn detector_agentflow(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_js_word_boundary(txt.trim_start(), "agentflow-beta")
+}
+
+pub(crate) fn detector_state_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start().starts_with("stateDiagram")
 }
 
 pub(crate) fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
@@ -446,6 +402,27 @@ mod remove_directives_tests {
         );
 
         assert!(matches!(result, Err(OperationCancelled { .. })));
+    }
+
+    #[test]
+    fn detection_uses_the_greedy_frontmatter_match_without_parsing_yaml() {
+        let registry = DetectorRegistry::pinned_mermaid_baseline();
+        let mut config = MermaidConfig::empty_object();
+        let source = "---\n\n---\n\nMORE\n---\nerror";
+        assert_eq!(registry.detect_type(source, &mut config).unwrap(), "error");
+    }
+
+    #[test]
+    fn detection_observes_cancellation_inside_frontmatter_whitespace() {
+        let source = format!("---\n{}", " \n".repeat(16_000));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
+            &source,
+            &mut MermaidConfig::empty_object(),
+            &control,
+        );
+        assert!(result.is_err());
     }
 
     #[test]

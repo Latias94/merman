@@ -1,12 +1,11 @@
-use crate::diagrams::scan::consume_line_ending;
+use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
     SourceSpan,
     editor::{
-        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
-        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
-        trailing_ascii_whitespace_slot,
+        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use indexmap::IndexMap;
@@ -455,17 +454,17 @@ impl ErDb {
             } => return Some(self.add_subgraph(id, title, label_type, body)),
             Action::SetDirection(dir) => self.direction = dir,
             Action::SetAccTitle(t) => {
-                self.acc_title = Some(t.trim().trim_start().to_string());
+                self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
             }
             Action::SetAccDescr(t) => {
                 // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
-                let trimmed = t.trim();
+                let trimmed = t.trim_matches(is_ecmascript_whitespace);
                 let mut out = String::with_capacity(trimmed.len());
                 let mut chars = trimmed.chars().peekable();
                 while let Some(ch) = chars.next() {
                     out.push(ch);
                     if ch == '\n' {
-                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
                             chars.next();
                         }
                     }
@@ -576,12 +575,7 @@ impl ErSyntax {
             }
             match event {
                 Ok((start, token, end)) => collector.accept(code, token, *start, *end, &mut facts),
-                Err(error) => {
-                    facts.mark_recovered();
-                    if let Some(expected) = error.expected_syntax.as_ref() {
-                        facts.push_expected_syntax(*expected);
-                    }
-                }
+                Err(_) => facts.mark_recovered(),
             }
         }
         collector.finish(code, &mut facts);
@@ -1032,13 +1026,11 @@ impl ErEditorFactCollector {
                     self.push_context_payload(facts, value.clone(), detail, start, end);
                 }
             }
-            Tok::Direction(_) => {
-                if let Some(span) = editor_keyword_value_span(code, start, end, "direction") {
-                    facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::CardinalDirectionValue,
-                        span,
-                    ));
-                }
+            Tok::Direction(direction) => {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::CardinalDirectionValue,
+                    direction.selection,
+                ));
             }
             Tok::RestOfLine(raw) => {
                 if self.style_payload_pending {
@@ -1328,6 +1320,12 @@ fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxK
 }
 
 #[derive(Debug, Clone)]
+struct SpannedDirection {
+    value: String,
+    selection: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
 enum Tok {
     ErDiagram,
     Newline,
@@ -1355,7 +1353,7 @@ enum Tok {
     ClassKw,
     SubgraphKw,
     EndKw,
-    Direction(String),
+    Direction(SpannedDirection),
 
     ZeroOrOne,
     ZeroOrMore,
@@ -1374,7 +1372,6 @@ enum Tok {
 struct LexError {
     message: String,
     span: SourceSpan,
-    expected_syntax: Option<EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -1382,13 +1379,7 @@ impl LexError {
         Self {
             message: message.into(),
             span,
-            expected_syntax: None,
         }
-    }
-
-    fn expecting(mut self, kind: EditorExpectedSyntaxKind, span: SourceSpan) -> Self {
-        self.expected_syntax = Some(EditorExpectedSyntax::new(kind, span));
-        self
     }
 }
 
@@ -1422,6 +1413,7 @@ struct Lexer<'input> {
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
+    direction_scan_end: usize,
 }
 
 impl<'input> Lexer<'input> {
@@ -1434,6 +1426,7 @@ impl<'input> Lexer<'input> {
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
+            direction_scan_end: 0,
         }
     }
 
@@ -1482,15 +1475,7 @@ impl<'input> Lexer<'input> {
     }
 
     fn starts_with_word_ci(&self, s: &str) -> bool {
-        if !self.starts_with_ci(s) {
-            return false;
-        }
-        let after = self.pos + s.len();
-        if after >= self.input.len() {
-            return true;
-        }
-        let b = self.input.as_bytes()[after];
-        b.is_ascii_whitespace() || matches!(b, b':' | b'{' | b'}' | b'[' | b']' | b';')
+        self.starts_with_ci(s) && self.ends_word_at(s.len())
     }
 
     fn read_to_newline(&mut self) -> String {
@@ -1534,14 +1519,20 @@ impl<'input> Lexer<'input> {
         }
         let after = self.pos + "accTitle".len();
         let rest = &self.input[after..];
-        let rest_trim = rest.trim_start();
+        let rest_trim = rest.trim_start_matches(is_ecmascript_whitespace);
         if !rest_trim.starts_with(':') {
             return None;
         }
         let consumed_ws = rest.len() - rest_trim.len();
-        self.pos = after + consumed_ws + 1;
+        let body =
+            self.input[after + consumed_ws + 1..].trim_start_matches(is_ecmascript_whitespace);
+        self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((start, Tok::AccTitle(s.trim().to_string()), self.pos)))
+        Some(Ok((
+            start,
+            Tok::AccTitle(s.trim_matches(is_ecmascript_whitespace).to_string()),
+            self.pos,
+        )))
     }
 
     fn lex_acc_descr(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -1551,10 +1542,10 @@ impl<'input> Lexer<'input> {
         }
         let after = self.pos + "accDescr".len();
         let rest = &self.input[after..];
-        let rest_trim = rest.trim_start();
-        if rest_trim.starts_with('{') {
-            let consumed_ws = rest.len() - rest_trim.len();
-            self.pos = after + consumed_ws + 1;
+        let rest_trim = rest.trim_start_matches(is_ecmascript_whitespace);
+        if let Some(body) = rest_trim.strip_prefix('{') {
+            let body = body.trim_start_matches(is_ecmascript_whitespace);
+            self.pos = self.input.len() - body.len();
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 self.pos = self.input.len();
                 return Some(Err(LexError::new(
@@ -1566,50 +1557,73 @@ impl<'input> Lexer<'input> {
             self.pos = self.pos + end_rel + 1;
             return Some(Ok((
                 start,
-                Tok::AccDescrMultiline(body.trim().to_string()),
+                Tok::AccDescrMultiline(body.trim_matches(is_ecmascript_whitespace).to_string()),
                 self.pos,
             )));
         }
-        let colon_pos = rest.find(':')?;
-        self.pos = after + colon_pos + 1;
+        let body = rest_trim
+            .strip_prefix(':')?
+            .trim_start_matches(is_ecmascript_whitespace);
+        self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((start, Tok::AccDescr(s.trim().to_string()), self.pos)))
+        Some(Ok((
+            start,
+            Tok::AccDescr(s.trim_matches(is_ecmascript_whitespace).to_string()),
+            self.pos,
+        )))
     }
 
-    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
-        if !self.starts_with_word_ci("direction") {
+        if start < self.direction_scan_end {
             return None;
         }
-        self.pos += "direction".len();
-        self.skip_ws_default();
-        let value_start = self.pos;
-        while self
-            .peek()
-            .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b';')
-        {
-            self.pos += 1;
+        let rest = &self.input[start..];
+        // Mermaid tries `.*direction\s+TB[^\n]*` (then BT, RL, LR) before names.
+        // Match the whole rule before consuming anything: `direction` alone is an entity.
+        let prefix_end = rest
+            .find(['\n', '\r', '\u{2028}', '\u{2029}'])
+            .unwrap_or(rest.len());
+        for direction in ["TB", "BT", "RL", "LR"] {
+            let value_end = rest[..prefix_end]
+                .char_indices()
+                .rev()
+                .find_map(|(offset, _)| {
+                    let candidate = &rest[offset..];
+                    if !candidate
+                        .get(.."direction".len())?
+                        .eq_ignore_ascii_case("direction")
+                    {
+                        return None;
+                    }
+                    let suffix = &candidate["direction".len()..];
+                    let value = suffix.trim_start_matches(is_ecmascript_whitespace);
+                    if value.len() == suffix.len()
+                        || !value.get(..2)?.eq_ignore_ascii_case(direction)
+                    {
+                        return None;
+                    }
+                    Some(rest.len() - value.len() + 2)
+                });
+            if let Some(value_end) = value_end {
+                self.pos = start + value_end;
+                // Unlike the leading `.`, the trailing `[^\n]*` includes carriage returns.
+                let tail = &self.input[self.pos..];
+                self.pos += tail.find('\n').unwrap_or(tail.len());
+                return Some((
+                    start,
+                    Tok::Direction(SpannedDirection {
+                        value: direction.to_string(),
+                        selection: SourceSpan::new(start + value_end - 2, start + value_end),
+                    }),
+                    self.pos,
+                ));
+            }
         }
-        let value_end = self.pos;
-        let _ = self.read_to_newline();
-        let value = &self.input[value_start..value_end];
-        let selection = SourceSpan::new(value_start, value_end);
-        let dir = if value.eq_ignore_ascii_case("TB") {
-            "TB"
-        } else if value.eq_ignore_ascii_case("BT") {
-            "BT"
-        } else if value.eq_ignore_ascii_case("LR") {
-            "LR"
-        } else if value.eq_ignore_ascii_case("RL") {
-            "RL"
-        } else {
-            return Some(Err(LexError::new("invalid ER direction", selection)
-                .expecting(
-                    EditorExpectedSyntaxKind::CardinalDirectionValue,
-                    selection,
-                )));
-        };
-        Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
+        // A failed whole-line lookup also proves every remaining token prefix cannot match.
+        // Remember it so a line of entity names does not require quadratic rescanning.
+        self.direction_scan_end = start + prefix_end;
+        None
     }
 
     fn lex_keyword(&mut self) -> Option<(usize, Tok, usize)> {
@@ -1698,7 +1712,7 @@ impl<'input> Lexer<'input> {
         Some((start, Tok::IdList(SpannedIdList { ids }), self.pos))
     }
 
-    fn lex_rest_of_line(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_rest_of_line(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         if self.mode != Mode::LineRest {
             return None;
         }
@@ -1706,17 +1720,33 @@ impl<'input> Lexer<'input> {
         self.skip_ws_default();
         let s = self.read_to_newline();
         self.mode = Mode::Default;
-        Some((
-            start,
-            Tok::RestOfLine(s.trim().trim_end_matches(';').to_string()),
-            self.pos,
-        ))
+        let styles = s.trim().trim_end_matches(';').trim_end();
+        if styles.is_empty() {
+            return Some(Err(LexError::new(
+                "Expected ER style payload",
+                SourceSpan::new(start, self.pos),
+            )));
+        }
+        Some(Ok((start, Tok::RestOfLine(styles.to_string()), self.pos)))
+    }
+
+    /// Whether the word of `len` bytes at the cursor ends at a word boundary, like Mermaid's `\b`
+    /// after a word. Mermaid's regexes are not Unicode-aware, so only ASCII `[A-Za-z0-9_]`
+    /// continues a word: `tokens` is a name, while `to-do` and `to注文` start with `to`.
+    fn ends_word_at(&self, len: usize) -> bool {
+        self.input
+            .as_bytes()
+            .get(self.pos + len)
+            .is_none_or(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
     }
 
     fn lex_rel_tokens(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let s = &self.input[self.pos..];
 
+        // Word cardinalities only match at a word boundary (`/^(?:one or zero\b)/i`,
+        // `/^(?:many\b)/i`, `/^(?:to\b)/i`, ...), so entity names such as `tokens`, `oneshot`
+        // or `manyToMany` fall through to `lex_name_or_str`.
         let lower = s.to_ascii_lowercase();
         for (pat, tok) in [
             ("optionally to", Tok::NonIdentifying),
@@ -1728,7 +1758,7 @@ impl<'input> Lexer<'input> {
             ("zero or many", Tok::ZeroOrMore),
             ("only one", Tok::OnlyOne),
         ] {
-            if lower.starts_with(pat) {
+            if lower.starts_with(pat) && self.ends_word_at(pat.len()) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }
@@ -1750,11 +1780,11 @@ impl<'input> Lexer<'input> {
             self.pos += "1+".len();
             return Some((start, Tok::OneOrMore, self.pos));
         }
-        if lower.starts_with("many") {
+        if lower.starts_with("many") && self.ends_word_at("many".len()) {
             self.pos += "many".len();
             return Some((start, Tok::ZeroOrMore, self.pos));
         }
-        if lower.starts_with("one") {
+        if lower.starts_with("one") && self.ends_word_at("one".len()) {
             self.pos += "one".len();
             return Some((start, Tok::OnlyOne, self.pos));
         }
@@ -1762,7 +1792,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
             return Some((start, Tok::OnlyOne, self.pos));
         }
-        if lower.starts_with("to") {
+        if lower.starts_with("to") && self.ends_word_at("to".len()) {
             self.pos += "to".len();
             return Some((start, Tok::Identifying, self.pos));
         }
@@ -1776,7 +1806,9 @@ impl<'input> Lexer<'input> {
             ("}|", Tok::OneOrMore),
             ("}o", Tok::ZeroOrMore),
         ] {
-            if s.starts_with(pat) {
+            // Only `|o` and `}o` end with a word character, so only they carry `\b` in Mermaid.
+            let needs_boundary = pat.ends_with('o');
+            if s.starts_with(pat) && (!needs_boundary || self.ends_word_at(pat.len())) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }
@@ -1791,19 +1823,11 @@ impl<'input> Lexer<'input> {
             return Some((start, Tok::Identifying, self.pos));
         }
 
-        if s.starts_with('u')
-            && self
-                .input
-                .as_bytes()
-                .get(self.pos.wrapping_sub(1))
-                .copied()
-                .is_some_and(|b| matches!(b, b' ' | b'\t' | b'\r'))
-            && self
-                .input
-                .as_bytes()
-                .get(self.pos + 1)
-                .copied()
-                .is_some_and(|b| matches!(b, b'-' | b'.'))
+        if self.starts_with_ci("u")
+            && matches!(
+                self.input.as_bytes().get(self.pos + 1),
+                Some(b'.' | b'-' | b'|')
+            )
         {
             self.pos += 1;
             return Some((start, Tok::MdParent, self.pos));
@@ -2063,9 +2087,32 @@ impl Iterator for Lexer<'_> {
         }
 
         loop {
+            // INITIAL accessibility rules precede directions, which in turn
+            // precede whitespace. Exclusive attribute/style modes bypass them.
+            if matches!(
+                self.mode,
+                Mode::Default
+                    | Mode::NeedIdListOnly
+                    | Mode::NeedClassFirstIdList
+                    | Mode::NeedClassSecondIdList
+            ) {
+                if let Some(tok) = self.lex_acc_title() {
+                    return Some(self.emit_result(tok));
+                }
+                if let Some(tok) = self.lex_acc_descr() {
+                    return Some(self.emit_result(tok));
+                }
+                if let Some(tok) = self.lex_direction() {
+                    return Some(self.emit_token(tok));
+                }
+            }
+            let before_whitespace = self.pos;
             match self.mode {
                 Mode::Block => self.skip_ws_block(),
                 _ => self.skip_ws_default(),
+            }
+            if self.pos != before_whitespace {
+                continue;
             }
 
             if self.pos >= self.input.len() {
@@ -2088,23 +2135,11 @@ impl Iterator for Lexer<'_> {
             }
 
             if let Some(tok) = self.lex_rest_of_line() {
-                return Some(self.emit_token(tok));
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_newline() {
                 return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_acc_title() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_acc_descr() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_direction() {
-                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_keyword() {
@@ -2148,6 +2183,47 @@ mod tests {
             config: MermaidConfig::empty_object(),
             effective_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn er_direction_lexer_preserves_ecmascript_line_terminators() {
+        // Test raw lexer rules before Engine preprocessing normalizes line endings.
+        for separator in ['\r', '\u{2028}', '\u{2029}'] {
+            let source = format!("direction RL{separator}direction TB");
+            let (start, token, end) = Lexer::new(&source).next().unwrap().unwrap();
+            let Tok::Direction(direction) = token else {
+                panic!("expected direction");
+            };
+            assert_eq!(direction.value, "RL");
+            assert_eq!(direction.selection, SourceSpan::new(10, 12));
+            assert_eq!((start, end), (0, source.len()));
+        }
+        let tokens = Lexer::new("A B C\ndirection BT")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            matches!(&tokens.last().unwrap().1, Tok::Direction(direction) if direction.value == "BT")
+        );
+    }
+
+    #[test]
+    fn er_parent_marker_uses_only_the_following_character() {
+        for source in ["u-table", "U.table", "u|", "\"A\"u--"] {
+            let mut lexer = Lexer::new(source);
+            if source.starts_with('"') {
+                assert!(matches!(lexer.next().unwrap().unwrap().1, Tok::Name(_)));
+            }
+            assert!(
+                matches!(lexer.next().unwrap().unwrap().1, Tok::MdParent),
+                "{source}"
+            );
+        }
+        for source in ["u", "user", "u_table"] {
+            assert!(
+                matches!(Lexer::new(source).next().unwrap().unwrap().1, Tok::Name(_)),
+                "{source}"
+            );
         }
     }
 

@@ -96,13 +96,21 @@ deeper structural edge. The capture budget is expressed as both a maximum dimens
 pixel area, so tall or wide moderate-area diagrams can be measured without allowing unbounded
 screenshot memory.
 
-One reviewed out-of-domain XYChart extrapolation is admitted through
-`fixtures/_verification/root-viewport-residuals.json`. This is not a numeric tolerance: the receipt
-binds the exact local and upstream SVG SHA-256 values plus a versioned fingerprint of the live
-Chromium decision facts: root dimensions, paint status, capture policy, indeterminate reasons, and
-the maximum structural overflow depth on each edge. The fingerprint deliberately excludes raw
-screenshot pixels and browser patch identity. A changed, malformed, or unused receipt blocks.
-Every other local-only, new, or worse structural result remains blocking.
+Reviewed residuals are recorded in `fixtures/_verification/root-viewport-residuals.json`.
+The out-of-domain XYChart extrapolation binds both SVG SHA-256 values and a versioned fingerprint
+of the live Chromium decision facts: root dimensions, paint status, capture policy, indeterminate
+reasons, and maximum structural overflow depth on each edge. That decision fingerprint deliberately
+excludes raw screenshot pixels and browser patch identity.
+
+The Flowchart title 029 display-font residual additionally binds an exact paired audit fingerprint:
+both roots, geometry, painted and structural overflow, capture state, structural pixel hashes, and
+the browser environment. That admission requires `active-filter` to be the only indeterminate
+reason on both sides, with no paint reaching the capture boundary. Missing roots, capture limits,
+unbounded markers, and image failures cannot use this admission.
+
+Neither receipt is a numeric tolerance or a claim that clipping was repaired. The original
+containment classification and full paint evidence remain in the report. A changed, malformed,
+or unused receipt and every other local-only, new, or worse structural result remain blocking.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
@@ -122,13 +130,15 @@ Rust dependency analyzer.
 The independently versioned Tree-sitter language distribution has its own `grammar` owner. Changes
 under `distribution/tree-sitter-mermaid/` select that owner and `hygiene`; npm manifests and
 lockfiles also select `npm` and `security`, while Cargo manifests and provenance also select
-`security`. Package license and third-party notice changes also select `security`. Changes to the
-composed contract under `contracts/tree-sitter/` select `grammar` and
-`hygiene`. Workspace manifests, shared fixtures, and pinned upstream sources
-remain shared authorities and therefore select every owner. The grammar workflow verifies the
-35-family catalog projection, Rust package tests, production dependency isolation, legal inventory,
-and Cargo/npm package assembly. A planned family is metadata only: it cannot advertise a support
-tier or query evidence until the corresponding executable gates exist.
+`security`. Package license and third-party notice changes also select `security`. Grammar sources,
+generated native sources, Rust bindings, the Cargo manifest, and grammar fuzz corpora also select
+`fuzz`. The language WASM and portable highlight query select `web` because the
+Playground stages those assets. Workspace manifests, shared fixtures, and pinned upstream sources
+remain shared authorities and therefore select every owner. The grammar workflow owns native and
+WASM generation freshness, the standard corpus, the strict-valid conformance and 37-family query
+tests, scanner and incremental behavior, native binding builds, and Cargo/npm package assembly.
+Shared dependency and legal gates retain their existing owners. The package-local provenance,
+corpus, fixtures, and queries define the syntax contract.
 
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
@@ -165,6 +175,11 @@ requires it. The workspace and release artifacts continue to use the pinned stab
 Pull requests build every harness and replay every committed seed, corpus entry, and crash
 regression without mutation. Only scheduled and manually dispatched fuzz runs perform randomized
 discovery.
+
+Performance contract jobs use the pull request's merge revision so the checked-out Cargo features
+match the workflow's build recipes even when the contributor branch predates a feature change.
+Measurement jobs retain the actual base and head revisions, with lane descriptors loaded from the
+head checkout. Manual contract runs honor the explicit head repository and revision inputs.
 
 The performance workflow selects regression and frontmatter descriptors into one measurement
 matrix. `tools/bench/performance_lanes.json` owns the lane recipes, labels, scheduled set, and manual
@@ -203,6 +218,10 @@ global installer, bundle, and attestation gates remain owned by the tagged relea
 The Web size gate measures the final wasm-bindgen binaries copied into the npm packages. It must not
 build and measure a second Cargo-only approximation of the same package.
 
+The tagged crates workflow reuses the strict feature matrix and Web build/smoke only from a successful full preflight with an explicit immutable source input and the exact same workflow commit. The read-only verifier binds repository, source commit/tree/version, run/attempt, and the downloaded artifact's ID and digest. Missing or stale evidence runs the original checks; fresh registry resolution, static gates, Typst, and publication barriers remain mandatory. This is a narrow source-check optimization, not a general release authorization cache.
+
+Ubuntu CLI-validator and wheel-repair dependency installation has a ten-minute step limit, bounded network timeouts, and finite retries. Failed package-index updates stop the step rather than silently using stale metadata; these limits prevent a stalled mirror from consuming the full build-job timeout.
+
 ## Evidence Ownership
 
 | Claim | Owning evidence |
@@ -240,6 +259,10 @@ Before adding a standing PR check, identify:
 Prefer native tools such as Cargo, nextest, actionlint, npm, and package installers. Do not grow
 repository scripts into partial parsers for Rust, Cargo, GitHub Actions, or shell merely to prove a
 workflow row or source line is safe.
+
+For local workflow checks, make ShellCheck available on `PATH` or pass its executable with
+`actionlint -shellcheck <path>`. Without ShellCheck, actionlint skips the shell-script diagnostics
+that the Linux CI runner enforces.
 
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
 security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
@@ -301,3 +324,16 @@ library tests in Release mode. The reconciliation suite guards against behavior 
 and receipt freshness checks. These negative tests complement the production runner's positive
 artifact checks. Both suites use explicit test namespaces and the qualification suite enables the
 workspace-only acceptance configuration plus PNG and Cytoscape layout features.
+
+## Playground build identity
+
+The Playground keeps the WASM package version separate from its source build identity. Pages builds
+show `Main build` and the checkout's short commit ID; pull-request builds show `Preview build`.
+Tag builds are labeled as such without claiming that the tag has been published. The source link
+opens the full commit in the workflow repository. CI fails if the checkout does not match
+`GITHUB_SHA`, including detached pull-request merge checkouts.
+
+Local builds show `Local build`, with a modified marker for uncommitted files. Source archives
+without Git metadata omit the commit. Each production bundle includes `build-info.json` with the
+same source identity shown in the footer and Merman comparison pane. Package versions used by the
+runtime and benchmark protocols retain their existing meaning.

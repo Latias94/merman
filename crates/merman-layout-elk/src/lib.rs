@@ -4,21 +4,28 @@
 //!
 //! Source-port policy:
 //! - Mermaid's adapter layer is
-//!   https://github.com/mermaid-js/mermaid/blob/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/packages/mermaid-layout-elk/src/render.ts.
+//!   https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
 //! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
 //! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
-//! The crate exposes one Mermaid adapter and one source-backed layered implementation. New layout
-//! behavior must carry a pinned Mermaid or Eclipse ELK source reference.
+//! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
+//! handle flat graphs and recursive containers, including Mermaid's explicit metadata presets
+//! and cross-boundary downgrade. Remaining cross-provider boundary routes are rejected explicitly.
+//! New layout behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::num::NonZeroU64;
 
+mod container;
+mod flat;
 mod model;
+#[cfg(test)]
+mod terminal_labels_tests;
+use container::ContainerMode;
 use merman_elk_layered as source_port;
 pub use model::*;
 pub use source_port::{
@@ -91,7 +98,10 @@ impl SourcePhaseDiagnostics {
         graph: &Graph,
         operation_seed: Option<ElkOperationSeed>,
     ) -> Result<Self> {
-        let input = graph_to_source_input(graph);
+        if graph.options.algorithm != Algorithm::Layered {
+            return Err(Error::LayeredDiagnosticsRequired);
+        }
+        let input = graph_to_source_input(graph)?;
         let lgraph = match operation_seed {
             Some(operation_seed) => source_port::import_graph_with_operation_seed(
                 &input,
@@ -163,6 +173,30 @@ impl SourcePhaseDiagnostics {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    NodeSize(#[from] source_port::NodeSizeError),
+    #[error("phase diagnostics require the Layered algorithm")]
+    LayeredDiagnosticsRequired,
+    #[error("phase diagnostics require one scope; use layout for separately scheduled containers")]
+    SeparateScopesDiagnosticsUnsupported,
+    #[error("unsupported ELK hierarchy/provider combination for edge `{edge_id}`")]
+    UnsupportedCrossProviderEdge { edge_id: String },
+    #[error(transparent)]
+    Box(#[from] source_port::algorithms::box_layout::Error),
+    #[error(transparent)]
+    Rectpacking(#[from] source_port::algorithms::rectpacking::Error),
+    #[error(transparent)]
+    Force(#[from] source_port::algorithms::force::Error),
+    #[error(transparent)]
+    Stress(#[from] source_port::algorithms::stress::Error),
+    #[error(transparent)]
+    MrTree(#[from] source_port::algorithms::mrtree::Error),
+    #[error(transparent)]
+    Radial(#[from] source_port::algorithms::radial::Error),
+    #[error(transparent)]
+    SporeOverlap(#[from] source_port::algorithms::spore_overlap::Error),
+    #[error(transparent)]
+    RandomSeed(#[from] source_port::RandomSeedError),
+    #[error(transparent)]
     SourceImport(#[from] merman_elk_layered::ImportError),
     #[error(transparent)]
     SourcePipeline(#[from] merman_elk_layered::PipelineError),
@@ -173,6 +207,21 @@ pub enum Error {
 impl Error {
     pub const fn work_error(&self) -> Option<WorkError> {
         match self {
+            Self::Box(source_port::algorithms::box_layout::Error::Work(error))
+            | Self::Rectpacking(source_port::algorithms::rectpacking::Error::Work(error))
+            | Self::Rectpacking(source_port::algorithms::rectpacking::Error::Box(
+                source_port::algorithms::box_layout::Error::Work(error),
+            ))
+            | Self::Force(source_port::algorithms::force::Error::Work(error))
+            | Self::Stress(source_port::algorithms::stress::Error::Work(error))
+            | Self::Stress(source_port::algorithms::stress::Error::Force(
+                source_port::algorithms::force::Error::Work(error),
+            ))
+            | Self::MrTree(source_port::algorithms::mrtree::Error::Work(error))
+            | Self::Radial(source_port::algorithms::radial::Error::Work(error))
+            | Self::SporeOverlap(source_port::algorithms::spore_overlap::Error::Work(error)) => {
+                Some(*error)
+            }
             Self::Work(error) => Some(*error),
             Self::SourceImport(source_port::ImportError::Work(error))
             | Self::SourcePipeline(source_port::PipelineError::Work(error)) => Some(*error),
@@ -183,7 +232,8 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
+/// Executes the selected source-backed ELK provider. Unsupported cross-provider boundary edges
+/// return a typed error instead of flattening the graph or substituting the Layered provider.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
     let mut work_control = NoopWorkControl;
     layout_with_work_control(graph, &mut work_control)
@@ -220,64 +270,84 @@ pub fn layout_with_operation_seed_and_work_control(
     layout_scopes(graph, Some(operation_seed.source_port_seed()), work_control)
 }
 
-fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
-    graph_to_source_input_with_root_context(graph, None, None)
-}
-
-fn graph_to_source_input_with_root_context(
-    graph: &Graph,
-    root_spacing_base: Option<f64>,
-    root_label: Option<Label>,
-) -> ElkInputGraph {
-    let mut options = layered_options_to_source(graph);
-    if let Some(base) = root_spacing_base {
-        options.spacing = source_port::SpacingOptions::layered_base_value(base);
+fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
+    let index = HierarchyIndex::build(graph, &mut NoopWorkControl)?;
+    if index
+        .scopes
+        .iter()
+        .any(|scope| scope.algorithm != Algorithm::Layered)
+    {
+        return Err(Error::LayeredDiagnosticsRequired);
     }
-    if let Some(label) = root_label {
-        apply_root_inside_top_center_label_padding(&mut options, label);
+    if index.scopes.len() > 1 {
+        return Err(Error::SeparateScopesDiagnosticsUnsupported);
     }
+    let options = layered_options_to_source(graph);
     let node_ids_with_direct_children = graph
         .nodes
         .iter()
         .filter_map(|node| node.parent.as_deref())
         .collect::<HashSet<_>>();
 
-    ElkInputGraph {
+    Ok(ElkInputGraph {
         id: graph.id.clone(),
         options,
         nodes: graph
             .nodes
             .iter()
-            .map(|node| ElkInputNode {
+            .enumerate()
+            .map(|(node_index, node)| ElkInputNode {
                 id: node.id.clone(),
-                width: node.width,
-                height: node.height,
-                parent: node.parent.clone(),
-                direction: node.direction.map(direction_to_source),
-                hierarchy_handling: match (node.kind, node.hierarchy_handling) {
-                    (NodeKind::Group, Some(hierarchy_handling)) => {
-                        Some(hierarchy_handling_to_source(hierarchy_handling))
-                    }
-                    (NodeKind::Group, None) => Some(hierarchy_handling_to_source(
-                        graph.options.layered.hierarchy_handling,
-                    )),
-                    (NodeKind::Leaf, _) => None,
+                width: if index.children[node_index].is_empty() {
+                    node.width
+                } else {
+                    0.0
                 },
+                height: if index.children[node_index].is_empty() {
+                    node.height
+                } else {
+                    0.0
+                },
+                parent: node.parent.clone(),
+                direction: index.container_modes[node_index]
+                    .direction(node)
+                    .map(direction_to_source),
+                hierarchy_handling: (node.kind == NodeKind::Group)
+                    .then(|| hierarchy_handling_to_source(index.resolved_handling[node_index])),
                 layer_constraint: node.layer_constraint.map(layer_constraint_to_source),
+                port_alignment: node.port_alignment.map(port_alignment_to_source),
                 port_constraints: None,
                 node_label_placement: match node.kind {
                     NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                     NodeKind::Leaf => NodeLabelPlacement::Fixed,
                 },
-                nested_spacing_base: match node.kind {
-                    NodeKind::Group => Some(30.0),
-                    NodeKind::Leaf => None,
+                node_flexibility: if node.kind == NodeKind::Group {
+                    source_port::NodeFlexibility::PortPosition
+                } else {
+                    source_port::NodeFlexibility::None
                 },
-                // Mermaid only exposes a subgraph label to ELK when `childrenById` contains the
-                // subgraph. Empty subgraphs retain their label data for SVG rendering, but their
-                // titles must not create ELK label margins.
-                label: if node.kind == NodeKind::Leaf
-                    || node_ids_with_direct_children.contains(node.id.as_str())
+                ports_surrounding: (node.kind == NodeKind::Group).then_some(
+                    source_port::SpacingMargin {
+                        top: 12.0,
+                        right: 12.0,
+                        bottom: 12.0,
+                        left: 12.0,
+                    },
+                ),
+                nested_options: (node.kind == NodeKind::Group).then(|| {
+                    Box::new(resolved_container_options(
+                        graph,
+                        node,
+                        index.container_modes[node_index],
+                        graph.direction,
+                        graph.options.layered.hierarchy_handling,
+                    ))
+                }),
+                // Mermaid's leaf labels are already included in the painted node dimensions.
+                // Only non-empty groups expose an ELK label; retain all other measurements in
+                // the adapter model for SVG rendering without creating provider label margins.
+                label: if node.kind == NodeKind::Group
+                    && node_ids_with_direct_children.contains(node.id.as_str())
                 {
                     node.label
                         .map(|label| ElkInputLabel::center("", label.width, label.height))
@@ -293,9 +363,7 @@ fn graph_to_source_input_with_root_context(
                 id: edge.id.clone(),
                 source: edge.source.clone(),
                 target: edge.target.clone(),
-                label: edge
-                    .label
-                    .map(|label| ElkInputLabel::center("", label.width, label.height)),
+                labels: source_edge_labels(edge, true, true, true),
                 minlen: edge.minlen,
                 inside_self_loops_yo: edge.inside_self_loops_yo,
                 model_order: None,
@@ -304,13 +372,48 @@ fn graph_to_source_input_with_root_context(
                 priority_straightness: 0,
             })
             .collect(),
-    }
+    })
 }
 
-fn apply_root_inside_top_center_label_padding(options: &mut SourceLayeredOptions, label: Label) {
+fn source_edge_labels(edge: &Edge, center: bool, start: bool, end: bool) -> Vec<ElkInputLabel> {
+    let mut labels: Vec<_> = edge
+        .label
+        .filter(|_| center)
+        .into_iter()
+        .map(|label| ElkInputLabel::center("", label.width, label.height))
+        .collect();
+    labels.extend(
+        edge.terminal_labels
+            .iter()
+            .filter(|terminal| if terminal.key.at_start() { start } else { end })
+            .map(|terminal| ElkInputLabel {
+                source_index: Some(terminal.key.source_index()),
+                text: String::new(),
+                width: terminal.label.width,
+                height: terminal.label.height,
+                placement: if terminal.key.at_start() {
+                    source_port::EdgeLabelPlacement::Tail
+                } else {
+                    source_port::EdgeLabelPlacement::Head
+                },
+                inline: false,
+            }),
+    );
+    labels
+}
+
+fn apply_root_inside_top_center_label_padding(
+    options: &mut SourceLayeredOptions,
+    label: Label,
+) -> Result<()> {
+    options.include_inside_top_center_label_minimum(source_port::LSize {
+        width: label.width,
+        height: label.height,
+    })?;
     if label.height > 0.0 {
         options.padding.top += label.height + options.node_labels_padding.top;
     }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -318,6 +421,8 @@ struct HierarchyIndex<'a> {
     graph: &'a Graph,
     parent: Vec<Option<usize>>,
     children: Vec<Vec<usize>>,
+    container_modes: Vec<ContainerMode>,
+    resolved_handling: Vec<HierarchyHandling>,
     node_scope: Vec<usize>,
     edge_model_order: Vec<usize>,
     child_scope_by_anchor: Vec<Option<usize>>,
@@ -327,6 +432,7 @@ struct HierarchyIndex<'a> {
 
 #[derive(Debug)]
 struct ScopePlan {
+    algorithm: Algorithm,
     parent: Option<usize>,
     anchor: Option<usize>,
     depth: usize,
@@ -368,6 +474,8 @@ struct ScopeLayout {
     layout: LayoutResult,
     size: source_port::LSize,
     edge_metadata: HashMap<String, ScopeEdgeMetadata>,
+    content_shifts: HashMap<String, Point>,
+    size_constraints_active: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -397,6 +505,43 @@ fn layout_scopes(
         .collect::<Vec<Option<ScopeLayout>>>();
 
     for &scope in &index.postorder {
+        if index.scopes[scope].algorithm != Algorithm::Layered {
+            let (input, edge_metadata) =
+                index.materialize_flat_scope(scope, &arena, work_control)?;
+            let mut output = flat::layout(
+                &input,
+                &index.scopes[scope].seed_scope,
+                index.scopes[scope]
+                    .anchor
+                    .map_or(flat::ScopeContext::Root, |anchor| {
+                        flat::ScopeContext::Container {
+                            node: &graph.nodes[anchor],
+                            mode: index.container_modes[anchor],
+                        }
+                    }),
+                &index.scopes[scope]
+                    .nodes
+                    .iter()
+                    .map(|&node| flat::NodeContext {
+                        mode: index.container_modes[node],
+                        size_constraints_active: index.child_scope_by_anchor[node]
+                            .and_then(|child| arena[child].as_ref())
+                            .is_some_and(|child| child.size_constraints_active),
+                    })
+                    .collect::<Vec<_>>(),
+                operation_seed,
+                work_control,
+            )?;
+            index.complete_flat_hierarchy_edges(scope, &arena, &mut output, work_control)?;
+            arena[scope] = Some(ScopeLayout {
+                layout: output.layout,
+                size: output.size,
+                edge_metadata,
+                content_shifts: output.content_shifts,
+                size_constraints_active: output.size_constraints_active,
+            });
+            continue;
+        }
         let (input, segments, edge_metadata) =
             index.materialize_scope(scope, &arena, work_control)?;
         let mut lgraph = match operation_seed {
@@ -434,6 +579,8 @@ fn layout_scopes(
             layout: source_graph_to_layout_result(&lgraph),
             size: actual_source_graph_size(&lgraph),
             edge_metadata,
+            content_shifts: HashMap::new(),
+            size_constraints_active: false,
         });
     }
 
@@ -441,6 +588,236 @@ fn layout_scopes(
 }
 
 impl<'a> HierarchyIndex<'a> {
+    fn materialize_flat_scope(
+        &self,
+        scope_index: usize,
+        arena: &[Option<ScopeLayout>],
+        work: &mut dyn WorkControl,
+    ) -> Result<(Graph, HashMap<String, ScopeEdgeMetadata>)> {
+        let scope = &self.scopes[scope_index];
+        // Only Layered-owned boundary segments reach this branch. Upstream Layered rejects
+        // endpoints inside a scope handled by another provider; do not invent external ports.
+        if let Some(edge) = scope.edges.iter().find(|edge| edge.segment.is_some()) {
+            return Err(Error::UnsupportedCrossProviderEdge {
+                edge_id: self.graph.edges[edge.original].id.clone(),
+            });
+        }
+        let units = scope
+            .nodes
+            .len()
+            .checked_add(scope.edges.len())
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        work.check(units)?;
+        work.charge(units)?;
+        let nodes = scope
+            .nodes
+            .iter()
+            .map(|&index| {
+                let mut node = self.graph.nodes[index].clone();
+                node.parent = None;
+                if let Some(child) = self.child_scope_by_anchor[index] {
+                    let size = arena[child]
+                        .as_ref()
+                        .expect("children are laid out in postorder")
+                        .size;
+                    node.width = size.width;
+                    node.height = size.height;
+                } else if node.kind == NodeKind::Group {
+                    // Empty groups have no ELK container options or node labels.
+                    node.kind = NodeKind::Leaf;
+                    node.label_text = None;
+                }
+                node
+            })
+            .collect();
+        let edges = scope
+            .edges
+            .iter()
+            .filter(|edge| !self.is_flat_hierarchy_edge(scope_index, edge))
+            .map(|edge| {
+                let source = &self.graph.edges[edge.original];
+                // Non-layered providers never place terminal labels. Avoid cloning the
+                // caller-owned terminal-label payload into a graph that cannot consume it.
+                Edge {
+                    id: source.id.clone(),
+                    source: source.source.clone(),
+                    target: source.target.clone(),
+                    label: source.label,
+                    terminal_labels: Vec::new(),
+                    minlen: source.minlen,
+                    inside_self_loops_yo: source.inside_self_loops_yo,
+                }
+            })
+            .collect();
+        let metadata = scope
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    self.graph.edges[edge.original].id.clone(),
+                    ScopeEdgeMetadata {
+                        original: edge.original,
+                        segment: None,
+                    },
+                )
+            })
+            .collect();
+        let mut options = self.graph.options.clone();
+        options.algorithm = scope.algorithm;
+        Ok((
+            Graph {
+                id: scope
+                    .anchor
+                    .map(|node| self.graph.nodes[node].id.clone())
+                    .unwrap_or_else(|| self.graph.id.clone()),
+                direction: scope.direction,
+                nodes,
+                edges,
+                options,
+                spacing: self.graph.spacing,
+            },
+            metadata,
+        ))
+    }
+
+    fn is_flat_hierarchy_edge(&self, scope: usize, edge: &ScopedEdge) -> bool {
+        matches!((edge.source, edge.target), (ScopedEndpoint::Node(source), ScopedEndpoint::Node(target))
+            if self.node_scope[source] != scope || self.node_scope[target] != scope)
+    }
+
+    fn complete_flat_hierarchy_edges(
+        &self,
+        scope: usize,
+        arena: &[Option<ScopeLayout>],
+        output: &mut flat::FlatLayout,
+        work: &mut dyn WorkControl,
+    ) -> Result<()> {
+        let hierarchical = self.scopes[scope]
+            .edges
+            .iter()
+            .filter(|edge| self.is_flat_hierarchy_edge(scope, edge))
+            .collect::<Vec<_>>();
+        if hierarchical.is_empty() {
+            return Ok(());
+        }
+        work.check(hierarchical.len())?;
+        work.charge(hierarchical.len())?;
+        let spore = self.scopes[scope].algorithm == Algorithm::SporeOverlap;
+        let mut geometry = HashMap::new();
+        if spore {
+            let mut required_scopes = HashSet::new();
+            for edge in &hierarchical {
+                let (ScopedEndpoint::Node(source), ScopedEndpoint::Node(target)) =
+                    (edge.source, edge.target)
+                else {
+                    unreachable!("flat hierarchy endpoints are original nodes")
+                };
+                for node in [source, target] {
+                    if Some(node) == self.scopes[scope].anchor {
+                        continue;
+                    }
+                    required_scopes.insert(self.node_scope[node]);
+                    if let Some(parent) = self.parent[node]
+                        && Some(parent) != self.scopes[scope].anchor
+                    {
+                        required_scopes.insert(self.node_scope[parent]);
+                    }
+                }
+            }
+            for required in required_scopes {
+                let nodes = if required == scope {
+                    &output.layout.nodes
+                } else {
+                    &arena[required]
+                        .as_ref()
+                        .expect("descendant scopes are complete")
+                        .layout
+                        .nodes
+                };
+                work.check(nodes.len())?;
+                work.charge(nodes.len())?;
+                geometry.extend(nodes.iter().map(|node| (node.id.as_str(), node)));
+            }
+        }
+        let mut completed = Vec::with_capacity(hierarchical.len());
+        for edge in hierarchical {
+            let original = &self.graph.edges[edge.original];
+            let mut points = Vec::new();
+            if spore {
+                let endpoint = |endpoint| {
+                    let ScopedEndpoint::Node(index) = endpoint else {
+                        unreachable!("flat endpoint")
+                    };
+                    if Some(index) == self.scopes[scope].anchor {
+                        // An edge to the layout parent is contained in that parent's inner
+                        // graph. At this export point the parent has not been positioned yet.
+                        return (
+                            Point {
+                                x: output.size.width / 2.0,
+                                y: output.size.height / 2.0,
+                            },
+                            output.size.width,
+                            output.size.height,
+                        );
+                    }
+                    let node = geometry[self.graph.nodes[index].id.as_str()];
+                    let mut center = Point {
+                        x: node.x,
+                        y: node.y,
+                    };
+                    if let Some(parent) = self.parent[index]
+                        && Some(parent) != self.scopes[scope].anchor
+                    {
+                        if self.node_scope[parent] == self.node_scope[index] {
+                            let parent = geometry[self.graph.nodes[parent].id.as_str()];
+                            center.x -= parent.x - parent.width / 2.0;
+                            center.y -= parent.y - parent.height / 2.0;
+                        } else {
+                            let parent_scope = self.node_scope[parent];
+                            let shifts = if parent_scope == scope {
+                                &output.content_shifts
+                            } else {
+                                &arena[parent_scope]
+                                    .as_ref()
+                                    .expect("parent scope is complete")
+                                    .content_shifts
+                            };
+                            if let Some(shift) = shifts.get(&self.graph.nodes[parent].id) {
+                                center.x += shift.x;
+                                center.y += shift.y;
+                            }
+                        }
+                    }
+                    (center, node.width, node.height)
+                };
+                let (source, sw, sh) = endpoint(edge.source);
+                let (target, tw, th) = endpoint(edge.target);
+                // SPOrE ElkGraphImporter.applyPositions reads each endpoint's own local
+                // coordinates, including for hierarchical edges. Do not add ancestor offsets.
+                let start = flat::clip_spore_endpoint(source, target, sw, sh);
+                let end = flat::clip_spore_endpoint(target, start, tw, th);
+                points.extend([start, end]);
+            }
+            completed.push(EdgeLayout {
+                id: original.id.clone(),
+                points,
+                labels: original
+                    .label
+                    .into_iter()
+                    .map(|label| EdgeLabelLayout {
+                        terminal: None,
+                        x: output.edge_translation.x,
+                        y: output.edge_translation.y,
+                        width: label.width,
+                        height: label.height,
+                    })
+                    .collect(),
+            });
+        }
+        output.layout.edges.extend(completed);
+        Ok(())
+    }
+
     fn build(graph: &'a Graph, work_control: &mut dyn WorkControl) -> Result<Self> {
         let unique_items = graph
             .nodes
@@ -495,9 +872,13 @@ impl<'a> HierarchyIndex<'a> {
         }
         detect_parent_cycles(graph, &parent)?;
 
+        let (container_modes, include_children) =
+            container::resolve(graph, &parent, &children, &node_by_id, work_control)?;
+
         work_control.check(1)?;
         work_control.charge(1)?;
         let mut scopes = vec![ScopePlan {
+            algorithm: graph.options.algorithm,
             parent: None,
             anchor: None,
             depth: 0,
@@ -529,12 +910,28 @@ impl<'a> HierarchyIndex<'a> {
             .collect::<Vec<_>>();
         while let Some((node_index, scope, parent_handling, parent_direction)) = search.pop() {
             let node = &graph.nodes[node_index];
+            let mode = container_modes[node_index];
             let handling = if node.kind == NodeKind::Group {
-                node.hierarchy_handling.unwrap_or(parent_handling)
+                if include_children[node_index] {
+                    HierarchyHandling::IncludeChildren
+                } else if matches!(mode, ContainerMode::Explicit(_)) {
+                    HierarchyHandling::SeparateChildren
+                } else {
+                    node.hierarchy_handling.unwrap_or(parent_handling)
+                }
             } else {
                 parent_handling
             };
-            let direction = node.direction.unwrap_or(parent_direction);
+            let direction = mode.direction(node).unwrap_or(parent_direction);
+            // Unconfigured containers resolve to ELK's default provider, not their parent's
+            // non-layered provider. A direction option explicitly selects the diagram provider.
+            let algorithm = if let ContainerMode::Explicit(algorithm) = mode {
+                algorithm
+            } else if mode.direction(node).is_some() {
+                graph.options.algorithm
+            } else {
+                Algorithm::Layered
+            };
             resolved_handling[node_index] = handling;
             node_scope[node_index] = scope;
             preorder_position[node_index] = hierarchy_preorder.len();
@@ -543,18 +940,33 @@ impl<'a> HierarchyIndex<'a> {
             let separates = node.kind == NodeKind::Group
                 && !children[node_index].is_empty()
                 && (parent_handling == HierarchyHandling::SeparateChildren
-                    || handling == HierarchyHandling::SeparateChildren);
+                    || handling == HierarchyHandling::SeparateChildren
+                    || scopes[scope].algorithm != Algorithm::Layered
+                    || algorithm != scopes[scope].algorithm);
             let child_scope = if separates {
                 work_control.check(1)?;
                 work_control.charge(1)?;
                 let child_scope = scopes.len();
                 let seed_scope = scopes[scope].seed_scope.child(node.id.as_str());
                 scopes.push(ScopePlan {
+                    algorithm,
                     parent: Some(scope),
                     anchor: Some(node_index),
                     depth: scopes[scope].depth + 1,
                     seed_scope,
-                    direction,
+                    direction: if matches!(mode, ContainerMode::Explicit(_)) {
+                        if algorithm == Algorithm::MrTree {
+                            Direction::Down
+                        } else {
+                            Direction::Right
+                        }
+                    } else if mode.direction(node).is_none()
+                        && scopes[scope].algorithm != Algorithm::Layered
+                    {
+                        Direction::Right
+                    } else {
+                        direction
+                    },
                     handling,
                     nodes: Vec::new(),
                     children: Vec::new(),
@@ -567,12 +979,18 @@ impl<'a> HierarchyIndex<'a> {
             } else {
                 scope
             };
-            search.extend(
-                children[node_index]
-                    .iter()
-                    .rev()
-                    .map(|child| (*child, child_scope, handling, direction)),
-            );
+            search.extend(children[node_index].iter().rev().map(|child| {
+                (
+                    *child,
+                    child_scope,
+                    handling,
+                    if separates {
+                        scopes[child_scope].direction
+                    } else {
+                        direction
+                    },
+                )
+            }));
         }
         for node in 0..graph.nodes.len() {
             scopes[node_scope[node]].nodes.push(node);
@@ -627,6 +1045,53 @@ impl<'a> HierarchyIndex<'a> {
             edge_owner_scope[edge_index] = owner;
             edge_model_order[edge_index] = scopes[owner].owned_edges.len();
             scopes[owner].owned_edges.push(edge_index);
+            if scopes[owner].algorithm == Algorithm::Radial {
+                // Radial uses hierarchical incoming edges to select its root and may traverse
+                // successors in other scopes. The flat kernel cannot represent that node domain;
+                // keep this raw-adapter combination unsupported instead of silently changing roots.
+                return Err(Error::UnsupportedCrossProviderEdge {
+                    edge_id: edge.id.clone(),
+                });
+            }
+            if scopes[owner].algorithm != Algorithm::Layered {
+                // Force/MrTree importers exclude hierarchical edges; packing providers never
+                // route them. SPOrE exports the original contained edge after node placement.
+                // None of these providers imports Layered's synthetic boundary segments.
+                let containing_scope = pieces
+                    .iter()
+                    .find_map(|(scope, source, target, _)| {
+                        [source, target]
+                            .into_iter()
+                            .any(|endpoint| {
+                                matches!(
+                                    endpoint,
+                                    ScopedEndpoint::ParentBoundary {
+                                        connects_node: true,
+                                        ..
+                                    }
+                                )
+                            })
+                            .then_some(*scope)
+                    })
+                    .unwrap_or(owner);
+                if scopes[containing_scope].algorithm == Algorithm::Layered {
+                    // ELK Layered cannot import a parent endpoint belonging to another
+                    // provider's scope (as opposed to an ordinary descendant-to-peer edge).
+                    return Err(Error::UnsupportedCrossProviderEdge {
+                        edge_id: edge.id.clone(),
+                    });
+                }
+                scopes[containing_scope].edges.push(ScopedEdge {
+                    original: edge_index,
+                    source: ScopedEndpoint::Node(source),
+                    target: ScopedEndpoint::Node(target),
+                    segment: None,
+                    segment_order: None,
+                    segment_count: 0,
+                    carries_label: true,
+                });
+                continue;
+            }
             let label_piece = edge.label.map(|_| compound_center_segment(&pieces));
             let segment_count = pieces.len();
             for (piece_index, (scope, source, target, segment)) in pieces.drain(..).enumerate() {
@@ -728,6 +1193,8 @@ impl<'a> HierarchyIndex<'a> {
             graph,
             parent,
             children,
+            container_modes,
+            resolved_handling,
             node_scope,
             edge_model_order,
             child_scope_by_anchor,
@@ -747,21 +1214,33 @@ impl<'a> HierarchyIndex<'a> {
         HashMap<String, ScopeEdgeMetadata>,
     )> {
         let scope = &self.scopes[scope_index];
+        let labels = scope.edges.iter().try_fold(0usize, |count, scoped| {
+            count
+                .checked_add(self.graph.edges[scoped.original].terminal_labels.len())
+                .ok_or(WorkError::ArithmeticOverflow)
+        })?;
         let materialized = scope
             .nodes
             .len()
             .checked_add(scope.edges.len())
+            .and_then(|count| count.checked_add(labels))
             .ok_or(WorkError::ArithmeticOverflow)?;
         work_control.check(materialized)?;
         work_control.charge(materialized)?;
 
-        let mut options =
-            layered_options_to_source_for(self.graph, scope.direction, scope.handling);
-        if scope.anchor.is_some() {
-            options.spacing = source_port::SpacingOptions::layered_base_value(30.0);
-        }
+        let mut options = if let Some(anchor) = scope.anchor {
+            resolved_container_options(
+                self.graph,
+                &self.graph.nodes[anchor],
+                self.container_modes[anchor],
+                scope.direction,
+                scope.handling,
+            )
+        } else {
+            layered_options_to_source_for(self.graph, scope.direction, scope.handling)
+        };
         if let Some(label) = scope.anchor.and_then(|node| self.graph.nodes[node].label) {
-            apply_root_inside_top_center_label_padding(&mut options, label);
+            apply_root_inside_top_center_label_padding(&mut options, label)?;
         }
 
         let nodes = scope
@@ -769,45 +1248,83 @@ impl<'a> HierarchyIndex<'a> {
             .iter()
             .map(|node_index| {
                 let source = &self.graph.nodes[*node_index];
-                let child_size = self.child_scope_by_anchor[*node_index]
-                    .and_then(|child| arena[child].as_ref())
-                    .map(|layout| layout.size);
+                let child_layout =
+                    self.child_scope_by_anchor[*node_index].and_then(|child| arena[child].as_ref());
+                let child_size = child_layout.map(|layout| layout.size);
                 // Mermaid removes a non-empty group's explicit size before ELK layout. A parent
                 // scope must therefore consume the completed child extent, not the input size.
-                let width = child_size
-                    .map(|size| source.width.max(size.width))
-                    .unwrap_or(source.width);
-                let height = child_size
-                    .map(|size| source.height.max(size.height))
-                    .unwrap_or(source.height);
-                ElkInputNode {
+                let width = child_size.map(|size| size.width).unwrap_or_else(|| {
+                    if self.children[*node_index].is_empty() {
+                        source.width
+                    } else {
+                        0.0
+                    }
+                });
+                let height = child_size.map(|size| size.height).unwrap_or_else(|| {
+                    if self.children[*node_index].is_empty() {
+                        source.height
+                    } else {
+                        0.0
+                    }
+                });
+                let size = if child_layout.is_some_and(|layout| layout.size_constraints_active) {
+                    source_port::inside_top_center_micro_layout(
+                        source_port::LSize { width, height },
+                        self.container_modes[*node_index].minimum(source),
+                        source.label.map(|label| source_port::LSize {
+                            width: label.width,
+                            height: label.height,
+                        }),
+                    )?
+                    .0
+                } else {
+                    source_port::LSize { width, height }
+                };
+                Ok::<_, Error>(ElkInputNode {
                     id: source.id.clone(),
-                    width,
-                    height,
+                    width: size.width,
+                    height: size.height,
                     parent: self.parent[*node_index]
                         .filter(|parent| self.node_scope[*parent] == scope_index)
                         .map(|parent| self.graph.nodes[parent].id.clone()),
-                    direction: source.direction.map(direction_to_source),
-                    hierarchy_handling: match (source.kind, source.hierarchy_handling) {
-                        (NodeKind::Group, Some(handling)) => {
-                            Some(hierarchy_handling_to_source(handling))
-                        }
-                        (NodeKind::Group, None) => {
-                            Some(hierarchy_handling_to_source(scope.handling))
-                        }
-                        (NodeKind::Leaf, _) => None,
-                    },
+                    direction: self.container_modes[*node_index]
+                        .direction(source)
+                        .map(direction_to_source),
+                    hierarchy_handling: (source.kind == NodeKind::Group)
+                        .then(|| hierarchy_handling_to_source(self.resolved_handling[*node_index])),
                     layer_constraint: source.layer_constraint.map(layer_constraint_to_source),
+                    port_alignment: source.port_alignment.map(port_alignment_to_source),
                     port_constraints: None,
                     node_label_placement: match source.kind {
                         NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                         NodeKind::Leaf => NodeLabelPlacement::Fixed,
                     },
-                    nested_spacing_base: (source.kind == NodeKind::Group).then_some(30.0),
+                    node_flexibility: if source.kind == NodeKind::Group {
+                        source_port::NodeFlexibility::PortPosition
+                    } else {
+                        source_port::NodeFlexibility::None
+                    },
+                    ports_surrounding: (source.kind == NodeKind::Group).then_some(
+                        source_port::SpacingMargin {
+                            top: 12.0,
+                            right: 12.0,
+                            bottom: 12.0,
+                            left: 12.0,
+                        },
+                    ),
+                    nested_options: (source.kind == NodeKind::Group).then(|| {
+                        Box::new(resolved_container_options(
+                            self.graph,
+                            source,
+                            self.container_modes[*node_index],
+                            scope.direction,
+                            scope.handling,
+                        ))
+                    }),
                     // Mermaid attaches an ELK label only when childrenById contains the group.
-                    // Empty-group titles remain available to SVG rendering without layout margin.
-                    label: if source.kind == NodeKind::Leaf
-                        || !self.children[*node_index].is_empty()
+                    // Leaf measurements and empty-group titles are paint metadata, not margins.
+                    label: if source.kind == NodeKind::Group
+                        && !self.children[*node_index].is_empty()
                     {
                         source
                             .label
@@ -815,9 +1332,9 @@ impl<'a> HierarchyIndex<'a> {
                     } else {
                         None
                     },
-                }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         let mut edges = Vec::new();
         let mut segments = Vec::new();
@@ -837,13 +1354,14 @@ impl<'a> HierarchyIndex<'a> {
                 id: source.id.clone(),
                 source: source.source.clone(),
                 target: source.target.clone(),
-                label: if scoped.carries_label {
-                    source
-                        .label
-                        .map(|label| ElkInputLabel::center("", label.width, label.height))
-                } else {
-                    None
-                },
+                labels: source_edge_labels(
+                    source,
+                    scoped.carries_label,
+                    scoped.segment_order.is_none_or(|order| order == 0),
+                    scoped
+                        .segment_order
+                        .is_none_or(|order| order + 1 == scoped.segment_count),
+                ),
                 minlen: source.minlen,
                 inside_self_loops_yo: source.inside_self_loops_yo,
                 model_order,
@@ -1243,10 +1761,10 @@ fn flatten_scope_layouts(
     let mut stack = vec![0usize];
     while let Some(scope) = stack.pop() {
         order.push(scope);
-        let layout = &arena[scope]
+        let scope_result = arena[scope]
             .as_ref()
-            .expect("scope layout exists before flatten")
-            .layout;
+            .expect("scope layout exists before flatten");
+        let layout = &scope_result.layout;
         let child_by_id = index.scopes[scope]
             .children
             .iter()
@@ -1265,8 +1783,16 @@ fn flatten_scope_layouts(
             offsets[child] = Point {
                 // Mermaid accumulates nested coordinates from group top-left positions, while the
                 // public Merman node layout is center-based.
-                x: offsets[scope].x + node.x - node.width / 2.0,
-                y: offsets[scope].y + node.y - node.height / 2.0,
+                x: offsets[scope].x + node.x - node.width / 2.0
+                    + scope_result
+                        .content_shifts
+                        .get(&node.id)
+                        .map_or(0.0, |shift| shift.x),
+                y: offsets[scope].y + node.y - node.height / 2.0
+                    + scope_result
+                        .content_shifts
+                        .get(&node.id)
+                        .map_or(0.0, |shift| shift.y),
             };
             children.push(child);
         }
@@ -1367,7 +1893,8 @@ fn translate_edge_layout(edge: &mut EdgeLayout, offset: Point) {
 }
 
 fn source_graph_requires_compound_pipeline(graph: &LGraph) -> bool {
-    graph.graph_properties.external_ports
+    graph.options.hierarchy_handling == source_port::HierarchyHandling::IncludeChildren
+        || graph.graph_properties.external_ports
         || !graph.hierarchy_edges.is_empty()
         || !graph.cross_hierarchy_edges.is_empty()
         || graph
@@ -1377,10 +1904,7 @@ fn source_graph_requires_compound_pipeline(graph: &LGraph) -> bool {
 }
 
 fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
-    source_port::LSize {
-        width: graph.size.width + graph.padding.left + graph.padding.right,
-        height: graph.size.height + graph.padding.top + graph.padding.bottom,
-    }
+    graph.exported_root_size()
 }
 
 fn source_graph_output_work_units(graph: &LGraph) -> std::result::Result<usize, WorkError> {
@@ -1659,6 +2183,16 @@ fn layered_options_to_source_for(
     options.edge_routing = edge_routing_to_source(graph.options.layered.edge_routing);
     options.cycle_breaking_strategy =
         cycle_breaking_to_source(graph.options.layered.cycle_breaking);
+    options.layering_strategy = match graph.options.layered.layering {
+        LayeringStrategy::NetworkSimplex => source_port::LayeringStrategy::NetworkSimplex,
+        LayeringStrategy::LongestPath => source_port::LayeringStrategy::LongestPath,
+        LayeringStrategy::LongestPathSource => source_port::LayeringStrategy::LongestPathSource,
+        LayeringStrategy::CoffmanGraham => source_port::LayeringStrategy::CoffmanGraham,
+        LayeringStrategy::MinWidth => source_port::LayeringStrategy::MinWidth,
+        LayeringStrategy::StretchWidth => source_port::LayeringStrategy::StretchWidth,
+        LayeringStrategy::Interactive => source_port::LayeringStrategy::Interactive,
+    };
+    options.layering_coffman_graham_layer_bound = graph.options.layered.layering_layer_bound;
     options.node_placement_strategy =
         node_placement_to_source(graph.options.layered.node_placement);
     options.node_placement_bk_fixed_alignment =
@@ -1677,6 +2211,60 @@ fn layered_options_to_source_for(
         self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
     options.self_loop_ordering =
         self_loop_ordering_to_source(graph.options.layered.self_loop_ordering);
+    set_mermaid_port_clearance(&mut options);
+    options
+}
+
+fn set_mermaid_port_clearance(options: &mut SourceLayeredOptions) {
+    options.spacing.ports_surrounding.top = 12.0;
+    options.spacing.ports_surrounding.right = 12.0;
+    options.spacing.ports_surrounding.bottom = 12.0;
+    options.spacing.ports_surrounding.left = 12.0;
+}
+
+fn container_options_to_source(
+    graph: &Graph,
+    direction: Direction,
+    handling: HierarchyHandling,
+) -> SourceLayeredOptions {
+    // Mermaid 12 buildSubgraphLayoutOptions. Containers get their own strategy resolution;
+    // root layering, layer bounds, model-order and edge-routing settings are not inherited.
+    let mut options = SourceLayeredOptions {
+        direction: direction_to_source(direction),
+        hierarchy_handling: hierarchy_handling_to_source(handling),
+        random_seed: graph.options.layered.random_seed,
+        merge_edges: graph.options.layered.merge_edges,
+        cycle_breaking_strategy: cycle_breaking_to_source(graph.options.container.cycle_breaking),
+        node_placement_strategy: node_placement_to_source(graph.options.container.node_placement),
+        node_placement_bk_fixed_alignment: node_placement_alignment_to_source(
+            graph.options.container.node_placement_alignment,
+        ),
+        padding: source_port::ElkPadding::uniform(24.0),
+        spacing: source_port::SpacingOptions::layered_base_value(24.0),
+        ..Default::default()
+    };
+    options.spacing.node_node = 50.0;
+    options.spacing.edge_node_between_layers = 30.0;
+    options.spacing.edge_edge = 20.0;
+    set_mermaid_port_clearance(&mut options);
+    options
+}
+
+fn resolved_container_options(
+    graph: &Graph,
+    node: &Node,
+    mode: ContainerMode,
+    direction: Direction,
+    handling: HierarchyHandling,
+) -> SourceLayeredOptions {
+    let mut options = container_options_to_source(graph, direction, handling);
+    options.padding = mode.padding(node);
+    options.node_size_minimum = mode.minimum(node);
+    options.node_size_include_labels = node.label.is_some();
+    if matches!(mode, ContainerMode::Explicit(_)) {
+        options.aspect_ratio = 2.0;
+        options.horizontal_content_alignment = source_port::ContentAlignment::Center;
+    }
     options
 }
 
@@ -1733,6 +2321,7 @@ fn node_placement_to_source(
 ) -> source_port::NodePlacementStrategy {
     match node_placement {
         NodePlacementStrategy::Simple => source_port::NodePlacementStrategy::Simple,
+        NodePlacementStrategy::Interactive => source_port::NodePlacementStrategy::Interactive,
         NodePlacementStrategy::NetworkSimplex => source_port::NodePlacementStrategy::NetworkSimplex,
         NodePlacementStrategy::LinearSegments => source_port::NodePlacementStrategy::LinearSegments,
         NodePlacementStrategy::BrandesKoepf => source_port::NodePlacementStrategy::BrandesKoepf,
@@ -1749,6 +2338,16 @@ fn node_placement_alignment_to_source(
         NodePlacementAlignment::LeftDown => source_port::FixedAlignment::LeftDown,
         NodePlacementAlignment::RightDown => source_port::FixedAlignment::RightDown,
         NodePlacementAlignment::Balanced => source_port::FixedAlignment::Balanced,
+    }
+}
+
+fn port_alignment_to_source(alignment: PortAlignment) -> source_port::PortAlignment {
+    match alignment {
+        PortAlignment::Distributed => source_port::PortAlignment::Distributed,
+        PortAlignment::Justified => source_port::PortAlignment::Justified,
+        PortAlignment::Begin => source_port::PortAlignment::Begin,
+        PortAlignment::Center => source_port::PortAlignment::Center,
+        PortAlignment::End => source_port::PortAlignment::End,
     }
 }
 
@@ -2100,6 +2699,9 @@ fn edge_labels_for_original_edge(
                 == original_edge_id
         })
         .map(|label| EdgeLabelLayout {
+            terminal: label
+                .source_index
+                .and_then(TerminalLabelKey::from_source_index),
             x: graph_origin.x + label.position.x,
             y: graph_origin.y + label.position.y,
             width: label.size.width,
@@ -2247,6 +2849,9 @@ fn edge_labels(graph_origin: LPoint, edge: &source_port::LayeredEdge) -> Vec<Edg
     edge.labels
         .iter()
         .map(|label| EdgeLabelLayout {
+            terminal: label
+                .source_index
+                .and_then(TerminalLabelKey::from_source_index),
             x: graph_origin.x + label.position.x,
             y: graph_origin.y + label.position.y,
             width: label.size.width,
@@ -2272,12 +2877,15 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Leaf,
+            container: Default::default(),
+            label_text: None,
             width: 80.0,
             height: 40.0,
             parent: None,
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: None,
         }
     }
@@ -2288,6 +2896,7 @@ mod tests {
             source: source.to_string(),
             target: target.to_string(),
             label: None,
+            terminal_labels: Vec::new(),
             minlen: 1,
             inside_self_loops_yo: false,
         }
@@ -2301,6 +2910,107 @@ mod tests {
             edges,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn node_port_alignment_matches_elkjs_in_flat_and_separate_scopes() {
+        // elkjs 0.9.3, three implicit ports on a 40px side with Mermaid's 12px
+        // surrounding margins and spacing.baseValue=40. CENTER expands 5px gaps to 10px.
+        for nested in [false, true] {
+            let expected = if nested {
+                // buildSubgraphLayoutOptions uses spacing.baseValue=24.
+                [[15.4, 20.0, 24.6], [10.8, 20.0, 29.2]]
+            } else {
+                [[15.0, 20.0, 25.0], [10.0, 20.0, 30.0]]
+            };
+            for (alignment, expected) in [None, Some(PortAlignment::Center)]
+                .into_iter()
+                .zip(expected)
+            {
+                let mut nodes = vec![leaf("A"), leaf("B"), leaf("C"), leaf("T")];
+                nodes[3].port_alignment = alignment;
+                if nested {
+                    for node in &mut nodes {
+                        node.parent = Some("frame".into());
+                    }
+                    nodes.push(group("frame", None, HierarchyHandling::SeparateChildren));
+                }
+                let mut graph = flat_graph(
+                    nodes,
+                    vec![
+                        edge("AT", "A", "T"),
+                        edge("BT", "B", "T"),
+                        edge("CT", "C", "T"),
+                    ],
+                );
+                graph.direction = Direction::Right;
+                let result = layout(&graph).unwrap();
+                let target = result.nodes.iter().find(|node| node.id == "T").unwrap();
+                let mut offsets: Vec<_> = result
+                    .edges
+                    .iter()
+                    .map(|edge| edge.points.last().unwrap().y - (target.y - target.height / 2.0))
+                    .collect();
+                offsets.sort_by(f64::total_cmp);
+                assert_eq!(offsets.len(), expected.len());
+                for (actual, expected) in offsets.iter().zip(expected) {
+                    assert!(
+                        (actual - expected).abs() < 1e-9,
+                        "nested={nested}, alignment={alignment:?}, offsets={offsets:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn container_flexibility_belongs_to_the_container_node() {
+        let mut container = leaf("frame");
+        container.kind = NodeKind::Group;
+        let mut child = leaf("child");
+        child.parent = Some("frame".into());
+        let mut graph = flat_graph(vec![container, child], vec![]);
+        graph.options.layered.node_placement = NodePlacementStrategy::NetworkSimplex;
+        let source = graph_to_source_input(&graph).unwrap();
+        let imported = source_port::import_graph(&source).unwrap();
+        let container = &imported.layerless_nodes[0];
+        assert_eq!(
+            container.node_flexibility,
+            source_port::NodeFlexibility::PortPosition
+        );
+        let nested = container.nested_graph.as_ref().unwrap();
+        assert_eq!(
+            nested.options.node_placement_strategy,
+            source_port::NodePlacementStrategy::BrandesKoepf
+        );
+        assert_eq!(
+            nested.layerless_nodes[0].node_flexibility,
+            source_port::NodeFlexibility::None
+        );
+    }
+
+    #[test]
+    fn coffman_graham_bound_changes_the_published_layout() {
+        let mut graph = flat_graph(
+            vec![leaf("A"), leaf("B"), leaf("C"), leaf("D")],
+            vec![
+                edge("ab", "A", "B"),
+                edge("ac", "A", "C"),
+                edge("bd", "B", "D"),
+                edge("cd", "C", "D"),
+            ],
+        );
+        graph.options.layered.layering = LayeringStrategy::CoffmanGraham;
+        graph.options.layered.layering_layer_bound = 1;
+        let narrow = layout(&graph).unwrap();
+        graph.options.layered.layering_layer_bound = 2;
+        let wide = layout(&graph).unwrap();
+        let y = |result: &LayoutResult, id: &str| {
+            result.nodes.iter().find(|node| node.id == id).unwrap().y
+        };
+        assert_ne!(y(&narrow, "B"), y(&narrow, "C"));
+        assert_eq!(y(&wide, "B"), y(&wide, "C"));
+        assert!(y(&narrow, "D") - y(&narrow, "A") > y(&wide, "D") - y(&wide, "A"));
     }
 
     #[test]
@@ -2319,12 +3029,15 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: parent.map(str::to_string),
             direction: None,
             hierarchy_handling: Some(handling),
             layer_constraint: None,
+            port_alignment: None,
             label: Some(Label {
                 width: 24.0,
                 height: 18.0,
@@ -2449,6 +3162,7 @@ mod tests {
                             labels: scoped
                                 .carries_label
                                 .then_some(EdgeLabelLayout {
+                                    terminal: None,
                                     x: 1.0,
                                     y: 1.0,
                                     width: 20.0,
@@ -2460,6 +3174,8 @@ mod tests {
                     })
                     .collect();
                 Some(ScopeLayout {
+                    size_constraints_active: false,
+                    content_shifts: HashMap::new(),
                     layout: LayoutResult { nodes, edges },
                     size: source_port::LSize {
                         width: 100.0,
@@ -2510,6 +3226,37 @@ mod tests {
                 .checked_add(units)
                 .ok_or(WorkError::ArithmeticOverflow)?;
             Ok(())
+        }
+    }
+
+    #[test]
+    fn flat_scope_omits_unused_terminal_payload_at_a_fixed_budget() {
+        for count in [0, 1, 8192] {
+            let mut source_edge = edge("ab", "A", "B");
+            source_edge.terminal_labels = vec![
+                TerminalLabel {
+                    key: TerminalLabelKey::StartLeft,
+                    label: Label {
+                        width: 20.0,
+                        height: 12.0
+                    },
+                };
+                count
+            ];
+            let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![source_edge]);
+            graph.options.algorithm = Algorithm::MrTree;
+            let index =
+                HierarchyIndex::build(&graph, &mut RecordingWorkControl::unlimited()).unwrap();
+            let mut work = RecordingWorkControl {
+                remaining: 3,
+                checked: 0,
+                charged: 0,
+            };
+            let (flat, _) = index.materialize_flat_scope(0, &[], &mut work).unwrap();
+            assert_eq!(work.charged, 3);
+            assert!(flat.edges[0].terminal_labels.is_empty());
+            assert_eq!(flat.edges[0].terminal_labels.capacity(), 0);
+            assert_eq!(graph.edges[0].terminal_labels.len(), count);
         }
     }
 
@@ -2635,7 +3382,8 @@ mod tests {
                     })
                     .collect(),
             );
-            let imported = source_port::import_graph(&graph_to_source_input(&flat)).unwrap();
+            let imported =
+                source_port::import_graph(&graph_to_source_input(&flat).unwrap()).unwrap();
             let sort_work = match edge_count {
                 1 => 0,
                 8 => 24,
@@ -3068,12 +3816,15 @@ mod tests {
         let group = |id: &str, parent: Option<&str>, label: Label| Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: parent.map(str::to_string),
             direction: None,
             hierarchy_handling: Some(HierarchyHandling::IncludeChildren),
             layer_constraint: None,
+            port_alignment: None,
             label: Some(label),
         };
         let child = |id: &str, parent: &str, width: f64| Node {
@@ -3140,12 +3891,13 @@ mod tests {
             .and_then(|edge| edge.labels.first())
             .expect("sibling center label");
 
-        assert_eq!(alpha.width, 251.375);
-        assert_eq!(cross_hierarchy_label.x, 24.0);
-        assert_eq!(cross_hierarchy_label.y, 150.0);
+        // elkjs 0.9.3 with Mermaid 12 root and container options.
+        assert_eq!(alpha.width, 295.375);
+        assert_eq!(cross_hierarchy_label.x, 36.0);
+        assert_eq!(cross_hierarchy_label.y, 192.0);
         assert_eq!(cross_hierarchy_label.width, 66.609375);
-        assert_eq!(sibling_label.x, 135.9921875);
-        assert_eq!(sibling_label.y, 219.0);
+        assert_eq!(sibling_label.x, 167.9921875);
+        assert_eq!(sibling_label.y, 255.0);
     }
 
     #[test]
@@ -3170,12 +3922,15 @@ mod tests {
                 Node {
                     id: "one".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
                     direction: None,
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: Some(Label {
                         width: 26.046875,
                         height: 22.0,
@@ -3193,14 +3948,17 @@ mod tests {
         let first = result.edges.iter().find(|edge| edge.id == "e1").unwrap();
         let second = result.edges.iter().find(|edge| edge.id == "e2").unwrap();
 
-        assert_eq!(group.width, 250.703125);
-        assert_eq!(group.height, 121.5);
-        assert_eq!(first.labels[0].x, 130.796875);
-        assert_eq!(first.labels[0].y, 96.5);
-        assert_eq!(first.points[2].y, 109.0);
-        assert_eq!(second.labels[0].x, 130.796875);
-        assert_eq!(second.labels[0].y, 56.5);
-        assert!(second.points.iter().all(|point| point.y == 69.0));
+        // elkjs 0.9.3 with Mermaid 12 root and container options.
+        assert_eq!(group.width, 334.703125);
+        assert_eq!(group.height, 145.0);
+        assert_eq!(first.labels[0].x, 172.796875);
+        assert_eq!(first.labels[0].y, 108.0);
+        assert!((first.points[0].y - 103.4).abs() < 1e-9);
+        assert_eq!(first.points[2].y, 120.5);
+        assert_eq!(second.labels[0].x, 172.796875);
+        assert_eq!(second.labels[0].y, 63.0);
+        assert!((second.points[0].y - 92.6).abs() < 1e-9);
+        assert_eq!(second.points[2].y, 75.5);
     }
 
     #[test]
@@ -3246,16 +4004,134 @@ mod tests {
     }
 
     #[test]
+    fn leaf_label_measurements_do_not_create_layered_margins() {
+        // Pinned elkjs 0.9.3 replay of newshapesset2_lr_allpairs_059 with the local
+        // measured shapes. Treating the hidden 120px bolt/circle labels as fixed ELK
+        // labels previously added 85 + 106 = 191px to the final node's x position.
+        let sizes = [
+            (169.4, 87.0),
+            (172.0, 127.23614471649148),
+            (35.0, 70.0),
+            (14.0, 14.0),
+            (162.0, 76.0),
+        ];
+        let nodes = sizes
+            .into_iter()
+            .enumerate()
+            .map(|(i, (width, height))| Node {
+                width,
+                height,
+                label: Some(Label {
+                    width: 120.0,
+                    height: if i == 0 { 63.0 } else { 42.0 },
+                }),
+                ..leaf(&format!("n{i}{i}"))
+            })
+            .collect();
+        let mut edges = Vec::new();
+        for from in 0..5 {
+            for to in from + 1..5 {
+                edges.push(edge(
+                    &format!("L_n{from}{from}_n{to}{to}_0"),
+                    &format!("n{from}{from}"),
+                    &format!("n{to}{to}"),
+                ));
+            }
+        }
+        let mut graph = flat_graph(nodes, edges);
+        graph.direction = Direction::Right;
+        let input = graph_to_source_input(&graph).unwrap();
+        assert!(input.nodes.iter().all(|node| node.label.is_none()));
+        assert!(graph.nodes.iter().all(|node| node.label.is_some()));
+        let actual = layout(&graph).unwrap();
+        for (id, expected_x) in [
+            ("n00", 96.7),
+            ("n11", 327.4),
+            ("n22", 470.9),
+            ("n33", 575.4),
+            ("n44", 723.4),
+        ] {
+            let node = actual.nodes.iter().find(|node| node.id == id).unwrap();
+            assert!((node.x - expected_x).abs() < 1e-8, "{node:?}");
+        }
+        for node in &mut graph.nodes {
+            node.label = None;
+        }
+        assert_eq!(actual, layout(&graph).unwrap());
+    }
+
+    #[test]
+    fn layered_scopes_preserve_group_labels_but_ignore_leaf_measurements() {
+        for handling in [
+            HierarchyHandling::IncludeChildren,
+            HierarchyHandling::SeparateChildren,
+        ] {
+            let mut child = leaf("child");
+            child.width = 14.0;
+            child.height = 14.0;
+            child.parent = Some("frame".into());
+            child.label = Some(Label {
+                width: 120.0,
+                height: 42.0,
+            });
+            let mut frame = group("frame", None, handling);
+            frame.label = Some(Label {
+                width: 160.0,
+                height: 24.0,
+            });
+            let mut graph = flat_graph(vec![frame, child], vec![]);
+            if handling == HierarchyHandling::IncludeChildren {
+                let input = graph_to_source_input(&graph).unwrap();
+                assert!(
+                    input
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "frame")
+                        .unwrap()
+                        .label
+                        .is_some()
+                );
+                assert!(
+                    input
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "child")
+                        .unwrap()
+                        .label
+                        .is_none()
+                );
+            }
+            let actual = layout(&graph).unwrap();
+            graph.nodes[1].label = None;
+            assert_eq!(actual, layout(&graph).unwrap(), "{handling:?}");
+            graph.nodes[0].label = None;
+            let without_title = layout(&graph).unwrap();
+            let frame_size = |result: &LayoutResult| {
+                let node = result.nodes.iter().find(|node| node.id == "frame").unwrap();
+                (node.width, node.height)
+            };
+            assert_ne!(
+                frame_size(&actual),
+                frame_size(&without_title),
+                "{handling:?}"
+            );
+        }
+    }
+
+    #[test]
     fn source_backed_layout_excludes_empty_group_labels_from_elk_geometry() {
         let empty_group = Node {
             id: "B".to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: None,
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: Some(Label {
                 width: 9.0625,
                 height: 22.0,
@@ -3327,7 +4203,7 @@ mod tests {
         let mut graph = flat_graph(vec![leaf("A")], vec![]);
         graph.options.layered.inside_self_loops_activate = true;
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert!(input.options.inside_self_loops_activate);
     }
@@ -3337,7 +4213,7 @@ mod tests {
         let mut graph = flat_graph(vec![leaf("A")], vec![]);
         graph.options.layered.random_seed = 0;
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert_eq!(input.options.random_seed, 0);
     }
@@ -3407,7 +4283,7 @@ mod tests {
             }],
         );
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert!(input.edges[0].inside_self_loops_yo);
     }
@@ -3740,12 +4616,15 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -3784,12 +4663,15 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -3829,12 +4711,15 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -3871,12 +4756,15 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Right),
                     hierarchy_handling: Some(HierarchyHandling::SeparateChildren),
                     layer_constraint: None,
+                    port_alignment: None,
                     label: Some(Label {
                         width: 42.0,
                         height: 18.0,

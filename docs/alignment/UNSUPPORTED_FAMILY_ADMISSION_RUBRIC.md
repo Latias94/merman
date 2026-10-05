@@ -59,7 +59,8 @@ When a later Mermaid baseline adds a family, repeat the completed contract above
 - detector, typed semantic source, and editor facts;
 - render projection and deterministic layout;
 - family SVG serializer;
-- source-exact fixtures, semantic/layout goldens, and schema-v2 SVG provenance;
+- source-exact fixtures, semantic/layout goldens, and the current SVG provenance schema
+  defined in `docs/rendering/UPSTREAM_SVG_BASELINES.md`;
 - a dedicated compare fact and primary-matrix promotion;
 - focused residual documentation backed by upstream source.
 

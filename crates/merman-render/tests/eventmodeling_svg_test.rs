@@ -960,3 +960,43 @@ fn eventmodeling_docs_minimum_layout_uses_bounded_deterministic_label_metrics() 
     assert!(layout.total_width > rightmost_box);
     assert!(layout.total_height > 0.0);
 }
+
+#[test]
+fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations() {
+    let source = "eventmodeling\ntf 01 ui UI\ntf 02 cmd Command\ntf 03 evt Event\nrf 04 rmo ReadModel ->> 03\nrf 05 ui OtherUI\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout: EventModelingDiagramLayout =
+        serde_json::from_value(projection["layout"]["EventModelingDiagram"].clone()).unwrap();
+    let pairs: Vec<_> = layout
+        .relations
+        .iter()
+        .map(|relation| {
+            (
+                relation.source_frame.as_str(),
+                relation.target_frame.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(pairs, [("01", "02"), ("02", "03"), ("03", "04")]);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("em-relation"))
+            .count(),
+        3
+    );
+}

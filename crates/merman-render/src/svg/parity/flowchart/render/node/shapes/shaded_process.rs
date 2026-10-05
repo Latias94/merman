@@ -62,13 +62,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_shaded_process(
 
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_polygon(
-                &pts,
-                common.fill_color,
-                common.stroke_color,
-                common.stroke_width,
-                common.hand_drawn_seed,
-            )
+            roughjs_paths_for_polygon(&pts, common.stroke_width, common.hand_drawn_seed)
         })
         .unwrap_or_else(|| (path_data.clone(), path_data));
     let _ = write!(

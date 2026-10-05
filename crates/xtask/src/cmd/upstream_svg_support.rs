@@ -503,7 +503,7 @@ pub(crate) fn upstream_svg_package_tree_sha256(root: &Path) -> Result<String, Xt
         hash.update([0]);
     }
     let digest = hash.finalize();
-    Ok(data_encoding::HEXLOWER.encode(&digest))
+    Ok(crate::util::encode_lower_hex(&digest))
 }
 
 pub(crate) fn spawn_timeout_managed_child(command: &mut Command) -> std::io::Result<Child> {
@@ -759,11 +759,8 @@ pub(crate) fn ensure_content_addressed_file(
         path: dir.display().to_string(),
         source,
     })?;
-    let digest = Sha256::digest(contents.as_bytes());
-    let file_path = dir.join(format!(
-        "{stem}-{}.{extension}",
-        data_encoding::HEXLOWER.encode_display(&digest)
-    ));
+    let digest = crate::util::sha256_hex(contents.as_bytes());
+    let file_path = dir.join(format!("{stem}-{digest}.{extension}"));
     match fs::read(&file_path) {
         Ok(existing) if existing == contents.as_bytes() => return Ok(file_path),
         Ok(_) => {
@@ -824,18 +821,6 @@ pub(crate) fn ensure_content_addressed_js_script(
     contents: &str,
 ) -> Result<PathBuf, XtaskError> {
     ensure_content_addressed_file(dir, stem, "js", contents)
-}
-
-pub(crate) fn ensure_upstream_svg_puppeteer_config() -> Result<PathBuf, XtaskError> {
-    // Puppeteer 23.11.1 may not reliably propagate this option through every launcher path, so
-    // the OS process-tree management above remains the authoritative timeout cleanup mechanism.
-    const CONFIG: &str = "{\n  \"detached\": false\n}\n";
-    ensure_content_addressed_file(
-        &crate::cmd::target_root().join("xtask-js"),
-        "upstream-svg-puppeteer-config",
-        "json",
-        CONFIG,
-    )
 }
 
 #[cfg(test)]
@@ -1003,7 +988,7 @@ mod tests {
         let digest = Sha256::digest(&contents);
         let expected_name = format!(
             "upstream-svg-puppeteer-config-{}.json",
-            data_encoding::HEXLOWER.encode_display(&digest)
+            crate::util::encode_lower_hex(&digest)
         );
 
         assert_eq!(

@@ -9,7 +9,7 @@ use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
 
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
-const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
     let mut out = String::new();
@@ -87,6 +87,53 @@ fn write_flowchart_cluster_shape(
     rect_w: f64,
     rect_h: f64,
 ) -> FlowchartShapeFacetEmissionReceipt {
+    if ctx.diagram_type == "agentflow" {
+        let stroke = crate::svg::parity::util::theme_token(
+            ctx.config.as_value(),
+            "flowContainerStroke",
+            &crate::svg::parity::util::theme_token(
+                ctx.config.as_value(),
+                "secondaryBorderColor",
+                &MermaidThemeAdapter::new(ctx.config.as_value())
+                    .node_diagram()
+                    .cluster_border,
+            ),
+        );
+        if flowchart_config_look(ctx.config) == "handDrawn" {
+            let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
+            if let Some(stroke_d) =
+                super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &path,
+                    FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+                    &ctx.hand_drawn_seed,
+                )
+            {
+                let stroke_dasharray = compiled_styles.stroke_dasharray.as_deref().unwrap_or("0 0");
+                let _ = write!(
+                    out,
+                    r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(&stroke),
+                    escape_xml_display(stroke_dasharray),
+                );
+                return FlowchartShapeFacetEmissionReceipt {
+                    stroke_dasharray: true,
+                    ..FlowchartShapeFacetEmissionReceipt::none()
+                };
+            }
+        }
+        let _ = write!(
+            out,
+            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px"/>"#,
+            fmt_display(left),
+            fmt_display(top),
+            fmt_display(rect_w),
+            fmt_display(rect_h),
+            escape_xml_display(&stroke),
+        );
+        return FlowchartShapeFacetEmissionReceipt::none();
+    }
+
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled_styles
@@ -98,8 +145,6 @@ fn write_flowchart_cluster_shape(
 
         if let Some((fill_d, stroke_d)) = super::node::roughjs::roughjs_hachure_paths_for_svg_path(
             &path,
-            fill,
-            stroke,
             stroke_width,
             stroke_dasharray,
             FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
@@ -264,6 +309,44 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             !crate::flowchart::flowchart_label_is_empty_for_render(render_title),
             false,
         );
+    let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+        if ctx.edge_html_labels {
+            &ctx.html_label_text_style
+        } else {
+            &ctx.text_style
+        },
+        ctx.class_defs,
+        classes,
+        styles,
+    );
+    // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
+    // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
+    let markdown_wrap_width = if ctx.uses_elk_adapter_dom {
+        rect_w
+    } else {
+        FLOWCHART_FIXED_LABEL_WRAP_WIDTH
+    };
+    let painted_markdown = (ctx.uses_elk_adapter_dom && label_type == "markdown").then(|| {
+        crate::flowchart::flowchart_label_metrics_for_layout(
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: render_title,
+                label_type,
+                style: title_text_style.as_ref(),
+                max_width_px: Some(rect_w),
+                wrap_mode: ctx.edge_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+        )
+    });
+    let label_w = painted_markdown
+        .map_or(cluster.title_label.width, |metrics| metrics.width)
+        .max(0.0);
+    let label_h = painted_markdown
+        .map_or(cluster.title_label.height, |metrics| metrics.height)
+        .max(0.0);
+    let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
     let mut class_attr = String::new();
     for c in classes {
@@ -280,15 +363,19 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         class_attr.push(' ');
     }
     class_attr.push_str("cluster");
+    if ctx.diagram_type == "agentflow" {
+        class_attr.push_str(" flow-cluster");
+    }
+    let color_attr = super::super::agentflow::container_color_slot(ctx, &cluster.id)
+        .map(|slot| format!(r#" data-color-id="color-{slot}""#))
+        .unwrap_or_default();
     let data_look = flowchart_config_look(ctx.config);
 
     // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
     if !ctx.edge_html_labels {
-        let label_w = cluster.title_label.width.max(0.0);
-        let label_left = left + rect_w / 2.0 - label_w / 2.0;
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
             escape_xml_display(&class_attr),
             cluster_dom_id,
             escape_xml_display(&cluster.id),
@@ -323,14 +410,22 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             fmt_display(label_top)
         );
         if label_type == "markdown" {
-            write_flowchart_svg_text_markdown(out, render_title, true);
+            if ctx.uses_elk_adapter_dom {
+                write_flowchart_svg_text_markdown_wrapped(
+                    out,
+                    render_title,
+                    true,
+                    ctx.measurer,
+                    title_text_style.as_ref(),
+                    Some(markdown_wrap_width),
+                );
+            } else {
+                write_flowchart_svg_text_markdown(out, render_title, true);
+            }
         } else {
-            let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                classes,
-                styles,
-            );
+            let owner = ctx
+                .svg_label_sidecar
+                .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
             let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
                 ctx.svg_label_sidecar,
                 title_owner,
@@ -400,28 +495,29 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         ctx.math_renderer,
         prepared_math,
     );
-    let label_w = cluster.title_label.width.max(0.0);
-    let label_h = cluster.title_label.height.max(0.0);
-    let label_left = left + rect_w / 2.0 - label_w / 2.0;
-
     let span_style_attr = OptionalStyleXmlAttr(label_style);
+    let markdown_uses_wrapped_box = if ctx.uses_elk_adapter_dom {
+        (label_w - markdown_wrap_width).abs() < 1e-3
+    } else {
+        label_w >= markdown_wrap_width - 1e-3
+    };
     let div_style = if label_type != "markdown" {
         "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-    } else if label_w >= FLOWCHART_FIXED_LABEL_WRAP_WIDTH - 1e-3 {
+    } else if markdown_uses_wrapped_box {
         format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(FLOWCHART_FIXED_LABEL_WRAP_WIDTH)
+            mw = fmt_display(markdown_wrap_width)
         )
     } else {
         format!(
             "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-            mw = fmt_display(FLOWCHART_FIXED_LABEL_WRAP_WIDTH)
+            mw = fmt_display(markdown_wrap_width)
         )
     };
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
+        r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
         escape_xml_display(&class_attr),
         cluster_dom_id,
         escape_xml_display(&cluster.id),

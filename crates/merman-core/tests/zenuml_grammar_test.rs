@@ -1,3 +1,5 @@
+#![cfg(feature = "diagram-zenuml")]
+
 use merman_core::{EditorSemanticCompleteness, Engine, ParsedEditorFacts};
 
 const ADVANCED_ZENUML: &str = r#"zenuml
