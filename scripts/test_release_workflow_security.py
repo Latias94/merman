@@ -569,6 +569,20 @@ jobs:
                 self.assertLess(publish.index("Verify downloaded"), publish.index("Retain the exact"))
                 self.assertLess(publish.index("Restore prior"), publish.index("Publish npm package group"))
 
+    def test_grammar_absence_uses_version_api_before_cdn_download(self) -> None:
+        crates = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-crates")
+        inspect = crates.split("- name: Inspect crate publication state", 1)[1].split(
+            "- name: Verify crate release tag before upload", 1
+        )[0]
+        metadata = inspect.index('https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION"')
+        exists = inspect.index('if [[ "$registry_status" == "200" ]]')
+        download = inspect.index('--output "$registry_copy" "$registry_url"')
+        self.assertLess(metadata, exists)
+        self.assertLess(exists, download)
+        self.assertIn('.version.checksum == $checksum and .version.yanked == false', inspect)
+        self.assertIn('elif [[ "$registry_status" != "404" ]]; then', inspect)
+        self.assertIn('cmp "$candidate" "$registry_copy"', inspect)
+
     def test_grammar_retry_only_observes_the_original_candidate(self) -> None:
         publish = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-npm")
         self.assertIn("ref: ${{ github.workflow_sha }}", publish)

@@ -439,10 +439,18 @@ jobs:
           registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
           registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
           registry_user_agent="merman-tree-sitter-release/$VERSION (+https://github.com/Latias94/merman)"
-          registry_status="$(curl --silent --show-error --location --max-time 30 \
+          # Missing objects on the download CDN can return 403; query the version API first.
+          registry_metadata="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.json"
+          registry_status="$(curl --silent --show-error --max-time 30 \
             --user-agent "$registry_user_agent" --write-out '%{http_code}' \
-            --output "$registry_copy" "$registry_url")"
+            --output "$registry_metadata" "https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION")"
           if [[ "$registry_status" == "200" ]]; then
+            candidate_sha256="$(sha256sum "$candidate" | cut -d ' ' -f 1)"
+            jq -e --arg version "$VERSION" --arg checksum "$candidate_sha256" \
+              '.version.num == $version and .version.checksum == $checksum and .version.yanked == false' \
+              "$registry_metadata" >/dev/null
+            curl --fail --silent --show-error --location --max-time 30 \
+              --user-agent "$registry_user_agent" --output "$registry_copy" "$registry_url"
             cmp "$candidate" "$registry_copy"
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "publish=false" >> "$GITHUB_OUTPUT"
