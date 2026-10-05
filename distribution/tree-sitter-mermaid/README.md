@@ -29,7 +29,7 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-The examples below target the unpublished `0.3.0` candidate, including the Mermaid 12.1 sequence endpoint fix and updated generator/runtime contract. The latest published version is `0.2.0`; use its tagged documentation until `0.3.0` is available. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
+This guide documents `0.3.0`, including the Mermaid 12.1 sequence endpoint fix and updated generator/runtime contract. Match the examples to the version installed in your project; earlier versions have their own tagged documentation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
 
 ## Node.js
 

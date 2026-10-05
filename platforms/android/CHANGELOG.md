@@ -4,7 +4,7 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0] - 2026-10-05
+## [0.8.0] - 2026-10-06
 
 This entry consolidates the previous stable integration and the 0.8 alpha migrations into the final candidate contract. It does not announce AAR publication or a Maven Central release.
 

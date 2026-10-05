@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0] - 2026-10-05
+## [0.8.0] - 2026-10-06
 
 This `0.8.0` source candidate summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas. It covers the final Rust, CLI, editor, and SDK contracts rather than intermediate prerelease APIs. The candidate targets Mermaid `12.1.0`; **`0.8.0` is not yet published**. Final release checks must run against the exact source selected for publication.
 
