@@ -163,7 +163,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("uses: actions/checkout@"),
                 )
 
-    def test_credentialled_workflow_actions_are_immutable(self) -> None:
+    def test_credentialled_workflow_actions_use_explicit_versions_or_commits(self) -> None:
         for path in [*PUBLISH_WORKFLOWS, WORKFLOW_ROOT / "pages.yml"]:
             for line_number, line in enumerate(read(path).splitlines(), start=1):
                 match = re.search(r"\buses:\s*([^\s#]+)", line)
@@ -180,8 +180,8 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                 ref = reference.rsplit("@", 1)[1]
                 self.assertRegex(
                     ref,
-                    r"^[0-9a-f]{40}$",
-                    f"{path.name}:{line_number} uses a mutable or malformed action ref",
+                    r"^(?:[0-9a-f]{40}|v?\d+\.\d+\.\d+(?:-[-\w.]+)?)$",
+                    f"{path.name}:{line_number} needs an explicit action version or commit",
                 )
 
     def test_tree_sitter_mermaid_release_is_protected_and_subdirectory_aware(self) -> None:
@@ -248,7 +248,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             self.assertIn("git/ref/tags/$RELEASE_TAG", publish_job)
             self.assertIn("commits/$RELEASE_TAG", publish_job)
         self.assertIn(
-            "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
+            "uses: actions/attest@v4.2.2",
             attest,
         )
         self.assertIn("attestations: write", attest)
@@ -306,7 +306,7 @@ jobs:
                 self.assertIn('provenance["toolchain"]["wasiSdk"]', text)
                 self.assertRegex(
                     text,
-                    r"uses: bytecodealliance/setup-wasi-sdk-action@[0-9a-f]{40}",
+                    r"uses: bytecodealliance/setup-wasi-sdk-action@(?:[0-9a-f]{40}|v\d+\.\d+\.\d+)",
                 )
                 self.assertIn("version: ${{ steps.wasi-version.outputs.version }}", text)
                 self.assertIn(
@@ -427,6 +427,40 @@ jobs:
         self.assertIn("if-no-files-found: error", native)
         self.assertNotIn("dist host", native)
         self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
+
+    def test_cli_registry_validation_does_not_gate_binary_publication(self) -> None:
+        release = read(WORKFLOW_ROOT / "release.yml")
+        host = workflow_job(release, "host")
+        self.assertNotIn("generate-cli-registry-candidates", release)
+        self.assertIn("needs.release-verification-gate.result == 'success'", host)
+        self.assertIn("needs.attest-release-assets.result == 'success'", host)
+
+    def test_cli_registry_candidates_use_published_attested_bytes_without_write_access(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-cli-registries.yml")
+        self.assertIn("  workflow_dispatch:", workflow)
+        for capability in WRITE_CAPABILITIES:
+            self.assertNotIn(capability, workflow)
+        for forbidden in ("cargo build", "dist build", "gh release create", "continue-on-error:"):
+            self.assertNotIn(forbidden, workflow)
+        prepare = workflow_job(workflow, "prepare")
+        self.assertIn(".draft == false and .prerelease == false", prepare)
+        self.assertIn("ref: ${{ steps.release.outputs.source_sha }}", prepare)
+        self.assertIn('gh release download "$RELEASE_TAG"', prepare)
+        self.assertIn("gh attestation verify release-assets/release-verification.json", prepare)
+        self.assertIn('--signer-workflow "$GH_REPO/.github/workflows/release.yml"', prepare)
+        self.assertIn('--version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA"', prepare)
+        self.assertIn("--repo-root release-source", prepare)
+        self.assertLess(prepare.index("gh attestation verify"), prepare.index("verify-bundle"))
+        self.assertLess(prepare.index("verify-bundle"), prepare.index("generate_cli_registry_candidates.py"))
+        winget = workflow_job(workflow, "winget")
+        scoop = workflow_job(workflow, "scoop")
+        for job in (winget, scoop):
+            self.assertIn("needs: prepare", job)
+            self.assertIn("if-no-files-found: error", job)
+        self.assertIn("winget/manifests/l/Latias94/MermanCLI/$env:RELEASE_VERSION", winget)
+        self.assertIn("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", winget)
+        self.assertIn("Test-Json", scoop)
+        self.assertIn("-SchemaFile scoop-schema/schema.json", scoop)
 
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
@@ -568,6 +602,20 @@ jobs:
                 self.assertIn(f"merman-{surface}-npm-reconciliation-report-attempt-", publish)
                 self.assertLess(publish.index("Verify downloaded"), publish.index("Retain the exact"))
                 self.assertLess(publish.index("Restore prior"), publish.index("Publish npm package group"))
+
+    def test_grammar_absence_uses_version_api_before_cdn_download(self) -> None:
+        crates = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-crates")
+        inspect = crates.split("- name: Inspect crate publication state", 1)[1].split(
+            "- name: Verify crate release tag before upload", 1
+        )[0]
+        metadata = inspect.index('https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION"')
+        exists = inspect.index('if [[ "$registry_status" == "200" ]]')
+        download = inspect.index('--output "$registry_copy" "$registry_url"')
+        self.assertLess(metadata, exists)
+        self.assertLess(exists, download)
+        self.assertIn('.version.checksum == $checksum and .version.yanked == false', inspect)
+        self.assertIn('elif [[ "$registry_status" != "404" ]]; then', inspect)
+        self.assertIn('cmp "$candidate" "$registry_copy"', inspect)
 
     def test_grammar_retry_only_observes_the_original_candidate(self) -> None:
         publish = workflow_job(read(WORKFLOW_ROOT / "release-tree-sitter-mermaid.yml"), "publish-npm")

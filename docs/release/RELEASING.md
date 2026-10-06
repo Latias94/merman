@@ -20,6 +20,7 @@ is zero.
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
+| `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
@@ -66,6 +67,8 @@ member in the batch must pass its locked publish dry-run before the first member
 then receives one publish attempt. The workflow does not enter the next
 batch until every checksum in the current batch matches; delayed visibility or a lost response
 produces a durable pending-recovery receipt instead of a blind retry.
+
+For WinGet and Scoop, run the independent [CLI registry candidate workflow](../releasing/CLI.md#scoop-and-winget-draft-candidate-contract) after the stable GitHub Release exists. Its read-only preparation and validation do not block binary publication or submit to external registries.
 
 ## Required Credentials
 

@@ -250,10 +250,17 @@ Run the repository checks with:
 python3 -m unittest scripts.test_generate_cli_registry_candidates
 ```
 
-Before submission, run `winget validate <generated-winget-directory>` on Windows. The tag workflow
-runs this command as a release gate over the real verified archive for stable releases. Prereleases
-take an explicit no-candidate branch. Candidate generation remains independently runnable for
-maintainer review and does not submit to either registry.
+After a stable GitHub Release is published, run the independent candidate workflow:
+
+```bash
+gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.8.0
+```
+
+The workflow requires an existing non-draft stable release. It resolves the tag to a commit, verifies the release receipt's GitHub attestation, and checks every CLI/LSP bundle file against that receipt before generating candidates. The generator compares the Windows archive with the tagged source rather than the current branch. No binaries are rebuilt and no release assets are replaced.
+
+WinGet and Scoop validate in separate jobs. WinGet uses the explicit `1.29.380` client and the version directory (`winget/manifests/l/Latias94/MermanCLI/<VERSION>/`); Scoop uses the official schema from Scoop `v0.6.0`. Each successful job uploads its own `winget-validated-<VERSION>` or `scoop-validated-<VERSION>` artifact with the release receipt. The shared `cli-registry-candidates-<VERSION>` artifact is generated input, not proof that both validators passed. Retry only failed jobs when a validator or runner fails.
+
+This read-only workflow is manually dispatched so package-manager review can proceed independently of binary publication. It does not rely on a downstream `release` event from the tag publisher, and it does not submit upstream PRs or claim registry availability. Submit the validated manifests through the external repository's review process separately. A candidate-validation failure must not block or recreate the GitHub Release.
 
 ## Homebrew formula contract
 

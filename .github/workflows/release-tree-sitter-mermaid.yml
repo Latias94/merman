@@ -36,7 +36,7 @@ jobs:
       source_tree: ${{ steps.source.outputs.source_tree }}
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -96,7 +96,7 @@ jobs:
             printf 'version=%s\n' "$version"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ steps.release.outputs.source_ref }}
           path: release-source
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -183,7 +183,7 @@ jobs:
           PY
 
       - name: Install Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -193,10 +193,10 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: nextest
 
@@ -223,7 +223,7 @@ jobs:
 
       - name: Install pinned WASI SDK
         id: wasi-sdk
-        uses: bytecodealliance/setup-wasi-sdk-action@77d09f3df1e8da344d8403cf8631af8977938b4c # v1.0.0
+        uses: bytecodealliance/setup-wasi-sdk-action@v1.0.0
         with:
           version: ${{ steps.wasi-version.outputs.version }}
           add-to-path: false
@@ -264,13 +264,13 @@ jobs:
           - target: win32-x64
             runner: windows-2025
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -292,7 +292,7 @@ jobs:
             > "$RUNNER_TEMP/tree-sitter-mermaid-prebuild-$TARGET.tar.gz"
 
       - name: Upload prebuild
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: tree-sitter-mermaid-prebuild-${{ matrix.target }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-prebuild-${{ matrix.target }}.tar.gz
@@ -302,14 +302,14 @@ jobs:
     needs: [validate-inputs, verify, prebuild]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -319,10 +319,10 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Download native prebuilds from this run
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           pattern: tree-sitter-mermaid-prebuild-*
           path: ${{ runner.temp }}/tree-sitter-mermaid-prebuilds
@@ -364,7 +364,7 @@ jobs:
           (cd "$release_dir" && sha256sum ./* > SHA256SUMS)
 
       - name: Upload release candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release/*
@@ -381,12 +381,12 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Download release candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
       - name: Attest release candidate
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        uses: actions/attest@v4.2.2
         with:
           subject-path: ${{ runner.temp }}/tree-sitter-mermaid-release/*
 
@@ -399,20 +399,20 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
       - name: Checkout trusted recovery observer
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
       - name: Download release candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
@@ -439,10 +439,18 @@ jobs:
           registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
           registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
           registry_user_agent="merman-tree-sitter-release/$VERSION (+https://github.com/Latias94/merman)"
-          registry_status="$(curl --silent --show-error --location --max-time 30 \
+          # Missing objects on the download CDN can return 403; query the version API first.
+          registry_metadata="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.json"
+          registry_status="$(curl --silent --show-error --max-time 30 \
             --user-agent "$registry_user_agent" --write-out '%{http_code}' \
-            --output "$registry_copy" "$registry_url")"
+            --output "$registry_metadata" "https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION")"
           if [[ "$registry_status" == "200" ]]; then
+            candidate_sha256="$(sha256sum "$candidate" | cut -d ' ' -f 1)"
+            jq -e --arg version "$VERSION" --arg checksum "$candidate_sha256" \
+              '.version.num == $version and .version.checksum == $checksum and .version.yanked == false' \
+              "$registry_metadata" >/dev/null
+            curl --fail --silent --show-error --location --max-time 30 \
+              --user-agent "$registry_user_agent" --output "$registry_copy" "$registry_url"
             cmp "$candidate" "$registry_copy"
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -530,13 +538,13 @@ jobs:
       id-token: write
     steps:
       - name: Checkout trusted registry observer
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
       - name: Install Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24.21.0"
           registry-url: https://registry.npmjs.org
@@ -545,7 +553,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Download release candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
@@ -648,7 +656,7 @@ jobs:
       contents: write
     steps:
       - name: Download release candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
