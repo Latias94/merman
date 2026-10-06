@@ -1,13 +1,32 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-01
+Last updated: 2026-10-06 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Published workspace prerelease: `0.8.0-alpha.7`, planned as the final alpha of the 0.8.0 cycle. The broader theme refactor remains deferred; the root changelog records that scope decision. Read the [alpha.6-to-alpha.7 upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating coupled packages.
+Published Rust workspace and CLI/LSP release: `0.8.0`. Other delivery channels remain independent. The broader theme refactor remains deferred; start with the [stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md) or [alpha.7 delta](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+## 0.8.0 Publication Snapshot
+
+Recorded on 2026-10-06 in Asia/Shanghai (registry and GitHub API timestamps use UTC). The immutable `v0.8.0` and `tree-sitter-mermaid-v0.3.0` tags resolve to `2029bd547077b1a6800878e125663633d81e6d87`. Full workspace preflight [37344366248](https://github.com/Latias94/merman/actions/runs/37344366248) passed all 24 jobs for that exact source.
+
+| Surface | Verified publication | Owner run |
+| --- | --- | --- |
+| Workspace Rust crates | All 21 coupled crates at `0.8.0`; all seven batch receipts are complete and registry checksums match the prepared packages | [37353884068](https://github.com/Latias94/merman/actions/runs/37353884068) |
+| CLI/LSP archives | Ten archives across five targets, four installers, checksums, and verification metadata; all 26 published assets match the attested recovery bundle | [37359550915](https://github.com/Latias94/merman/actions/runs/37359550915) |
+| Tree-sitter grammar | `tree-sitter-mermaid 0.3.0` on crates.io, `@mermanjs/tree-sitter-mermaid@0.3.0` on npm with `latest` and provenance, and the independent GitHub Release | [37347725013, attempt 2](https://github.com/Latias94/merman/actions/runs/37347725013) |
+| Web, Node, Python, Flutter, Android, Apple, VS Code, Typst, Pages, external package managers | Not published by this release operation; their own registries, releases, and owner workflows remain authoritative | Separate authorization and publication |
+
+Grammar recovery preserved the original candidate. The first Cargo job stopped before uploading because a missing CDN object returned HTTP 403; the version API correctly returned 404. Local Cargo packaging produced the original CI `.crate` byte-for-byte (`a6058ff44d72f9ba6770319e1428ca45188ec29e83b9b9fe246793034c569a0f`). That exact package was published with the maintainer's existing credential, then only failed jobs of the original run were rerun. crates.io API and sparse-index checksums, npm integrity, and all six GitHub assets match the original candidate. npm was published through Trusted Publishing; no tag moved.
+
+The first CLI/LSP run [37353884104](https://github.com/Latias94/merman/actions/runs/37353884104) passed archive and native smoke checks but stopped because WinGet was given the parent manifest directory. Recovery used workflow commit `a0d83790673dd46de408776737b70b5c64f7c21f` with the unchanged `v0.8.0` source. Attempts 1 and 2 could not acquire a hosted runner during a GitHub Actions incident. Attempt 3 reused all five completed builds and passed archive verification, native smoke checks, and asset attestation. Its WinGet validator reported schema-header warnings and returned failure; the identical generated candidates passed local official WinGet `1.29.380` validation with exit code 0.
+
+The operator completed the GitHub Release upload from that exact 26-file, attested attempt-3 bundle, without rebuilding binaries or moving tags. Every published asset size and SHA-256 matches the downloaded bundle and attestation. The automation run remains failed at its registry-candidate step; it must not be rerun to recreate the already-published release. [PR #169](https://github.com/Latias94/merman/pull/169) corrects the version-directory path and pins the WinGet validator for future runs. Scoop and WinGet candidates were validated locally; neither was submitted to an external package-manager repository.
+
+The immutable `0.8.0` crates include preparation-time README wording that still calls the version unpublished. The current repository documentation reconciles publication status; it does not change already-published tarballs. Use the versioned APIs and this dated snapshot when those historical availability sentences disagree.
 
 ## Alpha.7 Publication Snapshot
 
@@ -122,7 +141,7 @@ The `merman-doc` implementation crate joined the coupled graph in `0.8.0-alpha.7
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
-`tree-sitter-mermaid` is a separately packaged language distribution; `0.2.0` is published on crates.io, npm, and its own GitHub Release. Merman `0.8.0` requires the unpublished `0.3.0` candidate, which must complete its independent Cargo publication before the workspace LSP package can publish. Its Cargo package is
+`tree-sitter-mermaid` is a separately packaged language distribution; `0.3.0` is published on crates.io, npm, and its own GitHub Release. It was published before the Merman `0.8.0` LSP package that requires it. Its Cargo package is
 `tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
 `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
 prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a

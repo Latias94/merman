@@ -33,7 +33,7 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
-This guide targets the unpublished `0.8.0` candidate. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available.
+This guide targets the published `merman-ascii 0.8.0` Rust crate. Match the documentation and generated artifacts to the version installed in your project.
 
 ## Quick Start
 

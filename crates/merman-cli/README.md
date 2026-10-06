@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.8.0` source candidate, planned release archives, and published `0.8.0-alpha.7` default all include the Rustdoc fragment command. ELK remains in both the alpha.7 and stable-candidate defaults, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.8.0` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
 The command line has four explicit workflows:
 
@@ -15,7 +15,7 @@ The command line has four explicit workflows:
 
 ## Install
 
-This guide targets the unpublished `0.8.0` candidate. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available. After publication, install the complete prebuilt binary:
+This guide targets the published `merman-cli 0.8.0` Rust crate. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
 
 ```sh
 cargo binstall merman-cli@0.8.0
@@ -29,7 +29,7 @@ Homebrew users can install the stable formula:
 brew install merman-cli
 ```
 
-The formula follows stable releases and may trail this pre-release documentation.
+The formula follows stable releases and may trail the current Merman release.
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
@@ -331,9 +331,9 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.8.0` candidate defaults to the standard diagram CLI with `all-diagrams`.
+The `0.8.0` release defaults to the standard diagram CLI with `all-diagrams`.
 The Rustdoc authoring command remains available in the default and release builds, as in the
-published alpha.7 archives. The commands below target `0.8.0` after publication.
+published alpha.7 archives. The commands below target `0.8.0`.
 For a slim current-source binary, disable defaults and select the required `diagram-*` families
 plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
 explicitly:

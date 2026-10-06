@@ -7,7 +7,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect an allocation plan, or schedule encoding separately from Mermaid
 rendering.
 
-This guide targets the unpublished `0.8.0` candidate. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available.
+This guide targets the published `merman-export 0.8.0` Rust crate. Match the documentation and generated artifacts to the version installed in your project.
 
 ## Choose A Feature
 

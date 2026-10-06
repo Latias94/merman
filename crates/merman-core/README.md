@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide targets `0.8.0`, which is not yet published. For the currently published `0.8.0-alpha.7`, use its tagged documentation and version-pinned dependencies.
+This guide targets the published `merman-core 0.8.0` release. For earlier versions, use their tagged documentation and matching dependencies.
 
 ## Source Feature Migration
 
@@ -26,7 +26,7 @@ suppression, and Cargo feature-unification rules.
 
 ## Quick Start
 
-After publication, add the stable release with all built-in parsers:
+Add the stable release with all built-in parsers:
 
 ```sh
 cargo add merman-core@0.8.0 --features all-diagrams
