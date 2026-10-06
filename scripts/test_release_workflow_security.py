@@ -255,6 +255,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("gh release create", publish_github)
         self.assertIn("GH_REPO: ${{ github.repository }}", publish_github)
         self.assertIn("verify_existing_release", publish_github)
+        self.assertIn("--latest=false", publish_github)
         self.assertIn(
             "if: ${{ inputs.publish && inputs.publish_github_release }}",
             publish_github,
