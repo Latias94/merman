@@ -147,7 +147,7 @@ class DiagramSelectionTests(unittest.TestCase):
                 self.assertEqual(len(rust_calls), 5)
                 for command, cwd, env in rust_calls:
                     self.assertEqual(command[:3], ["rustup", "run", expected])
-                    self.assertEqual(cwd, output / "consumer")
+                    self.assertEqual(cwd, (output / "consumer").resolve())
                     self.assertEqual(env["RUSTUP_TOOLCHAIN"], expected)
                     self.assertNotIn("RUSTFLAGS", env)
                     self.assertNotIn("CARGO_PROFILE_RELEASE_LTO", env)

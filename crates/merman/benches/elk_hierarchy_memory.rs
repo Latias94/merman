@@ -27,7 +27,7 @@ const MAX_REQUEST_BYTES: u64 = 4 * 1024;
 const DEPTH_UNITS_PER_SCALE: u32 = 2;
 const SEMANTIC_KIND: &str = "flowchart-elk-hierarchy-render-v2";
 const DIAGRAM_TYPE: &str = "flowchart-elk";
-const TERMINAL_NODE_ID: &str = "elk-hierarchy-memory-flowchart-terminal-0";
+const TERMINAL_NODE_ID: &str = "terminal";
 
 #[global_allocator]
 static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new();
@@ -436,7 +436,7 @@ fn observe_svg(svg: &str, expected_depth: u32) -> Result<SvgObservation, ProbeEr
         .filter(|node| {
             node.has_tag_name("g")
                 && has_class(*node, "node")
-                && node.attribute("id") == Some(TERMINAL_NODE_ID)
+                && node.attribute("data-id") == Some(TERMINAL_NODE_ID)
         })
         .collect::<Vec<_>>();
     let terminal_node_count = u32::try_from(terminal_nodes.len()).unwrap_or(u32::MAX);
