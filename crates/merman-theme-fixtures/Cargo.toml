@@ -14,7 +14,16 @@ data-encoding.workspace = true
 cssparser.workspace = true
 json5.workspace = true
 lol_html.workspace = true
-merman-core = { path = "../merman-core" }
+merman-core = {
+    path = "../merman-core",
+    features = [
+        "diagram-class",
+        "diagram-er",
+        "diagram-flowchart",
+        "diagram-sequence",
+        "diagram-state",
+    ],
+}
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

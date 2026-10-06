@@ -829,8 +829,9 @@ pub(crate) struct CompareFixtureInput<'a> {
 
 #[derive(Debug)]
 pub(crate) enum CompareFixtureResult {
-    #[cfg(test)]
-    Skipped { reason: String },
+    Skipped {
+        reason: String,
+    },
     Rendered {
         render_evidence: ObservedRenderEvidence,
         local_svg: String,
@@ -1420,7 +1421,6 @@ where
 
         let failure_start = failures.len();
         match outcome {
-            #[cfg(test)]
             CompareFixtureResult::Skipped { reason } => {
                 evidence.skipped_fixtures += 1;
                 notes.push(format!("skipped {stem}: {reason}"));
@@ -2815,7 +2815,7 @@ mod tests {
         let renderer = merman::Renderer::new()
             .with_engine(super::super::svg_compare_engine())
             .with_parse_options(ParsePolicy::SuppressErrors.options());
-        let mut observed = ObservedRenderOperations::from_environment(&environment).unwrap();
+        let mut observed = ObservedRenderOperations::from_environment(&environment);
         let out_path = root.join("report.md");
         let result = run_svg_compare(
             CompareHarnessOptions {
@@ -2898,7 +2898,7 @@ mod tests {
         assert_eq!(evidence.raw_source_svg_dom_comparisons, 6);
         assert_eq!(evidence.accepted_parser_diagnostic_residuals, 6);
         let mut total = CompareEvidence::default();
-        total += evidence;
+        total += evidence.clone();
         total += evidence;
         assert_eq!(total.accepted_parser_diagnostic_residuals, 12);
         assert_eq!(total.raw_source_svg_dom_comparisons, 12);

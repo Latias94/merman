@@ -643,39 +643,118 @@ fn flowchart_elk_dom_node_order_by_root(
     graph: &elk::Graph,
     work_control: &mut Option<&mut ElkOperationWorkControl>,
 ) -> Result<HashMap<String, Vec<String>>> {
+    // Mermaid's flat paint list is stably sorted after layout, independently from ELK's
+    // recursive graph traversal. Admit that sorting work before retaining output ids.
+    let sort_work = comparison_sort_work_units(graph.nodes.len(), work_control)?;
     let dom_work = checked_adapter_add(
         work_control,
         checked_adapter_mul(work_control, graph.nodes.len(), 2)?,
-        1,
+        checked_adapter_add(work_control, 1, sort_work)?,
     )?;
     charge_adapter_work(work_control, dom_work)?;
-    let ids = mermaid_elk_adapter_dom_order(graph);
+    let ids = mermaid_elk_paint_order(graph);
     Ok(std::iter::once((String::new(), ids)).collect())
 }
 
-fn mermaid_elk_adapter_dom_order(graph: &elk::Graph) -> Vec<String> {
-    let mut children_by_parent: HashMap<Option<&str>, Vec<&elk::Node>> = HashMap::new();
-    for node in &graph.nodes {
-        children_by_parent
-            .entry(node.parent.as_deref())
-            .or_default()
-            .push(node);
-    }
-    let mut out = Vec::with_capacity(graph.nodes.len());
-    let mut stack = children_by_parent
-        .get(&None)
+/// Matches Mermaid 12.1's `orderNodesForElkPaint`: groups first by parent depth,
+/// followed by leaves in their original flat input order.
+fn mermaid_elk_paint_order(graph: &elk::Graph) -> Vec<String> {
+    let node_index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let group_depths = mermaid_elk_group_depths(graph, &node_index_by_id);
+    let mut indices = (0..graph.nodes.len()).collect::<Vec<_>>();
+    indices.sort_by(|left, right| {
+        let left_node = &graph.nodes[*left];
+        let right_node = &graph.nodes[*right];
+        match (left_node.kind, right_node.kind) {
+            (elk::NodeKind::Group, elk::NodeKind::Leaf) => std::cmp::Ordering::Less,
+            (elk::NodeKind::Leaf, elk::NodeKind::Group) => std::cmp::Ordering::Greater,
+            (elk::NodeKind::Group, elk::NodeKind::Group) => {
+                group_depths[*left].cmp(&group_depths[*right])
+            }
+            (elk::NodeKind::Leaf, elk::NodeKind::Leaf) => std::cmp::Ordering::Equal,
+        }
+    });
+    indices
         .into_iter()
-        .flat_map(|children| children.iter().rev().copied())
-        .collect::<Vec<_>>();
-    while let Some(node) = stack.pop() {
-        out.push(node.id.clone());
-        if node.kind == elk::NodeKind::Group
-            && let Some(children) = children_by_parent.get(&Some(node.id.as_str()))
-        {
-            stack.extend(children.iter().rev().copied());
+        .map(|index| graph.nodes[index].id.clone())
+        .collect()
+}
+
+/// Computes group-parent depth without recursion or repeated ancestor scans.
+/// The generation guard also bounds malformed diagnostic graphs with cycles.
+fn mermaid_elk_group_depths(
+    graph: &elk::Graph,
+    node_index_by_id: &HashMap<&str, usize>,
+) -> Vec<usize> {
+    let mut depths = vec![0usize; graph.nodes.len()];
+    let mut state = vec![0u8; graph.nodes.len()];
+    let mut active_generation = vec![usize::MAX; graph.nodes.len()];
+    let mut active_position = vec![0usize; graph.nodes.len()];
+    let mut generation = 0usize;
+
+    for start in 0..graph.nodes.len() {
+        if graph.nodes[start].kind != elk::NodeKind::Group || state[start] == 2 {
+            continue;
+        }
+
+        generation = generation.saturating_add(1);
+        let mut path = Vec::new();
+        let mut current = start;
+        let terminal_depth = loop {
+            if state[current] == 2 {
+                break Some(depths[current].saturating_add(1));
+            }
+            if active_generation[current] == generation {
+                let cycle_start = active_position[current];
+                let cycle_len = path.len().saturating_sub(cycle_start);
+                for &index in &path[cycle_start..] {
+                    depths[index] = cycle_len;
+                    state[index] = 2;
+                }
+
+                // Match the upstream visited-set guard: enter a cycle once, then stop.
+                let mut prefix_depth = cycle_len;
+                for &index in path[..cycle_start].iter().rev() {
+                    depths[index] = prefix_depth;
+                    state[index] = 2;
+                    prefix_depth = prefix_depth.saturating_add(1);
+                }
+                break None;
+            }
+
+            active_generation[current] = generation;
+            active_position[current] = path.len();
+            state[current] = 1;
+            path.push(current);
+
+            let Some(parent_id) = graph.nodes[current].parent.as_deref() else {
+                break Some(0);
+            };
+            let Some(&parent_index) = node_index_by_id.get(parent_id) else {
+                break Some(0);
+            };
+            if graph.nodes[parent_index].kind != elk::NodeKind::Group {
+                break Some(0);
+            }
+            current = parent_index;
+        };
+
+        let Some(mut depth) = terminal_depth else {
+            continue;
+        };
+        for &index in path.iter().rev() {
+            depths[index] = depth;
+            state[index] = 2;
+            depth = depth.saturating_add(1);
         }
     }
-    out
+
+    depths
 }
 
 fn normalize_flow_direction(dir: &str) -> String {
@@ -1818,6 +1897,9 @@ fn subgraph_to_elk_node(
 }
 
 #[cfg(test)]
+mod browser_measurements_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use indexmap::IndexMap;
@@ -2802,8 +2884,9 @@ mod tests {
     #[test]
     fn flowchart_elk_projection_work_has_an_independent_exact_budget() {
         // 5 source-index rows + 2 projected nodes + 5 alignment units + 2 layout-index rows
-        // + 7 edge units + 12 bounds units + 5 DOM-order units.
-        const EXPECTED_PROJECTION_WORK: usize = 38;
+        // + 7 edge units + 12 bounds units + 7 DOM-order units: two index/depth scans,
+        // one root-map entry, and 2 * ceil(log2(2)) stable-sort work units.
+        const EXPECTED_PROJECTION_WORK: usize = 5 + 2 + 5 + 2 + 7 + 12 + (2 * 2 + 1 + 2);
 
         let (model, graph, layout) = projection_fixture();
         let meter = Arc::new(OperationWorkMeter::new(
@@ -2842,6 +2925,8 @@ mod tests {
     #[test]
     fn flowchart_elk_projection_rejection_does_not_advance_past_completed_work() {
         const WORK_BEFORE_DOM_ORDER: usize = 33;
+        // The two-node index/depth work and sort must be admitted as one tranche.
+        const DOM_ORDER_WORK: usize = 2 * 2 + 1 + 2;
 
         let (model, graph, layout) = projection_fixture();
         let meter = Arc::new(OperationWorkMeter::new(
@@ -2866,7 +2951,7 @@ mod tests {
             panic!("expected ResourceLimitExceeded");
         };
         assert_eq!(limit.max, WORK_BEFORE_DOM_ORDER);
-        assert_eq!(limit.actual, WORK_BEFORE_DOM_ORDER + 5);
+        assert_eq!(limit.actual, WORK_BEFORE_DOM_ORDER + DOM_ORDER_WORK);
         assert_eq!(work_control.adapter_work(), WORK_BEFORE_DOM_ORDER);
         assert!(work_control.charge_adapter(1).is_err());
         assert_eq!(work_control.adapter_work(), WORK_BEFORE_DOM_ORDER);
@@ -3267,7 +3352,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_dom_order_follows_current_nested_adapter() {
+    fn flowchart_elk_dom_order_keeps_flat_leaf_input_order() {
         let mut model = model(
             vec![
                 node("A", Some("A"), None),
@@ -3311,16 +3396,16 @@ mod tests {
         )
         .unwrap();
 
-        let ids = mermaid_elk_adapter_dom_order(&graph);
+        let ids = mermaid_elk_paint_order(&graph);
         let actual: Vec<&str> = ids.iter().map(String::as_str).collect();
         assert_eq!(
             actual,
-            vec!["bar", "E", "F", "foo", "C", "D", "A", "B", "G"]
+            vec!["bar", "foo", "A", "B", "C", "D", "E", "F", "G"]
         );
     }
 
     #[test]
-    fn flowchart_elk_dom_order_visits_each_parent_before_its_children() {
+    fn flowchart_elk_dom_order_sorts_group_depth_without_reordering_leaves() {
         let node = |id: &str, kind: elk::NodeKind, parent: Option<&str>| elk::Node {
             id: id.to_string(),
             kind,
@@ -3349,14 +3434,14 @@ mod tests {
         };
 
         assert_eq!(
-            mermaid_elk_adapter_dom_order(&graph),
+            mermaid_elk_paint_order(&graph),
             vec![
-                "leaf-before",
                 "outer",
-                "inner",
-                "inner-leaf",
-                "outer-leaf",
                 "sibling",
+                "inner",
+                "leaf-before",
+                "outer-leaf",
+                "inner-leaf",
                 "leaf-after",
             ]
         );
@@ -3391,8 +3476,8 @@ mod tests {
         };
 
         assert_eq!(
-            mermaid_elk_adapter_dom_order(&graph),
-            vec!["before", "expanded", "collapsed", "after"]
+            mermaid_elk_paint_order(&graph),
+            vec!["expanded", "before", "collapsed", "after"]
         );
     }
 
@@ -3434,7 +3519,10 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(mermaid_elk_adapter_dom_order(&graph), vec!["leaf"]);
+        assert_eq!(
+            mermaid_elk_paint_order(&graph),
+            vec!["first", "second", "leaf"]
+        );
     }
 
     #[test]

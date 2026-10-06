@@ -2303,7 +2303,7 @@ end
 }
 
 #[test]
-fn sequence_oversized_base_font_stack_remains_direct_with_residual_evidence() {
+fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
     let font_stack =
         FontStack::new((0..32).map(|index| format!("font-{index}-{}", "x".repeat(180))))
             .expect("valid oversized Sequence font stack");
@@ -2342,22 +2342,15 @@ fn sequence_oversized_base_font_stack_remains_direct_with_residual_evidence() {
             .contains(&format!("font-family:{expected_css}"))
     );
     assert!(rendered.svg().contains("font-size:18px"));
-    assert!(
-        rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .is_empty()
+    assert_eq!(
+        rendered.style_report().theme_applied_mechanisms(),
+        &[
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
+            FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize),
+        ]
     );
-    assert_eq!(rendered.style_report().theme_residuals().len(), 2);
-    assert!(
-        rendered
-            .style_report()
-            .theme_residuals()
-            .iter()
-            .all(|residual| {
-                residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
-            })
-    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+    assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -10483,7 +10476,17 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
         2,
         "the mirrored top and bottom actor-man labels must share one prepared occurrence"
     );
-    assert!(!rendered.svg().contains("$$x$$"));
+    let document = roxmltree::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
+    let fallback_labels = document
+        .descendants()
+        .filter(|node| node.is_text() && node.text() == Some("$$x$$"))
+        .collect::<Vec<_>>();
+    assert_eq!(fallback_labels.len(), 2);
+    assert!(fallback_labels.iter().all(|label| {
+        label
+            .ancestors()
+            .any(|ancestor| ancestor.has_tag_name("switch"))
+    }));
 
     let finalized = rendered
         .finalize_resvg(&SvgPipeline::resvg_safe())

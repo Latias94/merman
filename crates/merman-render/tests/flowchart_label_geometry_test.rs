@@ -282,12 +282,7 @@ fn hourglass_fixture_labels_ignore_bounds_cached_before_the_label_was_cleared() 
             let document = roxmltree::Document::parse(&svg).unwrap();
             let hourglass = document
                 .descendants()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node
-                            .attribute("id")
-                            .is_some_and(|id| id.contains("flowchart-n44-"))
-                })
+                .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some("n44"))
                 .expect("fixture hourglass node");
             let label = hourglass
                 .descendants()

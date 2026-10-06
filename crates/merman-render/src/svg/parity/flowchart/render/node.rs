@@ -38,7 +38,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub stroke_dasharray: &'a str,
     pub typed_corner_radius: Option<f64>,
     pub source_corner_radii: [Option<f64>; 2],
-    pub neo_corner_radius: f64,
+    pub configured_corner_radius: Option<f64>,
     pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub wrapped_in_a: bool,
@@ -375,7 +375,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         stroke_dasharray,
         typed_corner_radius: typed_radius.map(f64::from),
         source_corner_radii: compiled_styles.rectangle_source_radii(),
-        neo_corner_radius: ctx.node_corner_radius,
+        configured_corner_radius: (look == "neo" && ctx.node_corner_radius_config_override)
+            .then_some(ctx.node_corner_radius),
         hand_drawn_seed: &ctx.hand_drawn_seed,
         work_meter: ctx.work_meter,
         wrapped_in_a,

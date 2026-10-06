@@ -4201,20 +4201,19 @@ fn prepare_with_svg_label_preparation(
     let required_capabilities = plan.required_capabilities().to_vec();
     let expected_family = plan.family_id();
     let context = FamilyRenderContext::resolve(session, expected_family);
-    // The heterogeneous router has one generic layout call per family. Keep its debug-build
-    // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    #[cfg(feature = "diagram-class")]
-    if expected_family == DiagramFamilyId::CLASS {
-        let mut artifact = preparation::prepare_class_render(parsed, options, context)?;
-        artifact.required_capabilities = required_capabilities;
-        artifact
-            .context
-            .session()
-            .checkpoint(OperationPhase::Layout)?;
-        return Ok(artifact);
-    }
-    let mut artifact =
-        preparation::prepare_non_class_render(parsed, options, context, svg_label_preparation)?;
+    // Keep the heterogeneous router's debug-build caller slots out of the Dagre and FCoSE
+    // preparation chains. Share the completion path so each route needs only one artifact slot.
+    let mut artifact = match expected_family {
+        #[cfg(feature = "diagram-class")]
+        DiagramFamilyId::CLASS => preparation::prepare_class_render(parsed, options, context)?,
+        #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+        DiagramFamilyId::ARCHITECTURE => {
+            preparation::prepare_architecture_render(parsed, options, context)?
+        }
+        _ => {
+            preparation::prepare_non_class_render(parsed, options, context, svg_label_preparation)?
+        }
+    };
     artifact.required_capabilities = required_capabilities;
     artifact
         .context

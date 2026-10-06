@@ -574,6 +574,30 @@ fn layout_mindmap_diagram_model(
 
 #[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
+    #[test]
+    fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
+        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
+            merman_core::ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
+            .begin_session()
+            .unwrap();
+        let artifact =
+            crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap();
+        let layout = artifact.layout_json().unwrap();
+        let nodes = layout["layout"]["MindmapDiagram"]["nodes"]
+            .as_array()
+            .unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert!(
+            nodes
+                .iter()
+                .all(|node| node["width"].as_f64().unwrap() > 0.0)
+        );
+    }
+
     struct FixedMeasurer;
 
     impl crate::text::TextMeasurer for FixedMeasurer {

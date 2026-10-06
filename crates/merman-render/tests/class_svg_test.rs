@@ -395,9 +395,14 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
         .expect("valid Class mixed font size");
     let theme = class_typography_theme(typography);
     let source = "classDiagram\n  class Alpha\n";
-    let metadata = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_metadata_sync(source)
-        .expect("parse Class compatibility metadata");
+    let metadata = merman_render::__private::install_parse_compatibility(
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+        )),
+    )
+    .parse_metadata_sync(source)
+    .expect("parse Class compatibility metadata");
     assert_eq!(
         metadata.effective_config.get_str("themeVariables.fontSize"),
         Some("16px")
@@ -418,7 +423,9 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     let rendered = try_render_class_svg_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+        )),
         ThemePortabilityRequirement::BestEffort,
     )
     .expect("BestEffort renders mixed Class typography");
@@ -431,8 +438,14 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 
-    try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
-        .expect("RequirePortable accepts typed Class typography");
+    try_render_class_svg_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+        )),
+    )
+    .expect("RequirePortable accepts typed Class typography");
 }
 
 #[test]
@@ -1060,7 +1073,12 @@ classDiagram
 
     assert!(rendered.svg().contains("ClassElkEdgeTyped"));
     assert!(rendered.svg().contains("&lt;span"));
-    assert!(rendered.svg().contains("<p>many</p>"));
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("tspan") && node.text() == Some("many") })
+    );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
@@ -1458,7 +1476,7 @@ fn class_svg_scopes_text_color_for_html_labels() {
 fn class_svg_honors_configured_class_text_color() {
     let svg = render_class_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"classText": "#123456"}}}%%
+        r##"%%{init: {"theme": "default", "look": "classic", "themeVariables": {"classText": "#123456"}}}%%
 classDiagram
     class Animal
 "##,
@@ -2792,8 +2810,14 @@ note for X "outside"
 "#;
     let baseline = render_class_svg_from_text(source);
     for theme in class_edge_scalar_themes(CanvasPaint::solid("#123456").unwrap()) {
-        let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
-            .expect("nested note paint does not depend on global writer order");
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+            )),
+        )
+        .expect("nested note paint does not depend on global writer order");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let ids = document
             .descendants()
@@ -4260,7 +4284,9 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
-            Engine::new(),
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+            )),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -4272,7 +4298,14 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         assert_eq!(evidence.theme_residual_count(), residual);
         assert_eq!(evidence.not_applicable_count(), not_applicable);
         assert_eq!(
-            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err(),
+            try_render_class_svg_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    json!({"theme": "default", "look": "classic", "layout": "dagre"})
+                ))
+            )
+            .is_err(),
             residual != 0
         );
     }
@@ -4280,7 +4313,9 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
     let rendered = try_render_class_svg_with_theme_requirement(
         source,
         &theme,
-        Engine::new(),
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+        )),
         ThemePortabilityRequirement::BestEffort,
     )
     .unwrap();
@@ -4291,11 +4326,11 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
     assert_eq!(evidence.applied_count(), 1);
 
     let theme = compile(vec![rule(None)]);
-    for config in [
-        json!({"themeVariables": {"mainBkg": "#654321"}}),
-        json!({"themeVariables": {"primaryColor": "#654321"}}),
+    for theme_variables in [
+        json!({"mainBkg": "#654321"}),
+        json!({"primaryColor": "#654321"}),
     ] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "default", "look": "classic", "layout": "dagre", "themeVariables": theme_variables})));
         let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine).unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -4313,7 +4348,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         .for_family(DiagramFamilyId::CLASS),
     ]);
     let source_owned = Engine::new().with_site_config(MermaidConfig::from_value(
-        json!({"themeVariables": {"mainBkg": "#654321"}}),
+        json!({"theme": "default", "look": "classic", "layout": "dagre", "themeVariables": {"mainBkg": "#654321"}}),
     ));
     assert!(try_render_class_svg_with_theme_and_engine(source, &mixed, source_owned).is_err());
 
@@ -4322,13 +4357,26 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         let elk_source = format!("---\nconfig:\n  layout: elk\n---\n{source}");
         let theme = compile(vec![rule(Some(ordinal))]);
         assert_eq!(
-            try_render_class_svg_with_theme_and_engine(&elk_source, &theme, Engine::new()).is_err(),
+            try_render_class_svg_with_theme_and_engine(
+                &elk_source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    json!({"theme": "default", "look": "classic", "layout": "dagre"})
+                ))
+            )
+            .is_err(),
             rejected,
         );
     }
     for source in ["classDiagram\n", "classDiagram\nA --> B\n"] {
-        let rendered =
-            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).unwrap();
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"theme": "default", "look": "classic", "layout": "dagre"}),
+            )),
+        )
+        .unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.not_applicable_count(), 1);
@@ -4519,8 +4567,9 @@ fn class_cluster_scalar_reaches_namespace_rectangles() {
                         let rendered = try_render_class_svg_with_theme_and_engine(
                             source,
                             &theme,
-                            Engine::new()
-                                .with_site_config(MermaidConfig::from_value(json!({"look": look}))),
+                            Engine::new().with_site_config(MermaidConfig::from_value(
+                                json!({"look": look, "layout": "dagre"}),
+                            )),
                         )
                         .expect("typed namespace scalar paint");
                         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -4720,8 +4769,11 @@ fn class_cluster_source_selected_theme_and_mixed_facets_keep_their_own_outcomes(
 fn class_extracted_namespace_receipts_follow_source_relations() {
     let source = "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA *-- B : inside\nclass X\nclass Y\nX <|-- Y : outside\n";
     for look in ["classic", "handDrawn"] {
-        let engine =
-            || Engine::new().with_site_config(MermaidConfig::from_value(json!({"look": look})));
+        let engine = || {
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"theme": "default", "look": look, "layout": "dagre"}),
+            ))
+        };
         let theme = class_edge_rules_theme([ThemeRule::new(
             ThemeTarget::Edge,
             ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),

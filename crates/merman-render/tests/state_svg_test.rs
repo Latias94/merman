@@ -1,6 +1,7 @@
 mod common;
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
@@ -22,6 +23,15 @@ use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
+
+// These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
+fn classic_engine() -> Engine {
+    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "theme": "default",
+        "look": "classic",
+        "layout": "dagre"
+    })))
+}
 
 fn state_edge_data_points(svg: &str, edge_id: &str) -> Vec<merman_render::model::LayoutPoint> {
     use base64::Engine as _;
@@ -293,7 +303,7 @@ fn assert_filter_region_matches_outsets(
 }
 
 fn render_state_svg_from_text(text: &str) -> String {
-    render_state_svg_from_text_with_engine(Engine::new(), text)
+    render_state_svg_from_text_with_engine(classic_engine(), text)
 }
 
 #[test]
@@ -330,7 +340,7 @@ fn render_state_layout_and_svg_from_text_in_environment(
     environment: &RenderEnvironment,
 ) -> (merman_render::model::StateDiagramLayout, String) {
     let session = environment.begin_session().expect("begin State session");
-    let parsed = Engine::new()
+    let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State source")
         .expect("detect State diagram");
@@ -371,7 +381,7 @@ fn try_render_state_svg_with_resource_policy(
         .with_resource_policy(resource_policy)
         .begin_session()
         .expect("begin State resource-bound session");
-    let parsed = Engine::new()
+    let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse State resource-bound fixture")
         .expect("detect State resource-bound fixture");
@@ -441,7 +451,7 @@ fn render_state_layout_and_svg_from_text_with_theme_in_environment(
     environment: &RenderEnvironment,
 ) -> (merman_render::model::StateDiagramLayout, String) {
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -464,7 +474,7 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     environment: &RenderEnvironment,
 ) -> (String, String, usize, bool) {
     let session = environment.begin_session_with_theme(theme).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -506,11 +516,11 @@ fn render_strict_state_svg_with_theme_and_config(
 ) -> (String, StateThemeEvidenceCounts) {
     let (engine, source) = match origin {
         "site" => (
-            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            classic_engine().with_site_config(MermaidConfig::from_value(config)),
             source.to_string(),
         ),
         "source" => (
-            Engine::new()
+            classic_engine()
                 .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []}))),
             {
                 let directive = format!(
@@ -793,7 +803,7 @@ fn state_note_clear_radius_remains_strictly_unsupported() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State note session");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State note source")
         .expect("State diagram detected");
@@ -908,7 +918,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State session");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source")
         .expect("State diagram detected");
@@ -922,7 +932,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable State session without edges");
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, classic_engine())
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse strict State source without edges")
         .expect("State diagram detected");
@@ -1138,10 +1148,11 @@ fn state_svg_terminal_effect_region_uses_the_session_resource_intersection() {
             .with_theme_portability_requirement(portability)
             .begin_session_with_theme(&theme)
             .expect("begin State session");
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
-            .expect("parse State source")
-            .expect("State diagram detected");
+        let parsed =
+            merman_render::__private::install_parse_compatibility(&theme, classic_engine())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+                .expect("parse State source")
+                .expect("State diagram detected");
         let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
             .expect("prepare State artifact");
         let error =
@@ -2140,6 +2151,7 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
             "look": look,
             "themeVariables": {
                 "nodeBorder": MERMAID_COLOR,
+                "lineColor": "#112233",
                 "useGradient": false,
             },
         })
@@ -2315,8 +2327,8 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
             source: END,
             part: SpecialPart::EndOuterStroke,
             config: node_border_config("neo"),
-            expected_attr: Some(("stroke", MERMAID_COLOR)),
-            terminal_fragment: None,
+            expected_attr: Some(("stroke", "#112233")),
+            terminal_fragment: Some("[data-look=\"neo\"].node path{stroke:#22c55e;"),
         },
         Case {
             name: "neo-fork-fill",
@@ -2337,8 +2349,8 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
             source: FORK,
             part: SpecialPart::NamedStroke("Fork"),
             config: node_border_config("neo"),
-            expected_attr: Some(("stroke", MERMAID_COLOR)),
-            terminal_fragment: None,
+            expected_attr: Some(("stroke", "#112233")),
+            terminal_fragment: Some("[data-look=\"neo\"].node path{stroke:#22c55e;"),
         },
         Case {
             name: "neo-choice-fill",
@@ -2364,7 +2376,7 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
             part: SpecialPart::NamedStroke("Decide"),
             config: node_border_config("neo"),
             expected_attr: Some(("stroke", MERMAID_COLOR)),
-            terminal_fragment: None,
+            terminal_fragment: Some("[data-look=\"neo\"].node path{stroke:#22c55e;"),
         },
         Case {
             name: "neo-end-inner-fill",
@@ -2386,7 +2398,7 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
             part: SpecialPart::EndInnerStroke,
             config: node_border_config("neo"),
             expected_attr: Some(("stroke", MERMAID_COLOR)),
-            terminal_fragment: None,
+            terminal_fragment: Some("[data-look=\"neo\"].node path{stroke:#22c55e;"),
         },
     ];
 
@@ -2498,11 +2510,10 @@ fn state_special_terminal_owners_follow_shape_look_and_inner_outer_branch() {
                     "exact {origin} {} terminal attribute: {svg}",
                     case.name
                 );
-                assert!(
-                    terminal
-                        .attribute("style")
-                        .is_some_and(|style| style.contains(&format!("{property}:{value};"))),
-                    "the {origin} {} RoughJS terminal must retain its compatibility winner in inline style: {svg}",
+                assert_eq!(
+                    terminal.attribute("style"),
+                    Some(""),
+                    "the {origin} {} base attribute must not introduce inline paint that outranks compatibility CSS: {svg}",
                     case.name
                 );
             }
@@ -2602,7 +2613,9 @@ fn state_neo_global_node_gradient_owns_rough_special_path_strokes() {
                     "themeVariables": {
                         "useGradient": true,
                         "gradientStart": "#22c55e",
-                        "gradientStop": "#16a34a"
+                        "gradientStop": "#16a34a",
+                        "lineColor": "#112233",
+                        "nodeBorder": "#556677"
                     }
                 }),
                 origin,
@@ -2654,15 +2667,39 @@ fn state_neo_global_node_gradient_owns_rough_special_path_strokes() {
                 svg.contains("[data-look=\"neo\"].node path{stroke:url(#merman-gradient);"),
                 "the global Neo gradient setup must be active for {origin} {case}: {svg}"
             );
-            assert!(
-                path.attribute("style")
-                    .is_none_or(|style| !style.contains(TYPED_COLOR)),
-                "the explicit Neo gradient must suppress the typed {origin} {case} stroke: {svg}"
+            assert_eq!(
+                path.attribute("style"),
+                Some(""),
+                "no inline paint may shadow the Neo gradient for {origin} {case}: {svg}"
             );
+            let base_stroke = match terminal {
+                Terminal::EndOuter | Terminal::Named("Fork") => "#112233",
+                Terminal::EndInner => "#556677",
+                Terminal::Named(_) => "#556677",
+            };
             assert_eq!(
                 path.attribute("stroke"),
-                Some("url(#merman-gradient)"),
-                "the writer must consume the same scoped gradient selected by the compatibility plan for {origin} {case}: {svg}"
+                Some(base_stroke),
+                "the {origin} {case} base attribute remains below the Neo gradient stylesheet: {svg}"
+            );
+            let gradient = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("linearGradient")
+                        && node.attribute("id") == Some("merman-gradient")
+                })
+                .expect("the final CSS gradient reference must resolve");
+            let stops = gradient
+                .children()
+                .filter(|node| node.has_tag_name("stop"))
+                .map(|node| (node.attribute("offset"), node.attribute("stop-color")))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                stops,
+                vec![
+                    (Some("0%"), Some("#22c55e")),
+                    (Some("100%"), Some("#16a34a"))
+                ]
             );
             assert_eq!(
                 evidence,
@@ -2753,7 +2790,7 @@ fn state_structural_direct_paints_remain_applied_without_terminal_provenance() {
             source: COMPOSITE,
             terminal: Terminal::CompositeLabel,
             config: classic(),
-            expected_style: "color:#ec4899 !important",
+            expected_style: "fill:#ec4899 !important",
         },
         Case {
             name: "special-start",
@@ -2861,7 +2898,8 @@ fn state_structural_direct_paints_remain_applied_without_terminal_provenance() {
                     cluster.children().find(|node| {
                         node.has_tag_name("g") && node.attribute("class") == Some("cluster-label")
                     })
-                }),
+                })
+                .and_then(|label| label.children().find(|node| node.has_tag_name("text"))),
             Terminal::Start => document.descendants().find(|node| {
                 node.has_tag_name("circle") && node.attribute("class") == Some("state-start")
             }),
@@ -3167,12 +3205,12 @@ fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
                 });
                 let (engine, source) = if origin == "site" {
                     (
-                        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                        classic_engine().with_site_config(MermaidConfig::from_value(config)),
                         SOURCE.to_string(),
                     )
                 } else {
                     (
-                        Engine::new().with_site_config(MermaidConfig::from_value(
+                        classic_engine().with_site_config(MermaidConfig::from_value(
                             serde_json::json!({"secure": []}),
                         )),
                         format!("%%{{init: {config}}}%%\n{SOURCE}"),
@@ -3289,12 +3327,12 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
             });
             let (engine, source) = if origin == "site" {
                 (
-                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    classic_engine().with_site_config(MermaidConfig::from_value(config)),
                     SOURCE.to_string(),
                 )
             } else {
                 (
-                    Engine::new().with_site_config(MermaidConfig::from_value(
+                    classic_engine().with_site_config(MermaidConfig::from_value(
                         serde_json::json!({"secure": []}),
                     )),
                     format!("%%{{init: {config}}}%%\n{SOURCE}"),
@@ -3934,19 +3972,36 @@ note right of A : terminal note text
         &DeterministicTextMeasurer::default(),
     );
     let document = roxmltree::Document::parse(&fallback).expect("valid fallback State SVG XML");
-    let fallback_text = document
+    let fallback_text: Vec<_> = document
         .descendants()
-        .find(|node| {
+        .filter(|node| {
             node.has_tag_name("text")
-                && node.text() == Some("terminal note text")
                 && node.attribute("class").is_some_and(|classes| {
                     classes
                         .split_whitespace()
                         .any(|class| class == "merman-foreignobject-fallback-text")
                 })
+                && node
+                    .attribute("data-merman-source-classes")
+                    .is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "statediagram-note")
+                    })
         })
-        .expect("terminal State note fallback text");
-    assert_eq!(fallback_text.attribute("fill"), Some("#fef3c7"));
+        .collect();
+    assert_eq!(
+        fallback_text
+            .iter()
+            .map(|node| node.text().unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join(" "),
+        "terminal note text",
+        "the complete State note must survive fallback wrapping: {fallback}"
+    );
+    for line in fallback_text {
+        assert_eq!(line.attribute("fill"), Some("#fef3c7"));
+    }
 }
 
 #[test]
@@ -4170,31 +4225,23 @@ state Join <<join>>
 Join --> [*]
 note right of Idle : seeded note"#;
 
-    render_state_svg_from_text_with_engine(Engine::new().with_site_config(site_config), source)
+    render_state_svg_from_text_with_engine(classic_engine().with_site_config(site_config), source)
 }
 
 #[test]
-fn state_svg_preserves_default_look_token_without_enabling_alternate_renderer_behavior() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "default"
-    })));
+fn state_svg_invalid_default_look_falls_back_to_the_family_neo_default() {
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n";
+    let baseline = render_state_svg_from_text_with_engine(Engine::new(), source);
     let svg = render_state_svg_from_text_with_engine(
-        engine,
-        "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": "default"
+        }))),
+        source,
     );
 
-    assert!(
-        svg.contains(r#"data-look="default""#),
-        "State must preserve Mermaid's historical default look token in the DOM: {svg}"
-    );
-    assert!(
-        svg.contains(r#"<circle class="state-start""#),
-        "the default token must still use classic State rendering behavior: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"[data-look="handDrawn"].node rect"#),
-        "the default token must not enable handDrawn-only rules: {svg}"
-    );
+    assert_eq!(svg, baseline);
+    assert!(svg.contains(r#"data-look="neo""#));
+    assert!(!svg.contains(r#"data-look="default""#));
 }
 
 #[test]
@@ -4258,18 +4305,20 @@ fn state_svg_cross_composite_default_min_width_reaches_all_leaf_labels() {
 #[test]
 fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
     for look in ["classic", "neo"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "look": look,
-            "layout": "elk",
-            "themeVariables": {
-                "mainBkg": "#112233",
-                "lineColor": "#223344",
-                "stateBorder": "#334455",
-                "specialStateColor": "#445566",
-                "innerEndBackground": "#556677",
-                "background": "#667788"
-            }
-        })));
+        let engine =
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "look": look,
+                "layout": "elk",
+                "themeVariables": {
+                    "mainBkg": "#112233",
+                    "lineColor": "#223344",
+                    "stateBorder": "#334455",
+                    "specialStateColor": "#445566",
+                    "innerEndBackground": "#556677",
+                    "background": "#667788",
+                    "nodeBorder": "#778899"
+                }
+            })));
         let svg = render_state_svg_from_text_with_engine(
             engine,
             "stateDiagram-v2\n[*] --> Ready\nReady --> Done: finish\nDone --> [*]\n",
@@ -4334,12 +4383,80 @@ fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
             .collect();
         assert_eq!(inner_paints[0].attribute("fill"), Some("#334455"));
         assert_eq!(inner_paints[1].attribute("stroke"), Some("#334455"));
+        for path in outer_paints.iter().chain(&inner_paints) {
+            assert_eq!(path.attribute("style"), Some(""));
+        }
+        if look == "neo" {
+            assert!(svg.contains(r##"[data-look="neo"].node path{stroke:#778899;"##));
+        }
+    }
+}
+
+#[test]
+fn state_neo_rough_base_attributes_do_not_override_the_theme_stylesheet() {
+    for gradient in [false, true] {
+        let engine =
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "look": "neo",
+                "themeVariables": {
+                    "mainBkg": "#110011",
+                    "nodeBorder": "#220022",
+                    "stateBorder": "#440044",
+                    "lineColor": "#550055",
+                    "noteBkgColor": "#770077",
+                    "noteBorderColor": "#880088",
+                    "strokeWidth": 9,
+                    "useGradient": gradient
+                }
+            })));
+        let svg = render_state_svg_from_text_with_engine(
+            engine,
+            r#"stateDiagram-v2
+[*] --> Idle
+state Decide <<choice>>
+state Fork <<fork>>
+Idle --> Decide
+Decide --> Fork
+Fork --> [*]
+note right of Idle : terminal note
+"#,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Neo State SVG XML");
+        for (id, fill, stroke, width) in [
+            ("-state-Decide-", "#110011", "#220022", "1.3"),
+            ("-state-Fork-", "#550055", "#550055", "1.3"),
+            ("-state-root_end-", "#110011", "#550055", "2"),
+            ("-state-Idle----note-", "#770077", "#880088", "1.3"),
+        ] {
+            let group = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("id").is_some_and(|value| value.contains(id))
+                })
+                .unwrap_or_else(|| panic!("missing {id}: {svg}"));
+            assert_state_rough_path_pair(group, None, fill, stroke, width);
+            for path in group.descendants().filter(|node| node.has_tag_name("path")) {
+                assert_eq!(path.attribute("style"), Some(""), "{id}: {svg}");
+            }
+        }
+        let stroke = if gradient {
+            "url(#merman-gradient)"
+        } else {
+            "#220022"
+        };
+        assert!(
+            svg.contains(&format!(
+                r#"[data-look="neo"].node path{{stroke:{stroke};stroke-width:9px;}}"#
+            )),
+            "{svg}"
+        );
     }
 }
 
 #[test]
 fn state_svg_classic_look_honors_theme_css_options() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "classic",
         "themeVariables": {
             "transitionColor": "#202020",
@@ -4417,7 +4534,7 @@ Active --> [*]: done"#,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "neo",
         "themeVariables": {
             "transitionColor": "#202020",
@@ -4499,7 +4616,7 @@ fn state_svg_hand_drawn_seed_controls_visible_rough_paths() {
 
 #[test]
 fn state_hand_drawn_terminals_follow_shape_specific_mermaid_fallbacks() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "handDrawn",
         "handDrawnSeed": 7,
         "htmlLabels": false,
@@ -5424,13 +5541,14 @@ fn state_composite_paint_uses_large_and_multiline_title_measurements() {
         }
         for html_labels in [true, false] {
             for title in ["Large title", "First<br/>Second"] {
-                let engine =
-                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                let engine = classic_engine().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({
                         "layout": layout,
                         "look": "classic",
                         "htmlLabels": html_labels,
                         "themeVariables": { "fontSize": "32px" }
-                    })));
+                    }),
+                ));
                 let source = format!("stateDiagram-v2\nstate \"{title}\" as Parent {{\n A\n}}\n");
                 let parsed = engine
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
@@ -5589,11 +5707,12 @@ Display : Running
 #[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
     for backend in ["elk", "dagre"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "layout": backend,
-            "htmlLabels": false,
-            "flowchart": {"htmlLabels": true}
-        })));
+        let engine =
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "layout": backend,
+                "htmlLabels": false,
+                "flowchart": {"htmlLabels": true}
+            })));
         let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA --> B\n");
         let document = roxmltree::Document::parse(&svg).expect("State SVG");
         let labels: Vec<_> = document
@@ -5691,7 +5810,7 @@ Inactive --> Idle: ACT
 Active --> Active: LOG
 "#;
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = classic_engine()
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
         .unwrap();
@@ -5795,7 +5914,7 @@ stateDiagram-v2
     );
 
     let loose = render_state_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"stateDiagram-v2
@@ -5894,7 +6013,7 @@ click S1 "data:text/html,unsafe" "Data"
 #[test]
 fn state_svg_loose_repeated_clicks_preserve_each_href_and_target() {
     let svg = render_state_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "loose"
         }))),
         r#"stateDiagram-v2
@@ -5962,7 +6081,7 @@ click S1 "https://example.test/last" ""
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {
             "stateBkg": "#101827",
             "stateBorder": "#38bdf8",
@@ -6177,7 +6296,7 @@ fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
             if let Some(radius) = radius.clone() {
                 config["themeVariables"] = serde_json::json!({"radius": radius});
             }
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+            let engine = classic_engine().with_site_config(MermaidConfig::from_value(config));
             let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA\n");
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
             let rect = document
@@ -6217,7 +6336,7 @@ fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
         if let Some(shadow) = shadow.clone() {
             config["themeVariables"] = serde_json::json!({"nodeShadow": shadow});
         }
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let engine = classic_engine().with_site_config(MermaidConfig::from_value(config));
         let svg = render_state_svg_from_text_with_engine(
             engine,
             "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
@@ -6225,13 +6344,21 @@ fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
         let document = roxmltree::Document::parse(&svg).expect("State SVG");
         let diagram_id = document.root_element().attribute("id").expect("diagram id");
         let expected_style = format!("filter:url(#{diagram_id}-drop-shadow-small)");
-        for class in ["state-start", "outer-path"] {
-            let terminal = document
-                .descendants()
-                .find(|node| node.attribute("class") == Some(class))
-                .unwrap_or_else(|| panic!("missing State terminal {class}"));
+        let terminals: Vec<_> = document
+            .descendants()
+            .filter(|node| matches!(node.attribute("class"), Some("state-start" | "outer-path")))
+            .collect();
+        assert_eq!(terminals.len(), 2, "look={look}, theme={theme}: {svg}");
+        for terminal in terminals {
+            let class = terminal.attribute("class").unwrap();
+            let filter = terminal
+                .attribute("style")
+                .unwrap_or_default()
+                .split(';')
+                .map(str::trim)
+                .find(|declaration| declaration.starts_with("filter:"));
             assert_eq!(
-                terminal.attribute("style"),
+                filter,
                 expected.then_some(expected_style.as_str()),
                 "look={look}, theme={theme}, nodeShadow={shadow:?}, terminal={class}"
             );
@@ -6272,7 +6399,7 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
                 format!("stateDiagram-v2\nstate \"{label}\" as N\n")
             };
             let svg = render_state_svg_from_text_with_engine(
-                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                classic_engine().with_site_config(MermaidConfig::from_value(config)),
                 &source,
             );
             let document = roxmltree::Document::parse(&svg).expect("State SVG");
@@ -6300,7 +6427,7 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
         }
     }
     let svg = render_state_svg_from_text_with_engine(
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "htmlLabels": false, "state": {"minNodeWidth": 120}
         }))),
         "stateDiagram-v2\n[*] --> A\nA --> [*]\n",

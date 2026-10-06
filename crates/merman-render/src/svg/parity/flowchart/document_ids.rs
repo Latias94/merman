@@ -86,9 +86,10 @@ impl<'a> FlowchartDocumentIds<'a> {
             node_ids.insert(raw_id, FlowchartNodeDocumentId::Node(dom_index));
         }
         for (&raw_id, &subgraph_index) in request.subgraph_index_by_id {
-            node_ids
-                .entry(raw_id)
-                .or_insert(FlowchartNodeDocumentId::Subgraph(subgraph_index));
+            // Projected edge endpoints can also register a collapsed subgraph in the node
+            // ordinal map. Its owner remains the subgraph, whose ordinal namespace is separate
+            // from parser-assigned node ordinals (notably Agentflow connectors).
+            node_ids.insert(raw_id, FlowchartNodeDocumentId::Subgraph(subgraph_index));
         }
 
         let cluster_ids = request
@@ -258,6 +259,34 @@ impl<'a> FlowchartDocumentIds<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collapsed_subgraph_endpoint_does_not_alias_a_parser_owned_node_ordinal() {
+        let node_dom_index = FxHashMap::from_iter([("outer", 0), ("api", 0)]);
+        let subgraph_index_by_id = FxHashMap::from_iter([("outer", 0)]);
+        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: "agentflow",
+            edge_order: &[],
+            node_dom_index: &node_dom_index,
+            subgraph_index_by_id: &subgraph_index_by_id,
+            layout_nodes: &[],
+            swimlane_nodes: None,
+            swimlane_lanes: None,
+        });
+
+        assert_eq!(
+            ids.node("outer").unwrap().to_string(),
+            "agentflow-merman-flowchart-document-node-subgraph-0"
+        );
+        assert_eq!(
+            ids.node("api").unwrap().to_string(),
+            "agentflow-merman-flowchart-document-node-0"
+        );
+        assert_ne!(
+            ids.node("outer").unwrap().to_string(),
+            ids.cluster("outer").unwrap().to_string()
+        );
+    }
 
     fn edge(id: String) -> crate::flowchart::FlowEdge {
         crate::flowchart::FlowEdge {

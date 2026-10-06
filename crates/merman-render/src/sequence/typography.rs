@@ -392,10 +392,12 @@ impl SequenceResolvedTypography {
         !self.typed_properties.is_empty()
     }
 
+    pub(crate) fn has_typed_typography(&self) -> bool {
+        self.has_typed_emission() || !self.base_typed_properties.is_empty()
+    }
+
     pub(crate) fn requires_resolved_emission(&self) -> bool {
-        self.has_typed_emission()
-            || !self.base_typed_properties.is_empty()
-            || !self.config_overrides.is_empty()
+        self.has_typed_typography() || !self.config_overrides.is_empty()
     }
 
     pub(crate) fn requires_terminal_evidence_for(&self, surface: SequenceTextSurface) -> bool {

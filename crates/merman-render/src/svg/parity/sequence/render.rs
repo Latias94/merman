@@ -379,7 +379,16 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         settings.actor_label_font_size,
         effective_config,
         SequenceThemeCssAdapter {
-            base_font_family: Some(prepared.typography().base_font_family_css()),
+            base_font_family: prepared
+                .typography()
+                .base_typed_properties()
+                .contains(&crate::diagram_theme::ThemeTypographyProperty::FontStack)
+                .then(|| prepared.typography().base_font_family_css()),
+            base_font_size_px: prepared
+                .typography()
+                .base_typed_properties()
+                .contains(&crate::diagram_theme::ThemeTypographyProperty::FontSize)
+                .then(|| prepared.typography().base_font_size_px()),
             actor_fill: actor_theme.typed_fill.as_deref(),
             actor_stroke: actor_theme.typed_stroke.as_deref(),
             lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),

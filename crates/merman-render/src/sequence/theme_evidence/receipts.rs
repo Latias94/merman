@@ -1460,24 +1460,30 @@ impl SequenceTypographyThemeReceipt {
         let id = crate::svg::escape_css_identifier(diagram_id);
         let unique_stylesheet = styles.next().is_none();
         self.base.terminal_svg_observed = unique_stylesheet;
+        let expected_font_family = self
+            .base
+            .has_typed_property(ThemeTypographyProperty::FontStack)
+            .then_some(self.base.expected_font_family.as_str());
+        let expected_font_size_bits = self
+            .base
+            .has_typed_property(ThemeTypographyProperty::FontSize)
+            .then_some(self.base.expected_font_size_bits);
         self.base.stylesheet_verified = unique_stylesheet
             && typography_rule_matches(
                 stylesheet,
                 &format!("#{id}"),
-                &self.base.expected_font_family,
-                self.base.expected_font_size_bits,
+                expected_font_family,
+                expected_font_size_bits,
             )
             && typography_rule_matches(
                 stylesheet,
                 &format!("#{id} svg"),
-                &self.base.expected_font_family,
-                self.base.expected_font_size_bits,
+                expected_font_family,
+                expected_font_size_bits,
             )
-            && font_family_variable_rule_matches(
-                stylesheet,
-                &format!("#{id} :root"),
-                &self.base.expected_font_family,
-            );
+            && expected_font_family.is_none_or(|font_family| {
+                font_family_variable_rule_matches(stylesheet, &format!("#{id} :root"), font_family)
+            });
         for text in document.descendants().filter(is_base_inherited_text) {
             if terminal_text_inherits_property(text, ThemeTypographyProperty::FontStack) {
                 self.base.inherited_font_stack_occurrences =
@@ -1649,8 +1655,8 @@ impl SequenceTypographyThemeReceipt {
 fn typography_rule_matches(
     stylesheet: &str,
     selector: &str,
-    expected_font_family: &str,
-    expected_font_size_bits: u64,
+    expected_font_family: Option<&str>,
+    expected_font_size_bits: Option<u64>,
 ) -> bool {
     let Some(body) = unique_rule_body(stylesheet, selector) else {
         return false;
@@ -1658,21 +1664,23 @@ fn typography_rule_matches(
     let mut font_family_count = 0usize;
     let mut font_size_count = 0usize;
     let valid = visit_valid_style_declarations(body, |declaration| match declaration.property() {
-        "font-family" => {
+        "font-family" if expected_font_family.is_some() => {
             font_family_count = font_family_count.saturating_add(1);
-            declaration.value() == expected_font_family
+            Some(declaration.value()) == expected_font_family
         }
-        "font-size" => {
+        "font-size" if expected_font_size_bits.is_some() => {
             font_size_count = font_size_count.saturating_add(1);
             declaration
                 .value()
                 .strip_suffix("px")
                 .and_then(|value| value.parse::<f64>().ok())
-                .is_some_and(|value| value.to_bits() == expected_font_size_bits)
+                .is_some_and(|value| Some(value.to_bits()) == expected_font_size_bits)
         }
         _ => true,
     });
-    valid && font_family_count == 1 && font_size_count == 1
+    valid
+        && font_family_count == usize::from(expected_font_family.is_some())
+        && font_size_count == usize::from(expected_font_size_bits.is_some())
 }
 
 fn font_family_variable_rule_matches(
@@ -1934,6 +1942,50 @@ mod tests {
 
         assert_eq!(meter.used(), 3);
         assert!(!receipt.base.terminal_svg_observed());
+    }
+
+    #[test]
+    fn terminal_svg_observation_verifies_only_typed_base_properties() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" id="sequence-test"><style>
+#sequence-test{font-family:serif;font-size:14px;}
+#sequence-test svg{font-family:serif;font-size:14px;}
+#sequence-test :root{--mermaid-font-family:serif;}
+</style></svg>"#;
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            let mut receipt = math_receipt([], None);
+            receipt.base.typed_properties.insert(property);
+            receipt.base.expected_font_family = if property == ThemeTypographyProperty::FontStack {
+                "serif"
+            } else {
+                "sans-serif"
+            }
+            .to_owned();
+            receipt.base.expected_font_size_bits = if property == ThemeTypographyProperty::FontSize
+            {
+                14.0_f64
+            } else {
+                16.0_f64
+            }
+            .to_bits();
+            let meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+
+            receipt
+                .record_terminal_svg(svg, "sequence-test", &meter)
+                .expect("observe valid root typography");
+            assert!(receipt.base.stylesheet_verified(), "{property:?}");
+
+            receipt.base.expected_font_family = "monospace".to_owned();
+            receipt.base.expected_font_size_bits = 20.0_f64.to_bits();
+            receipt
+                .record_terminal_svg(svg, "sequence-test", &meter)
+                .expect("observe mismatching root typography");
+            assert!(!receipt.base.stylesheet_verified(), "{property:?}");
+        }
     }
 
     #[test]

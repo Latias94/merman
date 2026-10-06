@@ -3,6 +3,7 @@ use super::super::*;
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) base_font_family: Option<&'a str>,
+    pub(super) base_font_size_px: Option<f64>,
     pub(super) actor_fill: Option<&'a str>,
     pub(super) actor_stroke: Option<&'a str>,
     pub(super) lifeline_stroke: Option<&'a str>,
@@ -140,11 +141,16 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let font = typed
         .base_font_family
         .unwrap_or(theme.common.font_family_css.as_str());
-    let font_size_css = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "fontSize"],
-    )
-    .unwrap_or_else(|| "16px".to_string());
+    let font_size_css = typed
+        .base_font_size_px
+        .map(|size| format!("{}px", fmt(size)))
+        .or_else(|| {
+            crate::config::config_css_number_or_string(
+                effective_config,
+                &["themeVariables", "fontSize"],
+            )
+        })
+        .unwrap_or_else(|| "16px".to_string());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
@@ -478,10 +484,11 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
+    let root_font = crate::config::config_root_font_family_css(effective_config);
     crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         out,
         id,
-        &crate::config::config_root_font_family_css(effective_config),
+        typed.base_font_family.unwrap_or(&root_font),
     )?;
     out.checkpoint()?;
     Ok(emission)

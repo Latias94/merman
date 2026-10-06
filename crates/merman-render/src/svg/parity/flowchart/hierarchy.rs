@@ -913,6 +913,11 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         ctx: &FlowchartRenderCtx<'_>,
         edge: &crate::flowchart::FlowEdge,
     ) -> bool {
+        // ELK clips ancestor/descendant edges to the group boundary and retains their route.
+        // Only Dagre's cluster rewrite has the historical single-point normalization below.
+        if ctx.uses_elk_adapter_dom {
+            return false;
+        }
         (ctx.subgraphs_by_id.contains_key(edge.from.as_str())
             && self
                 .physical_ancestry

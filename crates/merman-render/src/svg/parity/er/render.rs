@@ -58,26 +58,15 @@ fn er_color_indices(
         .collect()
 }
 
-fn er_theme_color_limit(effective_config: &serde_json::Value) -> usize {
-    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .filter(|value| value.is_finite())
-        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
-        .unwrap_or(12)
-}
-
 fn write_er_redux_color_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
-    theme_color_limit: usize,
 ) -> Result<()> {
     let diagram_id = crate::svg::escape_css_identifier(diagram_id);
-    for index in 0..theme_color_limit {
-        let Some(border_color) = border_colors.get(index) else {
-            continue;
-        };
+    for (index, border_color) in border_colors.iter().enumerate() {
         let border_color = border_color.trim();
         let fill = if background_colors.is_empty() {
             String::new()
@@ -122,7 +111,6 @@ fn write_er_style_with_font_family(
     effective_config: &serde_json::Value,
     border_colors: &[String],
     background_colors: &[String],
-    theme_color_limit: usize,
     resolved_font_family: Option<&str>,
     resolved_font_size: Option<&str>,
 ) -> Result<(String, String)> {
@@ -138,14 +126,7 @@ fn write_er_style_with_font_family(
     out.push_str("<style>");
     out.push_str(&css[..insertion_point]);
     out.checkpoint()?;
-    write_er_redux_color_css(
-        out,
-        diagram_id,
-        data_look,
-        border_colors,
-        background_colors,
-        theme_color_limit,
-    )?;
+    write_er_redux_color_css(out, diagram_id, data_look, border_colors, background_colors)?;
     out.push_str(&css[insertion_point..]);
     out.push_str("</style>");
     out.checkpoint()?;
@@ -536,13 +517,12 @@ pub(crate) fn render_er_diagram_svg_model(
     let diagram_type = "er";
     let er_render_settings = crate::er::ErConfigView::new(effective_config)
         .render_settings_with_resolved_typography(
-            Some(entity_theme.font_family_css()),
+            entity_theme.font_family_override_css(),
             entity_theme.font_size_override(),
         );
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_color_theme = is_er_redux_color_theme(effective_config);
-    let theme_color_limit = er_theme_color_limit(effective_config);
     let svg_theme = SvgTheme::new(effective_config);
     let redux_border_colors = if redux_color_theme {
         svg_theme.string_array("borderColorArray")
@@ -840,8 +820,7 @@ pub(crate) fn render_er_diagram_svg_model(
         effective_config,
         &redux_border_colors,
         &redux_background_colors,
-        theme_color_limit,
-        Some(entity_theme.font_family_css()),
+        entity_theme.font_family_override_css(),
         entity_theme.font_size_override_css(),
     )?;
     entity_theme_receipt
@@ -1698,26 +1677,37 @@ pub(crate) fn render_er_diagram_svg_model(
             format!(r#"style="{}""#, escape_xml(&group_style))
         };
 
+        // Mermaid 12 applies authored Redux styles to every table path. Other themes
+        // preserve row fills while carrying all authored stroke properties to both paths.
+        let redux_styles = matches!(
+            svg_theme.theme_name().as_str(),
+            "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+        );
         let mut override_decls = Vec::new();
-        if let Some(value) = source_stroke {
-            override_decls.push(format!("stroke:{value} !important"));
-        } else if let Some((_, value)) = typed_stroke {
-            override_decls.push(format!("stroke:{value}"));
+        for declaration in rect_style_decls
+            .iter()
+            .filter(|declaration| redux_styles || declaration.property().contains("stroke"))
+        {
+            let mut css = String::new();
+            write_er_style_declaration(&mut css, declaration, true);
+            override_decls.push(css);
         }
-        if let Some(v) = source_style.rect_value("stroke-width") {
-            override_decls.push(format!("stroke-width:{v} !important"));
+        if source_stroke.is_none()
+            && let Some((_, value)) = typed_stroke
+        {
+            override_decls.push(format!("stroke:{value}"));
         }
         let override_style_attr = if override_decls.is_empty() {
             String::new()
         } else {
             format!(r#" style="{}""#, escape_attr(&override_decls.join("; ")))
         };
-        let base_fill_style_attr = if let Some(value) = source_fill {
-            format!(r#" style="fill:{} !important""#, escape_attr(value))
-        } else if let Some((_, value)) = typed_fill {
-            format!(r#" style="fill:{}""#, escape_attr(value))
+        let base_fill_style_attr = if let Some((_, value)) = typed_fill {
+            let mut declarations = override_decls.clone();
+            declarations.push(format!("fill:{value}"));
+            format!(r#" style="{}""#, escape_attr(&declarations.join("; ")))
         } else {
-            String::new()
+            override_style_attr.clone()
         };
 
         // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
@@ -1842,21 +1832,18 @@ pub(crate) fn render_er_diagram_svg_model(
         // Row rectangles
         let odd_fill = svg_theme.optional_color("rowOdd");
         let even_fill = svg_theme.optional_color("rowEven");
-        let even_row_override_style_attr = if source_fill.is_some() {
-            let style = style_keys_join(
-                rect_style_decls,
-                &["fill", "stroke", "stroke-width"],
-                ";",
-                true,
-            );
-            if style.is_empty() {
-                override_style_attr.clone()
-            } else {
-                format!(r#" style="{}""#, escape_xml(&style))
-            }
-        } else {
+        let even_row_override_style_attr = if rect_style_decls.is_empty() {
             override_style_attr.clone()
+        } else {
+            let mut declarations = vec![style_decls_with_important(rect_style_decls)];
+            if source_stroke.is_none()
+                && let Some((_, value)) = typed_stroke
+            {
+                declarations.push(format!("stroke:{value}"));
+            }
+            format!(r#" style="{}""#, escape_attr(&declarations.join("; ")))
         };
+
         let mut y = sep_y;
         for (idx, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
@@ -2583,7 +2570,6 @@ mod tests {
             "classic",
             &border_colors,
             &background_colors,
-            2,
         )
         .expect_err("the rejecting sink must stop ER Redux color CSS emission");
 
@@ -2623,10 +2609,8 @@ mod tests {
             "an empty color palette must not produce a modulo-by-zero color id"
         );
 
-        assert_eq!(super::er_theme_color_limit(&config), 2);
         let mut css = String::new();
-        super::write_er_redux_color_css(&mut css, "er", "classic", &borders, &backgrounds, 2)
-            .unwrap();
+        super::write_er_redux_color_css(&mut css, "er", "classic", &borders, &backgrounds).unwrap();
         assert!(css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
         ));
@@ -2635,7 +2619,7 @@ mod tests {
         ));
 
         let mut dark_css = String::new();
-        super::write_er_redux_color_css(&mut dark_css, "er", "classic", &borders, &[], 2).unwrap();
+        super::write_er_redux_color_css(&mut dark_css, "er", "classic", &borders, &[]).unwrap();
         assert!(dark_css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
         ));
@@ -2649,7 +2633,6 @@ mod tests {
             &config,
             &borders,
             &backgrounds,
-            2,
             None,
             None,
         )

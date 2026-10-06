@@ -772,6 +772,7 @@ mod paint_emission_tests {
                     parsed.metadata().effective_config.as_value(),
                     plan.stylesheet_font_family_css(),
                     plan.font_size_css(),
+                    plan.typed_font_stack_active(),
                     true,
                 )
                 .unwrap()

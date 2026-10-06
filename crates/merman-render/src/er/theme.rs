@@ -861,6 +861,12 @@ impl ErEntityThemePlan {
         self.entity_indices.get(entity_id).copied()
     }
 
+    pub(crate) fn font_family_override_css(&self) -> Option<&str> {
+        self.inherited_font_stack
+            .typed_font_stack_active()
+            .then(|| self.font_family_css())
+    }
+
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
     }

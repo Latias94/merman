@@ -370,8 +370,15 @@ where
     );
     let _ = write!(
         &mut *out,
-        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
-        id, font_family, tertiary, tooltip_border, id, text_color, id
+        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
+        id,
+        font_family,
+        tertiary,
+        tooltip_border,
+        id,
+        title_css_class(diagram_type),
+        text_color,
+        id
     );
     let _ = write!(
         &mut *out,

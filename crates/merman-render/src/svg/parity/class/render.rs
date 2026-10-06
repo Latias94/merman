@@ -134,6 +134,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         effective_config,
         typography_theme.stylesheet_font_family_css(),
         typography_theme.font_size_css(),
+        typography_theme.typed_font_stack_active(),
         typography_receipt.is_some(),
     )?;
     if let (Some(receipt), Some(emission)) = (typography_receipt.as_mut(), typography_css_emission)

@@ -587,6 +587,11 @@ impl InfoCssWriter {
         &self.values.font_family
     }
 
+    pub(super) fn with_root_font_family(mut self, font_family: &str) -> Self {
+        self.values.root_font_family = font_family.to_owned();
+        self
+    }
+
     pub(super) fn with_text_color(mut self, text_color: &str) -> Self {
         self.values.text_color = text_color.to_owned();
         self

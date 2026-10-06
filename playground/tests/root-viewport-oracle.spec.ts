@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 import {
@@ -19,6 +20,14 @@ import {
   type RootViewportAuditEnvironment,
   type RootViewportReportedAudit,
 } from "./root-viewport-residuals.ts";
+
+test("committed root viewport receipts match the active oracle contract", () => {
+  const catalog = readFileSync(
+    new URL("../../fixtures/_verification/root-viewport-residuals.json", import.meta.url),
+    "utf8",
+  );
+  expect(() => parseRootViewportResidualCatalog(catalog)).not.toThrow();
+});
 
 test("exact root viewport residuals bind SVGs and live audit evidence", () => {
   const local = "a".repeat(64);

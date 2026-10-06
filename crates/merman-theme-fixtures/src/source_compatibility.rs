@@ -1,7 +1,6 @@
 use crate::model::{ReferenceDiagramFamily, ReferenceThemeMechanism};
 use cssparser::{
-    AtRuleParser, CowRcStr, ParseError, Parser, ParserInput, ParserState, QualifiedRuleParser,
-    StyleSheetParser,
+    AtRuleParser, CowRcStr, ParseError, Parser, ParserState, QualifiedRuleParser, StyleSheetParser,
 };
 use lol_html::Selector;
 use merman_core::{style::parse_safe_style_decl, theme_color::ThemeColor};
@@ -29,28 +28,28 @@ impl<'i> QualifiedRuleParser<'i> for ThemeCssRuleParser {
     type QualifiedRule = Option<QualifiedThemeCssRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::Prelude, ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
         let selector = input.slice_from(start).trim().to_string();
         if selector.is_empty() {
-            Err(input.new_custom_error(()))
+            Err(ParseError::custom(()))
         } else {
             Ok(selector)
         }
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         selector: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::QualifiedRule, ParseError<Self::Error>> {
         let start = input.position();
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -67,11 +66,11 @@ impl<'i> AtRuleParser<'i> for ThemeCssRuleParser {
     type AtRule = Option<QualifiedThemeCssRule>;
     type Error = ();
 
-    fn parse_prelude<'t>(
+    fn parse_prelude(
         &mut self,
         _name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::Prelude, ParseError<Self::Error>> {
         self.invalid = true;
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -88,12 +87,12 @@ impl<'i> AtRuleParser<'i> for ThemeCssRuleParser {
         Ok(None)
     }
 
-    fn parse_block<'t>(
+    fn parse_block(
         &mut self,
         _prelude: Self::Prelude,
         _start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        input: &mut Parser<'i>,
+    ) -> Result<Self::AtRule, ParseError<Self::Error>> {
         self.invalid = true;
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
@@ -112,8 +111,7 @@ pub(crate) fn collect_theme_css_evidence(config: &Value) -> ThemeCssEvidence {
     };
 
     let mut evidence = ThemeCssEvidence::default();
-    let mut input = ParserInput::new(theme_css);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(theme_css);
     let mut rule_parser = ThemeCssRuleParser { invalid: false };
     for parsed in StyleSheetParser::new(&mut input, &mut rule_parser) {
         let rule = match parsed {
@@ -372,8 +370,7 @@ fn collect_valid_declaration_properties(
     declarations: &str,
 ) -> Result<BTreeMap<String, String>, ()> {
     let mut properties = BTreeMap::new();
-    let mut input = ParserInput::new(declarations);
-    let mut input = Parser::new(&mut input);
+    let mut input = Parser::new(declarations);
     while !input.is_exhausted() {
         let property = input.parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
             let property = declaration.expect_ident_cloned()?;
@@ -388,9 +385,9 @@ fn collect_valid_declaration_properties(
                 || parse_safe_style_decl(&format!("{property}:{value}"))
                     .is_none_or(|(_, value)| !valid_theme_css_declaration(&property, value))
             {
-                return Err(declaration.new_custom_error(()));
+                return Err(ParseError::custom(()));
             }
-            Ok::<_, ParseError<'_, ()>>((property, value.to_string()))
+            Ok::<_, ParseError<()>>((property, value.to_string()))
         });
         let Ok((property, value)) = property else {
             return Err(());

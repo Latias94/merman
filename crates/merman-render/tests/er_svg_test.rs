@@ -891,7 +891,13 @@ fn er_svg_flowchart_htmllabels_only_changes_relationship_labels() {
         );
     let text = std::fs::read_to_string(path).expect("ER flowchart htmlLabels fixture");
 
-    let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
+    let svg = render_er_svg_from_text_with_engine(
+        &text,
+        &SvgRenderOptions::default(),
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme":"default", "look":"classic", "layout":"dagre"}),
+        )),
+    );
     let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
     let edge_labels = edge_labels_group(&svg);
 
@@ -968,8 +974,20 @@ end
 CUSTOMER ||--|| ORDER : owns
 "#;
 
-    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
-    let html_svg = render_er_svg_from_text(html_text, &SvgRenderOptions::default());
+    let svg = render_er_svg_from_text_with_engine(
+        text,
+        &SvgRenderOptions::default(),
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme":"default", "look":"classic", "layout":"dagre"}),
+        )),
+    );
+    let html_svg = render_er_svg_from_text_with_engine(
+        html_text,
+        &SvgRenderOptions::default(),
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"theme":"default", "look":"classic", "layout":"dagre"}),
+        )),
+    );
     let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
 
     assert!(
@@ -1040,7 +1058,13 @@ CUSTOMER ||--|| ORDER : owns
 
 #[test]
 fn er_static_entity_paint_reaches_plain_and_attribute_shells() {
-    let source = r#"erDiagram
+    let source = r#"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+erDiagram
   PLAIN
   TABLE {
     string id PK
@@ -1091,7 +1115,7 @@ fn er_tokens_only_definition_reaches_the_model_owned_entity_surface() {
         .expect("compile tokens-only ER theme");
 
     let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync("erDiagram\n  CUSTOMER\n", ParseOptions::strict())
+        .parse_diagram_for_render_model_sync("---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER\n", ParseOptions::strict())
         .expect("parse tokens-only ER diagram")
         .expect("detect tokens-only ER diagram");
     let session = RenderEnvironment::deterministic()
@@ -1899,7 +1923,7 @@ fn er_row_path<'a>(document: &'a roxmltree::Document<'a>, odd: bool) -> roxmltre
 
 #[test]
 fn er_table_odd_even_fill_reaches_each_matching_row() {
-    let source = "erDiagram\n CUSTOMER {\n string id\n string name\n string email\n }\n ORDER {\n string id\n string status\n }\n";
+    let source = "---\nconfig:\n  theme: default\n  layout: dagre\n---\nerDiagram\n CUSTOMER {\n string id\n string name\n string email\n }\n ORDER {\n string id\n string status\n }\n";
     for look in ["classic", "neo", "handDrawn"] {
         for html in [true, false] {
             for (paint, css) in [
@@ -2023,8 +2047,9 @@ fn er_table_source_fill_owns_only_even_row_paths() {
         "style CUSTOMER fill:#112233",
         "classDef accent fill:#112233\n class CUSTOMER accent",
     ] {
-        let source =
-            format!("erDiagram\n CUSTOMER {{\n string id\n string name\n }}\n {source_style}\n");
+        let source = format!(
+            "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id\n string name\n }}\n {source_style}\n"
+        );
         let rendered =
             prepare_er_family_with_theme_and_engine(&source, &er_table_row_theme(), Engine::new())
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2114,7 +2139,13 @@ fn er_table_row_fill_requires_a_matching_visible_row() {
 
 #[test]
 fn er_source_entity_styles_outrank_typed_entity_paint() {
-    let source = r#"erDiagram
+    let source = r#"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+erDiagram
   BARE
   ASSIGNED
   INLINE
@@ -2151,7 +2182,7 @@ fn er_source_entity_styles_outrank_typed_entity_paint() {
     assert!(inline.contains("stroke:#0000bb"), "{inline}");
 
     let default_svg = render_er_svg_from_text_with_theme(
-        "erDiagram\n  DEFAULT\n  classDef default fill:#aa0000,stroke:#bb0000\n",
+        "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  DEFAULT\n  classDef default fill:#aa0000,stroke:#bb0000\n",
         &theme,
     );
     assert!(default_svg.contains("fill:#aa0000"), "{default_svg}");
@@ -2268,7 +2299,7 @@ fn er_entity_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
         )
         .expect("compile ER entity fill and ordinal palette theme");
     let rendered =
-        prepare_er_family_with_theme_and_engine("erDiagram\n  PLAIN\n", &theme, Engine::new())
+        prepare_er_family_with_theme_and_engine("---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  PLAIN\n", &theme, Engine::new())
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("typed ER entity fill must shadow the unsupported palette");
 

@@ -104,159 +104,205 @@ all-diagrams = [
 diagram-architecture = [
     "merman/diagram-architecture",
     "merman-analysis?/diagram-architecture",
+    "merman-bindings-core?/diagram-architecture",
     "merman-render?/diagram-architecture",
 ]
 diagram-block = [
     "merman/diagram-block",
     "merman-analysis?/diagram-block",
+    "merman-bindings-core?/diagram-block",
     "merman-render?/diagram-block",
 ]
-diagram-c4 = ["merman/diagram-c4", "merman-analysis?/diagram-c4", "merman-render?/diagram-c4"]
+diagram-c4 = [
+    "merman/diagram-c4",
+    "merman-analysis?/diagram-c4",
+    "merman-bindings-core?/diagram-c4",
+    "merman-render?/diagram-c4",
+]
 diagram-class = [
     "merman/diagram-class",
     "merman-analysis?/diagram-class",
+    "merman-bindings-core?/diagram-class",
     "merman-render?/diagram-class",
 ]
 diagram-cynefin = [
     "merman/diagram-cynefin",
     "merman-analysis?/diagram-cynefin",
+    "merman-bindings-core?/diagram-cynefin",
     "merman-render?/diagram-cynefin",
 ]
-diagram-er = ["merman/diagram-er", "merman-analysis?/diagram-er", "merman-render?/diagram-er"]
+diagram-er = [
+    "merman/diagram-er",
+    "merman-analysis?/diagram-er",
+    "merman-bindings-core?/diagram-er",
+    "merman-render?/diagram-er",
+]
 diagram-event-modeling = [
     "merman/diagram-event-modeling",
     "merman-analysis?/diagram-event-modeling",
+    "merman-bindings-core?/diagram-event-modeling",
     "merman-render?/diagram-event-modeling",
 ]
 diagram-agentflow = [
     "merman/diagram-agentflow",
     "merman-analysis?/diagram-agentflow",
+    "merman-bindings-core?/diagram-agentflow",
     "merman-render?/diagram-agentflow",
 ]
 diagram-usecase = [
     "merman/diagram-usecase",
     "merman-analysis?/diagram-usecase",
+    "merman-bindings-core?/diagram-usecase",
     "merman-render?/diagram-usecase",
 ]
 diagram-flowchart = [
     "merman/diagram-flowchart",
     "merman-analysis?/diagram-flowchart",
+    "merman-bindings-core?/diagram-flowchart",
     "merman-render?/diagram-flowchart",
 ]
 diagram-gantt = [
     "merman/diagram-gantt",
     "merman-analysis?/diagram-gantt",
+    "merman-bindings-core?/diagram-gantt",
     "merman-render?/diagram-gantt",
 ]
 diagram-git-graph = [
     "merman/diagram-git-graph",
     "merman-analysis?/diagram-git-graph",
+    "merman-bindings-core?/diagram-git-graph",
     "merman-render?/diagram-git-graph",
 ]
 diagram-info = [
     "merman/diagram-info",
     "merman-analysis?/diagram-info",
+    "merman-bindings-core?/diagram-info",
     "merman-render?/diagram-info",
 ]
 diagram-ishikawa = [
     "merman/diagram-ishikawa",
     "merman-analysis?/diagram-ishikawa",
+    "merman-bindings-core?/diagram-ishikawa",
     "merman-render?/diagram-ishikawa",
 ]
 diagram-journey = [
     "merman/diagram-journey",
     "merman-analysis?/diagram-journey",
+    "merman-bindings-core?/diagram-journey",
     "merman-render?/diagram-journey",
 ]
 diagram-kanban = [
     "merman/diagram-kanban",
     "merman-analysis?/diagram-kanban",
+    "merman-bindings-core?/diagram-kanban",
     "merman-render?/diagram-kanban",
 ]
 diagram-mindmap = [
     "merman/diagram-mindmap",
     "merman-analysis?/diagram-mindmap",
+    "merman-bindings-core?/diagram-mindmap",
     "merman-render?/diagram-mindmap",
 ]
 diagram-packet = [
     "merman/diagram-packet",
     "merman-analysis?/diagram-packet",
+    "merman-bindings-core?/diagram-packet",
     "merman-render?/diagram-packet",
 ]
-diagram-pie = ["merman/diagram-pie", "merman-analysis?/diagram-pie", "merman-render?/diagram-pie"]
+diagram-pie = [
+    "merman/diagram-pie",
+    "merman-analysis?/diagram-pie",
+    "merman-bindings-core?/diagram-pie",
+    "merman-render?/diagram-pie",
+]
 diagram-quadrant-chart = [
     "merman/diagram-quadrant-chart",
     "merman-analysis?/diagram-quadrant-chart",
+    "merman-bindings-core?/diagram-quadrant-chart",
     "merman-render?/diagram-quadrant-chart",
 ]
 diagram-radar = [
     "merman/diagram-radar",
     "merman-analysis?/diagram-radar",
+    "merman-bindings-core?/diagram-radar",
     "merman-render?/diagram-radar",
 ]
 diagram-railroad = [
     "merman/diagram-railroad",
     "merman-analysis?/diagram-railroad",
+    "merman-bindings-core?/diagram-railroad",
     "merman-render?/diagram-railroad",
 ]
 diagram-requirement = [
     "merman/diagram-requirement",
     "merman-analysis?/diagram-requirement",
+    "merman-bindings-core?/diagram-requirement",
     "merman-render?/diagram-requirement",
 ]
 diagram-sankey = [
     "merman/diagram-sankey",
     "merman-analysis?/diagram-sankey",
+    "merman-bindings-core?/diagram-sankey",
     "merman-render?/diagram-sankey",
 ]
 diagram-sequence = [
     "merman/diagram-sequence",
     "merman-analysis?/diagram-sequence",
+    "merman-bindings-core?/diagram-sequence",
     "merman-render?/diagram-sequence",
 ]
 diagram-state = [
     "merman/diagram-state",
     "merman-analysis?/diagram-state",
+    "merman-bindings-core?/diagram-state",
     "merman-render?/diagram-state",
 ]
 diagram-swimlane = [
     "merman/diagram-swimlane",
     "merman-analysis?/diagram-swimlane",
+    "merman-bindings-core?/diagram-swimlane",
     "merman-render?/diagram-swimlane",
 ]
 diagram-timeline = [
     "merman/diagram-timeline",
     "merman-analysis?/diagram-timeline",
+    "merman-bindings-core?/diagram-timeline",
     "merman-render?/diagram-timeline",
 ]
 diagram-tree-view = [
     "merman/diagram-tree-view",
     "merman-analysis?/diagram-tree-view",
+    "merman-bindings-core?/diagram-tree-view",
     "merman-render?/diagram-tree-view",
 ]
 diagram-treemap = [
     "merman/diagram-treemap",
     "merman-analysis?/diagram-treemap",
+    "merman-bindings-core?/diagram-treemap",
     "merman-render?/diagram-treemap",
 ]
 diagram-venn = [
     "merman/diagram-venn",
     "merman-analysis?/diagram-venn",
+    "merman-bindings-core?/diagram-venn",
     "merman-render?/diagram-venn",
 ]
 diagram-wardley = [
     "merman/diagram-wardley",
     "merman-analysis?/diagram-wardley",
+    "merman-bindings-core?/diagram-wardley",
     "merman-render?/diagram-wardley",
 ]
 diagram-xychart = [
     "merman/diagram-xychart",
     "merman-analysis?/diagram-xychart",
+    "merman-bindings-core?/diagram-xychart",
     "merman-render?/diagram-xychart",
 ]
 diagram-zenuml = [
     "merman/diagram-zenuml",
     "merman-analysis?/diagram-zenuml",
+    "merman-bindings-core?/diagram-zenuml",
     "merman-render?/diagram-zenuml",
 ]
 default = [

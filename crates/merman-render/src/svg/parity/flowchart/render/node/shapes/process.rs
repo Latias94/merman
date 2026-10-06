@@ -50,9 +50,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
         return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_process();
     }
 
+    // Keep Mermaid's square default while preserving explicit Neo configuration
+    // and the independently admitted typed/source geometry channels.
     let radius = common
         .typed_corner_radius
-        .or_else(|| common.look_is_neo().then_some(common.neo_corner_radius));
+        .or(common.configured_corner_radius);
     let _ = write!(
         out,
         r#"<rect class="basic label-container"{} style="{}"#,

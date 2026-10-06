@@ -6,6 +6,64 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 #[test]
+fn agentflow_eager_hierarchy_markers_match_upstream_definitions() {
+    let fixtures = [
+        (
+            include_str!("../../../fixtures/agentflow/basic.mmd"),
+            include_str!("../../../fixtures/upstream-svgs/agentflow/basic.svg"),
+        ),
+        (
+            include_str!("../../../fixtures/agentflow/container-and-shapes.mmd"),
+            include_str!("../../../fixtures/upstream-svgs/agentflow/container-and-shapes.svg"),
+        ),
+    ];
+    for backend in ["elk", "dagre"] {
+        for (source, upstream) in fixtures {
+            let (_, svg) = render_agentflow_config_probe(source, json!({"layout": backend}), false);
+            let actual = roxmltree::Document::parse(&svg).unwrap();
+            let expected = roxmltree::Document::parse(upstream).unwrap();
+            let mut ids = std::collections::BTreeSet::new();
+            for id in actual.descendants().filter_map(|node| node.attribute("id")) {
+                assert!(ids.insert(id), "{backend}: duplicate SVG id {id}");
+            }
+            let markers = actual
+                .descendants()
+                .filter(|node| node.has_tag_name("marker"))
+                .collect::<Vec<_>>();
+            assert_eq!(markers.len(), 14, "{backend}: eager marker registry");
+            let scope = markers[0]
+                .attribute("id")
+                .unwrap()
+                .strip_suffix("-pointEnd")
+                .unwrap();
+            for suffix in ["hierarchyEnd", "hierarchyStart"] {
+                let marker_id = format!("{scope}-{suffix}");
+                let marker = markers
+                    .iter()
+                    .find(|node| node.attribute("id") == Some(marker_id.as_str()))
+                    .expect("hierarchy marker shares the document marker namespace");
+                let reference = expected
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("marker")
+                            && node.attribute("id").is_some_and(|id| id.ends_with(suffix))
+                    })
+                    .unwrap();
+                for attribute in reference.attributes().filter(|attr| attr.name() != "id") {
+                    assert_eq!(marker.attribute(attribute.name()), Some(attribute.value()));
+                }
+                let path = marker.children().find(|node| node.is_element()).unwrap();
+                let reference_path = reference.children().find(|node| node.is_element()).unwrap();
+                assert!(path.has_tag_name("path"));
+                for attribute in reference_path.attributes() {
+                    assert_eq!(path.attribute(attribute.name()), Some(attribute.value()));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn agentflow_domain_model_projects_through_shared_svg_layout() {
     let input = r#"agentflow-beta LR
 flow planner[Planner]
@@ -206,16 +264,11 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
     for (source, expected) in [
         (
             "agentflow-beta\nA\nA\nB --> C --> D\n",
-            &[
-                "agentflow-A-0",
-                "agentflow-B-2",
-                "agentflow-C-3",
-                "agentflow-D-4",
-            ][..],
+            &[("A", 0), ("B", 2), ("C", 3), ("D", 4)][..],
         ),
         (
             "agentflow-beta\nA[Old]@{shape: task}\nstyle A fill:red\nconnector A[API]\nconnector A[Again]\nA@{instruction: call}\nB\n",
-            &["agentflow-A-3", "agentflow-B-5"][..],
+            &[("A", 3), ("B", 5)][..],
         ),
     ] {
         for backend in ["elk", "dagre"] {
@@ -232,13 +285,18 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .unwrap();
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            for id in expected {
-                let id = format!("merman-{id}");
+            for (id, ordinal) in expected {
+                let node = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-id") == Some(*id)
+                            && node.attribute("data-et") == Some("node")
+                    })
+                    .unwrap_or_else(|| panic!("{backend}: missing {id}"));
                 assert!(
-                    document
-                        .descendants()
-                        .any(|node| node.attribute("id") == Some(id.as_str())),
-                    "{backend}: missing {id}"
+                    node.attribute("id")
+                        .is_some_and(|value| value.ends_with(&format!("-node-{ordinal}"))),
+                    "{backend}: {id} must retain parser ordinal {ordinal}: {node:?}"
                 );
             }
         }

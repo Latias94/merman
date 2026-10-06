@@ -360,6 +360,10 @@ impl ClassTextThemePlan {
         &self.layout_font_family_css
     }
 
+    pub(crate) fn typed_font_stack_active(&self) -> bool {
+        self.inherited_font_stack.typed_font_stack_active()
+    }
+
     pub(crate) fn stylesheet_font_family_css(&self) -> &str {
         &self.stylesheet_font_family_css
     }

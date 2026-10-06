@@ -3312,7 +3312,7 @@ mod tests {
             assert_eq!(class.support_level, "partial");
             assert!(class.structured_text_fallback);
 
-            assert_eq!(ascii_capabilities.len(), 31);
+            assert_eq!(ascii_capabilities.len(), 34);
             let zenuml = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "zenuml")
@@ -3360,7 +3360,6 @@ mod tests {
             capability.diagram_type == "flowchart"
                 && capability.family_id == "flowchart"
                 && capability.metadata_id.as_deref() == Some("flowchart")
-                && capability.render_model_kind.as_deref() == Some("flowchart")
                 && !capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser

@@ -1,9 +1,7 @@
-#![cfg(feature = "layout-elk")]
-
+use super::build_flowchart_elk_graph;
+use crate::text::DeterministicTextMeasurer;
 use merman_core::{Engine, ParseOptions};
 use merman_layout_elk as elk;
-use merman_render::flowchart::elk::build_flowchart_elk_graph;
-use merman_render::text::DeterministicTextMeasurer;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -43,7 +41,7 @@ fn label([width, height]: [f64; 2]) -> elk::Label {
 #[test]
 fn flowchart_elk_routes_with_captured_browser_dimensions() {
     let measurements: BrowserMeasurements = serde_json::from_str(include_str!(
-        "../../../fixtures/_verification/flowchart-elk-browser-measurements.json"
+        "../../../../../fixtures/_verification/flowchart-elk-browser-measurements.json"
     ))
     .unwrap();
     assert_eq!(measurements.schema_version, 1);

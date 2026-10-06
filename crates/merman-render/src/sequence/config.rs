@@ -168,13 +168,6 @@ impl<'a> SequenceConfigView<'a> {
         }
     }
 
-    pub(crate) fn theme_variable_font_weight(&self, key: &str) -> Option<String> {
-        self.effective_config
-            .get("themeVariables")
-            .and_then(|variables| variables.get(key))
-            .and_then(Self::parse_font_weight)
-    }
-
     pub(crate) fn font_size(&self, key: &str) -> f64 {
         self.font_value("fontSize", key)
             .and_then(crate::config::json_f64_css_px)
@@ -322,11 +315,6 @@ impl<'a> SequenceConfigView<'a> {
             (16.0, None)
         };
 
-        let theme_note_font_weight = (role == SequenceTypographyConfigRole::Note)
-            .then(|| self.theme_variable_font_weight("noteFontWeight"))
-            .flatten();
-        let theme_note_font_weight_owns = theme_note_font_weight.is_some()
-            && self.path_overrides_typed_default("themeVariables.noteFontWeight");
         let root_font_weight_value = self
             .effective_config
             .get("fontWeight")
@@ -338,14 +326,7 @@ impl<'a> SequenceConfigView<'a> {
             root_font_weight_value.is_some() && self.path_overrides_typed_default("fontWeight");
         let role_font_weight_owns =
             role_font_weight_value.is_some() && self.path_overrides_typed_default(weight_path);
-        let (font_weight, font_weight_measurement_winner) = if theme_note_font_weight_owns {
-            (
-                theme_note_font_weight,
-                Some(SequenceTypographyMeasurementWinner {
-                    path: "themeVariables.noteFontWeight",
-                }),
-            )
-        } else if root_font_weight_owns {
+        let (font_weight, font_weight_measurement_winner) = if root_font_weight_owns {
             (
                 root_font_weight,
                 Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
@@ -368,13 +349,6 @@ impl<'a> SequenceConfigView<'a> {
                 role_font_weight,
                 Some(SequenceTypographyMeasurementWinner { path: weight_path }),
             )
-        } else if let Some(value) = theme_note_font_weight {
-            (
-                Some(value),
-                Some(SequenceTypographyMeasurementWinner {
-                    path: "themeVariables.noteFontWeight",
-                }),
-            )
         } else {
             (Some("400".to_string()), None)
         };
@@ -391,8 +365,7 @@ impl<'a> SequenceConfigView<'a> {
         {
             config_owned_properties.insert(ThemeTypographyProperty::FontSize);
         }
-        if theme_note_font_weight_owns
-            || root_font_weight_owns
+        if root_font_weight_owns
             || (role_font_weight_owns
                 && (root_font_weight_value.is_none()
                     || typed_theme_properties.contains(&ThemeTypographyProperty::FontWeight)))

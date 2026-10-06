@@ -2,6 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
     ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
@@ -18,6 +19,15 @@ use merman_render::{DiagramFamilyId, LayoutOptions};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+// These fixtures exercise the classic terminal contract; Mermaid 12 defaults are tested separately.
+fn classic_engine() -> Engine {
+    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "theme": "default",
+        "look": "classic",
+        "layout": "dagre"
+    })))
+}
 
 fn requirement_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
@@ -118,7 +128,7 @@ fn requirement_ordinal_palette_theme() -> DiagramTheme {
 }
 
 fn render_requirement_with_theme(source: &str, theme: &DiagramTheme) -> family::RenderedFamilySvg {
-    render_requirement_with_theme_and_engine(source, theme, Engine::new())
+    render_requirement_with_theme_and_engine(source, theme, classic_engine())
 }
 
 fn render_requirement_with_theme_and_engine(
@@ -193,7 +203,7 @@ fn try_render_requirement_with_theme_requirement_and_environment(
 }
 
 fn render_requirement_without_theme(source: &str) -> family::RenderedFamilySvg {
-    render_requirement_without_theme_and_engine(source, Engine::new())
+    render_requirement_without_theme_and_engine(source, classic_engine())
 }
 
 fn render_requirement_without_theme_and_engine(
@@ -399,12 +409,12 @@ fn requirement_relation_config_ownership_and_empty_domain_are_not_applicable() {
         }));
         let baseline = render_requirement_without_theme_and_engine(
             source,
-            Engine::new().with_site_config(config.clone()),
+            classic_engine().with_site_config(config.clone()),
         );
         let rendered = render_requirement_with_theme_and_engine(
             source,
             &theme,
-            Engine::new().with_site_config(config),
+            classic_engine().with_site_config(config),
         );
         assert_eq!(
             baseline.svg(),
@@ -443,7 +453,7 @@ fn requirement_relation_stroke_blocks_fill_fallback_including_clear() {
         let rendered = render_requirement_with_theme_requirement(
             requirement_svg_label_source(),
             &theme,
-            Engine::new(),
+            classic_engine(),
             ThemePortabilityRequirement::BestEffort,
         );
         let css = requirement_stylesheet(rendered.svg());
@@ -503,12 +513,12 @@ fn requirement_optional_evidence_preserves_exact_unmodified_svg() {
             }));
             let unthemed = render_requirement_without_theme_and_engine(
                 source,
-                Engine::new().with_site_config(config.clone()),
+                classic_engine().with_site_config(config.clone()),
             );
             let with_evidence = render_requirement_with_theme_and_engine(
                 source,
                 &empty_theme,
-                Engine::new().with_site_config(config),
+                classic_engine().with_site_config(config),
             );
             roxmltree::Document::parse(unthemed.svg()).expect("valid unthemed SVG");
             assert_eq!(
@@ -525,7 +535,7 @@ fn requirement_svg_labels_cover_nodes_relationships_and_self_loop_anchors() {
     let rendered = render_requirement_with_theme_and_engine(
         requirement_svg_label_source(),
         &requirement_typography_theme(ThemeTextStyle::default()),
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "htmlLabels": false
         }))),
     );
@@ -648,7 +658,7 @@ fn requirement_default_labels_match_explicit_html_labels() {
     let explicit = render_requirement_with_theme_and_engine(
         requirement_svg_label_source(),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        classic_engine().with_site_config(MermaidConfig::from_value(
             serde_json::json!({"htmlLabels": true}),
         )),
     );
@@ -716,7 +726,7 @@ fn requirement_svg_labels_measure_with_svg_mode_and_portable_typed_typography() 
     let rendered = render_requirement_with_theme_requirement_and_environment(
         requirement_svg_label_source(),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(
+        classic_engine().with_site_config(MermaidConfig::from_value(
             serde_json::json!({"htmlLabels": false}),
         )),
         ThemePortabilityRequirement::RequirePortable,
@@ -838,7 +848,7 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
             let rendered = render_requirement_with_theme_requirement_and_environment(
                 &format!("{}\n{source_style}\n", requirement_source()),
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                classic_engine().with_site_config(MermaidConfig::from_value(
                     serde_json::json!({"htmlLabels": html_labels}),
                 )),
                 ThemePortabilityRequirement::RequirePortable,
@@ -930,7 +940,7 @@ fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() 
                 let rendered = render_requirement_with_theme_requirement_and_environment(
                     &format!("{}\n{source_style}\n", requirement_source()),
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(
+                    classic_engine().with_site_config(MermaidConfig::from_value(
                         serde_json::json!({"htmlLabels": html_labels}),
                     )),
                     ThemePortabilityRequirement::RequirePortable,
@@ -1024,7 +1034,7 @@ fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
         let rendered = render_requirement_with_theme_requirement_and_environment(
             &source,
             &theme,
-            Engine::new().with_site_config(MermaidConfig::from_value(
+            classic_engine().with_site_config(MermaidConfig::from_value(
                 serde_json::json!({"htmlLabels": html_labels}),
             )),
             ThemePortabilityRequirement::RequirePortable,
@@ -1117,7 +1127,7 @@ fn requirement_source_font_evidence_is_property_local_and_fails_closed() {
         ] {
             let source = format!("{}\nstyle req1 {style}\n", requirement_source());
             let engine = || {
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                classic_engine().with_site_config(MermaidConfig::from_value(
                     serde_json::json!({"htmlLabels": html_labels}),
                 ))
             };
@@ -1180,7 +1190,7 @@ fn requirement_source_owned_nodes_do_not_suppress_inherited_edge_and_title_fonts
             "{node}\nelement impl {{\n type: source\n}}\nstyle impl font-family:SourceFont,font-size:32px\nimpl - satisfies -> req1\n"
         ),
     ] {
-        let rendered = render_requirement_with_theme_and_engine(&source, &theme, Engine::new());
+        let rendered = render_requirement_with_theme_and_engine(&source, &theme, classic_engine());
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         assert!(document.descendants().any(|node| {
             matches!(
@@ -1320,7 +1330,7 @@ fn requirement_typed_font_size_reaches_measurement_stylesheet_and_evidence() {
     let rendered = render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "fontSize": 10
         }))),
         ThemePortabilityRequirement::RequirePortable,
@@ -1378,7 +1388,7 @@ fn requirement_mixed_base_typography_settles_each_property_independently() {
     let rendered = render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
         &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
             "fontSize": 10
         }))),
         ThemePortabilityRequirement::RequirePortable,
@@ -1445,7 +1455,7 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
     let rendered = render_requirement_with_theme_requirement(
         requirement_source(),
         &theme,
-        Engine::new(),
+        classic_engine(),
         ThemePortabilityRequirement::BestEffort,
     );
 
@@ -1460,7 +1470,7 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
     let error = match try_render_requirement_with_theme_requirement_and_environment(
         requirement_source(),
         &theme,
-        Engine::new(),
+        classic_engine(),
         ThemePortabilityRequirement::RequirePortable,
         RenderEnvironment::deterministic(),
     ) {
@@ -1471,6 +1481,26 @@ fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack(
         error.unverified_family_theme(),
         Some((DiagramFamilyId::REQUIREMENT, 1))
     );
+}
+
+#[test]
+fn requirement_family_default_keeps_redux_color_paint_ownership() {
+    let theme = requirement_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    let rendered =
+        render_requirement_with_theme_and_engine(requirement_source(), &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).expect("default Requirement SVG");
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-req1"),
+        "#ffffff"
+    );
+    assert!(rendered.svg().contains(r#"data-look="neo""#));
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -1594,7 +1624,7 @@ fn requirement_typed_stroke_remains_the_neo_terminal_winner() {
     let theme = requirement_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Neo Requirement stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "look": "neo"
     })));
     let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
@@ -1620,6 +1650,7 @@ fn requirement_typed_stroke_remains_the_neo_terminal_winner() {
         .descendants()
         .find(|node| {
             node.has_tag_name("path")
+                && node.attribute("fill") == Some("none")
                 && node.ancestors().any(|ancestor| {
                     ancestor.has_tag_name("g") && ancestor.attribute("class") == Some("divider")
                 })
@@ -1785,7 +1816,7 @@ fn requirement_explicit_node_border_outranks_typed_stroke() {
     let theme = requirement_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid config-owned Requirement stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": { "nodeBorder": "#fedcba" }
     })));
     let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
@@ -1975,8 +2006,8 @@ fn requirement_explicit_background_outranks_typed_fill() {
     let theme = requirement_fill_theme(
         CanvasPaint::solid("#123456").expect("valid config-owned Requirement fill"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeVariables": { "requirementBackground": "#fedcba" }
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "mainBkg": "#fedcba" }
     })));
     let rendered = render_requirement_with_theme_and_engine(requirement_source(), &theme, engine);
     let document =
@@ -1996,7 +2027,7 @@ fn requirement_explicit_background_outranks_typed_fill() {
 }
 
 #[test]
-fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
+fn extended_dark_primary_color_does_not_own_requirement_main_background() {
     let theme = requirement_fill_theme(
         CanvasPaint::solid("#123456").expect("valid config-derived Requirement fill"),
     );
@@ -2008,18 +2039,18 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
         (
             "site-owned neo-dark",
             requirement_source().to_string(),
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "theme": "neo-dark",
                 "themeVariables": { "primaryColor": "#fedcba" }
             }))),
-            "#fedcba",
-            0,
+            "#123456",
             1,
+            0,
         ),
         (
             "source-owned redux-dark",
             source_owned,
-            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "theme": "redux-dark",
                 "secure": []
             }))),
@@ -2036,7 +2067,7 @@ fn extended_dark_primary_color_derived_background_outranks_typed_fill() {
         assert_eq!(
             terminal_fill_for(&document, "requirement-theme-req1"),
             expected_fill,
-            "{owner} primaryColor must retain the terminal fill"
+            "{owner} primaryColor must not own the mainBkg terminal"
         );
 
         drop(document);
@@ -2059,7 +2090,7 @@ fn requirement_border_color_array_owns_stroke_without_hiding_typed_fill() {
         CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
         CanvasPaint::solid("#654321").expect("valid typed Requirement stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {
             "borderColorArray": ["#fedcba"]
         }
@@ -2102,7 +2133,7 @@ fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence()
         CanvasPaint::solid("#123456").expect("valid typed Requirement fill"),
         CanvasPaint::solid("#654321").expect("valid typed Requirement stroke"),
     );
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+    let engine = classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {
             "borderColorArray": ["#fedcba"],
             "bkgColorArray": ["#abcdef"]
@@ -2167,7 +2198,7 @@ fn requirement_text_fill_consumes_node_and_relation_labels_across_looks() {
             let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(rule));
             for look in ["classic", "neo", "handDrawn"] {
                 for html in [false, true] {
-                    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                    let engine = classic_engine().with_site_config(MermaidConfig::from_value(
                         serde_json::json!({"look": look, "htmlLabels": html}),
                     ));
                     let rendered = render_requirement_with_theme_and_engine(
@@ -2247,7 +2278,7 @@ fn requirement_text_owners_are_independent_for_html_and_svg_labels() {
             let rendered = render_requirement_with_theme_and_engine(
                 &source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                classic_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
                     "htmlLabels": html, "themeVariables": variables,
                 }))),
             );
@@ -2293,7 +2324,7 @@ fn requirement_text_source_color_and_absent_consumers_do_not_prove_application()
             let rendered = render_requirement_with_theme_and_engine(
                 &source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                classic_engine().with_site_config(MermaidConfig::from_value(
                     serde_json::json!({"htmlLabels":html}),
                 )),
             );
@@ -2357,7 +2388,7 @@ fn requirement_text_rule_winners_account_for_later_labels_and_shadowed_defaults(
         let rendered = render_requirement_with_theme_requirement(
             requirement_source(),
             &theme,
-            Engine::new(),
+            classic_engine(),
             ThemePortabilityRequirement::BestEffort,
         );
         let completion = rendered.into_completion();
@@ -2370,7 +2401,7 @@ fn requirement_text_rule_winners_account_for_later_labels_and_shadowed_defaults(
                 try_render_requirement_with_theme_requirement_and_environment(
                     requirement_source(),
                     &theme,
-                    Engine::new(),
+                    classic_engine(),
                     ThemePortabilityRequirement::RequirePortable,
                     RenderEnvironment::deterministic()
                 )
@@ -2403,7 +2434,7 @@ fn requirement_text_unknown_source_and_winning_siblings_remain_residuals() {
         let rendered = render_requirement_with_theme_requirement(
             &source,
             &theme,
-            Engine::new(),
+            classic_engine(),
             ThemePortabilityRequirement::BestEffort,
         );
         let completion = rendered.into_completion();
@@ -2414,7 +2445,7 @@ fn requirement_text_unknown_source_and_winning_siblings_remain_residuals() {
             try_render_requirement_with_theme_requirement_and_environment(
                 &source,
                 &theme,
-                Engine::new(),
+                classic_engine(),
                 ThemePortabilityRequirement::RequirePortable,
                 RenderEnvironment::deterministic()
             )
@@ -2458,9 +2489,11 @@ fn requirement_browser_text_cascade() {
                 let rendered = render_requirement_with_theme_and_engine(
                     &source,
                     &theme,
-                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-                        "htmlLabels": html, "look": look, "themeVariables": variables,
-                    }))),
+                    classic_engine().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({
+                            "htmlLabels": html, "look": look, "themeVariables": variables,
+                        }),
+                    )),
                 );
                 fixtures.push(serde_json::json!({
                     "name": format!("{look},html={html},{variables}"), "svg": rendered.svg(),

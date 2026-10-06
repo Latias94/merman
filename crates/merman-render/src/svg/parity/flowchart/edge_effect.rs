@@ -45,7 +45,7 @@ impl FlowchartEdgeEffects {
             return Ok(plan);
         };
         let ancestor_classes: &[&str] = if ctx.uses_elk_adapter_dom {
-            &["root", "edges", "edgePath"]
+            &["root", "edges", "edgePaths"]
         } else if ctx.swimlane_direction.is_some() {
             &["root", "edges", "edgePaths"]
         } else {

@@ -110,7 +110,7 @@ impl InheritedTextFamily {
     const fn terminal_font_sizes(self) -> &'static [&'static str] {
         match self {
             Self::Info => &["32"],
-            Self::Error => &["150px", "100px"],
+            Self::Error => &["150px", "100px", "42px", "42px"],
         }
     }
 }

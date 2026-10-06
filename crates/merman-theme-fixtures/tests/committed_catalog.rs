@@ -77,33 +77,19 @@ fn committed_catalog_is_hash_bound_licensed_and_complete() {
 }
 
 #[test]
-fn mermaid_style_precedence_tracks_selected_upstream_revision() {
+fn mermaid_style_precedence_is_bound_to_its_source_snapshot_revision() {
     let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
-    let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("tools")
-        .join("upstreams")
-        .join("REPOS.lock.json");
-    let lock: Value =
-        serde_json::from_str(&std::fs::read_to_string(lock_path).expect("read upstream lock"))
-            .expect("parse upstream lock");
-    let selected_revision = lock
-        .get("repos")
-        .and_then(Value::as_object)
-        .and_then(|repos| repos.get("mermaid"))
-        .and_then(Value::as_object)
-        .and_then(|repo| repo.get("commit"))
-        .and_then(Value::as_str)
-        .expect("selected Mermaid commit");
+    let source = catalog.source("source-mermaid").expect("Mermaid source");
+    let snapshot: Value = serde_json::from_str(
+        &catalog
+            .source_snapshot_text(source.id())
+            .expect("read validated Mermaid snapshot"),
+    )
+    .expect("parse Mermaid snapshot");
 
-    assert_eq!(
-        catalog
-            .source("source-mermaid")
-            .expect("Mermaid source")
-            .revision(),
-        selected_revision
-    );
+    // Selecting a newer upstream does not regenerate historical source evidence.
+    assert_eq!(snapshot["sourceId"], source.id());
+    assert_eq!(snapshot["revision"], source.revision());
 }
 
 #[test]

@@ -47,7 +47,9 @@ impl SequenceBlockLabelBoxMetrics {
             terminal_height: LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT,
             typography_expanded: false,
         };
-        if !typography.requires_resolved_emission() {
+        // Authored Mermaid fonts preserve drawLoop's configured geometry. Only typed
+        // typography adds measured space beyond the upstream label-box contract.
+        if !typography.has_typed_typography() {
             return Ok(legacy);
         }
 

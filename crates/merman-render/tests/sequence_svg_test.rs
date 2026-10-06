@@ -4,10 +4,9 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, FontStyle,
-    InsetsPx, OrdinalSelector, Specified, TextStylePatch as ThemeTextStylePatch,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector,
+    Specified, TextStylePatch as ThemeTextStylePatch, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 
 use merman_render::environment::{
@@ -1830,11 +1829,9 @@ fn sequence_control_labels_follow_look_height_margin_and_font() {
                 (label_y - expected_y).abs() <= 1e-6,
                 "{look} label baseline"
             );
-            assert!(
-                label
-                    .attribute("style")
-                    .expect("label style")
-                    .contains("font-size: 22px;")
+            assert_eq!(
+                inline_style_value(label.attribute("style").expect("label style"), "font-size"),
+                Some("22px")
             );
         }
     }
@@ -1893,16 +1890,15 @@ fn sequence_control_titles_use_resolved_message_font_weight() {
         assert_eq!(titles.len(), 3, "control keyword, title and section");
         for title in titles {
             let style = title.attribute("style").expect("title style");
-            match expected_weight {
-                Some(weight) => assert!(
-                    style.contains(&format!("font-weight: {weight};")),
-                    "{config}: {style}"
-                ),
-                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
-            }
-            assert!(
-                !style.contains("font-style"),
-                "invalid CSS weight must not add declarations"
+            assert_eq!(
+                inline_style_value(style, "font-weight").unwrap_or("400"),
+                expected_weight.unwrap_or("400"),
+                "{config}: {style}"
+            );
+            assert_eq!(
+                inline_style_value(style, "font-style").unwrap_or("normal"),
+                "normal",
+                "invalid CSS weight must not inject an italic declaration"
             );
         }
     }
@@ -2732,11 +2728,9 @@ end"##,
         .descendants()
         .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("noteText"))
         .expect("note text");
-    assert!(
-        note_text
-            .attribute("style")
-            .unwrap()
-            .contains("font-weight: 700"),
+    assert_eq!(
+        inline_style_value(note_text.attribute("style").unwrap(), "font-weight"),
+        Some("700"),
         "the configured note weight must reach the text that note tspans inherit"
     );
     assert!(
@@ -2777,10 +2771,13 @@ end"#;
         ),
     ] {
         let theme = sequence_role_paint_theme(fill, stroke);
-        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap_or_else(|error| panic!("parse {case} Sequence role paint source: {error}"))
-            .unwrap_or_else(|| panic!("detect {case} Sequence role paint source"));
+        let parsed = merman_render::__private::install_parse_compatibility(
+            &theme,
+            classic_sequence_engine(),
+        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap_or_else(|error| panic!("parse {case} Sequence role paint source: {error}"))
+        .unwrap_or_else(|| panic!("detect {case} Sequence role paint source"));
         let session = RenderEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
@@ -4189,7 +4186,7 @@ end"#;
 }
 
 #[test]
-fn sequence_config_owned_note_weight_is_reasserted_after_legacy_tspan_css() {
+fn sequence_theme_variable_note_weight_does_not_override_typed_note_weight() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -4243,7 +4240,7 @@ Note over Alice,Bob: Config Note Weight"#;
             &measurement_parsed.metadata().effective_config,
             "themeVariables.noteFontWeight",
         ),
-        "the surviving legacy init value must outrank the typed NoteLabel default"
+        "the legacy init value remains authored config even though Sequence no longer consumes it"
     );
     let measurement_session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(measurement_policy)
@@ -4258,9 +4255,9 @@ Note over Alice,Bob: Config Note Weight"#;
     assert!(
         host.snapshot().iter().any(|exchange| {
             exchange.request.text.contains("Config Note Weight")
-                && exchange.request.font_weight.as_deref() == Some("600")
+                && exchange.request.font_weight.as_deref() == Some("700")
         }),
-        "themeVariables.noteFontWeight must own NoteLabel layout measurement"
+        "themeVariables.noteFontWeight must not override typed NoteLabel layout measurement"
     );
 
     let parsed = engine
@@ -4288,8 +4285,8 @@ Note over Alice,Bob: Config Note Weight"#;
         .map(|(declarations, _)| declarations)
         .expect("post-legacy NoteLabel typography rule");
     assert!(
-        role_rule.contains("font-weight:600"),
-        "config-owned NoteLabel weight must be reasserted after legacy child CSS: {role_rule}"
+        role_rule.contains("font-weight:700"),
+        "typed NoteLabel weight must reach the note and its child tspans: {role_rule}"
     );
 
     let note = document
@@ -4306,7 +4303,7 @@ Note over Alice,Bob: Config Note Weight"#;
     assert_eq!(
         note.attribute("style")
             .and_then(|style| inline_style_value(style, "font-weight")),
-        Some("600")
+        Some("700")
     );
 }
 
@@ -5624,6 +5621,14 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
     );
 }
 
+// Isolate typed effects and geometry from Mermaid's built-in Neo shadow and palette.
+fn classic_sequence_engine() -> Engine {
+    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "classic",
+        "theme": "default"
+    })))
+}
+
 fn try_render_sequence_theme_request(
     source: &str,
     theme: &DiagramTheme,
@@ -5904,9 +5909,11 @@ fn sequence_actor_geometry_theme(clear: bool) -> DiagramTheme {
 #[test]
 fn sequence_actor_geometry_reaches_both_rectangles_without_styling_text_or_lifelines() {
     for mirror in [true, false] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "sequence":{"mirrorActors":mirror}
-        })));
+        let engine = classic_sequence_engine().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({
+                "sequence":{"mirrorActors":mirror}
+            }),
+        ));
         let rendered = try_render_sequence_theme_request(
             "sequenceDiagram\nA->>B: Hello",
             &sequence_actor_geometry_theme(false),
@@ -5951,7 +5958,7 @@ fn sequence_actor_geometry_reaches_both_rectangles_without_styling_text_or_lifel
 fn sequence_actor_geometry_clear_and_source_width_preserve_other_facets() {
     for clear in [false, true] {
         for source_width in [None, Some("7px")] {
-            let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            let engine = classic_sequence_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "themeVariables":source_width.map(|w| serde_json::json!({"strokeWidth":w,"actorBorder":"#ff0000"})).unwrap_or(serde_json::json!({"actorBorder":"#ff0000"}))
             })));
             let rendered = try_render_sequence_theme_request(
@@ -6101,7 +6108,9 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
         let rendered = try_render_sequence_theme_request(
             include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
             &theme,
-            Engine::new(),
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "look": "classic"
+            }))),
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
@@ -6340,7 +6349,7 @@ fn sequence_actor_shadow_binding_clear_and_rule_ownership() {
             let rendered = try_render_sequence_theme_request(
                 "sequenceDiagram\nA->>B: Hello",
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                classic_sequence_engine().with_site_config(MermaidConfig::from_value(
                     serde_json::json!({"sequence":{"mirrorActors":mirror}}),
                 )),
                 ThemePortabilityRequirement::RequirePortable,
@@ -6856,7 +6865,7 @@ fn sequence_message_shadow_binding_clear_and_rule_ownership() {
             let rendered = try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new().with_site_config(MermaidConfig::from_value(
+                classic_sequence_engine().with_site_config(MermaidConfig::from_value(
                     serde_json::json!({"sequence":{"rightAngles":right_angles,"diagramMarginX":0,"diagramMarginY":0}}),
                 )),
                 ThemePortabilityRequirement::RequirePortable,
@@ -7166,7 +7175,7 @@ fn sequence_note_shadow_absence_and_resource_admission() {
     let rendered = try_render_sequence_theme_request(
         "sequenceDiagram\nA->>B: No note",
         &theme,
-        Engine::new(),
+        classic_sequence_engine(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
@@ -7187,7 +7196,7 @@ fn sequence_note_shadow_absence_and_resource_admission() {
     let error = try_render_sequence_theme_request(
         "sequenceDiagram\nNote over A,B: Note",
         &theme,
-        Engine::new(),
+        classic_sequence_engine(),
         ThemePortabilityRequirement::BestEffort,
     )
     .err()
@@ -7221,7 +7230,7 @@ fn sequence_note_label_shadow_is_text_only_and_clear_preserves_layout() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -7281,7 +7290,7 @@ fn sequence_note_label_shadow_is_text_only_and_clear_preserves_layout() {
             let plain = try_render_sequence_theme_request(
                 source,
                 &baseline,
-                Engine::new(),
+                classic_sequence_engine(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -7342,7 +7351,7 @@ fn sequence_note_label_effect_residuals_and_absence_are_honest() {
         let result = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(
@@ -7464,7 +7473,7 @@ fn sequence_paintless_note_rule_is_consumed_without_claiming_a_filter() {
     let rendered = try_render_sequence_theme_request(
         "sequenceDiagram\nNote over A,B: <br/>",
         &theme,
-        Engine::new(),
+        classic_sequence_engine(),
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
@@ -7492,7 +7501,7 @@ fn sequence_loop_label_effects_cover_keyword_primary_and_section_titles() {
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -7540,7 +7549,7 @@ fn sequence_loop_label_effects_cover_keyword_primary_and_section_titles() {
             let baseline = try_render_sequence_theme_request(
                 source,
                 &plain,
-                Engine::new(),
+                classic_sequence_engine(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -7604,7 +7613,7 @@ fn sequence_loop_label_effects_preserve_rule_residuals_and_empty_titles() {
         let result = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(
@@ -7696,7 +7705,7 @@ A->>U: Work
         let rendered = try_render_sequence_theme_request(
             source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -7760,7 +7769,7 @@ A->>U: Work
             let baseline = try_render_sequence_theme_request(
                 source,
                 &plain,
-                Engine::new(),
+                classic_sequence_engine(),
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
@@ -7793,7 +7802,7 @@ A->>B: Work
         let result = try_render_sequence_theme_request(
             &source,
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         );
         assert_eq!(
@@ -8032,7 +8041,7 @@ fn sequence_lifeline_and_activation_effects_keep_source_ownership_and_residuals(
             let result = try_render_sequence_theme_request(
                 source,
                 &theme,
-                Engine::new(),
+                classic_sequence_engine(),
                 ThemePortabilityRequirement::RequirePortable,
             );
             assert_eq!(
@@ -8144,7 +8153,7 @@ fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
                 let rendered = try_render_sequence_theme_request(
                     &input,
                     &theme,
-                    Engine::new(),
+                    classic_sequence_engine(),
                     ThemePortabilityRequirement::RequirePortable,
                 )
                 .unwrap();
@@ -8246,7 +8255,7 @@ fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
         .unwrap();
     let rendered = try_render_sequence_theme_request(
         "---\nconfig:\n  sequence:\n    labelBoxWidth: 1\n    diagramMarginX: 0\n---\nsequenceDiagram\nloop Work\nA->>B: Request\nend",
-        &theme, Engine::new(), ThemePortabilityRequirement::RequirePortable,
+        &theme, classic_sequence_engine(), ThemePortabilityRequirement::RequirePortable,
     ).unwrap();
     let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
     let polygon = doc
@@ -8294,7 +8303,7 @@ fn sequence_control_effects_are_absent_without_control_structures() {
         let rendered = try_render_sequence_theme_request(
             "sequenceDiagram\nA->>B: Request",
             &theme,
-            Engine::new(),
+            classic_sequence_engine(),
             ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
@@ -8592,12 +8601,14 @@ fn sequence_popup_text_uses_resolved_actor_font_style() {
             .and_then(|popup| popup.descendants().find(|node| node.has_tag_name("text")))
             .expect("popup text");
         let style = text.attribute("style").expect("popup style");
-        assert!(
-            style.contains(&format!("font-size: {expected_size};")),
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some(expected_size),
             "{style}"
         );
-        assert!(
-            style.contains(&format!("font-weight: {expected_weight};")),
+        assert_eq!(
+            inline_style_value(style, "font-weight"),
+            Some(expected_weight),
             "{style}"
         );
     }
@@ -8717,14 +8728,16 @@ fn sequence_actor_labels_and_popups_share_resolved_weight() {
         assert_eq!(texts.len(), 3, "two actor labels and one menu label");
         for text in texts {
             let style = text.attribute("style").expect("text style");
-            match expected {
-                Some(weight) => assert!(
-                    style.contains(&format!("font-weight: {weight};")),
-                    "{config}: {style}"
-                ),
-                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
-            }
-            assert!(!style.contains("fill: red"), "CSS must remain one value");
+            assert_eq!(
+                inline_style_value(style, "font-weight").unwrap_or("400"),
+                expected.unwrap_or("400"),
+                "{config}: {style}"
+            );
+            assert_eq!(
+                inline_style_value(style, "fill"),
+                None,
+                "CSS must remain one value"
+            );
         }
     }
 }
@@ -8871,8 +8884,16 @@ fn sequence_box_titles_share_measured_height_and_use_actor_font_when_drawn() {
             "all boxes share the maximum title height"
         );
         let style = title.attribute("style").expect("title style");
-        assert!(style.contains("font-size: 26px;"), "{style}");
-        assert!(style.contains("font-weight: 700;"), "{style}");
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some("26px"),
+            "{style}"
+        );
+        assert_eq!(
+            inline_style_value(style, "font-weight"),
+            Some("700"),
+            "{style}"
+        );
         let tspan = title
             .children()
             .find(|node| node.has_tag_name("tspan"))
@@ -9137,12 +9158,15 @@ fn sequence_family_fonts_match_measurement_and_svg_with_falsy_or_string_global_s
             assert_eq!(texts.len(), expected_count, "{config}: {class}");
             for text in texts {
                 let style = text.attribute("style").expect("inline font style");
-                assert!(
-                    style.contains(&format!("font-size: {size}px;")),
+                let expected_size = format!("{size}px");
+                assert_eq!(
+                    inline_style_value(style, "font-size"),
+                    Some(expected_size.as_str()),
                     "{config}: {class} has the wrong size: {style}"
                 );
-                assert!(
-                    style.contains(&format!("font-family: {family};")),
+                assert_eq!(
+                    inline_style_value(style, "font-family"),
+                    Some(family),
                     "{config}: {class} has the wrong family: {style}"
                 );
             }

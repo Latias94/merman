@@ -184,21 +184,14 @@ fn venn_typed_font_stack_reaches_every_local_text_selector_and_strict_receipt() 
         ".venn-intersection text{",
         ".venn-text-node{",
     ] {
+        let start = rendered
+            .svg()
+            .find(selector)
+            .expect("Venn selector must be emitted");
+        let rule = &rendered.svg()[start..rendered.svg()[start..].find('}').unwrap() + start];
         assert!(
-            rendered
-                .svg()
-                .contains(&format!("{selector}font-family:{expected_font};"))
-                || rendered.svg().contains(&format!(
-                    "{selector}font-size:32px;fill:#333;font-family:{expected_font};"
-                ))
-                || rendered.svg().contains(&format!(
-                    "{selector}font-size:48px;font-family:{expected_font};"
-                ))
-                || rendered.svg().contains(&format!(
-                    "{selector}font-size:48px;fill:#333;font-family:{expected_font};"
-                )),
-            "Venn selector `{selector}` must use the typed font stack: {}",
-            rendered.svg()
+            rule.contains(&format!("font-family:{expected_font};")),
+            "Venn selector `{selector}` must use the typed font stack: {rule}"
         );
     }
 
@@ -436,6 +429,7 @@ fn venn_text_fill_uses_final_venn_role_ownership() {
         THEME_TYPOGRAPHY_SOURCE,
         &theme,
         Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
             "themeVariables": { "textColor": "#654321" }
         }))),
         ThemePortabilityRequirement::RequirePortable,

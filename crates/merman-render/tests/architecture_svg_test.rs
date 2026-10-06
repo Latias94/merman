@@ -425,34 +425,36 @@ fn architecture_svg_handles_deep_group_chain() {
 #[test]
 fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
     const DEPTH: usize = 1_200;
-    let source = deep_icon_text_diagram(DEPTH);
-    let engine = Engine::new();
-    let handle = std::thread::Builder::new()
-        .name("architecture-deep-icon-text-svg".to_string())
-        .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
-        .spawn(move || {
-            render_architecture_text_with_engine_and_options(
-                &engine,
-                &source,
-                &SvgRenderOptions {
-                    diagram_id: Some("architecture-deep-icon-text".to_string()),
-                    ..Default::default()
-                },
-            )
-        })
-        .expect("spawn architecture deep iconText SVG test");
-    let svg = handle
-        .join()
-        .expect("architecture deep iconText SVG should finish without stack overflow");
+    for depth in [1, DEPTH] {
+        let source = deep_icon_text_diagram(depth);
+        let engine = Engine::new();
+        let handle = std::thread::Builder::new()
+            .name("architecture-deep-icon-text-svg".to_string())
+            .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
+            .spawn(move || {
+                render_architecture_text_with_engine_and_options(
+                    &engine,
+                    &source,
+                    &SvgRenderOptions {
+                        diagram_id: Some("architecture-deep-icon-text".to_string()),
+                        ..Default::default()
+                    },
+                )
+            })
+            .expect("spawn architecture deep iconText SVG test");
+        let svg = handle
+            .join()
+            .expect("architecture deep iconText SVG should finish without stack overflow");
 
-    assert!(
-        svg.contains(r#"id="architecture-deep-icon-text-service-worker""#),
-        "expected iconText service to render"
-    );
-    assert!(
-        svg.contains("Icon"),
-        "expected deepest iconText label to render"
-    );
+        assert!(
+            svg.contains(r#"id="architecture-deep-icon-text-service-worker""#),
+            "expected iconText service to render"
+        );
+        assert!(
+            svg.contains("Icon"),
+            "expected deepest iconText label to render"
+        );
+    }
 }
 
 #[test]

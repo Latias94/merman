@@ -3986,6 +3986,17 @@ mod tests {
     }
 
     #[test]
+    fn browser_launchers_keep_processes_in_the_managed_tree() {
+        for script_path in [
+            ensure_upstream_svg_render_environment_probe_script().unwrap(),
+            ensure_seeded_upstream_svg_renderer_script().unwrap(),
+        ] {
+            let script = fs::read_to_string(script_path).expect("read browser launcher");
+            assert!(script.contains("detached: false,"));
+        }
+    }
+
+    #[test]
     fn seeded_renderer_completes_deferred_sequence_actor_math_before_serializing() {
         let script_path = ensure_seeded_upstream_svg_renderer_script()
             .expect("install seeded upstream SVG renderer script");

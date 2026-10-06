@@ -191,7 +191,10 @@ impl<'a> ActorLabelContext<'a> {
             }
         }
         if let Some(width) = width {
-            let _ = write!(style, " stroke-width:{}px;", fmt(f64::from(width)));
+            if !style.is_empty() {
+                style.push(' ');
+            }
+            let _ = write!(style, "stroke-width:{}px;", fmt(f64::from(width)));
         }
         if !style.is_empty() {
             let _ = write!(out, r#" style="{}""#, escape_attr(&style));

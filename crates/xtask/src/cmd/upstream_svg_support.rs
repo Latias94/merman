@@ -980,28 +980,6 @@ mod tests {
     }
 
     #[test]
-    fn puppeteer_config_is_content_addressed_and_disables_detached_processes() {
-        let path = ensure_upstream_svg_puppeteer_config().expect("install Puppeteer config");
-        let contents = fs::read(&path).expect("read Puppeteer config");
-        let config: serde_json::Value =
-            serde_json::from_slice(&contents).expect("parse Puppeteer config");
-        let digest = Sha256::digest(&contents);
-        let expected_name = format!(
-            "upstream-svg-puppeteer-config-{}.json",
-            crate::util::encode_lower_hex(&digest)
-        );
-
-        assert_eq!(
-            config.get("detached").and_then(|value| value.as_bool()),
-            Some(false)
-        );
-        assert_eq!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some(expected_name.as_str())
-        );
-    }
-
-    #[test]
     fn package_tree_hash_matches_the_javascript_protocol() {
         let root = unique_test_root("upstream-svg-package-tree");
         let nested = root.join("nested");

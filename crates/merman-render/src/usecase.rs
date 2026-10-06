@@ -262,3 +262,6 @@ pub(crate) fn prepare_usecase_diagram(
         edge_paths,
     })
 }
+
+#[cfg(test)]
+mod tests;

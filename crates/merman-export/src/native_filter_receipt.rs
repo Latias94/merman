@@ -9,7 +9,7 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 
-const SVG_NAMESPACE: &[u8] = b"http://www.w3.org/2000/svg";
+const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 const TYPED_FILTER_ID_MARKER: &str = "-theme-effect-";
 
 #[derive(Debug)]
@@ -72,7 +72,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
             Event::Start(element) => {
                 record_typed_reference(&reader, &element, &mut references).ok()?;
                 observe_filter_child(&reader, &element, depth, &mut open_filters).ok()?;
-                if is_svg_element(&reader, &element, b"filter") {
+                if is_svg_element(&reader, &element, "filter") {
                     open_filters.push(parse_filter(&reader, &element, depth).ok()?);
                 }
                 depth = depth.checked_add(1)?;
@@ -80,7 +80,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
             Event::Empty(element) => {
                 record_typed_reference(&reader, &element, &mut references).ok()?;
                 observe_filter_child(&reader, &element, depth, &mut open_filters).ok()?;
-                if is_svg_element(&reader, &element, b"filter") {
+                if is_svg_element(&reader, &element, "filter") {
                     let filter = parse_filter(&reader, &element, depth).ok()?;
                     record_definition(filter, &mut definitions)?;
                 }
@@ -90,7 +90,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
                 for filter in &mut open_filters {
                     if filter.color_space == Some(EffectColorSpace::Srgb)
                         && depth == filter.depth + 1
-                        && element.local_name().as_ref() == b"feMerge"
+                        && element.local_name().as_ref() == "feMerge"
                     {
                         if let Some(stage) = finish_expanded_shadow(filter) {
                             filter.stages.push(stage);
@@ -110,12 +110,12 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
                 }
             }
             Event::Text(text) => {
-                if !text.as_ref().iter().all(u8::is_ascii_whitespace) {
+                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
                     invalidate_containing_filters(depth, &mut open_filters);
                 }
             }
             Event::CData(text) => {
-                if !text.as_ref().iter().all(u8::is_ascii_whitespace) {
+                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
                     invalidate_containing_filters(depth, &mut open_filters);
                 }
             }
@@ -182,11 +182,11 @@ fn record_typed_reference(
             continue;
         }
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
-        if !matches!(namespace, ResolveResult::Unbound) || local_name.as_ref() != b"filter" {
+        if !matches!(namespace, ResolveResult::Unbound) || local_name.as_ref() != "filter" {
             continue;
         }
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ())?;
         let Some(filter_id) = exact_filter_reference(value.as_ref()) else {
             continue;
@@ -230,17 +230,17 @@ fn parse_filter(
             continue;
         }
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ())?
             .into_owned();
         let accepted = match local_name.as_ref() {
-            b"id" => set_once(&mut id, value),
-            b"filterUnits" => set_once(&mut filter_units, value),
-            b"x" => set_once(&mut x, value),
-            b"y" => set_once(&mut y, value),
-            b"width" => set_once(&mut width, value),
-            b"height" => set_once(&mut height, value),
-            b"color-interpolation-filters" => set_once(&mut color_interpolation, value),
+            "id" => set_once(&mut id, value),
+            "filterUnits" => set_once(&mut filter_units, value),
+            "x" => set_once(&mut x, value),
+            "y" => set_once(&mut y, value),
+            "width" => set_once(&mut width, value),
+            "height" => set_once(&mut height, value),
+            "color-interpolation-filters" => set_once(&mut color_interpolation, value),
             _ => false,
         };
         valid &= accepted;
@@ -295,7 +295,7 @@ fn observe_filter_child(
     depth: usize,
     open_filters: &mut [OpenFilter],
 ) -> Result<(), ()> {
-    let is_drop_shadow = is_svg_element(reader, element, b"feDropShadow");
+    let is_drop_shadow = is_svg_element(reader, element, "feDropShadow");
     for filter in open_filters {
         if depth <= filter.depth {
             continue;
@@ -328,26 +328,26 @@ fn observe_expanded_shadow(
     depth: usize,
     filter: &mut OpenFilter,
 ) -> Result<(), ()> {
-    const ELEMENTS: [&[u8]; 7] = [
-        b"feGaussianBlur",
-        b"feOffset",
-        b"feFlood",
-        b"feComposite",
-        b"feMerge",
-        b"feMergeNode",
-        b"feMergeNode",
+    const ELEMENTS: [&str; 7] = [
+        "feGaussianBlur",
+        "feOffset",
+        "feFlood",
+        "feComposite",
+        "feMerge",
+        "feMergeNode",
+        "feMergeNode",
     ];
-    const ATTRIBUTES: [&[&[u8]]; 7] = [
-        &[b"in", b"stdDeviation", b"result"],
-        &[b"in", b"dx", b"dy", b"result"],
-        &[b"flood-color", b"result"],
-        &[b"in", b"in2", b"operator", b"result"],
-        &[b"result"],
-        &[b"in"],
-        &[b"in"],
+    const ATTRIBUTES: [&[&str]; 7] = [
+        &["in", "stdDeviation", "result"],
+        &["in", "dx", "dy", "result"],
+        &["flood-color", "result"],
+        &["in", "in2", "operator", "result"],
+        &["result"],
+        &["in"],
+        &["in"],
     ];
     let position = filter.expanded_elements.len();
-    if position == 1 && is_svg_element(reader, element, b"feFlood") {
+    if position == 1 && is_svg_element(reader, element, "feFlood") {
         filter.expanded_offset_omitted = true;
     }
     let position = position + usize::from(filter.expanded_offset_omitted && position > 0);
@@ -377,7 +377,7 @@ fn observe_expanded_shadow(
         }
         values[index] = Some(
             attribute
-                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .normalized_value(XmlVersion::Implicit1_0)
                 .map_err(|_| ())?
                 .into_owned(),
         );
@@ -487,15 +487,15 @@ fn parse_drop_shadow(
             continue;
         }
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ())?
             .into_owned();
         let accepted = match local_name.as_ref() {
-            b"in" => set_once(&mut input, value),
-            b"dx" => set_once(&mut dx, value),
-            b"dy" => set_once(&mut dy, value),
-            b"stdDeviation" => set_once(&mut std_deviation, value),
-            b"flood-color" => set_once(&mut flood_color, value),
+            "in" => set_once(&mut input, value),
+            "dx" => set_once(&mut dx, value),
+            "dy" => set_once(&mut dy, value),
+            "stdDeviation" => set_once(&mut std_deviation, value),
+            "flood-color" => set_once(&mut flood_color, value),
             _ => false,
         };
         valid &= accepted;
@@ -606,7 +606,7 @@ fn record_definition(
 fn is_svg_element(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
-    expected_local_name: &[u8],
+    expected_local_name: &str,
 ) -> bool {
     if !is_svg_namespace(reader, element) {
         return false;

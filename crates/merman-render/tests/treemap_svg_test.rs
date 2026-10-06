@@ -1344,6 +1344,64 @@ title Config-sized title
 }
 
 #[test]
+fn treemap_source_title_font_variable_is_filtered_before_portability_checks() {
+    let theme = treemap_typography_theme(
+        FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
+    );
+    let source = r#"---
+config:
+  treemap:
+    titleFontSize: var(--treemap-title-size)
+---
+treemap
+title Dynamic title
+"Leaf": 42
+"#;
+    let host = Arc::new(CountingTreemapHost::default());
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let metadata = engine
+        .parse_metadata_sync(source)
+        .expect("parse Treemap config");
+    assert_ne!(
+        metadata.effective_config.get_str("treemap.titleFontSize"),
+        Some("var(--treemap-title-size)")
+    );
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse source-filtered Treemap")
+        .expect("detect source-filtered Treemap");
+    let session = counting_treemap_environment(Arc::clone(&host))
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable Treemap session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare source-filtered Treemap");
+    host.reset();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("filtered source CSS must not cause a typography residual");
+    let title_styles = host.observed_styles_for_text("Dynamic title");
+    assert_eq!(title_styles.len(), 2);
+    assert!(title_styles.iter().all(|style| {
+        style.font_family.as_deref() == Some("TreemapTyped") && style.font_size == 14.0
+    }));
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Treemap SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Treemap stylesheet");
+    let title_rule = css_declarations_for_selector_suffix(stylesheet, ".treemapTitle");
+    assert!(title_rule.contains("font-size:14px;"), "{title_rule}");
+    assert!(!rendered.svg().contains("var(--treemap-title-size)"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn treemap_unverified_source_fonts_fail_closed_for_portable_themes() {
     let theme = treemap_typography_theme(
         FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
@@ -1355,6 +1413,7 @@ fn treemap_unverified_source_fonts_fail_closed_for_portable_themes() {
 classDef dynamicFont font-family:var(--treemap-font);
 "Leaf": 42:::dynamicFont
 "#,
+            None,
         ),
         (
             "authored important",
@@ -1362,6 +1421,7 @@ classDef dynamicFont font-family:var(--treemap-font);
 classDef importantFont font-family:SourceFace !important;
 "Leaf": 42:::importantFont
 "#,
+            None,
         ),
         (
             "measurement-affecting white space",
@@ -1369,22 +1429,24 @@ classDef importantFont font-family:SourceFace !important;
 classDef preservedSpace white-space:pre;
 "Leaf with spaces": 42:::preservedSpace
 "#,
+            None,
         ),
         (
-            "dynamic title size",
+            "calculated title size",
             r#"---
 config:
   treemap:
-    titleFontSize: var(--treemap-title-size)
+    titleFontSize: calc(1em + 2px)
 ---
 treemap
 title Dynamic title
 "Leaf": 42
 "#,
+            Some("font-size:calc(1em + 2px);"),
         ),
     ];
 
-    for (label, source) in cases {
+    for (label, source, expected_css) in cases {
         let rendered = try_render_treemap_with_theme_requirement(
             source,
             &theme,
@@ -1392,6 +1454,9 @@ title Dynamic title
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap_or_else(|error| panic!("BestEffort must preserve {label}: {error}"));
+        if let Some(expected_css) = expected_css {
+            assert!(rendered.svg().contains(expected_css), "{label}");
+        }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1, "{label}");
@@ -1414,6 +1479,47 @@ title Dynamic title
             "{label}"
         );
     }
+}
+
+#[test]
+fn treemap_host_title_font_variable_remains_unverified_for_portable_themes() {
+    let theme = treemap_typography_theme(
+        FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
+    );
+    let source = "treemap\ntitle Dynamic title\n\"Leaf\": 42\n";
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "treemap": { "titleFontSize": "var(--treemap-title-size)" }
+    })));
+    let rendered = try_render_treemap_with_theme_requirement(
+        source,
+        &theme,
+        engine.clone(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort must preserve the host title size");
+    assert!(
+        rendered
+            .svg()
+            .contains("font-size:var(--treemap-title-size);")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    let error = match try_render_treemap_with_theme_requirement(
+        source,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("RequirePortable must reject the host title size variable"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::TREEMAP, 1))
+    );
 }
 
 #[test]

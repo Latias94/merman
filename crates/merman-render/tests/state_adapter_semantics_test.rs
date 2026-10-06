@@ -24,7 +24,7 @@ fn state_choice_stroke_width_uses_node_override_or_source_default() {
     for (style, expected) in [("", "1.3"), ("style Decide stroke-width:5px", "5")] {
         let svg = render(
             &format!("stateDiagram-v2\nstate Decide <<choice>>\n[*] --> Decide\n{style}\n"),
-            serde_json::json!({"themeVariables": {"strokeWidth": 9}}),
+            serde_json::json!({"theme": "default", "look": "classic", "themeVariables": {"strokeWidth": 9}}),
         );
         let document = roxmltree::Document::parse(&svg).expect("State SVG");
         let choice = document

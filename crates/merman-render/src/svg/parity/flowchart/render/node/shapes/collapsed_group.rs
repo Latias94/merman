@@ -6,6 +6,7 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::helpers;
+use super::super::roughjs::roughjs_paths_for_svg_path_single_set;
 
 const INDICATOR_ROW_HEIGHT: f64 = 20.0;
 const SEPARATOR_GAP: f64 = 8.0;
@@ -104,26 +105,32 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
 
     if common.look_is_hand_drawn() {
         let path = rounded_rect_path_d(left, top, width, height, radius);
-        if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair_with_stroke(
-            true,
-            common.timing,
-            details,
-            &path,
-            stroke_width as f32,
-            common.stroke_dasharray,
-            common.work_meter,
-            common.hand_drawn_seed,
-        ) {
+        let effective_stroke_width = if is_agentflow_flow {
+            stroke_width as f32
+        } else {
+            common.stroke_width
+        };
+        if let Some((fill_d, stroke_d)) =
+            helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_paths_for_svg_path_single_set(
+                    &path,
+                    effective_stroke_width,
+                    common.stroke_dasharray,
+                    common.hand_drawn_seed,
+                )
+            })
+        {
             let _ = write!(
                 out,
-                r#"<g class="basic label-container {class}" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
-                escape_attr(common.rough_group_style),
+                r#"<g class="basic label-container {class}"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
                 escape_attr(&fill_d),
                 escape_attr(&fill),
+                escape_attr(common.style),
                 escape_attr(&stroke_d),
                 escape_attr(&border),
-                fmt_display(stroke_width),
+                fmt_display(effective_stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
+                escape_attr(common.style),
             );
         } else {
             let _ = write!(

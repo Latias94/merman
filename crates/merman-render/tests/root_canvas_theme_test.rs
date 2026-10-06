@@ -91,12 +91,24 @@ fn repeating_and_tiled_root_canvas_is_portable_and_deterministic() {
         ),
         "{first}"
     );
-    assert!(
-        first.contains(
-            r#"<pattern id="root-canvas-theme-merman-theme-canvas-layer-0-pattern" patternUnits="userSpaceOnUse" x="0" y="0" width="20" height="20">"#
-        ),
-        "{first}"
-    );
+    let document = roxmltree::Document::parse(&first).expect("valid root canvas SVG");
+    let pattern = document
+        .descendants()
+        .find(|node| {
+            node.attribute("id") == Some("root-canvas-theme-merman-theme-canvas-layer-0-pattern")
+        })
+        .expect("root canvas tile pattern");
+    assert!(pattern.has_tag_name("pattern"));
+    for (attribute, expected) in [
+        ("patternUnits", "userSpaceOnUse"),
+        ("x", "0"),
+        ("y", "0"),
+        ("width", "20"),
+        ("height", "20"),
+        ("patternTransform", "translate(4 4)"),
+    ] {
+        assert_eq!(pattern.attribute(attribute), Some(expected), "{attribute}");
+    }
     assert!(
         first.contains(r#"fill="url(#root-canvas-theme-merman-theme-canvas-layer-0-pattern)""#),
         "{first}"

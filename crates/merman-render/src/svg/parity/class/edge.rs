@@ -566,6 +566,12 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 .any(|text| !text.is_empty() && text != "none")
         });
         if ctx.uses_elk_adapter_dom && label_text.is_empty() && !has_terminal_label {
+            if let Some(&index) = ctx.relation_index_by_id.get(e.id.as_str()) {
+                theme_receipt.record_edge_label_background(
+                    index.checked_sub(1).unwrap_or(usize::MAX),
+                    false,
+                );
+            }
             continue;
         }
 

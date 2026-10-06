@@ -49,13 +49,6 @@ fn note_rough_cache_key(
     }
 }
 
-/// Mirrors RoughJS's inline terminal paint before appending source/typed declarations.
-fn rough_terminal_paint_style(property: &str, compatibility: &str, direct: &str) -> String {
-    let mut style = format!("{property}:{compatibility};");
-    style.push_str(direct);
-    style
-}
-
 pub(super) fn render_state_node_svg(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
@@ -175,16 +168,8 @@ pub(super) fn render_state_node_svg(
                 let stroke_width = stroke_width_override
                     .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                     .max(0.0);
-                let fill_style = escape_attr(&rough_terminal_paint_style(
-                    "fill",
-                    fill,
-                    fill_path_style_attr,
-                ));
-                let stroke_style = escape_attr(&rough_terminal_paint_style(
-                    "stroke",
-                    stroke,
-                    stroke_path_style_attr,
-                ));
+                let fill_style = escape_attr(fill_path_style_attr);
+                let stroke_style = escape_attr(stroke_path_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 let _ = write!(
                     out,
@@ -274,10 +259,10 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let outer_surface = compatibility
-                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
-                .expect("State end node must have a compatibility surface");
-            let inner_surface = compatibility.special_state_inner_surface();
+            // RoughJS emits the same base paints for every look. Neo's stylesheet supplies
+            // its final stroke; copying that CSS into inline style would change the cascade.
+            let outer_surface = crate::state::StateTerminalSurface::SpecialEndOuterClassic;
+            let inner_surface = crate::state::StateTerminalSurface::SpecialEndInnerClassic;
             let compatibility_outer_fill = compatibility.terminal_paint_css(
                 outer_surface,
                 crate::state::StateTerminalPaintProperty::Fill,
@@ -299,39 +284,26 @@ pub(super) fn render_state_node_svg(
                 ctx.diagram_id,
             );
             let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_str());
-            let outer_stroke = stroke_override.unwrap_or(compatibility_outer_stroke.as_str());
             let outer_stroke_width = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(outer_surface))
                 .max(0.0);
             let inner_stroke_width = compatibility
                 .terminal_stroke_width_value(inner_surface)
                 .max(0.0);
-            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "fill",
-                outer_fill,
-                fill_path_style_attr,
-            ));
-            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "stroke",
-                outer_stroke,
-                stroke_path_style_attr,
-            ));
-            let inner_fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "fill",
-                inner_fill.as_str(),
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
+            let inner_fill_path_style_escaped = escape_attr(
                 node_style
                     .map(crate::state::StateNodeStylePlan::special_state_inner_fill_path_style_attr)
                     .unwrap_or_default(),
-            ));
-            let inner_stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "stroke",
-                inner_stroke.as_str(),
+            );
+            let inner_stroke_path_style_escaped = escape_attr(
                 node_style
                     .map(
                         crate::state::StateNodeStylePlan::special_state_inner_stroke_path_style_attr,
                     )
                     .unwrap_or_default(),
-            ));
+            );
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -388,9 +360,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let surface = compatibility
-                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
-                .expect("State fork/join node must have a compatibility surface");
+            let surface = crate::state::StateTerminalSurface::SpecialForkJoinClassic;
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
@@ -406,16 +376,8 @@ pub(super) fn render_state_node_svg(
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
-            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "fill",
-                fill_attr,
-                fill_path_style_attr,
-            ));
-            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "stroke",
-                stroke_attr,
-                stroke_path_style_attr,
-            ));
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -461,9 +423,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
 
-            let surface = compatibility
-                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
-                .expect("State choice node must have a compatibility surface");
+            let surface = crate::state::StateTerminalSurface::SpecialChoiceClassic;
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,
@@ -479,16 +439,8 @@ pub(super) fn render_state_node_svg(
             let stroke_width_attr = stroke_width_override
                 .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
-            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "fill",
-                fill_attr,
-                fill_path_style_attr,
-            ));
-            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
-                "stroke",
-                stroke_attr,
-                stroke_path_style_attr,
-            ));
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -608,9 +560,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
-            let surface = compatibility
-                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::Note)
-                .expect("State note node must have a compatibility surface");
+            let surface = crate::state::StateTerminalSurface::NoteClassic;
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,
                 crate::state::StateTerminalPaintProperty::Fill,

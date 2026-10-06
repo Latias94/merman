@@ -218,7 +218,7 @@ requirementDiagram
 "##,
     );
 
-    assert!(svg.contains(r#"data-look="classic""#), "{svg}");
+    assert!(svg.contains(r#"data-look="neo""#), "{svg}");
     assert!(!svg.contains(r#"neo\"]{color:red"#), "{svg}");
     assert!(!svg.contains(r#"[data-look="neo"]{color:red"#), "{svg}");
 }

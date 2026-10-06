@@ -1313,6 +1313,24 @@ pub(super) fn prepare_class_render(
 }
 
 #[inline(never)]
+#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+pub(super) fn prepare_architecture_render(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    mut context: FamilyRenderContext,
+) -> Result<FamilyRenderArtifact> {
+    let (meta, model) = parsed.into_parts();
+    let RenderSemanticModel::Architecture(model) = model else {
+        unreachable!("Architecture render dispatch requires an Architecture semantic model")
+    };
+    context.observe_compatibility(&meta);
+    context.ensure_portable_before_svg()?;
+    let execution = LayoutExecution::new(options, context.execution());
+    let family = prepare_architecture_family(model, &meta, &execution)?;
+    FamilyRenderArtifact::new(meta, family, context)
+}
+
+#[inline(never)]
 pub(super) fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
@@ -1364,8 +1382,8 @@ pub(super) fn prepare_non_class_render(
         )?,
         #[cfg(feature = "layout-cytoscape")]
         #[cfg(feature = "diagram-architecture")]
-        RenderSemanticModel::Architecture(model) => {
-            prepare_architecture_family(model, &meta, &execution)?
+        RenderSemanticModel::Architecture(_) => {
+            unreachable!("Architecture models use the stack-bounded family dispatch path")
         }
         #[cfg(not(feature = "layout-cytoscape"))]
         #[cfg(feature = "diagram-architecture")]

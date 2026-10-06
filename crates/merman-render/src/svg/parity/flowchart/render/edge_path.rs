@@ -201,6 +201,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: &ctx.default_edge_style,
         neo_edge_mask,
+        line_hop_applied: geom.line_hop_applied,
     };
     ctx.checkpoint_emit()?;
     let edge_receipt = edge_receipt.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
@@ -274,6 +275,7 @@ struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
+    line_hop_applied: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,6 +334,27 @@ where
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
 
         work_meter.preflight(edge_work)?;
+        let rewritten_style = if self.line_hop_applied {
+            work_meter.check_svg_append(0, projected_contribution)?;
+            let mut style = String::with_capacity(projected_contribution);
+            if let Some(mask) = self.neo_edge_mask {
+                mask.write_to(&mut style)
+                    .expect("writing into a String cannot fail");
+            }
+            self.write_source_style(&mut style)
+                .expect("writing into a String cannot fail");
+            Some(
+                crate::svg::parity::line_hops::rewrite_style_after_line_hop(
+                    &style, self.d, work_meter,
+                )?
+                .into_owned(),
+            )
+        } else {
+            None
+        };
+        let projected_contribution = rewritten_style
+            .as_ref()
+            .map_or(projected_contribution, String::len);
         let serialized_bytes = self.serialized_bytes(projected_contribution, work_meter)?;
 
         // This is the only whole-edge boundary. Every byte from `<path` through `/>` is counted
@@ -341,7 +364,7 @@ where
         work_meter.charge(edge_work)?;
 
         let before = out.len();
-        if self.write_to(out).is_err() {
+        if self.write_to(out, rewritten_style.as_deref()).is_err() {
             return match out.checkpoint() {
                 Err(error) => Err(error),
                 Ok(()) => Err(crate::Error::InvalidModel {
@@ -384,12 +407,16 @@ where
         counter.finish(work_meter)
     }
 
-    fn write_to(&self, out: &mut impl fmt::Write) -> fmt::Result {
+    fn write_to(&self, out: &mut impl fmt::Write, rewritten_style: Option<&str>) -> fmt::Result {
         self.write_prefix_to(out)?;
-        if let Some(mask) = self.neo_edge_mask {
-            mask.write_to(out)?;
+        if let Some(style) = rewritten_style {
+            out.write_str(style)?;
+        } else {
+            if let Some(mask) = self.neo_edge_mask {
+                mask.write_to(out)?;
+            }
+            self.write_source_style(out)?;
         }
-        self.write_source_style(out)?;
         self.write_suffix_to(out)
     }
 
@@ -758,6 +785,7 @@ mod tests {
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
             neo_edge_mask: Some(neo_edge_mask),
+            line_hop_applied: false,
         };
         let expected_edge = r##"<path d="M0,0L16,0" id="edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-width:2.5px !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
@@ -819,6 +847,28 @@ mod tests {
         assert_eq!(short_work, initial);
         assert_eq!(short_work_meter.used(), 0);
         assert_eq!(short_work_meter.projected_svg_bytes(), 0);
+
+        let hopped = FlowchartEdgeSvgEmission {
+            d: "M0,0L20,0",
+            line_hop_applied: true,
+            ..emission
+        };
+        let mut hopped_svg = initial.to_string();
+        hopped
+            .append_to(&mut hopped_svg, source_style_svg_bytes, &probe_meter)
+            .expect("rewritten line-hop mask must preserve typed style ownership");
+        assert!(hopped_svg.contains("stroke-dasharray: 0 0 18 2;"));
+        assert!(hopped_svg.contains("stroke-dasharray:7 3 !important"));
+        let short_hopped_meter = meter_with_limits(hopped_svg.len() - 1, usize::MAX);
+        let mut short_hopped = initial.to_string();
+        hopped
+            .append_to(
+                &mut short_hopped,
+                source_style_svg_bytes,
+                &short_hopped_meter,
+            )
+            .expect_err("rewritten style must be admitted before path emission");
+        assert_eq!(short_hopped, initial);
     }
 
     #[test]

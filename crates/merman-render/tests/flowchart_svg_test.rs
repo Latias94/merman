@@ -192,6 +192,114 @@ fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     )
 }
 
+#[test]
+fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
+    for (source, expected) in [
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_deeply_nested_clusters_019.mmd"
+            ),
+            [
+                "l1a", "l1b", "l2a", "l2b", "l3a", "l3b", "l4a", "l4b", "outside", "outside2",
+            ]
+            .as_slice(),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_dir_inherit_vs_local_016.mmd"
+            ),
+            [
+                "t1", "b1", "t2", "b2", "outside1", "outside2", "outside3", "outside4",
+            ]
+            .as_slice(),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_spec_30_possibility_to_style_text_color_of_nodes_and_subgraphs_as_wel_030.mmd"
+            ),
+            ["A", "B", "E", "C", "D"].as_slice(),
+        ),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"layout": "elk"}),
+        ));
+        let svg = render_flowchart_svg_from_text_with_engine(engine, source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let actual = document
+            .descendants()
+            .filter(|node| node.attribute("data-et") == Some("node"))
+            .map(|node| node.attribute("data-id").expect("semantic node identity"))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "ELK paint order for {source}");
+    }
+}
+
+#[test]
+fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
+    let fixtures = [
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_title_margins_extreme_nested_030.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/stress_flowchart_subgraph_title_margins_extreme_nested_030.svg"
+            ),
+            "L_c_Outer_0",
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044.svg"
+            ),
+            "L_Sub_In_0",
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.svg"
+            ),
+            "L_Sub_In_0",
+        ),
+    ];
+    for (source, upstream, edge_id) in fixtures {
+        let svg = render_flowchart_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"layout": "elk"}),
+            )),
+            source,
+        );
+        let endpoints = |svg: &str| {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let edge = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-id") == Some(edge_id)
+                })
+                .expect("ancestor/descendant edge");
+            svgtypes::PathParser::from(edge.attribute("d").unwrap())
+                .map(|segment| match segment.unwrap() {
+                    svgtypes::PathSegment::MoveTo { abs: true, x, y }
+                    | svgtypes::PathSegment::LineTo { abs: true, x, y } => (x, y),
+                    other => panic!("expected a visible straight route, got {other:?}"),
+                })
+                .collect::<Vec<_>>()
+        };
+        let actual = endpoints(&svg);
+        let expected = endpoints(upstream);
+        assert_eq!(actual.len(), 2, "edge {edge_id} must remain visible");
+        assert_ne!(actual[0], actual[1]);
+        assert_eq!(actual.len(), expected.len());
+        for ((actual_x, actual_y), (expected_x, expected_y)) in actual.into_iter().zip(expected) {
+            assert!((actual_x - expected_x).abs() < 0.001);
+            assert!((actual_y - expected_y).abs() < 0.001);
+        }
+    }
+}
+
 fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     render_flowchart_svg_from_text_with_engine_and_policy(
         engine,
@@ -1293,7 +1401,11 @@ linkStyle 1 stroke:#2563eb
 #[test]
 fn duplicate_flowchart_edge_ids_on_the_same_graphlib_key_keep_the_last_semantic_owner() {
     let svg = render_flowchart_svg_from_text(
-        r##"flowchart LR
+        r##"---
+config:
+  layout: dagre
+---
+flowchart LR
 A L_A_B_2@-->|first owner| B
 A -->|second owner| B
 A -->|third owner| B
@@ -2338,6 +2450,42 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths(
 }
 
 #[test]
+fn flowchart_default_edge_stroke_keeps_upstream_geometric_viewbox_height() {
+    let svg = render_flowchart_svg_from_text(include_str!(
+        "../../../fixtures/flowchart/upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006.mmd"
+    ));
+    let expected = flowchart_svg_viewbox_values(include_str!(
+        "../../../fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006.svg"
+    ));
+    let actual = flowchart_svg_viewbox_values(&svg);
+    // Width retains browser text-measurement residuals. The default edge stroke must not add
+    // a new vertical extent to the otherwise shared geometric bounds.
+    assert_eq!(actual[1], expected[1]);
+    assert_eq!(actual[3], expected[3]);
+}
+
+#[test]
+fn flowchart_source_stroke_width_does_not_inherit_suppressed_typed_paint_bounds() {
+    let theme = edge_stroke_width_theme(160.0);
+    for backend in ["elk", "dagre"] {
+        let source = format!(
+            "---\nconfig:\n  layout: {backend}\n  flowchart:\n    diagramPadding: 0\n---\nflowchart LR\nA --- B\nlinkStyle 0 stroke-width:7px\n"
+        );
+        let control = render_flowchart_svg_from_text(&source);
+        let themed = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("source stroke width supersedes typed width");
+        assert_eq!(
+            flowchart_svg_viewbox_values(themed.svg()),
+            flowchart_svg_viewbox_values(&control),
+            "{backend}: a suppressed typed stroke must not extend the viewport"
+        );
+        assert!(themed.svg().contains("stroke-width:7px"));
+        assert!(!themed.svg().contains("stroke-width:160px"));
+    }
+}
+
+#[test]
 fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_relayout() {
     const STROKE_WIDTH: f32 = 160.0;
 
@@ -2834,7 +2982,13 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
 #[test]
 fn flowchart_colored_bidirectional_markers_define_every_referenced_variant() {
     let svg = render_flowchart_svg_from_text(
-        r##"flowchart LR
+        r##"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+flowchart LR
     A o--o B
     B <--> C
     C x--x D
@@ -2997,7 +3151,13 @@ flowchart LR
 #[test]
 fn flowchart_colored_marker_id_collisions_follow_actual_root_emission_order() {
     let svg = render_flowchart_svg_from_text(
-        r#"flowchart LR
+        r#"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+flowchart LR
     subgraph Nested
         A --> B
     end
@@ -3794,7 +3954,7 @@ style A fill:#123456,stroke:#654321
 
 #[test]
 fn flowchart_hand_drawn_triangle_preserves_geometry_for_non_hex_colors() {
-    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+    let source = r#"%%{init: {"theme": "default", "look": "handDrawn", "handDrawnSeed": 1}}%%
 flowchart TB
 A@{ shape: triangle, label: "Extract" }
 style A fill:red,stroke:blue
@@ -3856,7 +4016,10 @@ style A fill:red,stroke:blue
         node.descendants().any(|path| {
             path.has_tag_name("path")
                 && path.attribute("stroke") == Some("blue")
-                && path.attribute("stroke-width") == Some("1.3")
+                && path
+                    .attribute("stroke-width")
+                    .and_then(|width| width.parse::<f64>().ok())
+                    .is_some_and(|width| (width - 1.3).abs() < 1e-6)
                 && path.attribute("stroke-dasharray") == Some("0 0")
         }),
         "triangle must preserve the named stroke on its outline path: {svg}"
@@ -3897,7 +4060,7 @@ style A opacity:0.4,stroke-linecap:round
         "style was not preserved: {styled}"
     );
 
-    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+    let source = r#"%%{init: {"theme": "default", "look": "handDrawn", "handDrawnSeed": 1}}%%
 flowchart TB
 A@{ shape: person, label: "person" }
 style A fill:red,stroke:blue
@@ -3963,7 +4126,10 @@ style A fill:red,stroke:blue
             .filter(|path| {
                 path.has_tag_name("path")
                     && path.attribute("stroke") == Some("blue")
-                    && path.attribute("stroke-width") == Some("1.3")
+                    && path
+                        .attribute("stroke-width")
+                        .and_then(|width| width.parse::<f64>().ok())
+                        .is_some_and(|width| (width - 1.3).abs() < 1e-6)
                     && path.attribute("stroke-dasharray") == Some("0 0")
             })
             .count(),
@@ -4263,11 +4429,23 @@ one@{ view: collapsed }
     assert!(
         hand_drawn_collapsed.descendants().any(|element| {
             element.has_tag_name("path")
-                && element.attribute("stroke-width") == Some("4")
+                && element.attribute("stroke") == Some("none")
+                && element.attribute("fill").is_some_and(|fill| fill != "none")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn collapsed group must emit a non-empty solid fill: {hand_drawn_svg}"
+    );
+    assert!(
+        hand_drawn_collapsed.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("fill") == Some("none")
+                && element
+                    .attribute("stroke")
+                    .is_some_and(|stroke| stroke != "none")
                 && element.attribute("stroke-dasharray") == Some("0 0")
                 && !element.attribute("d").unwrap_or_default().is_empty()
         }),
-        "handDrawn collapsed group must emit a non-empty hachure shell: {hand_drawn_svg}"
+        "handDrawn collapsed group must emit a non-empty outline: {hand_drawn_svg}"
     );
 }
 
@@ -6860,7 +7038,7 @@ fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
             for look in ["classic", "neo", "handDrawn"] {
                 for explicit_default in [false, true] {
                     let source = format!(
-                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
+                        "---\ntitle: Diagram title\nconfig:\n  theme: default\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
                         if swimlane { "  layout: swimlane\n" } else { "" }
                     );
                     let mut rule = flowchart_title_rule("#2468ac");
@@ -7434,7 +7612,7 @@ fn brutalist_preset_emits_ordinal_accents_and_preserves_source_fill() {
         .compile_preset(ThemePreset::Brutalist)
         .expect("compile Brutalist preset");
     for source_override in [false, true] {
-        let mut source = String::from("flowchart LR\n");
+        let mut source = String::from("---\nconfig:\n  look: classic\n---\nflowchart LR\n");
         for ordinal in 1..=30 {
             source.push_str(&format!("N{ordinal}[Node {ordinal}]\n"));
         }
@@ -7673,15 +7851,9 @@ fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &
         assert_eq!(node.width, width + 4.0, "{context}: layout width");
         assert_eq!(node.height, height + 4.0, "{context}: layout height");
 
-        let id_fragment = format!("-flowchart-{id}-");
         let group = doc
             .descendants()
-            .find(|node| {
-                node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&id_fragment))
-            })
+            .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(id))
             .unwrap();
         let path = group
             .descendants()

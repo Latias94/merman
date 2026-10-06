@@ -143,7 +143,11 @@ pub(crate) use base_typography::{
     FlowchartBaseTypographyLabelEmission, FlowchartBaseTypographyPlan,
     FlowchartBaseTypographyStyles,
 };
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use config::{
     FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartConfigView, FlowchartTypographyConfigOwnership,

@@ -421,8 +421,19 @@ fn requirement_svg_labels_preserve_wrapped_markdown_and_bold_names() {
     ] {
         assert!(
             doc.descendants().any(|node| node.has_tag_name("tspan")
-                && node.attribute(attribute) == Some(value)
-                && node.text().is_some_and(|text| text.trim() == word)),
+                && node.text().is_some_and(|text| text.trim() == word)
+                && node.ancestors().any(|ancestor| {
+                    ancestor.attribute(attribute) == Some(value)
+                        || ancestor.attribute("style").is_some_and(|style| {
+                            style.split(';').any(|declaration| {
+                                declaration
+                                    .split_once(':')
+                                    .is_some_and(|(property, actual)| {
+                                        property.trim() == attribute && actual.trim() == value
+                                    })
+                            })
+                        })
+                })),
             "missing {attribute}={value} for {word}: {svg}"
         );
     }

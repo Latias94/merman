@@ -12,7 +12,16 @@ use super::{
     flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
 };
 
-const FLOWCHART_BASE_MARKER_COUNT: usize = FLOWCHART_MARKER_SHAPE_SPECS.len();
+const AGENTFLOW_HIERARCHY_MARKERS: [(&str, &str); 2] = [
+    (
+        "hierarchyEnd",
+        r#" viewBox="0 0 12 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto"><path d="M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;"/></marker>"#,
+    ),
+    (
+        "hierarchyStart",
+        r#" viewBox="0 0 12 10" refX="2" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto"><path d="M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;"/></marker>"#,
+    ),
+];
 
 #[derive(Debug, Clone, Copy)]
 enum FlowchartMarkerPaint {
@@ -267,7 +276,7 @@ struct FlowchartMarkerVariantKey {
 }
 
 impl FlowchartMarkerVariantKey {
-    fn paint(&self, hand_drawn: bool) -> FlowchartMarkerPaint {
+    fn paint(&self) -> FlowchartMarkerPaint {
         if self.typed_edge {
             match self.base {
                 FlowchartMarkerBase::PointStart
@@ -276,8 +285,6 @@ impl FlowchartMarkerVariantKey {
                 | FlowchartMarkerBase::CircleEnd => FlowchartMarkerPaint::StrokeAndFill,
                 _ => FlowchartMarkerPaint::Stroke,
             }
-        } else if hand_drawn {
-            FlowchartMarkerPaint::None
         } else {
             flowchart_marker_shape_spec(self.base, self.margin).paint
         }
@@ -716,6 +723,12 @@ impl FlowchartMarkerEmissionPlan {
         security_level_loose: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<()> {
+        let base_marker_count = FLOWCHART_MARKER_SHAPE_SPECS.len()
+            + if diagram_type == "agentflow" {
+                AGENTFLOW_HIERARCHY_MARKERS.len()
+            } else {
+                0
+            };
         let base_marker_input_bytes = diagram_id
             .len()
             .checked_add(
@@ -724,7 +737,7 @@ impl FlowchartMarkerEmissionPlan {
                     .checked_mul(2)
                     .ok_or_else(|| work_meter.arithmetic_overflow())?,
             )
-            .and_then(|bytes| bytes.checked_mul(FLOWCHART_BASE_MARKER_COUNT))
+            .and_then(|bytes| bytes.checked_mul(base_marker_count))
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         self.preflight_serialization_input(base_marker_input_bytes.div_ceil(64), work_meter)?;
         let mut base_counter = SvgByteCounter::default();
@@ -738,7 +751,7 @@ impl FlowchartMarkerEmissionPlan {
                     .len()
                     .checked_mul(2)
                     .ok_or_else(|| work_meter.arithmetic_overflow())?;
-                let color_scan_count = key.paint(self.hand_drawn).color_scan_count();
+                let color_scan_count = key.paint().color_scan_count();
                 let raw_color_bytes = raw_color
                     .len()
                     .checked_mul(color_scan_count)
@@ -921,7 +934,6 @@ impl FlowchartMarkerEmissionPlan {
                 diagram_type,
                 key,
                 raw_color,
-                self.hand_drawn,
                 security_level_loose,
             );
         }
@@ -1000,6 +1012,16 @@ fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
         let _ = out.write_str(spec.shape);
         let _ = out.write_str("/></marker>");
     }
+    if diagram_type == "agentflow" {
+        // Mermaid eagerly registers these after the ordinary marker set, even without
+        // hierarchy edges. Keep them on the same namespace and resource-budget path.
+        for (suffix, shape) in AGENTFLOW_HIERARCHY_MARKERS {
+            let _ = write!(
+                out,
+                r#"<marker id="{id}_{ty}-{suffix}" class="marker hierarchy {ty}"{shape}"#,
+            );
+        }
+    }
 }
 fn marker_color_id(color: &str) -> String {
     // Mermaid's DOM marker id coloring logic (Mermaid 12) uses:
@@ -1054,7 +1076,6 @@ fn push_extra_marker(
     diagram_type: &str,
     key: &FlowchartMarkerVariantKey,
     raw_color: &str,
-    hand_drawn: bool,
     security_level_loose: bool,
 ) {
     let raw_color = raw_color.trim_end_matches(';');
@@ -1089,7 +1110,7 @@ fn push_extra_marker(
     );
     let _ = out.write_str(spec.shape);
     if let Some(color) = color {
-        key.paint(hand_drawn).push(out, color);
+        key.paint().push(out, color);
     }
     let _ = out.write_str("/></marker>");
 }
@@ -1310,93 +1331,87 @@ mod tests {
         let mut base_defs = String::new();
         push_base_markers(&mut base_defs, "diagram", "flowchart-v2");
 
-        for hand_drawn in [false, true] {
-            for (base, margin, paints_surface, paints_fill) in cases {
-                let base_id = format!(
-                    "diagram_flowchart-v2-{}{}",
-                    base.id_suffix(),
-                    if margin { "-margin" } else { "" }
-                );
-                let colored_id = format!("{base_id}__2468ac");
-                let mut expected = marker_chunk(&base_defs, &base_id).replacen(
-                    &format!(r#"id="{base_id}""#),
-                    &format!(r#"id="{colored_id}""#),
-                    1,
-                );
-                if !hand_drawn && paints_surface {
-                    let paint = if paints_fill {
-                        r##" stroke="#2468ac" fill="#2468ac""##
-                    } else {
-                        r##" stroke="#2468ac""##
-                    };
-                    expected = expected.replacen("/></marker>", &format!("{paint}/></marker>"), 1);
-                }
-
-                let key = FlowchartMarkerVariantKey {
-                    base,
-                    margin,
-                    color_id: "_2468ac".to_string(),
-                    typed_edge: false,
+        for (base, margin, paints_surface, paints_fill) in cases {
+            let base_id = format!(
+                "diagram_flowchart-v2-{}{}",
+                base.id_suffix(),
+                if margin { "-margin" } else { "" }
+            );
+            let colored_id = format!("{base_id}__2468ac");
+            let mut expected = marker_chunk(&base_defs, &base_id).replacen(
+                &format!(r#"id="{base_id}""#),
+                &format!(r#"id="{colored_id}""#),
+                1,
+            );
+            if paints_surface {
+                let paint = if paints_fill {
+                    r##" stroke="#2468ac" fill="#2468ac""##
+                } else {
+                    r##" stroke="#2468ac""##
                 };
-                let mut actual = String::new();
-                push_extra_marker(
-                    &mut actual,
-                    "diagram",
-                    "flowchart-v2",
-                    &key,
-                    "#2468ac",
-                    hand_drawn,
-                    false,
-                );
-
-                assert_eq!(
-                    marker_chunk(&actual, &colored_id),
-                    expected,
-                    "base={base:?}, margin={margin}, hand_drawn={hand_drawn}"
-                );
+                expected = expected.replacen("/></marker>", &format!("{paint}/></marker>"), 1);
             }
+
+            let key = FlowchartMarkerVariantKey {
+                base,
+                margin,
+                color_id: "_2468ac".to_string(),
+                typed_edge: false,
+            };
+            let mut actual = String::new();
+            push_extra_marker(
+                &mut actual,
+                "diagram",
+                "flowchart-v2",
+                &key,
+                "#2468ac",
+                false,
+            );
+
+            assert_eq!(
+                marker_chunk(&actual, &colored_id),
+                expected,
+                "base={base:?}, margin={margin}"
+            );
         }
     }
 
     #[test]
-    fn typed_edge_markers_paint_filled_shapes_and_all_outlines_in_every_look() {
-        for hand_drawn in [false, true] {
-            for spec in FLOWCHART_MARKER_SHAPE_SPECS {
-                let key = FlowchartMarkerVariantKey {
-                    base: spec.base,
-                    margin: spec.margin,
-                    color_id: "theme-_2468ac".to_string(),
-                    typed_edge: true,
-                };
-                let mut actual = String::new();
-                push_extra_marker(
-                    &mut actual,
-                    "diagram",
-                    "flowchart-v2",
-                    &key,
-                    "#2468ac",
-                    hand_drawn,
-                    false,
-                );
-                assert!(actual.contains(r##" stroke="#2468ac""##), "{actual}");
-                let filled_shape = matches!(
-                    spec.base,
-                    FlowchartMarkerBase::PointStart
-                        | FlowchartMarkerBase::PointEnd
-                        | FlowchartMarkerBase::CircleStart
-                        | FlowchartMarkerBase::CircleEnd
-                );
-                assert_eq!(
-                    actual.contains(r##" fill="#2468ac""##),
-                    filled_shape,
-                    "{actual}"
-                );
-            }
+    fn typed_edge_markers_paint_filled_shapes_and_all_outlines() {
+        for spec in FLOWCHART_MARKER_SHAPE_SPECS {
+            let key = FlowchartMarkerVariantKey {
+                base: spec.base,
+                margin: spec.margin,
+                color_id: "theme-_2468ac".to_string(),
+                typed_edge: true,
+            };
+            let mut actual = String::new();
+            push_extra_marker(
+                &mut actual,
+                "diagram",
+                "flowchart-v2",
+                &key,
+                "#2468ac",
+                false,
+            );
+            assert!(actual.contains(r##" stroke="#2468ac""##), "{actual}");
+            let filled_shape = matches!(
+                spec.base,
+                FlowchartMarkerBase::PointStart
+                    | FlowchartMarkerBase::PointEnd
+                    | FlowchartMarkerBase::CircleStart
+                    | FlowchartMarkerBase::CircleEnd
+            );
+            assert_eq!(
+                actual.contains(r##" fill="#2468ac""##),
+                filled_shape,
+                "{actual}"
+            );
         }
     }
 
     #[test]
-    fn same_source_and_typed_color_keep_distinct_paint_and_exact_svg_budget() {
+    fn same_source_and_typed_color_keep_distinct_identity_and_exact_svg_budget() {
         let source_edge = edge("source", "double_arrow_point");
         let typed_edge = edge("typed", "double_arrow_point");
         let meter = meter();
@@ -1427,8 +1442,10 @@ mod tests {
         );
         for suffix in ["pointStart", "pointEnd"] {
             let source = marker_chunk(&output, &format!("diagram_flowchart-v2-{suffix}__2468ac"));
-            assert!(!source.contains(" fill="), "{source}");
-            assert!(!source.contains(" stroke="), "{source}");
+            assert!(
+                source.contains(r##" stroke="#2468ac" fill="#2468ac""##),
+                "{source}"
+            );
             let typed = marker_chunk(
                 &output,
                 &format!("diagram_flowchart-v2-{suffix}_theme-_2468ac"),
@@ -1736,6 +1753,27 @@ mod tests {
             .register_edge(&edge, Some(&color), &exact_meter)
             .expect("normalization, reference, and variant work must be charged once each");
         assert_eq!(exact_meter.used(), exact_work);
+    }
+
+    #[test]
+    fn agentflow_hierarchy_definitions_are_included_in_the_svg_budget() {
+        let diagram_id = "diagram<&";
+        let mut emitted = String::new();
+        push_base_markers(&mut emitted, diagram_id, "agentflow");
+        let exact_meter = meter_with_limits(emitted.len(), usize::MAX);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        exact_plan
+            .finalize_svg_budget(diagram_id, "agentflow", false, &exact_meter)
+            .unwrap();
+        assert_eq!(exact_plan.base_marker_bytes, emitted.len());
+        assert_eq!(exact_meter.projected_svg_bytes(), emitted.len());
+        let short_meter = meter_with_limits(emitted.len() - 1, usize::MAX);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let error = short_plan
+            .finalize_svg_budget(diagram_id, "agentflow", false, &short_meter)
+            .expect_err("hierarchy definitions cannot escape the precharged SVG ceiling");
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert_eq!(short_meter.projected_svg_bytes(), 0);
     }
 
     #[test]
