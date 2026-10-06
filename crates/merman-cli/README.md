@@ -49,7 +49,7 @@ The source default includes ELK; alpha.6 source defaults omitted it. Project rel
 | Homebrew formula | Formula source build or Homebrew bottle | `0.8.0` and later: Bash, Zsh, Fish, PowerShell, and man pages installed | External stable channel; selected formula version governs |
 | Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
-| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable candidates are generated; external submission is pending |
+| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable 0.8.0 manifests submitted; upstream review pending |
 
 Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout at the exact accepted preflight commit. This source package is separate from the precompiled Linux archive compatibility claim.
 
@@ -490,7 +490,7 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
+Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop and WinGet `0.8.0` manifests are submitted in [Scoop PR #8639](https://github.com/ScoopInstaller/Main/pull/8639) and [WinGet PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353); installation by package name remains unavailable until upstream acceptance and registry propagation.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
 For a custom slim build with `shell-completions`, generate completion from that binary at runtime so
