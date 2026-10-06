@@ -657,6 +657,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func diagramFamilyCapabilities()  -> [MermanDiagramFamilyCapability]
 
+    func edgeGeometryJson(source: String, optionsJson: String?) throws  -> String
+
     /**
      * Executes a descriptor-owned output operation with a fresh engine configuration.
      */
@@ -855,6 +857,17 @@ open func diagramFamilyCapabilities() -> [MermanDiagramFamilyCapability]  {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_diagram_family_capabilities(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
+open func edgeGeometryJson(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_edge_geometry_json(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
 }
@@ -1168,6 +1181,8 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
      */
     func close() throws
 
+    func edgeGeometryJson(source: String, optionsJson: String?) throws  -> String
+
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
      */
@@ -1329,6 +1344,17 @@ open func close()throws   {try rustCallWithError(FfiConverterTypeMermanError_lif
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+
+open func edgeGeometryJson(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengine_edge_geometry_json(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
 }
 
     /**
@@ -5492,6 +5518,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_diagram_family_capabilities() != 24556) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_merman_edge_geometry_json() != 25877) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_merman_execute() != 18404) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5568,6 +5597,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_close() != 63246) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_edge_geometry_json() != 8404) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 12806) {

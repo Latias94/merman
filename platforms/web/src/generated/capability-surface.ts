@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -101,6 +101,14 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": true
   },
   {
+    "id": "edge-geometry-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
     "id": "layout-json",
     "capability": "svg",
     "output": null,
@@ -167,6 +175,7 @@ export const WEB_BINDING_OPERATION_IDS = [
   "ascii",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "edge-geometry-json",
   "layout-json",
   "semantic-json",
   "svg",

@@ -13,6 +13,10 @@ pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindin
     execute_once_data("layout-json", source, options_json)
 }
 
+pub fn edge_geometry_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    execute_once_data("edge-geometry-json", source, options_json)
+}
+
 #[derive(Clone)]
 pub(crate) struct CachedRenderEngine {
     plan: RenderRequestPlan,
@@ -39,6 +43,15 @@ impl CachedRenderEngine {
     ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.layout_json(source, control)
+    }
+
+    pub(crate) fn edge_geometry_json(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.edge_geometry_json(source, control)
     }
 
     pub(crate) fn svg_plan_json(
@@ -1061,6 +1074,21 @@ Missing ref: id2,after missing,1d
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[test]
+    fn edge_geometry_json_returns_post_paint_edge_geometry() {
+        let json: Value = serde_json::from_slice(
+            &edge_geometry_json(b"flowchart TD\nA[Hello] --> B[World]", b"").unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["schema_version"], 1);
+        assert!(json["diagram_type"].as_str().is_some_and(|t| !t.is_empty()));
+
+        let edges = json["edges"].as_array().expect("edges array");
+        assert!(!edges.is_empty());
+        assert!(edges.iter().all(|edge| edge["id"].as_str().is_some()));
     }
 
     #[cfg(feature = "analysis")]

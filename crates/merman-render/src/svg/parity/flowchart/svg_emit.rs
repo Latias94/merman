@@ -12,6 +12,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         FlowchartSvgModelRequest {
@@ -26,6 +27,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             svg_label_sidecar: artifact.svg_label_sidecar(),
         },
         options,
+        edge_paint_geometry,
     )
 }
 
@@ -44,6 +46,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
 pub(super) fn render_flowchart_svg_model(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let FlowchartSvgModelRequest {
         layout,
@@ -390,6 +393,36 @@ pub(super) fn render_flowchart_svg_model(
         &effective_parent_for_id,
     )?;
 
+    // `data_points` is written only by `finish_edge_route` inside the viewbox pass and is
+    // read-only afterwards, so this is the exact point list the emitted `data-points`
+    // attribute carries — before any emit-phase mutation of the cache.
+    let clipped_points: Option<FxHashMap<&str, Vec<crate::model::LayoutPoint>>> =
+        edge_paint_geometry.as_ref().map(|_| {
+            let mut map = FxHashMap::default();
+            for edge in &render_edges {
+                let id = edge.as_ref().id.as_str();
+                let Some(entry) = edge_path_cache.get(id) else {
+                    continue;
+                };
+                map.insert(
+                    id,
+                    entry
+                        .geom
+                        .data_points
+                        .iter()
+                        .map(|point| crate::model::LayoutPoint {
+                            x: point.x + entry.origin_x - ctx.tx,
+                            y: point.y + entry.origin_y - ctx.ty,
+                        })
+                        .collect(),
+                );
+            }
+            map
+        });
+    let mut label_position_sink: Option<EdgeLabelPositionSink> = edge_paint_geometry
+        .as_ref()
+        .map(|_| EdgeLabelPositionSink::default());
+
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_kind: if swimlane_layout.is_some() {
             crate::family::RenderFamilyKind::Swimlane
@@ -477,6 +510,7 @@ pub(super) fn render_flowchart_svg_model(
         timing: render_timing,
         details: &mut detail,
         edge_cache: &mut edge_path_cache,
+        label_positions: label_position_sink.as_mut(),
     };
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
@@ -561,6 +595,25 @@ pub(super) fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
+    if let Some(out) = edge_paint_geometry {
+        // Later emission wins: an edge emitted by a nested root overrides the root-scoped entry.
+        let mut labels: FxHashMap<&str, crate::model::LayoutPoint> = FxHashMap::default();
+        for (id, position) in label_position_sink
+            .as_ref()
+            .map(|sink| sink.positions.as_slice())
+            .unwrap_or_default()
+        {
+            labels.insert(id.as_str(), position.clone());
+        }
+        out.extend(render_edges.iter().map(|edge| {
+            let id = edge.as_ref().id.as_str();
+            crate::model::EdgePaintGeometry {
+                id: id.to_owned(),
+                points: clipped_points.as_ref().and_then(|map| map.get(id).cloned()),
+                label_position: labels.get(id).cloned(),
+            }
+        }));
+    }
     root_document.complete(out)
 }
 
@@ -642,6 +695,7 @@ mod tests {
                 svg_label_sidecar: &sidecar,
             },
             &execution,
+            None,
         )
         .expect_err("diagram-ID rejection must stop before the invalid image node is emitted");
 
@@ -745,6 +799,7 @@ mod tests {
                     svg_label_sidecar: &sidecar,
                 },
                 &execution,
+                None,
             )
             .unwrap()
             .to_string()

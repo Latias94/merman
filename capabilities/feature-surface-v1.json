@@ -346,6 +346,16 @@
       "targets": ["native", "web"]
     },
     {
+      "id": "edge-geometry-json",
+      "capability": "svg",
+      "output": null,
+      "compiled_prerequisites": [],
+      "description": "Render Mermaid input and report post-paint edge geometry as JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
       "id": "svg-plan-json",
       "capability": "svg",
       "output": null,

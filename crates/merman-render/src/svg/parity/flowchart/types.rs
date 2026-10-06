@@ -173,6 +173,40 @@ pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
     pub(in crate::svg::parity::flowchart) geom: FlowchartEdgePathGeom,
 }
 
+/// Collects where edge labels were actually painted, in layout coordinates.
+///
+/// The painted position is a paint-time decision: paired-label separation and rewritten paths
+/// move it away from the layout anchor, and for `look: handDrawn` it additionally depends on
+/// `FlowchartEdgePathGeom::emitted_d_for_label`, which is only known once the edge-path pass has
+/// run. Recording it here — at the point the renderer emits the label — is the only place where
+/// the value provably matches the emitted SVG.
+#[derive(Debug, Default)]
+pub(in crate::svg::parity) struct EdgeLabelPositionSink {
+    pub(in crate::svg::parity) positions: Vec<(String, crate::model::LayoutPoint)>,
+}
+
+impl EdgeLabelPositionSink {
+    pub(in crate::svg::parity) fn record(
+        &mut self,
+        edge_id: &str,
+        ctx: &FlowchartRenderCtx<'_>,
+        origin_x: f64,
+        origin_y: f64,
+        local: crate::model::LayoutPoint,
+    ) {
+        // `resolve_flowchart_edge_label_position` answers in the root-local space that the SVG
+        // group is translated by. Layout coordinates undo that translation, so the value lines up
+        // with `LayoutEdge::points` and `LayoutEdge::label`.
+        self.positions.push((
+            edge_id.to_owned(),
+            crate::model::LayoutPoint {
+                x: local.x + origin_x - ctx.tx,
+                y: local.y + origin_y - ctx.ty,
+            },
+        ));
+    }
+}
+
 #[inline]
 pub(in crate::svg::parity::flowchart) fn detail_guard<'a>(
     timing: timing::RenderTiming,

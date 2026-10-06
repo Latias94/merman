@@ -15,6 +15,10 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
     pub(in crate::svg::parity::flowchart) edge_cache:
         &'cache mut FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
+    /// Present only when the caller asked for structured paint geometry. `None` keeps the
+    /// render path allocation-free for the ordinary SVG emission.
+    pub(in crate::svg::parity::flowchart) label_positions:
+        Option<&'cache mut EdgeLabelPositionSink>,
 }
 
 struct FlowchartRootFrame<'a> {
@@ -389,7 +393,15 @@ fn render_flowchart_elk_edge_labels(
         if edge_label_is_empty(ctx, e) {
             continue;
         }
-        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
+        render_flowchart_edge_label(
+            out,
+            ctx,
+            e,
+            0.0,
+            0.0,
+            &*session.edge_cache,
+            session.label_positions.as_deref_mut(),
+        );
     }
     out.push_str("</g>");
     Ok(())
@@ -599,6 +611,7 @@ fn initialize_flowchart_root_frame<'a>(
                     origin_x,
                     frame.content_origin_y,
                     &*session.edge_cache,
+                    session.label_positions.as_deref_mut(),
                 );
             }
         } else {
@@ -613,6 +626,7 @@ fn initialize_flowchart_root_frame<'a>(
                     origin_x,
                     frame.content_origin_y,
                     &*session.edge_cache,
+                    session.label_positions.as_deref_mut(),
                 );
             }
         }

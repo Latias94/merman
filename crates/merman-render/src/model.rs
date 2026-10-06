@@ -141,6 +141,68 @@ pub struct LayoutEdge {
     pub stroke_dasharray: Option<String>,
 }
 
+/// Post-paint edge geometry, recovered from the same compute phase that emits the SVG.
+///
+/// `LayoutEdge::points` is the ELK port polyline *before* the endpoints are clipped to the
+/// endpoint shapes' ink, and `LayoutEdge::label` is the anchor *before* paired-label
+/// separation. Both are produced later, during paint. Consumers that need the geometry that is
+/// actually on screen currently have to render a whole SVG and recover it from the `data-points`
+/// attribute, which is why this projection exists.
+///
+/// Coordinates are in the **same space as `LayoutEdge::points`** (layout coordinates), so a
+/// consumer can treat this as a refinement of the layout projection rather than a second,
+/// unrelated geometry system.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgePaintGeometry {
+    /// Matches `LayoutEdge::id`.
+    pub id: String,
+    /// Edge polyline after clipping to the endpoint shapes' ink, and after any swimlane line
+    /// hops. This is the exact point list emitted as the `data-points` attribute.
+    ///
+    /// `None` when the renderer produced no path for this edge (for example an edge with fewer
+    /// than two layout points).
+    pub points: Option<Vec<LayoutPoint>>,
+    /// Final painted centre of the edge label, after paired-label separation. `None` for
+    /// unlabelled edges.
+    pub label_position: Option<LayoutPoint>,
+}
+
+/// Versioned container for [`EdgePaintGeometry`].
+///
+/// Versioned independently of the crate, so consumers can pin a payload shape without pinning a
+/// merman release — the same contract `svg-plan-json` establishes for the capability plan.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgePaintGeometryOutput {
+    schema_version: u32,
+    diagram_type: String,
+    edges: Vec<EdgePaintGeometry>,
+}
+
+impl EdgePaintGeometryOutput {
+    /// Bumped whenever the payload shape changes incompatibly.
+    pub const SCHEMA_VERSION: u32 = 1;
+
+    pub fn new(diagram_type: String, edges: Vec<EdgePaintGeometry>) -> Self {
+        Self {
+            schema_version: Self::SCHEMA_VERSION,
+            diagram_type,
+            edges,
+        }
+    }
+
+    pub const fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    pub fn diagram_type(&self) -> &str {
+        &self.diagram_type
+    }
+
+    pub fn edges(&self) -> &[EdgePaintGeometry] {
+        &self.edges
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-block")]
 pub struct BlockDiagramLayout {

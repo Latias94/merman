@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -45,6 +45,7 @@
 #define MERMAN_BINDING_OPERATION_ASCII "ascii"
 #define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON "document-analysis-facts-json"
 #define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON "document-analysis-json"
+#define MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON "edge-geometry-json"
 #define MERMAN_BINDING_OPERATION_JPEG "jpeg"
 #define MERMAN_BINDING_OPERATION_LAYOUT_JSON "layout-json"
 #define MERMAN_BINDING_OPERATION_PDF "pdf"
@@ -277,6 +278,11 @@ static const char *const MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS
     "web",
 };
 
+static const char *const MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
 static const char *const MERMAN_BINDING_OPERATION_JPEG_TARGETS[] = {
     "native",
 };
@@ -333,6 +339,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "ascii", "ascii", "Render Mermaid input as terminal text.", "text/plain; charset=utf-8", 0, MERMAN_BINDING_OPERATION_ASCII_TARGETS, 2, "ascii", NULL, 0 },
     { "document-analysis-facts-json", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "document-analysis-json", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "edge-geometry-json", "svg", "Render Mermaid input and report post-paint edge geometry as JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "jpeg", "jpeg", "Render Mermaid input as JPEG.", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
     { "layout-json", "svg", "Render Mermaid input into layout model JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "pdf", "pdf", "Render Mermaid input as PDF.", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1, "pdf", MERMAN_BINDING_OPERATION_PDF_COMPILED_PREREQUISITES, 1 },
@@ -342,7 +349,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "svg-plan-json", "svg", "Plan the capabilities required to render Mermaid input as SVG.", "application/json", 0, MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "validation-json", "analysis", "Validate Mermaid input and return validation JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2, NULL, NULL, 0 },
 };
-#define MERMAN_BINDING_OPERATION_COUNT 13u
+#define MERMAN_BINDING_OPERATION_COUNT 14u
 
 
 #endif /* MERMAN_CAPABILITY_SURFACE_H */

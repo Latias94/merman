@@ -1116,9 +1116,11 @@ pub(crate) fn render_builtin_family_artifact(
     session: &RenderSession,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<String> {
     let execution = SvgExecution::new(options, debug, session)?;
-    let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution);
+    let rooted_svg =
+        render_builtin_family_artifact_raw(family, metadata, &execution, edge_paint_geometry);
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let svg = rooted_svg.into_string_for(family.kind())?;
@@ -1160,6 +1162,7 @@ fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
@@ -1186,17 +1189,23 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        BuiltinFamilyArtifact::Flowchart(artifact) => {
-            flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
-        }
+        BuiltinFamilyArtifact::Flowchart(artifact) => flowchart::render_flowchart_svg_artifact(
+            artifact,
+            metadata,
+            options,
+            edge_paint_geometry,
+        ),
         #[cfg(feature = "diagram-agentflow")]
         BuiltinFamilyArtifact::Agentflow { flow, .. } => {
-            flowchart::render_flowchart_svg_artifact(flow, metadata, options)
+            flowchart::render_flowchart_svg_artifact(flow, metadata, options, edge_paint_geometry)
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        BuiltinFamilyArtifact::Swimlane(artifact) => {
-            flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
-        }
+        BuiltinFamilyArtifact::Swimlane(artifact) => flowchart::render_swimlane_svg_artifact(
+            artifact,
+            metadata,
+            options,
+            edge_paint_geometry,
+        ),
         #[cfg(feature = "diagram-cynefin")]
         BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
             pair.layout(),
