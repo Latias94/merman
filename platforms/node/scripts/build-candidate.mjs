@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { validateTransportIdentityJson } from "../src/errors.mjs";
 import { nodeLoaderPackageVersion, resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
+import { NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
@@ -770,6 +771,7 @@ export function resolveCandidateRuntimeContract() {
     .filter(
       (operation) =>
         operation?.targets?.includes(target) &&
+        NODE_WIRE_CONTRACT.artifact.operation_ids.includes(operation?.id) &&
         (operation.capability === null || capabilityIds.includes(operation.capability)),
     );
   for (const operation of operations) {

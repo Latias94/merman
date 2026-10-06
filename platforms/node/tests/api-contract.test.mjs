@@ -1830,7 +1830,7 @@ test("cancellation responses must match this invocation control", async () => {
   }
 });
 
-test("generic execution covers the complete 13-operation matrix", async () => {
+test("generic execution covers the complete 14-operation matrix", async () => {
   const expectations = new Map(
     BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
       expectation.operation_id,

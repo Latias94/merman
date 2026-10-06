@@ -275,7 +275,7 @@ impl BindingUnavailableOperationExpectation {
     }
 }
 
-/// One descriptor-derived row in the shared 13-operation expectation matrix.
+/// One descriptor-derived row in the shared 14-operation expectation matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingOperationExpectation {
