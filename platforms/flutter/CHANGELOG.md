@@ -2,7 +2,7 @@
 
 ## [0.8.0] - 2026-10-06
 
-This is the cumulative migration from the 0.7.0 package to the 0.8.0 candidate, including changes introduced during the alphas. It does not announce pub.dev publication; keep the Dart facade and native artifacts together.
+This is the cumulative migration from the 0.7.0 package to 0.8.0, including changes introduced during the alphas. Version 0.8.0 was published on pub.dev on 2026-10-06; keep the Dart facade and native artifacts together.
 
 ### Breaking changes
 
@@ -16,7 +16,7 @@ This is the cumulative migration from the 0.7.0 package to the 0.8.0 candidate, 
 
 ### Changed
 
-- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to Mermaid 12.1.0. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
 - Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
 
 ### Fixed

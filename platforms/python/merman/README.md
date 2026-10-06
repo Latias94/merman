@@ -4,7 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> The `0.8.0` candidate targets direct UniFFI binding API `7`, independently of the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. The latest published version is `0.8.0a7`; use its tagged documentation until `0.8.0` is available.
+> The published `0.8.0` package targets direct UniFFI binding API `7`, independently of the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. Version `0.8.0` is available on PyPI.
 
 ## Install
 
