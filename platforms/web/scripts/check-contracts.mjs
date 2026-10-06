@@ -50,6 +50,7 @@ const runtimeWrapperOnlyExports = new Set([
   "renderSvgToElement",
   "parseObject",
   "layoutObject",
+  "edgeGeometryObject",
   "detectDiagramFacts",
 ]);
 const canonicalOperationFacades = new Set(["svgPlanJson"]);

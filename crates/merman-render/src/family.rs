@@ -1067,9 +1067,9 @@ impl FamilyRenderArtifact {
     /// Post-paint edge geometry, recovered while emitting the diagram.
     ///
     /// `layout_json` reports `LayoutEdge::points` before the endpoints are clipped to the endpoint
-    /// shapes' ink, and `LayoutEdge::label` before paired-label separation. This returns the
-    /// values that end up on screen, in the same layout coordinate space, so a consumer no longer
-    /// has to render a whole SVG and recover them from the `data-points` attribute.
+    /// shapes' ink. This returns the values that end up on screen, in the same layout coordinate
+    /// space, so a consumer no longer has to render a whole SVG and recover them from the
+    /// `data-points` attribute.
     ///
     /// Consumes the artifact, exactly like [`Self::render_svg`], because it runs the same compute
     /// pass. Returns an empty vector for families that do not route through the flowchart
@@ -1080,9 +1080,8 @@ impl FamilyRenderArtifact {
             crate::svg::normalize_svg_render_options(&SvgRenderOptions::default(), &self.session)?;
         let debug = SvgDebugOptions::default();
         let mut geometry = Vec::new();
-        // The SVG string is a by-product here; it is deliberately not admitted through
-        // `admit_rendered_svg_output`, so `MaxSvgBytes` keeps governing only real SVG output.
-        render_family_artifact_svg(&self, &options, &debug, Some(&mut geometry))?;
+        let svg = render_family_artifact_svg(&self, &options, &debug, Some(&mut geometry))?;
+        admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         Ok(geometry)
     }
@@ -2280,21 +2279,12 @@ mod tests {
 
     #[test]
     fn edge_geometry_json_points_match_the_emitted_data_points() {
-        // A rhombus endpoint on a *routed* edge is the case where `layoutJson.points` and the
-        // clipped polyline genuinely differ. Two conditions matter: the edge must be routed (a
-        // straight two-point edge is never clipped), and at least one endpoint must not be a
-        // rectangle, because a rectangle's ELK ports already sit on its border.
+        // Circle endpoints exercise the difference between `layoutJson.points` and the clipped
+        // polyline reported by the renderer. The reverse labelled edge also keeps this aligned
+        // with the minimal reproduction from issue #172.
         let source = r#"flowchart TD
-    Start([Visit online store]) --> Browse[Browse products]
-    Browse --> Cart[Add items to cart]
-    Cart --> Decide{Ready to check out?}
-    Decide -->|Keep shopping| Browse
-    Decide -->|Yes| Pay[Enter payment details]
-    Pay --> Valid{Payment accepted?}
-    Valid -->|No| Retry[Show error message]
-    Retry --> Pay
-    Valid -->|Yes| Confirm[Order confirmed]
-    Confirm --> Done([Email receipt])
+    S[Start] --> M((Circle))
+    M -->|back| S
 "#;
 
         let geometry = prepare(
@@ -2375,97 +2365,6 @@ mod tests {
         assert!(
             differed.count() > 0,
             "this diagram must exercise clipping, otherwise it proves nothing"
-        );
-    }
-
-    #[test]
-    fn edge_geometry_json_label_position_matches_the_emitted_label_transform() {
-        // Three parallel labelled edges: paired-label separation moves every one of them away
-        // from the layout anchor, so the painted centre is not the layout centre.
-        let source = r#"flowchart LR
-    A -->|一| B
-    A -->|二| B
-    A -->|三| B
-"#;
-
-        let geometry = prepare(
-            parse_flowchart(source),
-            &LayoutOptions::default(),
-            session(),
-        )
-        .expect("prepare flowchart")
-        .edge_geometry_json()
-        .expect("edge geometry json");
-        let svg = prepare(
-            parse_flowchart(source),
-            &LayoutOptions::default(),
-            session(),
-        )
-        .expect("prepare flowchart")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render flowchart")
-        .svg()
-        .to_owned();
-
-        let from_svg: Vec<(f64, f64)> = svg
-            .split("<g class=\"edgeLabel\"")
-            .skip(1)
-            .filter_map(|chunk| {
-                let tag = chunk.split('>').next()?;
-                tag.split("transform=\"translate(")
-                    .nth(1)
-                    .and_then(|rest| rest.split(')').next())
-                    .and_then(|rest| rest.split_once(','))
-                    .and_then(|(x, y)| Some((x.trim().parse().ok()?, y.trim().parse().ok()?)))
-            })
-            .collect();
-        assert_eq!(
-            from_svg.len(),
-            3,
-            "three labelled parallel edges must each emit an edgeLabel group"
-        );
-
-        let reported: Vec<(f64, f64)> = geometry
-            .iter()
-            .filter_map(|edge| edge.label_position.as_ref())
-            .map(|p| (p.x, p.y))
-            .collect();
-        assert_eq!(reported.len(), 3, "every labelled edge reports a position");
-
-        let mut matched = 0;
-        for expected in &from_svg {
-            if reported
-                .iter()
-                .any(|(x, y)| (x - expected.0).abs() < 1e-6 && (y - expected.1).abs() < 1e-6)
-            {
-                matched += 1;
-            }
-        }
-        assert_eq!(
-            matched,
-            from_svg.len(),
-            "structured label positions must match the emitted transforms: reported {reported:?}, svg {from_svg:?}"
-        );
-    }
-
-    #[test]
-    fn edge_geometry_json_omits_label_position_for_unlabelled_edges() {
-        let geometry = prepare(
-            parse_flowchart("flowchart TD\n    A[One] --> B[Two]\n"),
-            &LayoutOptions::default(),
-            session(),
-        )
-        .expect("prepare flowchart")
-        .edge_geometry_json()
-        .expect("edge geometry json");
-        assert_eq!(geometry.len(), 1);
-        assert!(
-            geometry[0].points.is_some(),
-            "an unlabelled edge still has clipped points"
-        );
-        assert!(
-            geometry[0].label_position.is_none(),
-            "an unlabelled edge must not report a label position"
         );
     }
 

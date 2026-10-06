@@ -144,10 +144,9 @@ pub struct LayoutEdge {
 /// Post-paint edge geometry, recovered from the same compute phase that emits the SVG.
 ///
 /// `LayoutEdge::points` is the ELK port polyline *before* the endpoints are clipped to the
-/// endpoint shapes' ink, and `LayoutEdge::label` is the anchor *before* paired-label
-/// separation. Both are produced later, during paint. Consumers that need the geometry that is
-/// actually on screen currently have to render a whole SVG and recover it from the `data-points`
-/// attribute, which is why this projection exists.
+/// endpoint shapes' ink. Clipping happens during paint, and consumers that need the geometry that
+/// is actually on screen currently have to render a whole SVG and recover it from the
+/// `data-points` attribute, which is why this projection exists.
 ///
 /// Coordinates are in the **same space as `LayoutEdge::points`** (layout coordinates), so a
 /// consumer can treat this as a refinement of the layout projection rather than a second,
@@ -162,9 +161,6 @@ pub struct EdgePaintGeometry {
     /// `None` when the renderer produced no path for this edge (for example an edge with fewer
     /// than two layout points).
     pub points: Option<Vec<LayoutPoint>>,
-    /// Final painted centre of the edge label, after paired-label separation. `None` for
-    /// unlabelled edges.
-    pub label_position: Option<LayoutPoint>,
 }
 
 /// Versioned container for [`EdgePaintGeometry`].

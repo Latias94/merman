@@ -133,7 +133,6 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-    mut label_positions: Option<&mut EdgeLabelPositionSink>,
 ) {
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
@@ -218,9 +217,6 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 let position = resolve_flowchart_edge_label_position(
                     ctx, le, lbl, origin_x, origin_y, edge_cache, false,
                 );
-                if let Some(sink) = label_positions.as_deref_mut() {
-                    sink.record(edge.id.as_str(), ctx, origin_x, origin_y, position.clone());
-                }
                 let x = position.x;
                 let y = position.y;
 
@@ -388,9 +384,6 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let position = resolve_flowchart_edge_label_position(
                 ctx, le, lbl, origin_x, origin_y, edge_cache, false,
             );
-            if let Some(sink) = label_positions {
-                sink.record(edge.id.as_str(), ctx, origin_x, origin_y, position.clone());
-            }
             let x = position.x;
             let y = position.y;
 

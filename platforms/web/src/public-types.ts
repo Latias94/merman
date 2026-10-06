@@ -957,6 +957,12 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  edgeGeometryJson: (source: string, optionsJson?: string | null) => string;
+  edgeGeometryJsonWithTextMeasurer?: (
+    source: string,
+    optionsJson: string | null | undefined,
+    measurer: HostTextMeasurer
+  ) => string;
   svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (
     source: string,

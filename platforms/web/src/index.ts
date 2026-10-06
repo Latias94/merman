@@ -91,6 +91,9 @@ export {
 } from "./runtime-ascii.js";
 export {
   createBrowserTextMeasurementSession,
+  edgeGeometryJson,
+  edgeGeometryJsonWithTextMeasurer,
+  edgeGeometryObject,
   layoutJson,
   layoutJsonWithTextMeasurer,
   layoutObject,

@@ -419,10 +419,6 @@ pub(super) fn render_flowchart_svg_model(
             }
             map
         });
-    let mut label_position_sink: Option<EdgeLabelPositionSink> = edge_paint_geometry
-        .as_ref()
-        .map(|_| EdgeLabelPositionSink::default());
-
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_kind: if swimlane_layout.is_some() {
             crate::family::RenderFamilyKind::Swimlane
@@ -510,7 +506,6 @@ pub(super) fn render_flowchart_svg_model(
         timing: render_timing,
         details: &mut detail,
         edge_cache: &mut edge_path_cache,
-        label_positions: label_position_sink.as_mut(),
     };
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
@@ -596,21 +591,11 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     if let Some(out) = edge_paint_geometry {
-        // Later emission wins: an edge emitted by a nested root overrides the root-scoped entry.
-        let mut labels: FxHashMap<&str, crate::model::LayoutPoint> = FxHashMap::default();
-        for (id, position) in label_position_sink
-            .as_ref()
-            .map(|sink| sink.positions.as_slice())
-            .unwrap_or_default()
-        {
-            labels.insert(id.as_str(), position.clone());
-        }
         out.extend(render_edges.iter().map(|edge| {
             let id = edge.as_ref().id.as_str();
             crate::model::EdgePaintGeometry {
                 id: id.to_owned(),
                 points: clipped_points.as_ref().and_then(|map| map.get(id).cloned()),
-                label_position: labels.get(id).cloned(),
             }
         }));
     }

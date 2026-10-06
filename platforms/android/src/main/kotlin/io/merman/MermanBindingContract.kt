@@ -78,6 +78,7 @@ internal object MermanBindingOperationId {
     internal const val ASCII: String = "ascii"
     internal const val DOCUMENT_ANALYSIS_FACTS_JSON: String = "document-analysis-facts-json"
     internal const val DOCUMENT_ANALYSIS_JSON: String = "document-analysis-json"
+    internal const val EDGE_GEOMETRY_JSON: String = "edge-geometry-json"
     internal const val JPEG: String = "jpeg"
     internal const val LAYOUT_JSON: String = "layout-json"
     internal const val PDF: String = "pdf"
@@ -174,6 +175,7 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
     MermanBindingOperationExpectation("ascii", "ascii", "text/plain; charset=utf-8", 1, false, "ascii"),
     MermanBindingOperationExpectation("document-analysis-facts-json", null, "application/json", 1, true, "analysis"),
     MermanBindingOperationExpectation("document-analysis-json", null, "application/json", 1, true, "analysis"),
+    MermanBindingOperationExpectation("edge-geometry-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("jpeg", "jpeg", "image/jpeg", 1, false, "jpeg"),
     MermanBindingOperationExpectation("layout-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("pdf", "pdf", "application/pdf", 1, false, "pdf"),
