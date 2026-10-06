@@ -21,21 +21,18 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-This checkout prepares **`0.8.0` (unreleased)** with Mermaid `12.1.0` selected at commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Published `0.8.0-alpha.7` follows Mermaid `12.0.0`. Parser, layout, configuration, theming, sanitization, and SVG structure follow the pinned source and fixtures; transition validation remains in progress. Start with the [0.7.0-to-0.8.0 upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) for the previous stable release, the [alpha.7-to-0.8.0 guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for Mermaid 12.1 and low-level Rust changes, or the [versioned index](docs/release/README.md) for earlier prereleases. The broader theme refactor remains deferred.
-
-> [!NOTE]
-> This README documents the current `main` branch. The operation-scoped `Renderer` API was
-> introduced in the published `0.8.0-alpha.6` release. If you depend on `0.8.0-alpha.5`, use its
-> [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
+This README describes **`0.8.0`**, available as Rust crates on crates.io and CLI/LSP archives on [GitHub Releases](https://github.com/Latias94/merman/releases/tag/v0.8.0), following Mermaid `12.1.0` at upstream commit `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Other package channels publish independently; check the [publication snapshot](docs/release/PUBLISH_ORDER.md#080-publication-snapshot) for availability. Start with the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md) when coming from `0.7.0`, the [alpha.7 upgrade guide](docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) when already on the prerelease, or the [versioned index](docs/release/README.md) for earlier alphas. The [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) covers measured changes and their limits.
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
 ## Quick start
 
-For the published alpha.7 release, add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies and
-use its [tagged documentation](https://github.com/Latias94/merman/blob/v0.8.0-alpha.7/README.md).
-The source-checkout examples below describe current development. Upgrade coupled Merman crates
-together; `0.8.0` is not yet a published installation target.
+Add the published Rust crate to your `Cargo.toml`; upgrade coupled Merman crates together:
+
+```toml
+[dependencies]
+merman = "0.8.0"
+```
 
 Run the maintained SVG example from a source checkout:
 
@@ -122,6 +119,30 @@ The current-source `merman` dependency defaults to `all-diagrams` and `complete-
 built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Distributed artifacts
 include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
 terminal output, binary export, and ambient system adapters remain opt-in.
+
+To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**, use this dependency declaration:
+
+```toml
+[dependencies]
+merman = { version = "0.8.0", default-features = false, features = ["all-diagrams", "complete-svg"] }
+```
+
+`all-diagrams` retains every built-in parser; `complete-svg` selects outputs and engines, not languages. Cargo features are additive: another dependency can re-enable ELK, so inspect the final application graph with `cargo tree -e features -i merman-elk-layered`.
+
+To **keep ELK available but render a diagram with Dagre**, set the top-level layout in Mermaid source (`theme` and `look` are optional):
+
+```text
+---
+config:
+  layout: dagre
+  theme: default
+  look: classic
+---
+flowchart TD
+  A[Start] --> B[Done]
+```
+
+Selecting Dagre at runtime does not remove compiled ELK or its distribution notices. Explicit presentation settings do not guarantee pixel-identical output to earlier Mermaid versions; see the [stable upgrade guide](docs/release/V070_TO_V080_UPGRADE_GUIDE.md#presentation-and-snapshots).
 
 In the current source, positive `diagram-*` features select built-in families independently of
 outputs and engines. Low-level crates and facade consumers disabling defaults must select

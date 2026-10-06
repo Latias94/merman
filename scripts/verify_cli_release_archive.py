@@ -912,6 +912,8 @@ def verify_release_archive(
     execute: bool = False,
     preset_qualification_output: Path | None = None,
     preset_qualification_check: Path | None = None,
+    resource_certificate: Path | None = None,
+    resource_key: Path | None = None,
     limits: ExtractionLimits = DEFAULT_LIMITS,
     runner: CommandRunner = subprocess.run,
     host_target_checker: HostTargetChecker = target_matches_host,
@@ -925,6 +927,12 @@ def verify_release_archive(
         json.loads(Path(preset_qualification_check).read_text(encoding="utf-8"))
         if preset_qualification_check is not None else None
     )
+    if (resource_certificate is None) != (resource_key is None):
+        raise ArchiveVerificationError("resource certificate and key must be supplied together")
+    if resource_certificate is not None and (
+        not execute or target != "aarch64-unknown-linux-gnu"
+    ):
+        raise ArchiveVerificationError("system resource admission requires native Linux ARM64 --execute")
     archive = Path(archive)
     checksum = Path(checksum)
     repo_root = require_repository_root(Path(repo_root))
@@ -952,6 +960,16 @@ def verify_release_archive(
                 runner=runner,
                 host_target_checker=host_target_checker,
             )
+            if resource_certificate is not None:
+                if __package__:
+                    from .verify_cli_system_resources import verify_system_resources
+                else:
+                    from verify_cli_system_resources import verify_system_resources
+                verify_system_resources(
+                    archive_member_path(extracted.root, extracted.binary_path),
+                    resource_certificate.resolve(),
+                    resource_key.resolve(),
+                )
         if preset_qualification_output is not None or preset_qualification_check is not None:
             record = collect_preset_qualification(
                 repo_root, cli_binary=archive_member_path(extracted.root, extracted.binary_path),
@@ -1023,6 +1041,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--preset-qualification-check", type=Path,
         help="rerun qualification and compare an existing archive record (requires --execute)",
     )
+    parser.add_argument("--resource-certificate", type=Path, help="CI certificate trusted by the system CA store")
+    parser.add_argument("--resource-key", type=Path, help="private key for the loopback HTTPS probe")
     return parser.parse_args(argv)
 
 
@@ -1039,6 +1059,8 @@ def main(argv: list[str] | None = None) -> int:
         execute=args.execute,
         preset_qualification_output=args.preset_qualification_output,
         preset_qualification_check=args.preset_qualification_check,
+        resource_certificate=args.resource_certificate,
+        resource_key=args.resource_key,
     )
     print(f"verified {report.archive}")
     return 0

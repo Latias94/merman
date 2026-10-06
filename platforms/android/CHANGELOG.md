@@ -4,15 +4,32 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-06
+
+This entry consolidates the previous stable integration and the 0.8 alpha migrations into the final candidate contract. It does not announce AAR publication or a Maven Central release.
+
+### Breaking changes
+
+- Replace the C-ABI-forwarding JNI bridge with direct JNI transport API 2. Ship the matching Kotlin classes and `libmerman_android_jni.so` slices in one AAR; old `libmerman_ffi.so` JNI slices are incompatible.
+- Replace `MermanReusableEngine` and mutable `setTextMeasurer()` calls with `MermanEngine(optionsJson, services)` and immutable constructor services. Callback-enabled engines reject concurrent/reentrant calls with typed errors; retry `close()` when an active operation prevents closure.
+- Adopt Options JSON schema 2, analysis facts schema 2, and ASCII report schema 3. Rename viewport fields to `container_width` / `container_height`; update requested/effective layout, encoding, and structured-text fallback decoders independently from the JNI API version.
+
+### Added
+
+- Added reusable generic operations, cooperative cancellation/deadlines, runtime catalogs, typed diagnostic/resource details, and richer ASCII/viewport controls.
+
+### Changed
+
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
 
 ### Fixed
 
-- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+- Corrected C4 and ELK relationship routing/layering, Packet/XYChart presentation, partial theme overrides, and diagnostic locations; restored Usecase/ER styles and prevented malformed Unicode colors from panicking.
 
-### Upgrade
+### Further reading
 
-- When upgrading from `0.7.0`, use the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+- Use the [package guide](README.md), [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md). A workspace release does not publish Maven coordinates, and native Rust timings are not JNI measurements.
 
 ### Breaking changes
 

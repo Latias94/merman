@@ -7,8 +7,8 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Published version: `0.2.0` (2026-09-30)
-- Immutable release tag: `tree-sitter-mermaid-v0.2.0`
+- Published version: `0.3.0` (2026-10-06, Asia/Shanghai; required by Merman LSP `0.8.0`)
+- Immutable release tag: `tree-sitter-mermaid-v0.3.0`
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
@@ -20,7 +20,7 @@ publication without the protected release environment and maintainer credentials
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-The [dated publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot) records the completed `0.2.0` crates.io, npm, and GitHub Release publication from commit `580e39b69cc1b0ca35c4f8272683e622b2e9b8db`. Consumer changes from `0.1.0` are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md#010-to-020). This checklist remains the procedure for a future selected version.
+The [dated publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records the completed `0.3.0` publication from commit `2029bd547077b1a6800878e125663633d81e6d87`, including recovery with the original package bytes. Consumer changes are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). This checklist remains the procedure for a future selected version.
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
@@ -63,7 +63,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.2.0.crate` for crates.io;
+- `tree-sitter-mermaid-0.3.0.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;

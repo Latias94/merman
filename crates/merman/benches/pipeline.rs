@@ -131,6 +131,30 @@ fn verify_postflight(
 fn fixtures() -> Vec<(&'static str, &'static str)> {
     vec![
         (
+            "flowchart_weave_dagre_classic",
+            include_str!("fixtures/flowchart_weave_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_ports_heavy_dagre_classic",
+            include_str!("fixtures/flowchart_ports_heavy_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_fanout_returns_dagre_classic",
+            include_str!("fixtures/flowchart_fanout_returns_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_long_edge_labels_dagre_classic",
+            include_str!("fixtures/flowchart_long_edge_labels_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_medium_dagre_classic",
+            include_str!("fixtures/flowchart_medium_dagre_classic.mmd"),
+        ),
+        (
+            "flowchart_nested_clusters_dagre_classic",
+            include_str!("fixtures/flowchart_nested_clusters_dagre_classic.mmd"),
+        ),
+        (
             "flowchart_tiny",
             include_str!("fixtures/flowchart_tiny.mmd"),
         ),
@@ -350,6 +374,14 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/cynefin_medium.mmd"),
         ),
         ("error_basic", include_str!("fixtures/error_basic.mmd")),
+        (
+            "agentflow_basic",
+            include_str!("../../../fixtures/agentflow/basic.mmd"),
+        ),
+        (
+            "usecase_basic",
+            include_str!("../../../fixtures/usecase/basic.mmd"),
+        ),
     ]
 }
 

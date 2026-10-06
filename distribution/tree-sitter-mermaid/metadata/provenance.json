@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": {
     "name": "tree-sitter-mermaid",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "releaseState": "candidate"
   },
   "language": {

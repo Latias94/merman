@@ -496,7 +496,7 @@ class SuccessfulArchiveTests(unittest.TestCase):
 class ThemeAuthoringCapabilityTests(unittest.TestCase):
     def test_current_operation_metadata_matches_the_descriptor_owned_digest(self) -> None:
         surface = read_json(PROJECT_ROOT, "capabilities/feature-surface-v1.json")
-        profiles = read_json(PROJECT_ROOT, "capabilities/artifact-profiles-v1.json")
+        profiles = read_json(PROJECT_ROOT, "capabilities/artifact-profiles-v2.json")
         canonical = verifier.validate_capability_authority(
             profiles, surface, expected_path=verifier.CAPABILITY_SURFACE_PATH,
             profiles_context="profiles", capability_context="capability surface",

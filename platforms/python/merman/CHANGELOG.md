@@ -4,15 +4,31 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-06
+
+This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. It prepares the stable candidate and does not announce PyPI publication.
+
+### Breaking changes
+
+- Upgrade the generated Python wrapper and native library together to UniFFI API 7. Direct binding users use `binding_api_version_v7()` and `MermanOperationRequestV4`; do not substitute C ABI checks for UniFFI compatibility.
+- Adopt Options JSON schema 2, analysis facts schema 2, and ASCII report schema 3. Rename viewport fields to `container_width` / `container_height`, move text/math selection under `environment`, and update layout/encoding/fallback decoders. Custom text measurers must return the tagged result shape for the requested measurement operation.
+
+### Added
+
+- Added reusable engines, cooperative operation controls, host measurement services, structured diagnostics/resource errors, runtime discovery, and richer ASCII layouts/projections. Read operations and capability availability from the loaded artifact.
+
+### Changed
+
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
 
 ### Fixed
 
-- Corrected SVG relationship geometry and layering for C4 and Class/ELK, restored Usecase Neo styling and explicit ER table styling, and prevented malformed Unicode color values from causing a panic.
+- Corrected C4 and ELK relationship routing/layering, Packet/XYChart presentation, partial theme overrides, and diagnostic locations; restored Usecase/ER styles and prevented malformed Unicode colors from panicking.
 
-### Upgrade
+### Further reading
 
-- When upgrading from `0.7.0`, use the [stable upgrade guide](../../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md) and [comparison report](../../../docs/release/V070_TO_V080_RELEASE_REPORT.md) for the accumulated runtime, payload, presentation, and package changes. Upgrade the package facade and its matching artifacts together; this entry prepares the stable candidate and does not announce publication.
+- Use the [package guide](README.md), [stable upgrade guide](../../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../../CHANGELOG.md). Native Rust benchmark observations do not establish Python transport performance.
 
 ### Breaking changes
 

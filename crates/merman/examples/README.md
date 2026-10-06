@@ -185,13 +185,13 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples target `0.8.0-alpha.7`, including Auto layout and schema-3 ASCII reports. Use the version-pinned dependency below, or a path dependency on the matching source checkout. For alpha.6, use examples from its matching release tag.
+These examples target the published `merman 0.8.0` release, including Auto layout and schema-3 ASCII reports. Use the dependency below, or a path dependency on the matching source checkout.
 
 The release-facing dependency for the SVG examples is:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.7" }
+merman = { version = "0.8.0" }
 ```
 
 For terminal-only source development:

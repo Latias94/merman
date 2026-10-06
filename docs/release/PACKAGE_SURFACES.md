@@ -4,15 +4,11 @@ This guide describes the supported package and artifact choices. It is not a liv
 database; verify a specific version at its owning registry or GitHub Release before recommending an
 installation command.
 
-## Current Development Target
+## Current Release
 
-The development branch targets unreleased `0.8.0` with Mermaid `12.1.0`, parser `2.0.1`, and
-reference CLI `12.0.0`. This selection introduces no new diagram family, Cargo feature, FFI
-version, or editor-facts schema version. Direct consumers of the low-level ELK Rust crates must
-update edge and label struct initializers; see the
-[alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md). Validation and package publication
-are separate gates and remain in progress. The independently versioned Tree-sitter package keeps
-its own selected baseline.
+Merman `0.8.0` Rust crates and CLI/LSP archives are published with Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. This baseline transition adds no diagram family, Cargo feature, FFI version, or editor-facts schema version beyond alpha.7. Direct consumers of low-level ELK Rust crates must update edge and label initializers; see the [alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+The independent Tree-sitter `0.3.0` distribution is published on crates.io, npm, and GitHub Releases. Other channels publish separately; the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records verified delivery and recovery status.
 
 ## Choose A Surface
 

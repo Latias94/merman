@@ -9,6 +9,7 @@
     "flowchart": "Flowchart-focused routing and layout stress coverage.",
     "frontmatter": "Frontmatter preprocessing and config ingestion coverage.",
     "stress": "Known heavier fixtures used when validating optimization work.",
+    "release_control": "Explicit classic Dagre configuration controls for native release observations.",
     "full": "All fixtures in corpus order; fixture-complete, not family-complete."
   },
   "lanes": [
@@ -331,6 +332,49 @@
     }
   ],
   "fixtures": [
+    {
+      "name": "flowchart_nested_clusters_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_nested_clusters_dagre_classic.mmd",
+      "suites": [
+        "release_control"
+      ],
+      "features": [
+        "subgraphs",
+        "nested_clusters",
+        "explicit_dagre",
+        "classic_theme"
+      ],
+      "quality": [
+        "svg_sanity",
+        "dom_compare",
+        "raster_compare"
+      ]
+    },
+    {
+      "name": "flowchart_medium_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/flowchart_medium_dagre_classic.mmd",
+      "suites": [
+        "release_control"
+      ],
+      "features": [
+        "nodes",
+        "edges",
+        "labels",
+        "explicit_dagre",
+        "classic_theme"
+      ],
+      "quality": [
+        "svg_sanity",
+        "dom_compare",
+        "raster_compare"
+      ]
+    },
     {
       "name": "flowchart_tiny",
       "family": "flowchart",
@@ -1060,6 +1104,46 @@
       "suites": ["frontmatter"],
       "features": ["deep_nesting", "config_merge"],
       "quality": ["parse_sanity"]
+    },
+    {
+      "name": "flowchart_weave_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_weave_dagre_classic.mmd",
+      "suites": ["release_control"],
+      "features": ["explicit_dagre_classic", "configuration_control"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_ports_heavy_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_ports_heavy_dagre_classic.mmd",
+      "suites": ["release_control"],
+      "features": ["explicit_dagre_classic", "configuration_control"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_fanout_returns_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_fanout_returns_dagre_classic.mmd",
+      "suites": ["release_control"],
+      "features": ["explicit_dagre_classic", "configuration_control"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_long_edge_labels_dagre_classic",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_long_edge_labels_dagre_classic.mmd",
+      "suites": ["release_control"],
+      "features": ["explicit_dagre_classic", "configuration_control"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     }
   ]
 }

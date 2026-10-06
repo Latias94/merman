@@ -272,7 +272,7 @@ closure, trusted deployment separation, maintained action release tags, checkout
 isolation, and npm provenance policy. GitHub Actions use current stable release tags, while actions
 whose ref is part of their public interface retain readable tool or toolchain refs. The zizmor
 configuration accepts version refs without disabling its other workflow-security audits, and weekly
-Dependabot updates maintain the selected action versions.
+Dependabot updates maintain the selected action versions. Release workflows also accept explicit Action release versions; moving branch names and floating major-only tags are not used for their Action dependencies. This policy concerns Action implementations, not release source commits, artifact checksums, or provenance receipts, which remain immutable.
 
 ## Workspace Theme Acceptance
 

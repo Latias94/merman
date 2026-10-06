@@ -34,6 +34,7 @@ compatibility versions. Preserve their identity and references rather than relab
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
+| `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
@@ -80,6 +81,8 @@ member in the batch must pass its locked publish dry-run before the first member
 then receives one publish attempt. The workflow does not enter the next
 batch until every checksum in the current batch matches; delayed visibility or a lost response
 produces a durable pending-recovery receipt instead of a blind retry.
+
+For WinGet and Scoop, run the independent [CLI registry candidate workflow](../releasing/CLI.md#scoop-and-winget-draft-candidate-contract) after the stable GitHub Release exists. Its read-only preparation and validation do not block binary publication or submit to external registries.
 
 ## Required Credentials
 
@@ -268,6 +271,9 @@ Keep the target Changelog entry marked `Unreleased` during ordinary preparation.
 `python3 scripts/verify_release_changelog.py --version <workspace-version>` accepts an unversioned `[Unreleased]` entry during development and still checks every versioned projection against the supplied workspace version. Immutable preflight adds `--require-date`, which requires every first entry to name that version and a valid date; it never skips pending changes to validate an older release underneath them.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
+
+For a stable release following several prereleases, make the pending stable entry cumulative from the previous stable version and label that comparison explicitly. Lead with an upgrade-path table and final breaking contracts, then group new capabilities, changes/fixes, security, measurement evidence, and availability by user impact. Keep published alpha entries unchanged; use the versioned upgrade guides for incremental alpha-to-alpha actions. Do not carry superseded intermediate API names or alpha-only benchmark claims into the final contract. The stable upgrade guide owns detailed old-to-new instructions and examples; the embedding guide owns runnable Rust recipes. Package projections must use their own publication boundary (for example, Node has no 0.7.0 package), final schema/API versions, and actual capability recipe.
+
 
 | Surface | Registry or audience behavior | Changelog source |
 | --- | --- | --- |

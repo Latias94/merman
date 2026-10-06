@@ -13,7 +13,7 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
-The alpha.6 XCFramework uses UniFFI API `6`. This guide targets `0.8.0-alpha.7` with API `7`; use the matching source/generated Swift and native archive, as described in the [changelog](CHANGELOG.md).
+The alpha.6 XCFramework uses UniFFI API `6`. This guide targets the unpublished `0.8.0` candidate with API `7`; the latest published release is `0.8.0-alpha.7`. Use the matching source/generated Swift and native archive, as described in the [changelog](CHANGELOG.md).
 
 ## Add A Release XCFramework
 

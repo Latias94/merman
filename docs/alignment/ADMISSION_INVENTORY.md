@@ -1,10 +1,10 @@
 # Diagram Admission Inventory
 
 Status: Active
-Prior baseline evidence: Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
-Last reviewed: 2026-10-02
+Selected reference: Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`
+Last reviewed: 2026-10-05
 
-The current unreleased transition targets Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`; the primary matrix and generated oracle evidence remain bound to the preceding `12.0.0` selection until the reference refresh is admitted.
+The 37-family primary matrix and its upstream SVG manifests select Mermaid `@12.1.0`. A pinned reference and refreshed evidence do not by themselves certify the strict parity gates on the final release commit; retain their run-specific results separately.
 
 The admission consistency checks live in `crates/xtask/src/cmd/admission.rs`.
 
