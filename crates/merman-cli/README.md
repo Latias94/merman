@@ -46,7 +46,7 @@ The source default includes ELK; alpha.6 source defaults omitted it. Project rel
 | `cargo binstall merman-cli@VERSION` | `0.8.0-alpha.5` and later: project release archive, with source fallback | Not installed | Selected registry version; its own metadata governs |
 | GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.5` and later |
 | Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.5` and later |
-| Homebrew formula | Formula source build or Homebrew bottle | `0.8.0` and later: Bash, Zsh, Fish, PowerShell, and man pages installed | External stable channel; selected formula version governs |
+| Homebrew formula | Formula source build or Homebrew bottle | Current `0.8.0` formula installs only the executable; completion and man integration pending upstream | External stable channel; selected formula version governs |
 | Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
 | Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable 0.8.0 manifests submitted; upstream review pending |
