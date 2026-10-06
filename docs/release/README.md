@@ -1,6 +1,6 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0` Rust crates are published with Mermaid `12.1.0` compatibility. Other channels remain independent; consult the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) before changing their installed versions.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0` Rust crates and CLI/LSP archives are published with Mermaid `12.1.0` compatibility. Other channels remain independent; consult the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) before changing their installed versions.
 
 ## Reading the 0.8.0 release notes
 

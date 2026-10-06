@@ -1,6 +1,6 @@
 # Upgrading from 0.8.0-alpha.7 to 0.8.0
 
-This guide covers the changes from alpha.7 to `0.8.0`. The Rust crates are published; use the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) to check independent package channels. Earlier upgrades are listed in the [versioned index](README.md).
+This guide covers the changes from alpha.7 to `0.8.0`. The Rust crates and CLI/LSP archives are published; use the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) to check independent package channels. Earlier upgrades are listed in the [versioned index](README.md).
 
 ## Selected compatibility graph
 

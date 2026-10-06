@@ -1,6 +1,6 @@
 # Upgrading from 0.7.0 to 0.8.0
 
-This guide compares the stable `v0.7.0` tag, published on 2026-06-09, with `v0.8.0`. The Rust crates are published; check the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) for other package channels. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) records measured revisions, evidence, and comparison limits. The approximately four-month interval includes breaking API and default changes; upgrading the version alone is insufficient for custom integrations.
+This guide compares the stable `v0.7.0` tag, published on 2026-06-09, with `v0.8.0`. The Rust crates and CLI/LSP archives are published; check the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) for other package channels. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) records measured revisions, evidence, and comparison limits. The approximately four-month interval includes breaking API and default changes; upgrading the version alone is insufficient for custom integrations.
 
 ## Rust applications
 

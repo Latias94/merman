@@ -6,7 +6,7 @@ installation command.
 
 ## Current Release
 
-Merman `0.8.0` Rust crates are published with Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. This baseline transition adds no diagram family, Cargo feature, FFI version, or editor-facts schema version beyond alpha.7. Direct consumers of low-level ELK Rust crates must update edge and label initializers; see the [alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+Merman `0.8.0` Rust crates and CLI/LSP archives are published with Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. This baseline transition adds no diagram family, Cargo feature, FFI version, or editor-facts schema version beyond alpha.7. Direct consumers of low-level ELK Rust crates must update edge and label initializers; see the [alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
 
 The independent Tree-sitter `0.3.0` distribution is published on crates.io, npm, and GitHub Releases. Other channels publish separately; the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records verified delivery and recovery status.
 

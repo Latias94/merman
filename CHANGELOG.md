@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.8.0] - 2026-10-06
 
-`0.8.0` summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas, and targets Mermaid `12.1.0`. Rust crates are published; other package channels publish independently. Start with the upgrade path and three checks below, then read the sections relevant to your integration.
+`0.8.0` summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas, and targets Mermaid `12.1.0`. Rust crates and CLI/LSP archives are published; other package channels publish independently. Start with the upgrade path and three checks below, then read the sections relevant to your integration.
 
 ### Choose your upgrade path
 
@@ -82,7 +82,7 @@ Published alpha sections below remain historical records. Their intermediate fea
 
 ### Availability and known limitations
 
-- Rust crates are available at `0.8.0`; see the [publication snapshot](docs/release/PUBLISH_ORDER.md#080-publication-snapshot). CLI/LSP archives, Web, Node, Flutter, Python, Android, and Apple publish through separate channels; a workspace tag does not certify all of them. Follow [package surfaces](docs/release/PACKAGE_SURFACES.md) and the matching package changelog. Node remains experimental, and Typst / Tree-sitter / VS Code versions are independent.
+- Rust crates and CLI/LSP archives are available at `0.8.0`; see the [publication snapshot](docs/release/PUBLISH_ORDER.md#080-publication-snapshot). Web, Node, Flutter, Python, Android, and Apple publish through separate channels; a workspace tag does not certify all of them. Follow [package surfaces](docs/release/PACKAGE_SURFACES.md) and the matching package changelog. Node remains experimental, and Typst / Tree-sitter / VS Code versions are independent.
 - Deterministic text measurement does not load the final display font; browser metrics, HTML labels, and hand-drawn rendering retain documented parity boundaries. Hosts needing exact display-font measurement should provide their own callback. The broader reusable-theme refactor remains deferred beyond 0.8.0.
 - Performance observations cover selected native operations, not every family, scale, or transport; unresolved signals remain recorded in the [performance backlog](docs/performance/PERF_PLAN.md).
 
