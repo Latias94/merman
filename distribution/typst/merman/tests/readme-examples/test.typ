@@ -1,4 +1,4 @@
-#import "@preview/merman:0.3.0": mermaid, show-mermaid-blocks
+#import "@preview/merman:0.4.0": mermaid, show-mermaid-blocks
 
 #set text(font: "Arial", size: 13pt)
 
@@ -12,6 +12,8 @@
   width: 100%,
   alt: "Migrated context render",
 )
+
+#mermaid("flowchart LR\n  Source --> Layout\n  Layout --> SVG", site-config: (layout: "dagre", theme: "default", look: "classic"))
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
