@@ -238,127 +238,112 @@ impl SvgFinalizationReport {
             font_seal: terminal.font_seal.clone(),
         }
     }
-
-    fn refresh_terminal(&mut self, terminal: &final_validation::TerminalSvgValidation) {
-        self.reference_plan = terminal.reference_plan.clone();
-        self.resource_closure = terminal.resource_closure.clone();
-        self.text_element_count = terminal.text_elements;
-        self.font_seal = terminal.font_seal.clone();
-    }
 }
 
 impl ResvgCompatibleSvg {
-    fn finalized(
-        svg: String,
-        reference_plan: SvgReferencePlan,
-        resource_closure: SvgResourceClosure,
-        finalization_report: SvgFinalizationReport,
+    fn seal(
+        mut svg: String,
+        terminal: Option<final_validation::TerminalSvgValidation>,
+        prepared_text_evidence: PreparedTextEvidenceLease,
+        prepared_text_evidence_valid: bool,
+        prepared_math_evidence: PreparedMathEvidenceLease,
+        prepared_math_evidence_valid: bool,
+        pipeline: &SvgPipeline,
         session: &RenderSession,
-    ) -> Self {
-        let font_catalog = session.font_catalog().clone();
-        let font_source_policy = session.font_source_policy().clone();
-        let resource_fingerprint = resource_closure::fingerprint_svg_resources(
-            &svg,
-            font_catalog.fingerprint().as_bytes(),
-            &font_source_policy,
-        );
-        Self {
-            svg,
-            prepared_text_svg: None,
-            prepared_text_evidence: PreparedTextEvidenceLease::default(),
-            prepared_text_terminal_receipt: None,
-            prepared_text_evidence_valid: true,
-            prepared_math_evidence: PreparedMathEvidenceLease::default(),
-            prepared_math_terminal_receipt: None,
-            prepared_math_evidence_valid: true,
-            reference_plan,
-            resource_closure,
-            finalization_report,
-            font_catalog,
-            font_source_policy,
-            resource_fingerprint,
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.svg
-    }
-
-    pub(crate) fn attach_prepared_text_evidence(
-        mut self,
-        evidence: PreparedTextEvidenceLease,
-        evidence_valid: bool,
-        execution: SvgPostprocessExecution<'_>,
     ) -> Result<Self> {
-        self.prepared_text_evidence_valid = evidence_valid;
-        self.prepared_text_evidence = if evidence_valid {
-            evidence
+        let execution = SvgPostprocessExecution::new(session);
+        let prepared_text_evidence = if prepared_text_evidence_valid {
+            prepared_text_evidence
         } else {
             PreparedTextEvidenceLease::default()
         };
-        if self.prepared_text_evidence.is_empty() {
-            self.prepared_text_svg = None;
-            self.prepared_text_terminal_receipt = None;
+        // Always scan the reserved namespace, including an empty ledger. Otherwise a custom
+        // postprocessor could introduce an unowned prepared-text token after the regular stages.
+        let (public_svg, tokenized_svg) =
+            partition_prepared_text_label_ids(svg, prepared_text_evidence.entries(), execution)?;
+        svg = public_svg;
+        let prepared_text_svg = if prepared_text_evidence.is_empty() {
+            None
         } else {
-            let (public_svg, tokenized_svg) = partition_prepared_text_label_ids(
-                std::mem::take(&mut self.svg),
-                self.prepared_text_evidence.entries(),
-                execution,
-            )?;
-            self.svg = public_svg;
-            self.prepared_text_svg = tokenized_svg.map(Arc::from);
-            self.prepared_text_terminal_receipt = self
-                .prepared_text_svg
-                .as_deref()
-                .and_then(|tokenized_svg| {
-                    PreparedTextTerminalReceipt::from_ledger(
-                        tokenized_svg,
-                        self.prepared_text_evidence.entries(),
-                    )
-                })
+            Some(tokenized_svg.map(Arc::from).ok_or_else(|| {
+                Error::svg_postprocess(
+                    "prepared-text-terminal-receipt",
+                    "prepared-text evidence did not produce a native projection",
+                )
+            })?)
+        };
+        let prepared_text_terminal_receipt = prepared_text_svg
+            .as_deref()
+            .map(|tokenized_svg| {
+                PreparedTextTerminalReceipt::from_ledger(
+                    tokenized_svg,
+                    prepared_text_evidence.entries(),
+                )
                 .ok_or_else(|| {
                     Error::svg_postprocess(
                         "prepared-text-terminal-receipt",
                         "prepared-text terminal receipt could not be frozen from the sealed artifact",
                     )
                 })
-                .map(Some)?;
-        }
-        self.resource_fingerprint = resource_closure::fingerprint_svg_resources(
-            self.native_export_svg(),
-            self.font_catalog.fingerprint().as_bytes(),
-            &self.font_source_policy,
+            })
+            .transpose()?;
+        let native_svg = prepared_text_svg.as_deref().unwrap_or(svg.as_str());
+        let prepared_math_evidence = if prepared_math_evidence_valid {
+            prepared_math_evidence
+        } else {
+            PreparedMathEvidenceLease::default()
+        };
+        let prepared_math_terminal_receipt = if prepared_math_evidence.is_empty() {
+            None
+        } else {
+            PreparedMathTerminalReceipt::from_terminal_svg(native_svg, &prepared_math_evidence)
+                .map_err(|message| {
+                    Error::svg_postprocess("prepared-math-terminal-receipt", message)
+                })?
+        };
+        let terminal = if prepared_text_svg.is_some() {
+            final_validation::validate_resvg_compatible_svg_with_execution(native_svg, execution)?
+        } else {
+            match terminal {
+                Some(terminal) => terminal,
+                None => final_validation::validate_resvg_compatible_svg_with_execution(
+                    native_svg, execution,
+                )?,
+            }
+        };
+        let font_catalog = session.font_catalog().clone();
+        let font_source_policy = session.font_source_policy().clone();
+        let resource_fingerprint = resource_closure::fingerprint_svg_resources(
+            native_svg,
+            font_catalog.fingerprint().as_bytes(),
+            &font_source_policy,
         );
-        Ok(self)
+        Ok(Self {
+            svg,
+            prepared_text_svg,
+            prepared_text_evidence,
+            prepared_text_terminal_receipt,
+            prepared_text_evidence_valid,
+            prepared_math_evidence,
+            prepared_math_terminal_receipt,
+            prepared_math_evidence_valid,
+            reference_plan: terminal.reference_plan.clone(),
+            resource_closure: terminal.resource_closure.clone(),
+            finalization_report: SvgFinalizationReport::from_pipeline(pipeline, &terminal),
+            font_catalog,
+            font_source_policy,
+            resource_fingerprint,
+        })
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.svg
     }
 
     pub(crate) fn native_export_svg(&self) -> &str {
         self.prepared_text_svg
             .as_deref()
             .unwrap_or(self.svg.as_str())
-    }
-
-    pub(crate) fn attach_prepared_math_evidence(
-        mut self,
-        evidence: PreparedMathEvidenceLease,
-        evidence_valid: bool,
-    ) -> Result<Self> {
-        self.prepared_math_evidence_valid = evidence_valid;
-        self.prepared_math_evidence = if evidence_valid {
-            evidence
-        } else {
-            PreparedMathEvidenceLease::default()
-        };
-        self.prepared_math_terminal_receipt = if self.prepared_math_evidence.is_empty() {
-            None
-        } else {
-            PreparedMathTerminalReceipt::from_terminal_svg(
-                self.native_export_svg(),
-                &self.prepared_math_evidence,
-            )
-            .map_err(|message| Error::svg_postprocess("prepared-math-terminal-receipt", message))?
-        };
-        Ok(self)
     }
 
     pub(crate) fn prepared_text_label_ledger(
@@ -772,7 +757,14 @@ impl SvgPipeline {
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
     ) -> Result<Cow<'a, str>> {
         Ok(self
-            .process_cow_with_reference_plan(svg, metadata, session, prepared_math_evidence)?
+            .process_cow_with_reference_plan(
+                svg,
+                metadata,
+                session,
+                prepared_math_evidence,
+                true,
+                true,
+            )?
             .0)
     }
 
@@ -782,6 +774,8 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+        validate_resvg_terminal: bool,
+        validate_prepared_math_receipt: bool,
     ) -> Result<(
         Cow<'a, str>,
         Option<final_validation::TerminalSvgValidation>,
@@ -913,8 +907,11 @@ impl SvgPipeline {
             }
             None => {}
         }
-        let terminal = if self.preset == SvgPipelinePreset::ResvgSafe {
-            if let Some(evidence) = prepared_math_evidence.filter(|evidence| !evidence.is_empty()) {
+        let terminal = if self.preset == SvgPipelinePreset::ResvgSafe && validate_resvg_terminal {
+            if validate_prepared_math_receipt
+                && let Some(evidence) =
+                    prepared_math_evidence.filter(|evidence| !evidence.is_empty())
+            {
                 PreparedMathTerminalReceipt::from_terminal_svg(finalized.as_ref(), evidence)
                     .map_err(|message| {
                         Error::svg_postprocess("prepared-math-terminal-receipt", message)
@@ -1009,17 +1006,24 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) =
-            self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session, None)?;
-        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
-        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
-        Ok(ResvgCompatibleSvg::finalized(
-            svg.into_owned(),
-            terminal.reference_plan,
-            terminal.resource_closure,
-            finalization_report,
+        let (svg, terminal) = self.process_cow_with_reference_plan(
+            Cow::Borrowed(svg),
+            metadata,
             session,
-        ))
+            None,
+            true,
+            false,
+        )?;
+        ResvgCompatibleSvg::seal(
+            svg.into_owned(),
+            terminal,
+            PreparedTextEvidenceLease::default(),
+            true,
+            PreparedMathEvidenceLease::default(),
+            true,
+            self,
+            session,
+        )
     }
 
     pub fn process_owned_resvg_compatible_with_metadata(
@@ -1029,42 +1033,58 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) =
-            self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session, None)?;
-        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
-        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
-        Ok(ResvgCompatibleSvg::finalized(
-            svg.into_owned(),
-            terminal.reference_plan,
-            terminal.resource_closure,
-            finalization_report,
+        let (svg, terminal) = self.process_cow_with_reference_plan(
+            Cow::Owned(svg),
+            metadata,
             session,
-        ))
+            None,
+            true,
+            false,
+        )?;
+        ResvgCompatibleSvg::seal(
+            svg.into_owned(),
+            terminal,
+            PreparedTextEvidenceLease::default(),
+            true,
+            PreparedMathEvidenceLease::default(),
+            true,
+            self,
+            session,
+        )
     }
 
-    pub(crate) fn process_owned_resvg_compatible_with_metadata_and_math_evidence(
+    pub(crate) fn process_owned_resvg_compatible_with_metadata_and_evidence(
         &self,
         svg: String,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
-        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+        prepared_text_evidence: PreparedTextEvidenceLease,
+        prepared_text_evidence_valid: bool,
+        prepared_math_evidence: PreparedMathEvidenceLease,
+        prepared_math_evidence_valid: bool,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
         let (svg, terminal) = self.process_cow_with_reference_plan(
             Cow::Owned(svg),
             metadata,
             session,
-            prepared_math_evidence,
+            prepared_math_evidence_valid.then_some(&prepared_math_evidence),
+            // Preserve the existing terminal validation boundary before evidence partitioning.
+            // A non-empty prepared-text ledger then validates its native projection again in
+            // `seal`, which is necessary because partitioning changes that projection.
+            true,
+            false,
         )?;
-        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
-        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
-        Ok(ResvgCompatibleSvg::finalized(
+        ResvgCompatibleSvg::seal(
             svg.into_owned(),
-            terminal.reference_plan,
-            terminal.resource_closure,
-            finalization_report,
+            terminal,
+            prepared_text_evidence,
+            prepared_text_evidence_valid,
+            prepared_math_evidence,
+            prepared_math_evidence_valid,
+            self,
             session,
-        ))
+        )
     }
 
     fn ensure_resvg_safe_contract(&self) -> Result<()> {
@@ -1748,6 +1768,27 @@ mod tests {
 
         assert!(!output.as_str().contains("script"));
         assert!(!output.as_str().contains("animation"));
+    }
+
+    #[test]
+    fn resvg_seal_rejects_unowned_prepared_text_tokens() {
+        let session = render_session();
+        let error = SvgPipeline::resvg_safe()
+            .process_resvg_compatible(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="merman-prepared-flowchart-0">label</text></svg>"#,
+                &session,
+            )
+            .expect_err("an empty ledger must reject reserved prepared-text tokens");
+
+        assert!(
+            matches!(
+                error,
+                Error::SvgPostprocess { ref pass, ref message }
+                    if pass == "prepared-text-token"
+                        && message.contains("has no matching ledger entry")
+            ),
+            "{error}"
+        );
     }
 
     #[test]

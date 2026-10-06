@@ -14,8 +14,8 @@ use super::{
 
 /// Terminal compatibility state for an exact standalone SVG artifact.
 ///
-/// This state describes the bytes returned to the caller. It never describes a separately
-/// normalized SVG draft.
+/// This state describes the sealed native projection used for compatibility admission. It never
+/// describes a separately normalized SVG draft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StandaloneSvgTerminalStatus {
     /// Native compatibility was not requested for this artifact.
@@ -41,7 +41,7 @@ impl StandaloneSvgTerminalStatus {
 /// The public SVG, optional prepared-text native projection, resource fingerprint, and terminal
 /// evidence are sealed together. Ordinary output retains resource accounting without claiming
 /// native compatibility. Strict non-resvg pipelines are observed in place, without normalizing
-/// the selected artifact into different bytes.
+/// either projection into different bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandaloneSvgArtifact {
     inner: StandaloneSvgArtifactKind,
@@ -114,13 +114,13 @@ impl StandaloneSvgArtifact {
             && pipeline.preset() != SvgPipelinePreset::ResvgSafe
         {
             final_validation::check_svg_resource_budget_with_execution(
-                &svg,
+                native_svg,
                 SvgPostprocessExecution::new(session),
             )?;
             (StandaloneSvgTerminalStatus::Unverified, None)
         } else {
             let validation = final_validation::validate_resvg_compatible_svg_with_checkpoint(
-                &svg,
+                native_svg,
                 session.resource_policy(),
                 &mut || session.checkpoint(OperationPhase::Postprocess),
             );
@@ -463,6 +463,28 @@ mod tests {
             &session,
         )
         .expect_err("a resvg-safe artifact must fail closed on terminal validation errors");
+
+        assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
+    }
+
+    #[test]
+    fn native_prepared_text_projection_controls_resvg_admission() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let public_svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>"#;
+        let native_svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>"#;
+
+        let error = StandaloneSvgArtifact::finalize_exact(
+            public_svg.to_owned(),
+            Some(native_svg.to_owned()),
+            PreparedTextEvidenceLease::default(),
+            false,
+            &SvgPipeline::resvg_safe(),
+            &session,
+        )
+        .expect_err("resvg admission must validate the native prepared-text projection");
 
         assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
     }

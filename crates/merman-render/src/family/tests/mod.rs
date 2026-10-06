@@ -4954,7 +4954,7 @@ fn require_portable_accepts_swimlane_node_ordinal_palette_after_svg_emission() {
 }
 
 #[test]
-fn require_portable_rejects_flowchart_ordinal_rule_when_a_node_matches() {
+fn require_portable_accepts_flowchart_ordinal_rule_when_a_node_matches() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -4989,36 +4989,29 @@ fn require_portable_rejects_flowchart_ordinal_rule_when_a_node_matches() {
     )
     .expect("prepare ordinal Flowchart rule")
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("best-effort ordinal rule should retain residual evidence");
+    .expect("best-effort ordinal rule should reach the matching node");
+    assert!(flowchart_node_shape_style(rendered.svg(), "B").contains("fill:#ef4444 !important"));
     assert_eq!(
-        rendered.style_report().theme_residuals(),
-        &[FamilyThemeResidual {
-            key: FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Node,
-            },
-            reason: FamilyThemeResidualReason::UnsupportedPaint,
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
         }]
     );
+    assert!(rendered.style_report().theme_residuals().is_empty());
 
     let session = crate::environment::RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict portable render session");
-    let artifact = prepare(parse(), &LayoutOptions::default(), session)
-        .expect("ordinal verification must wait for SVG emission");
-
-    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    {
-        Ok(_) => panic!("matching unsupported ordinal rule must fail closed"),
-        Err(error) => error,
-    };
+    let rendered = prepare(parse(), &LayoutOptions::default(), session)
+        .expect("prepare ordinal rule for strict portable output")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("matching ordinal rule must satisfy strict portability");
+    assert!(flowchart_node_shape_style(rendered.svg(), "B").contains("fill:#ef4444 !important"));
     assert_eq!(
-        error.unverified_family_theme(),
-        Some((
-            DiagramFamilyId::FLOWCHART,
-            rendered.style_report().theme_residuals().len(),
-        ))
+        rendered.style_report().verification(),
+        FamilyStyleVerification::Verified
     );
 }
 
