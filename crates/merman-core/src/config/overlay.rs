@@ -6,7 +6,9 @@ use serde_json::Value;
 
 use crate::{OperationControl, OperationControlResult};
 
-use super::{MermaidConfig, PostDetectionDefaultPaths, ThemeCompatibilityState};
+use super::{
+    ConfigMutationCheckpoint, MermaidConfig, PostDetectionDefaultPaths, ThemeCompatibilityState,
+};
 
 const MAX_OVERLAY_FAMILIES: usize = 64;
 const MAX_FAMILY_NAME_BYTES: usize = 64;
@@ -372,7 +374,7 @@ impl PostDetectionConfigOverlay {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        mutation_checkpoint: &ConfigMutationCheckpoint,
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
         control: &OperationControl,
@@ -381,7 +383,7 @@ impl PostDetectionConfigOverlay {
             family,
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            mutation_checkpoint,
             effective_config,
             application,
             ConfigOverlayLane::Host,
@@ -395,7 +397,7 @@ impl PostDetectionConfigOverlay {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        mutation_checkpoint: &ConfigMutationCheckpoint,
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
         lane: ConfigOverlayLane,
@@ -409,7 +411,7 @@ impl PostDetectionConfigOverlay {
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            mutation_checkpoint,
         };
         for contribution in &family_overlay.contributions {
             control.checkpoint()?;
@@ -445,7 +447,7 @@ impl PostDetectionConfigOverlay {
 struct PostDetectionConfigDefaults<'a> {
     explicit_site_config: &'a MermaidConfig,
     explicit_source_config: &'a MermaidConfig,
-    config_before_detection: &'a MermaidConfig,
+    mutation_checkpoint: &'a ConfigMutationCheckpoint,
 }
 
 impl PostDetectionConfigDefaults<'_> {
@@ -458,9 +460,7 @@ impl PostDetectionConfigDefaults<'_> {
         application.claims_path(dotted_path)
             || owns_path(self.explicit_site_config, effective_config, dotted_path)
             || owns_path(self.explicit_source_config, effective_config, dotted_path)
-            || effective_config.path_was_mutated_after(self.config_before_detection, dotted_path)
-            || value_at_path(self.config_before_detection, dotted_path)
-                != value_at_path(effective_config, dotted_path)
+            || effective_config.path_was_mutated_since(self.mutation_checkpoint, dotted_path)
     }
 }
 
@@ -471,7 +471,7 @@ impl MermaidConfig {
         family: &str,
         explicit_site_config: &MermaidConfig,
         explicit_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        mutation_checkpoint: &ConfigMutationCheckpoint,
         application: &ConfigOverlayApplication,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
@@ -485,7 +485,7 @@ impl MermaidConfig {
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config,
             explicit_source_config,
-            config_before_detection,
+            mutation_checkpoint,
         };
         let mut decisions = Vec::with_capacity(paths.len());
         for path in paths.iter() {
@@ -866,13 +866,14 @@ mod tests {
         before_detect: &MermaidConfig,
         effective: &mut MermaidConfig,
     ) -> ConfigOverlayProvenance {
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut application = ConfigOverlayApplication::default();
         overlay
             .apply_family_controlled(
                 "flowchart",
                 explicit_site,
                 explicit_source,
-                before_detect,
+                &mutation_checkpoint,
                 effective,
                 &mut application,
                 &OperationControl::new(),
@@ -1015,10 +1016,11 @@ mod tests {
         let before_detect = MermaidConfig::from_value(json!({
             "custom": {"child": "same"}, "sibling": "same"
         }));
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config: &empty,
             explicit_source_config: &empty,
-            config_before_detection: &before_detect,
+            mutation_checkpoint: &mutation_checkpoint,
         };
         let mut application = ConfigOverlayApplication::default();
         assert!(!defaults.blocks_path(&before_detect, &application, "custom.child"));
@@ -1046,6 +1048,7 @@ mod tests {
         let before_detect = MermaidConfig::from_value(json!({
             "themeVariables": {"lineColor": "#333333"}
         }));
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
         for (overlay, lane) in [
@@ -1057,7 +1060,7 @@ mod tests {
                     "flowchart",
                     &empty,
                     &empty,
-                    &before_detect,
+                    &mutation_checkpoint,
                     &mut effective,
                     &mut application,
                     lane,
@@ -1243,6 +1246,7 @@ mod tests {
         let before_detect = MermaidConfig::from_value(json!({
             "themeVariables": {"lineColor": "#333333"}
         }));
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
         overlay
@@ -1250,7 +1254,7 @@ mod tests {
                 "flowchart",
                 &explicit,
                 &explicit,
-                &before_detect,
+                &mutation_checkpoint,
                 &mut effective,
                 &mut application,
                 &OperationControl::new(),
@@ -1281,6 +1285,7 @@ mod tests {
             .unwrap();
         let explicit = MermaidConfig::empty_object();
         let before_detect = MermaidConfig::empty_object();
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
         overlay
@@ -1288,7 +1293,7 @@ mod tests {
                 "flowchart",
                 &explicit,
                 &explicit,
-                &before_detect,
+                &mutation_checkpoint,
                 &mut effective,
                 &mut application,
                 ConfigOverlayLane::Fallback,
@@ -1334,6 +1339,7 @@ mod tests {
             .unwrap();
         let explicit = MermaidConfig::empty_object();
         let before_detect = MermaidConfig::empty_object();
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
         overlay
@@ -1341,7 +1347,7 @@ mod tests {
                 "flowchart",
                 &explicit,
                 &explicit,
-                &before_detect,
+                &mutation_checkpoint,
                 &mut effective,
                 &mut application,
                 &OperationControl::new(),
@@ -1487,6 +1493,7 @@ mod tests {
                 .unwrap();
         let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
         let empty = MermaidConfig::empty_object();
+        let mutation_checkpoint = empty.mutation_checkpoint();
         let application = ConfigOverlayApplication::default();
         let cancelled = OperationControl::new();
         cancelled.cancel();
@@ -1496,7 +1503,7 @@ mod tests {
                     "sequence",
                     &empty,
                     &empty,
-                    &empty,
+                    &mutation_checkpoint,
                     &application,
                     &cancelled,
                 )
@@ -1510,7 +1517,7 @@ mod tests {
                     "flowchart",
                     &empty,
                     &empty,
-                    &empty,
+                    &mutation_checkpoint,
                     &application,
                     &control,
                 )
@@ -1525,7 +1532,7 @@ mod tests {
                 "flowchart",
                 &empty,
                 &empty,
-                &empty,
+                &mutation_checkpoint,
                 &application,
                 &OperationControl::new(),
             )
@@ -1545,6 +1552,7 @@ mod tests {
             .unwrap();
         let explicit = MermaidConfig::empty_object();
         let before_detect = MermaidConfig::empty_object();
+        let mutation_checkpoint = before_detect.mutation_checkpoint();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
         let control = OperationControl::new();
@@ -1556,7 +1564,7 @@ mod tests {
                     "flowchart",
                     &explicit,
                     &explicit,
-                    &before_detect,
+                    &mutation_checkpoint,
                     &mut effective,
                     &mut application,
                     &control,

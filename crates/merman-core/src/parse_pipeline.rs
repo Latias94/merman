@@ -1107,7 +1107,7 @@ impl<'a> ParsePipeline<'a> {
                 Ok(config) => config,
                 Err(error) => return Ok(Err(error)),
             };
-        let config_before_detection = effective_config.clone();
+        let mutation_checkpoint = effective_config.mutation_checkpoint();
 
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
@@ -1126,11 +1126,11 @@ impl<'a> ParsePipeline<'a> {
             &pre.config,
             &mut effective_config,
         );
-        effective_config.mark_mutations_after_as_explicit(&config_before_detection);
+        effective_config.mark_mutations_since_as_explicit(&mutation_checkpoint);
         let overlay_application = match self.apply_post_detection_config_overlay(
             &diagram_type,
             &effective_source_config,
-            &config_before_detection,
+            &mutation_checkpoint,
             &mut effective_config,
             control,
         )? {
@@ -1291,7 +1291,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         diagram_type: &str,
         effective_source_config: &MermaidConfig,
-        config_before_detection: &MermaidConfig,
+        mutation_checkpoint: &crate::config::ConfigMutationCheckpoint,
         effective_config: &mut MermaidConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<crate::config::ConfigOverlayApplication>> {
@@ -1305,7 +1305,7 @@ impl<'a> ParsePipeline<'a> {
                 family,
                 &self.engine.site_config_overrides,
                 effective_source_config,
-                config_before_detection,
+                mutation_checkpoint,
                 effective_config,
                 &mut application,
                 crate::config::ConfigOverlayLane::Host,
@@ -1316,7 +1316,7 @@ impl<'a> ParsePipeline<'a> {
             family,
             &self.engine.fallback_overlay_explicit_config,
             effective_source_config,
-            config_before_detection,
+            mutation_checkpoint,
             &application,
             control,
         )?;
@@ -1346,7 +1346,7 @@ impl<'a> ParsePipeline<'a> {
                 family,
                 &self.engine.fallback_overlay_explicit_config,
                 effective_source_config,
-                config_before_detection,
+                mutation_checkpoint,
                 effective_config,
                 &mut application,
                 crate::config::ConfigOverlayLane::Fallback,
@@ -1463,6 +1463,7 @@ mod editor_parse_source_map_tests {
         EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
         Engine, Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
         OperationPhase, ParseMetadata, ParseOptions, Result, SourceSpan,
+        config::measure_config_copy_work,
     };
 
     fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
@@ -1474,6 +1475,11 @@ mod editor_parse_source_map_tests {
     fn frontmatter_probe_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
         FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
         panic!("frontmatter probe detector must not run")
+    }
+
+    fn copy_work_probe_detector(source: &str, config: &mut MermaidConfig) -> bool {
+        config.set_value("flowchart.nodeSpacing", serde_json::json!(71));
+        source.starts_with("copy-work-probe")
     }
 
     fn cancelling_render_parser(
@@ -1588,6 +1594,59 @@ mod editor_parse_source_map_tests {
         assert_eq!(source_config.directives().len(), 1);
         let keyword = source_config.directives()[0].keyword_span();
         assert_eq!(&source[keyword.start..keyword.end], "initialize");
+    }
+
+    #[test]
+    fn source_selected_theme_reports_pre_detection_config_copy_on_write_work() {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "dark",
+            "themeVariables": { "primaryColor": "#123456" },
+        })));
+        let source = concat!(
+            "---\n",
+            "config:\n",
+            "  theme: base\n",
+            "  themeVariables:\n",
+            "    primaryColor: '#654321'\n",
+            "---\n",
+            "flowchart TD\n",
+            "A-->B\n",
+        );
+
+        let (metadata, diagnostics) = measure_config_copy_work(|| {
+            engine
+                .parse_metadata_sync(source)
+                .expect("source-selected theme must parse")
+        });
+
+        assert_eq!(metadata.effective_config.get_str("theme"), Some("base"));
+        assert_eq!(diagnostics.copy_on_write_clones, 2, "{diagnostics:?}");
+        assert!(
+            diagnostics.estimated_copy_on_write_bytes > 0,
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn detector_mutation_does_not_copy_retained_pre_detection_config() {
+        let mut engine = Engine::new();
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("copy-work-probe", copy_work_probe_detector);
+
+        let (metadata, diagnostics) = measure_config_copy_work(|| {
+            engine
+                .parse_metadata_sync("copy-work-probe\n")
+                .expect("detector probe must parse")
+        });
+
+        assert_eq!(metadata.diagram_type, "copy-work-probe");
+        assert_eq!(
+            metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
+            serde_json::json!(71)
+        );
+        assert_eq!(diagnostics.copy_on_write_clones, 1, "{diagnostics:?}");
     }
 
     #[test]

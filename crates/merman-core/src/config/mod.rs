@@ -12,6 +12,8 @@ pub(crate) use overlay::{
 
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::mem::size_of;
@@ -52,9 +54,96 @@ pub struct MermaidConfig {
     mutation_revision: u64,
 }
 
+/// Read-only marker for mutations made during one configuration operation stage.
+///
+/// The marker shares only the bounded mutation journal. It intentionally does not retain the
+/// JSON value, so recording a post-detection boundary cannot force a whole configuration copy
+/// when a detector or family hook subsequently writes to it.
+#[derive(Clone)]
+pub(crate) struct ConfigMutationCheckpoint {
+    mutation_paths: Arc<BTreeMap<Arc<str>, u64>>,
+}
+
 const MAX_THEME_COMPATIBILITY_VARIABLES: usize = 512;
 const MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES: usize = 128;
 const MAX_THEME_COMPATIBILITY_STRING_BYTES: usize = 1024;
+
+/// Test-only observation of JSON copy-on-write work performed by one operation.
+///
+/// This estimates retained JSON storage using the same structural accounting as the existing
+/// configuration tests. It deliberately does not report allocator traffic or `Arc` clones.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ConfigCopyDiagnostics {
+    pub(crate) copy_on_write_clones: usize,
+    pub(crate) estimated_copy_on_write_bytes: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONFIG_COPY_DIAGNOSTICS: RefCell<Vec<ConfigCopyDiagnostics>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Runs `operation` while collecting actual JSON copy-on-write events on this thread.
+///
+/// Nested scopes each receive the events that occur within their lifetime so a focused stage can
+/// be characterized without hiding its contribution from an operation-level measurement.
+#[cfg(test)]
+pub(crate) fn measure_config_copy_work<T>(
+    operation: impl FnOnce() -> T,
+) -> (T, ConfigCopyDiagnostics) {
+    struct Scope {
+        active: bool,
+    }
+
+    impl Scope {
+        fn finish(mut self) -> ConfigCopyDiagnostics {
+            self.active = false;
+            CONFIG_COPY_DIAGNOSTICS.with(|diagnostics| {
+                diagnostics
+                    .borrow_mut()
+                    .pop()
+                    .expect("config copy diagnostics scope must be active")
+            })
+        }
+    }
+
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            if !self.active {
+                return;
+            }
+            CONFIG_COPY_DIAGNOSTICS.with(|diagnostics| {
+                diagnostics
+                    .borrow_mut()
+                    .pop()
+                    .expect("config copy diagnostics scope must be active");
+            });
+        }
+    }
+
+    CONFIG_COPY_DIAGNOSTICS.with(|diagnostics| {
+        diagnostics
+            .borrow_mut()
+            .push(ConfigCopyDiagnostics::default());
+    });
+    let scope = Scope { active: true };
+    let result = operation();
+    (result, scope.finish())
+}
+
+#[cfg(test)]
+fn record_config_copy_on_write(value: &Value) {
+    let estimated_copy_on_write_bytes = estimated_value_owned_heap_bytes(value);
+    CONFIG_COPY_DIAGNOSTICS.with(|diagnostics| {
+        for diagnostics in diagnostics.borrow_mut().iter_mut() {
+            diagnostics.copy_on_write_clones = diagnostics.copy_on_write_clones.saturating_add(1);
+            diagnostics.estimated_copy_on_write_bytes = diagnostics
+                .estimated_copy_on_write_bytes
+                .saturating_add(estimated_copy_on_write_bytes);
+        }
+    });
+}
 const MAX_THEME_COMPATIBILITY_NUMBER_ABS: f64 = 1_000_000_000.0;
 
 /// Validation failure while constructing a [`ThemeParseBinding`].
@@ -627,6 +716,26 @@ impl MermaidConfig {
         });
     }
 
+    pub(crate) fn mutation_checkpoint(&self) -> ConfigMutationCheckpoint {
+        ConfigMutationCheckpoint {
+            mutation_paths: Arc::clone(&self.mutation_paths),
+        }
+    }
+
+    pub(crate) fn path_was_mutated_since(
+        &self,
+        checkpoint: &ConfigMutationCheckpoint,
+        dotted_path: &str,
+    ) -> bool {
+        self.mutation_paths.iter().any(|(candidate, revision)| {
+            checkpoint
+                .mutation_paths
+                .get(candidate)
+                .is_none_or(|before_revision| revision > before_revision)
+                && dotted_paths_overlap(candidate.as_ref(), dotted_path)
+        })
+    }
+
     pub(crate) fn path_was_mutated_after(&self, before: &Self, dotted_path: &str) -> bool {
         self.mutation_paths.iter().any(|(candidate, revision)| {
             before
@@ -723,12 +832,15 @@ impl MermaidConfig {
         }
     }
 
-    pub(crate) fn mark_mutations_after_as_explicit(&mut self, before: &Self) {
+    pub(crate) fn mark_mutations_since_as_explicit(
+        &mut self,
+        checkpoint: &ConfigMutationCheckpoint,
+    ) {
         let paths = self
             .mutation_paths
             .iter()
             .filter(|(candidate, revision)| {
-                before
+                checkpoint
                     .mutation_paths
                     .get(*candidate)
                     .is_none_or(|before_revision| *revision > before_revision)
@@ -864,6 +976,8 @@ impl MermaidConfig {
 
     fn value_mut(&mut self) -> &mut Value {
         if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
+            #[cfg(test)]
+            record_config_copy_on_write(self.value.as_ref());
             self.value = Arc::new(clone_value_nonrecursive(self.value.as_ref()));
         }
         Arc::make_mut(&mut self.value)
@@ -1379,6 +1493,55 @@ pub(crate) fn drop_value_nonrecursive(value: Value) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn config_copy_diagnostics_count_only_shared_value_mutations() {
+        let config = MermaidConfig::from_value(json!({
+            "themeVariables": {
+                "primaryColor": "#abcdef"
+            },
+            "flowchart": {
+                "nodeSpacing": 50
+            }
+        }));
+        let expected_copied_bytes = config.estimated_owned_heap_bytes();
+
+        let ((), diagnostics) = measure_config_copy_work(|| {
+            let mut shared = config.clone();
+            shared.set_value("flowchart.nodeSpacing", json!(72));
+            shared.set_value("flowchart.rankSpacing", json!(48));
+        });
+
+        assert_eq!(
+            diagnostics,
+            ConfigCopyDiagnostics {
+                copy_on_write_clones: 1,
+                estimated_copy_on_write_bytes: expected_copied_bytes,
+            }
+        );
+
+        let ((), diagnostics) = measure_config_copy_work(|| {
+            let mut owned = MermaidConfig::default();
+            owned.set_value("theme", json!("dark"));
+        });
+
+        assert_eq!(diagnostics, ConfigCopyDiagnostics::default());
+    }
+
+    #[test]
+    fn nested_config_copy_diagnostics_include_inner_copy_work() {
+        let config = MermaidConfig::from_value(json!({ "theme": "default" }));
+
+        let (((), inner), outer) = measure_config_copy_work(|| {
+            measure_config_copy_work(|| {
+                let mut shared = config.clone();
+                shared.set_value("theme", json!("dark"));
+            })
+        });
+
+        assert_eq!(inner.copy_on_write_clones, 1);
+        assert_eq!(outer, inner);
+    }
 
     #[test]
     fn dotted_path_overlap_is_symmetric_for_parent_and_child_paths() {
