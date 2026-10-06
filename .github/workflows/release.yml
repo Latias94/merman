@@ -586,6 +586,23 @@ jobs:
         with:
           name: verified-release-assets
           path: verified-release-assets
+      - name: Install pinned WinGet validator
+        if: ${{ needs.plan.outputs.prerelease != 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $existing = Get-Command winget.exe -ErrorAction SilentlyContinue
+          if ($null -ne $existing) { & $existing.Source --version }
+          # Runner images can ship a validator older than manifest schema 1.12.0.
+          Install-Module Microsoft.WinGet.Client -RequiredVersion 1.29.380 `
+            -Repository PSGallery -Scope CurrentUser -Force
+          Import-Module Microsoft.WinGet.Client -RequiredVersion 1.29.380
+          Repair-WinGetPackageManager -Version 1.29.380 -Force
+          $actual = & winget.exe --version
+          Write-Output "WinGet validator: $actual"
+          if ($LASTEXITCODE -ne 0 -or $actual.Trim() -ne "v1.29.380") {
+            throw "The pinned WinGet validator is unavailable."
+          }
       - name: Generate and validate stable registry candidates
         if: ${{ needs.plan.outputs.prerelease != 'true' }}
         shell: pwsh
