@@ -210,6 +210,10 @@ def generate_candidates(
     replacements = {
         "${VERSION}": version,
         "${REPOSITORY_URL}": workspace.repository_url,
+        "${RELEASES_API_URL}": (
+            "https://api.github.com/repos/"
+            f"{workspace.repository_url.removeprefix('https://github.com/')}/releases"
+        ),
         "${ISSUES_URL}": f"{workspace.repository_url}/issues",
         "${RELEASE_URL}": release_url,
         "${ARCHIVE_URL}": archive_url,
@@ -223,7 +227,7 @@ def generate_candidates(
         template_root / "scoop.template.json", replacements
     )
     contents: dict[Path, bytes] = {
-        SCOOP_OUTPUT: (json.dumps(scoop_manifest, indent=2) + "\n").encode("utf-8")
+        SCOOP_OUTPUT: (json.dumps(scoop_manifest, indent=4) + "\n").encode("utf-8")
     }
     winget_version_root = WINGET_ROOT / version
     for suffix, template_name in WINGET_TEMPLATES:
