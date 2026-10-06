@@ -11,7 +11,7 @@ code actions, symbols, and folding. Syntax highlighting uses the canonical
 [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
 for an integrated editor experience.
 
-This guide targets the unpublished `0.8.0` candidate. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available.
+This guide targets the published `merman-lsp 0.8.0` Rust crate. Match the documentation and generated artifacts to the version installed in your project.
 
 ## Install The Stdio Server
 
