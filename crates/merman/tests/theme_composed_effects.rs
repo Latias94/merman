@@ -1,4 +1,4 @@
-//! Production theme effects and native paint witnesses, including marker terminals.
+//! Classic/default composed-effect paint witnesses, plus public-preset markers.
 
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec,
@@ -8,13 +8,13 @@ use merman::svg::{
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason};
 use std::io::Cursor;
 
-fn render(
+fn render_classic_effect(
     source: &str,
     target: ThemeTarget,
     input: EffectInput,
     color_space: EffectColorSpace,
 ) -> merman::RenderedDocument {
-    render_with_offsets(
+    render_classic_effect_with_offsets(
         source,
         target,
         input,
@@ -23,7 +23,10 @@ fn render(
     )
 }
 
-fn render_with_offsets(
+// Exact filter counts isolate typed effects on their admitted classic surfaces. The legacy
+// default palette also keeps source paint outside the red-shadow pixel oracle: Redux Color's
+// yellow note borders independently satisfy that threshold, even after a SourceGraphic reset.
+fn render_classic_effect_with_offsets(
     source: &str,
     target: ThemeTarget,
     input: EffectInput,
@@ -81,6 +84,15 @@ fn render_with_offsets(
         )
         .unwrap();
     let RenderOutput::Document(Some(document)) = Renderer::new()
+        .with_engine(
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+                serde_json::json!({
+                    "flowchart": {"look": "classic", "theme": "default"},
+                    "state": {"look": "classic", "theme": "default"},
+                    "sequence": {"look": "classic", "theme": "default"}
+                }),
+            )),
+        )
         .render(
             RenderRequest::document(source, OperationControl::new(), Default::default())
                 .with_theme(theme),
@@ -132,8 +144,8 @@ fn composed_xychart_series_shadows_reach_png_and_localized_pdf() {
 
 fn assert_composed_shadows(source: &str, target: ThemeTarget, applications: u32) {
     for color_space in [EffectColorSpace::LinearRgb, EffectColorSpace::Srgb] {
-        let previous = render(source, target, EffectInput::Previous, color_space);
-        let reset = render(source, target, EffectInput::SourceGraphic, color_space);
+        let previous = render_classic_effect(source, target, EffectInput::Previous, color_space);
+        let reset = render_classic_effect(source, target, EffectInput::SourceGraphic, color_space);
         let png = previous
             .export_png(
                 &merman::svg::export::RasterOptions::default(),
@@ -218,7 +230,7 @@ fn shadow_writer_elides_only_srgb_identity_translations() {
         [[0.0, 0.0], [-6.0, 0.0]],
     ] {
         for color_space in [EffectColorSpace::Srgb, EffectColorSpace::LinearRgb] {
-            let document = render_with_offsets(
+            let document = render_classic_effect_with_offsets(
                 "stateDiagram-v2\nReady --> Done",
                 ThemeTarget::State,
                 EffectInput::Previous,
@@ -697,8 +709,9 @@ fn composed_sequence_message_shadows_reach_png_and_localized_pdf() {
 
 #[test]
 fn composed_sequence_note_shadows_reach_png_and_localized_pdf() {
+    // Neutral note paint keeps linear-RGB antialiased corners outside the red-shadow oracle.
     assert_composed_shadows(
-        "sequenceDiagram\nNote left of A: Left\nNote right of B: Right\nNote over A,B: A long note spanning both participants",
+        "---\nconfig:\n  themeVariables:\n    noteBkgColor: '#ffffff'\n    noteBorderColor: '#000000'\n---\nsequenceDiagram\nNote left of A: Left\nNote right of B: Right\nNote over A,B: A long note spanning both participants",
         ThemeTarget::Note,
         3,
     );
@@ -715,7 +728,7 @@ fn composed_sequence_note_text_shadows_reach_png_and_localized_pdf() {
 
 #[test]
 fn paintless_sequence_note_labels_do_not_create_empty_native_filter_groups() {
-    let document = render(
+    let document = render_classic_effect(
         "sequenceDiagram\nNote over A,B: <br/>",
         ThemeTarget::NoteLabel,
         EffectInput::Previous,

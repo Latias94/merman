@@ -251,7 +251,7 @@ fn native_role_pixels(
                 merman::TargetAdmissionStatus::Portable
                     | merman::TargetAdmissionStatus::HostDependent
             ),
-            "unexpected native admission: {admission:?}"
+            "unexpected native admission: {admission:?}; source: {source}"
         );
         for reason in [
             merman::TargetAdmissionReason::ThemeEvidenceIncomplete,
@@ -454,11 +454,15 @@ fn complete_cyberpunk_xy_scene_fits_default_native_filter_budget() {
         png.export_report().native_filter_receipt(),
         pdf.export_report().native_filter_receipt()
     );
+    let native_filter_receipt = png.export_report().native_filter_receipt().unwrap_or_else(|| {
+        panic!(
+            "complete XY scene must retain native filter evidence: admission={:?}; fonts={:?}; source={source}",
+            png.admission(),
+            png.export_report().fonts(),
+        )
+    });
     assert_eq!(
-        png.export_report()
-            .native_filter_receipt()
-            .unwrap()
-            .drop_shadow_count(),
+        native_filter_receipt.drop_shadow_count(),
         expected_filters as u32
     );
     for admission in [png.admission(), pdf.admission()] {

@@ -173,7 +173,11 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
         ("flowchart LR\nA{Decision}", false),
     ] {
         let render = |theme| {
-            let RenderOutput::Document(Some(document)) = Renderer::new()
+            // The complete recipe includes effects whose native support is classic-only.
+            let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+                merman::MermaidConfig::from_value(serde_json::json!({ "look": "classic" })),
+            ));
+            let RenderOutput::Document(Some(document)) = renderer
                 .render(
                     RenderRequest::document(source, OperationControl::new(), Default::default())
                         .with_theme(theme),
@@ -231,7 +235,7 @@ fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
     let light = compiler
         .compile_recipe(serde_json::from_value(light_recipe).unwrap())
         .unwrap();
-    let source = "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nA[Weight Alpha] -->|Weight Gamma| B[Weight Beta]";
+    let source = "---\nconfig:\n  look: classic\n  htmlLabels: false\n---\nflowchart LR\nA[Weight Alpha] -->|Weight Gamma| B[Weight Beta]";
     let overridden = format!(
         "{source}\nstyle A font-weight:600\nstyle B font-weight:600\nlinkStyle 0 font-weight:600"
     );

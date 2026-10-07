@@ -17,7 +17,8 @@ fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
         "flowchart LR\nsubgraph Outer\nsubgraph Inner\nA[Alpha] --> B[Beta]\nend\nend",
         "flowchart LR\nA[Alpha] o--o B[Beta] x--x C[Gamma]",
     ] {
-        let source = format!("---\nconfig:\n  htmlLabels: false\n---\n{source}");
+        // Bounded effect emission is supported by the classic look.
+        let source = format!("---\nconfig:\n  look: classic\n  htmlLabels: false\n---\n{source}");
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new()
@@ -162,7 +163,8 @@ fn text_only_glow_survives_native_png_and_pdf() {
             "flowchart TB\nsubgraph Outer\nA[Alpha<br/>Gyp] -->|Advance<br/>Next| B[Beta]\nend",
             "flowchart TB\nsubgraph Outer\nA[Alpha<br/><br/>Gyp] -->|Advance<br/>Next| B[Beta]\nend",
         ] {
-            let source = format!("---\nconfig:\n  htmlLabels: {html_labels}\n---\n{body}");
+            let source =
+                format!("---\nconfig:\n  look: classic\n  htmlLabels: {html_labels}\n---\n{body}");
             let RenderOutput::Document(Some(document)) = Renderer::new()
                 .render(
                     RenderRequest::document(&source, OperationControl::new(), Default::default())
@@ -279,7 +281,7 @@ fn underestimated_host_label_geometry_is_rejected_by_native_export() {
         .unwrap();
     for html_labels in [false, true] {
         let source = format!(
-            "---\nconfig:\n  htmlLabels: {html_labels}\n---\nflowchart LR\nA[{}]",
+            "---\nconfig:\n  look: classic\n  htmlLabels: {html_labels}\n---\nflowchart LR\nA[{}]",
             "W".repeat(128)
         );
         let RenderOutput::Document(Some(document)) = Renderer::new()
@@ -330,8 +332,12 @@ fn typed_edge_background_preserves_alpha_in_native_pixels() {
     for swimlane in [false, true] {
         for html in [false, true] {
             for padding in [0.0, 6.0] {
+                // Redux container palettes own Swimlane fills independently of clusterBkg.
+                // Select the theme explicitly so its constructor receives the palette rather than
+                // appending this array to an already materialized default palette.
+                // Keep the underlay transparent so this test isolates the label's alpha.
                 let source = format!(
-                    "---\nconfig:\n  htmlLabels: {html}\n  themeVariables:\n    clusterBkg: transparent\n{}---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+                    "---\nconfig:\n  theme: redux-color\n  htmlLabels: {html}\n  themeVariables:\n    clusterBkg: transparent\n    bkgColorArray: [transparent]\n{}---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
                     if swimlane { "  layout: swimlane\n" } else { "" },
                 );
                 let theme = DiagramThemeCompiler::new()
@@ -440,7 +446,7 @@ fn stateful_host_label_offsets_are_not_replayed_as_verified_geometry() {
         .unwrap();
     let RenderOutput::Document(Some(document)) = Renderer::new().render(
         RenderRequest::document(
-            "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+            "---\nconfig:\n  look: classic\n  htmlLabels: false\n---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
             OperationControl::new(),
             merman::SvgRequest { environment, ..Default::default() },
         ).with_theme(theme),
