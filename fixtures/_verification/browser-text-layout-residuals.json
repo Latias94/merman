@@ -924,7 +924,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "63a8a6f162cebba4e92a360ccbea807351e3ce63720cf267d73b202a6141884c",
+      "local_svg_signature_sha256": "cae2b354a4f8480b3ec793cddea4e133f5745dafe5275d6887fc30526c071f43",
       "input_sha256": "02d97bafbbd4350a1cb9fb350a583a9ff43f0f72334efadee1cce8364634c236",
       "upstream_svg_sha256": "7893260dcf869722b33db3d9a73bd72aea0675124af3d37ff3e971dbf465043d"
     },
@@ -936,7 +936,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "0c0e9f3bef158bdd570d54dd1d95002c1c02fd55f983ada1f0a26a0aa2faefd6",
+      "local_svg_signature_sha256": "f11c1a73789c70921e74b55c93839b910f783f7a3602a54a5d158f19b1894134",
       "input_sha256": "80463b7c6e92c620082f5f793d7bafba919980d1037e4b4b631cf6ab15434c46",
       "upstream_svg_sha256": "3c3bc852b878eb50a8ab7b3be0d88218295ab62d02405e43034924ab06fbccb2"
     },
@@ -948,7 +948,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "11d514be02ab583fb6abbb4531cc703f931238c63db3d5f2de794bf498ffcfa3",
+      "local_svg_signature_sha256": "ce3f49da4aea1e822c7e0d3120e6702f5513632ef49ef2788c7b23174366816b",
       "input_sha256": "497091b33d552075bae534efc0ecedd43ab2c4b816d0a495cb8b9443dd1714b4",
       "upstream_svg_sha256": "81383100cb66272ad08c13790f859bd4648d7a1aa545c0367e2dd95c9d3e7b49"
     },
@@ -960,7 +960,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "d1c8066d43fd661c474564eaee0c635daaaa8bd6650b1be8da299cab2d1ce74f",
+      "local_svg_signature_sha256": "b49dbf6f7883a715d1328b3252969808618d06a0ede6cd76909cc99afb969498",
       "input_sha256": "fced5e62758e43deb492eafe449dfbe663a7401e0134b918a6b1a9701f6059fa",
       "upstream_svg_sha256": "30728a82cbd8f05f151dfc043ac4087663a3d395fc3361d6b1ca2a91c2db0146"
     },
@@ -972,7 +972,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "3d1cf061d64f994598ed28e55787cbe1f9de78f1f1cf54ce40b2a598fe4da103",
+      "local_svg_signature_sha256": "eac65b2d9e6005e6ac1672ba8032000c6e673bd59167fdc0c55ed41cbc741bde",
       "input_sha256": "dbfac1e82d5777ba58a4e101d1f71f3f661deec5a3ad99318d754ab3e1d1ccfc",
       "upstream_svg_sha256": "9b69be0c0a48e972c75432bfde4217dcbdefcc63999a77c5297ebaf8b634b340"
     },
@@ -984,7 +984,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "bc5b9072dbf3ca20c42349c551619324ad2968cf0a624d010874992ce11485b3",
+      "local_svg_signature_sha256": "1cb7d4d907bd6a29f3b1909ed35c57ea1db421161d28a2fd4760a2ac3f9f3068",
       "input_sha256": "81a3572b4d5826560cc4dada3f99785c18731cc69c312933d808627ca077fbd5",
       "upstream_svg_sha256": "363a5201a18e769bfe66084d7e29136e7f550d4f970e0ab187c037c52beec6d2"
     },
@@ -996,7 +996,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "6cce122f13f984ad5cd275bf929f2828d5653d104d94cf205da93abc904824f8",
+      "local_svg_signature_sha256": "fecb00bd034c45bb87bd90fc8d661162fed9684735d9e3707709f7d9210d8a7c",
       "input_sha256": "2b3609a9efefe473a7f78932a6346cd2fa4ddba7d1aa0d4a7ce55c77e408d202",
       "upstream_svg_sha256": "650878c48321450ae2ed3de6f1d51cd5c50e373233e6528ee8476974c3750da8"
     },
@@ -1008,7 +1008,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "0a315bad7af7125b25647be3a8104600b57fc09ea358e28ee24bcf78b0f06b50",
+      "local_svg_signature_sha256": "3bdeb83030b9a5d17fd22b605dfef5ff453a4a3b4c983668507841b5e6a17a26",
       "input_sha256": "ae76484070eab54712fbbca877233ed9fbe5a4b7cc2a59018dd00b261f10ebe9",
       "upstream_svg_sha256": "4179717eb4618de83c87128ab43205151b32dcb6671c616c3581dac0c4fb4b30"
     },
@@ -1020,7 +1020,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "7e616410a7b285512c124ff64a316b1067b946b43bff647b1f28a9d345996354",
+      "local_svg_signature_sha256": "f53fa5961d28ff1ddd209023d3e01f6cfa5290b200a1d0d3eafd1de89b275150",
       "input_sha256": "52e260a3b23e4d9c3f93b41ffa99eba1a37c8a6ac9cb2934b29028ba97645073",
       "upstream_svg_sha256": "b2754683ab76d60a42c63dc04312d03dc4d761bf06e44f1cb1a8673788bb52c2"
     },
