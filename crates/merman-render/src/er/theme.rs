@@ -1287,18 +1287,37 @@ fn table_occurrence_count(
 
 fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
-        || matches!(
+        || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
-        )
+        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
+            || (mermaid_owns_entity_palette(config, "bkgColorArray")
+                && entity_palette_has_colors(config, "borderColorArray"))))
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.nodeBorder")
-        || matches!(
+        || (matches!(
             config.get_str("theme"),
             Some("redux-color" | "redux-dark-color")
+        ) && (merman_core::__private::config_path_overrides_typed_default(config, "theme")
+            || mermaid_owns_entity_palette(config, "borderColorArray")))
+}
+
+fn mermaid_owns_entity_palette(config: &merman_core::MermaidConfig, key: &str) -> bool {
+    entity_palette_has_colors(config, key)
+        && merman_core::__private::config_path_overrides_typed_default(
+            config,
+            &format!("themeVariables.{key}"),
         )
+}
+
+fn entity_palette_has_colors(config: &merman_core::MermaidConfig, key: &str) -> bool {
+    // Match the writer's string-array consumer without allocating a second palette. Background
+    // colors need a border palette too: that palette determines the emitted per-entity CSS rules.
+    config.as_value()["themeVariables"][key]
+        .as_array()
+        .is_some_and(|colors| colors.iter().any(serde_json::Value::is_string))
 }
 
 fn mermaid_owns_default_path(config: &merman_core::MermaidConfig, path: &str) -> bool {
@@ -1348,6 +1367,105 @@ fn paint_capability_from_css(css: &str) -> ThemeCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redux_entity_palette_owns_typed_paint_only_when_authored() {
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new())
+            .unwrap();
+        for (site, source, expected_owned) in [
+            (
+                serde_json::json!({}),
+                "erDiagram\nA ||--o{ B : links\n",
+                false,
+            ),
+            (
+                serde_json::json!({"theme": "redux-color"}),
+                "erDiagram\nA ||--o{ B : links\n",
+                true,
+            ),
+            (
+                serde_json::json!({}),
+                "%%{init: {\"theme\": \"redux-color\"}}%%\nerDiagram\nA ||--o{ B : links\n",
+                true,
+            ),
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(
+                    merman_core::Engine::new()
+                        .with_site_config(merman_core::MermaidConfig::from_value(site)),
+                )
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let config = &parsed.metadata().effective_config;
+            assert_eq!(config.get_str("theme"), Some("redux-color"));
+            assert_eq!(mermaid_owns_entity_fill(config), expected_owned, "{source}");
+            assert_eq!(
+                mermaid_owns_entity_stroke(config),
+                expected_owned,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn redux_palette_ownership_tracks_only_consumed_color_channels() {
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new())
+            .unwrap();
+        for (variables, expected_fill, expected_stroke) in [
+            (
+                serde_json::json!({"bkgColorArray": ["#112233"]}),
+                true,
+                false,
+            ),
+            (
+                serde_json::json!({"borderColorArray": ["#445566"]}),
+                false,
+                true,
+            ),
+            (
+                serde_json::json!({"bkgColorArray": [], "borderColorArray": ["#445566"]}),
+                false,
+                true,
+            ),
+            (
+                serde_json::json!({"bkgColorArray": ["#112233"], "borderColorArray": []}),
+                false,
+                false,
+            ),
+            (
+                serde_json::json!({"bkgColorArray": "#112233"}),
+                false,
+                false,
+            ),
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(merman_core::Engine::new().with_site_config(
+                    merman_core::MermaidConfig::from_value(
+                        serde_json::json!({"themeVariables": variables}),
+                    ),
+                ))
+                .parse_diagram_for_render_model_sync(
+                    "erDiagram\nA ||--o{ B : links\n",
+                    merman_core::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let config = &parsed.metadata().effective_config;
+            assert_eq!(
+                mermaid_owns_entity_fill(config),
+                expected_fill,
+                "{variables}"
+            );
+            assert_eq!(
+                mermaid_owns_entity_stroke(config),
+                expected_stroke,
+                "{variables}"
+            );
+        }
+    }
 
     #[test]
     fn duplicate_subgraph_classes_charge_only_their_reference_work() {

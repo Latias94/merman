@@ -26,9 +26,9 @@ mod tests {
             .expect("editor dark theme");
         let config = theme.spec().mermaid().to_mermaid_config();
 
-        assert_eq!(config.get_str("theme"), Some("base"));
-        assert_eq!(config.get_bool("darkMode"), Some(true));
-        assert_eq!(config.get_bool("themeVariables.darkMode"), Some(true));
+        assert_eq!(config.get_str("theme"), Some("dark"));
+        assert_eq!(config.get_bool("darkMode"), None);
+        assert_eq!(config.get_bool("themeVariables.darkMode"), None);
         assert_eq!(config.get_str("themeVariables.primaryColor"), None);
     }
 

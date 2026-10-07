@@ -425,16 +425,59 @@ mod tests {
 
             assert_eq!(
                 config.get_str("theme"),
-                (!is_native_candidate(preset)).then_some("base")
+                (!is_native_candidate(preset)).then_some(if preset.is_dark() {
+                    "dark"
+                } else {
+                    "base"
+                })
             );
             assert_eq!(
                 config.get_bool("darkMode"),
-                (!is_native_candidate(preset)).then_some(preset.is_dark()),
-                "{} dark-mode compatibility value",
+                None,
+                "{} must not claim derived dark-mode paints",
                 preset.id()
             );
             assert_eq!(config.get_str("look"), None);
             assert_eq!(config.get_str("flowchart.defaultRenderer"), None);
+        }
+    }
+
+    #[test]
+    fn retained_presets_keep_dark_fallbacks_without_owning_typed_paints() {
+        for preset in all_presets().filter(|preset| !is_native_candidate(*preset)) {
+            let (theme, _) = compiled(preset);
+            let selected = if preset.is_dark() { "dark" } else { "base" };
+            let parse = |engine: merman_core::Engine| {
+                engine
+                    .parse_diagram_for_render_model_sync(
+                        "flowchart LR\nA[Alpha]\n",
+                        merman_core::ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap()
+            };
+            let themed = parse(theme.install_parse_compatibility(merman_core::Engine::new()));
+            let fallback = parse(merman_core::Engine::new().with_site_config(
+                merman_core::MermaidConfig::from_value(serde_json::json!({"theme": selected})),
+            ));
+            let config = &themed.metadata().effective_config;
+            assert_eq!(config.get_str("theme"), Some(selected));
+            // Unadapted terminals still consume the selected Mermaid palette.
+            for key in ["themeVariables.cScale0", "themeVariables.mainBkg"] {
+                assert_eq!(
+                    config.get_str(key),
+                    fallback.metadata().effective_config.get_str(key),
+                    "{} {key}",
+                    preset.id()
+                );
+            }
+            for path in ["themeVariables.nodeBorder", "themeVariables.git0"] {
+                assert!(
+                    !merman_core::__private::config_path_overrides_typed_default(config, path),
+                    "{} must leave {path} available to typed paint",
+                    preset.id()
+                );
+            }
         }
     }
 
@@ -1010,8 +1053,11 @@ mod tests {
                 .mermaid
                 .as_ref()
                 .expect("preset export must retain Mermaid compatibility");
-            assert_eq!(mermaid.theme.as_deref(), Some("base"));
-            assert_eq!(mermaid.dark_mode, Some(descriptor.is_dark()));
+            assert_eq!(
+                mermaid.theme.as_deref(),
+                Some(if descriptor.is_dark() { "dark" } else { "base" })
+            );
+            assert_eq!(mermaid.dark_mode, None);
         }
     }
 

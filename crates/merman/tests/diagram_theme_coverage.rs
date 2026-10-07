@@ -410,6 +410,193 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
 }
 
 #[test]
+fn er_authored_redux_palettes_override_only_their_typed_paint_channel() {
+    use merman::svg::{
+        CanvasPaint, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Entity,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    let diagram = "erDiagram\nPLAIN ||--o{ TABLE : links\nTABLE {\n  int id\n}\n";
+    for source_owned in [false, true] {
+        for (fill_owned, stroke_owned) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let mut variables = serde_json::Map::new();
+            if fill_owned {
+                variables.insert("bkgColorArray".to_owned(), serde_json::json!(["#112233"]));
+            }
+            if stroke_owned {
+                variables.insert(
+                    "borderColorArray".to_owned(),
+                    serde_json::json!(["#445566"]),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": variables});
+            let source = if source_owned {
+                // Init directives omit these palette keys from Mermaid's admitted config shape.
+                // Frontmatter is the source configuration path that accepts them.
+                format!("---\nconfig: {config}\n---\n{diagram}")
+            } else {
+                diagram.to_owned()
+            };
+            let engine = if source_owned {
+                merman::Engine::new()
+            } else {
+                merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(config))
+            };
+            let mut renderer = TypedSvgRenderer::new()
+                .with_theme(theme.clone())
+                .with_deterministic_text_measurer()
+                .with_diagram_id("er-palette-owner");
+            renderer.renderer = Renderer::new().with_engine(engine);
+            let baseline = if source_owned {
+                // Source arrays append to the calculated palette. Preserve that merge contract
+                // instead of assuming an authored color occupies the first entity's slot.
+                let mut baseline = renderer.clone();
+                baseline.theme = None;
+                Some(baseline.render_svg(&source).unwrap().unwrap())
+            } else {
+                None
+            };
+            let svg = renderer.render_svg(&source).unwrap().unwrap();
+            let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+            for name in ["PLAIN", "TABLE"] {
+                let entity = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == "node")
+                        }) && node
+                            .attribute("id")
+                            .is_some_and(|id| id.contains(&format!("entity-{name}-")))
+                    })
+                    .expect("visible ER entity");
+                let shell = entity
+                    .descendants()
+                    .find(|node| {
+                        (node.has_tag_name("rect") || node.has_tag_name("path"))
+                            && (name == "TABLE"
+                                || node.attribute("class") == Some("basic label-container"))
+                    })
+                    .expect("entity rectangle or table path");
+                let style = shell.attribute("style").unwrap_or_default();
+                for (property, typed, authored, owned) in [
+                    ("fill", "#123456", "#112233", fill_owned),
+                    ("stroke", "#654321", "#445566", stroke_owned),
+                ] {
+                    assert_eq!(
+                        style
+                            .split(';')
+                            .any(|declaration| declaration.trim() == format!("{property}:{typed}")),
+                        !owned,
+                        "{name}, source={source_owned}, fill={fill_owned}, stroke={stroke_owned}: {property} owner must reach the terminal: {svg}"
+                    );
+                    if owned {
+                        let color_id = entity
+                            .attribute("data-color-id")
+                            .expect("Redux palette terminal");
+                        let selector = format!(
+                            "[data-look=\"neo\"][data-color-id=\"{color_id}\"].node {}{{",
+                            shell.tag_name().name()
+                        );
+                        let css_rule = svg
+                            .split(&selector)
+                            .nth(1)
+                            .expect("matching Redux palette rule")
+                            .split('}')
+                            .next()
+                            .unwrap();
+                        let expected = match baseline.as_deref() {
+                            Some(baseline) => baseline
+                                .split(&selector)
+                                .nth(1)
+                                .expect("matching source-only Redux palette rule")
+                                .split('}')
+                                .next()
+                                .unwrap()
+                                .split(';')
+                                .find(|declaration| {
+                                    declaration.trim().starts_with(&format!("{property}:"))
+                                })
+                                .expect("source palette channel")
+                                .to_owned(),
+                            None => format!("{property}:{authored}"),
+                        };
+                        assert!(
+                            css_rule
+                                .split(';')
+                                .any(|declaration| declaration.trim() == expected),
+                            "{selector}: {css_rule} must preserve {expected}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn retained_preset_paints_reach_terminals_with_default_and_classic_looks() {
+    for look in [None, Some("classic")] {
+        for (name, source) in [
+            ("flowchart", "flowchart LR\nA[Alpha] --> B[Beta]\n"),
+            ("er", "erDiagram\nA ||--o{ B : links\n"),
+        ] {
+            let source = match look {
+                Some(look) => format!("%%{{init: {{\"look\": \"{look}\"}}}}%%\n{source}"),
+                None => source.to_owned(),
+            };
+            let svg = render_with_editor_dark_theme(name, &source);
+            let document = roxmltree::Document::parse(&svg).expect("valid themed SVG");
+            assert!(
+                document.descendants().any(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "label-container")
+                    }) && node.attribute("style").is_some_and(|style| {
+                        style.contains("fill:#111827") && style.contains("stroke:#475569")
+                    })
+                }),
+                "{name} {look:?}: typed surface and border must reach the shape terminal: {svg}"
+            );
+        }
+        let source = "gitGraph\ncommit id: \"A\"\nbranch dev\ncommit id: \"B\"\n";
+        let source = match look {
+            Some(look) => format!("%%{{init: {{\"look\": \"{look}\"}}}}%%\n{source}"),
+            None => source.to_owned(),
+        };
+        let svg = render_with_editor_dark_theme("palette-terminals", &source);
+        let document = roxmltree::Document::parse(&svg).expect("valid GitGraph SVG");
+        for (slot, color) in [(0, "#60a5fa"), (1, "#34d399")] {
+            assert!(document.descendants().any(|node| {
+                node.has_tag_name("circle")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == format!("commit{slot}"))
+                    })
+            }));
+            assert!(
+                svg.contains(&format!(".commit{slot}{{stroke:{color};fill:{color};}}")),
+                "{look:?}: each visible commit must consume its typed palette color: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn diagram_theme_covers_core_diagram_roles() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
@@ -551,10 +738,7 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             "diagram-theme-er",
             "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name\n  }",
             &["#111827", "#e5e7eb", "#94a3b8", "#475569"],
-            &[
-                "class=\"basic label-container\" style=\"fill:#111827;stroke:#475569\"",
-                "class=\"edge-thickness-normal edge-pattern-solid relationshipLine\" style=\"stroke:#94a3b8\"",
-            ],
+            &["class=\"basic label-container\" style=\"fill:#111827;stroke:#475569\""],
         ),
         (
             "diagram-theme-requirement",
@@ -586,10 +770,10 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             "kanban\n  todo[Todo]\n    card[Dark Card]@{ assigned: \"Core\", priority: \"High\" }",
             &[
                 "#e5e7eb",
-                "hsl(213.1168831169, 93.9024390244%, 57.8431372549%)",
+                "hsl(213.1168831169, 93.9024390244%, 77.8431372549%)",
             ],
             &[
-                "class=\"basic label-container __APA__\" style=\"fill:hsl(213.1168831169, 93.9024390244%, 57.8431372549%)\"",
+                "class=\"basic label-container __APA__\" style=\"fill:hsl(213.1168831169, 93.9024390244%, 77.8431372549%)\"",
                 "class=\"label\" style=\"color:#000000;fill:#000000;text-align:left\"",
             ],
         ),
@@ -637,6 +821,27 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
         let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
         assert_current_dom_consumes(name, &svg, dom_expected);
+        if *name == "diagram-theme-er" {
+            let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+            let relation = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "relationshipLine")
+                    })
+                })
+                .expect("visible ER relationship");
+            assert!(
+                relation.attribute("style").is_some_and(|style| {
+                    style
+                        .split(';')
+                        .any(|declaration| declaration.trim() == "stroke:#94a3b8")
+                }),
+                "ER relationship must consume the typed stroke: {svg}"
+            );
+        }
     }
 }
 

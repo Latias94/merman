@@ -40,19 +40,19 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "e1c23fe1dc1591428e136dc196f1806f2741c37e10af3658f9d0af3093131010";
+    "d2cbade1e7e81d86aa1c6995aac84340ca15406749d09a6b45ec0b0e1eeda5ad";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "fe500abe4c178527756cc2bc0699cdea02493e28af269169681c3d80c00ea107";
+    "743f995495a6ea4e74ac909f7c1bd4e1c5829d2d369c5c9ae37f5623c348a02d";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "9542803723b437d3dd6c9a4f153fac0b4c778e0823c1ebdc9bfd0bea846b0ae9";
+    "2a8f78e1e64c9b26016521844160be968cbca63c44b2d0b07c2a5415d812b3f4";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "3d885c32c2787a98726c5ca6bb0aaa98ff20a7191cf6c1254528d302de89b113";
+    "029c8362527ca52a40ead3405d1bcfe49ae4925cbcbbfbad8f7684a375d21257";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "74d71b131bf95beae20f48ab083676562e62328f8ce945edacc37f8497b3768f";
+    "1265568916289193ed22d5e21e93928ac7e887f8a2871cf7e1d81374ad42f5f7";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "5ac15d6e8c6424ecf6bd8289aa6e038b5697266227227ffdd80105764e933dfd";
+    "7d05be599daf0f00a0195c0c602a740643c374153a2a33dc9f1586941f2947ab";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "9e171a98b8632d6652d6ba7f04fb38f213f05dfa775fe3dfdf134a33673628b2";
+    "d536b1d7e3f51df82efe65a8d43597f49697b3508a06ffea2efd176263a67bb0";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
     "6faa2180687da0186bbf2991af85949374a661a18b470b2d90b61efaa862236e";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
@@ -706,9 +706,11 @@ pub(crate) fn materialize_spec_wire(
     );
     let mut spec = entry.recipe(resources)?;
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
+        // Choose a fallback theme without claiming derived color variables. An authored
+        // darkMode value owns its dependent paints and would shadow this recipe's typed rules.
         spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
-            theme: Some("base".to_owned()),
-            dark_mode: Some(entry.dark_mode),
+            theme: Some(if entry.dark_mode { "dark" } else { "base" }.to_owned()),
+            dark_mode: None,
             variables: None,
         });
     }
