@@ -286,13 +286,14 @@ impl MindmapNodePalettePlan {
     ) -> Result<Self, OperationWorkError> {
         let mut visited = [false; MINDMAP_SECTION_COUNT];
         for node in &model.nodes {
+            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
             let Some(section) = node.section.and_then(normalized_section) else {
                 continue;
             };
             visited[section] = true;
         }
 
-        let mut plan = Self::baseline(config, model);
+        let mut plan = Self::baseline(config, model, work_meter)?;
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -705,22 +706,28 @@ impl MindmapNodePalettePlan {
         Ok(())
     }
 
-    fn baseline(config: &MermaidConfig, model: &MindmapDiagramRenderModel) -> Self {
+    fn baseline(
+        config: &MermaidConfig,
+        model: &MindmapDiagramRenderModel,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         let expected_edges = model
             .edges
             .iter()
             .map(|edge| {
+                work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
                 let source = mindmap_edge_stroke_source(config, edge);
-                MindmapEdgeExpectation {
+                Ok(MindmapEdgeExpectation {
                     id: edge.id.clone().into_boxed_str(),
                     source,
                     source_css: None,
                     source_owned: source.is_some_and(|source| source.is_owned(config)),
                     winning_stroke_rule: None,
-                }
+                })
             })
-            .collect();
-        Self {
+            .collect::<Result<_, OperationWorkError>>()?;
+        Ok(Self {
             fills_by_section: std::array::from_fn(|_| None),
             node_fill: None,
             node_stroke: None,
@@ -734,7 +741,7 @@ impl MindmapNodePalettePlan {
             node_terminal_receipt: OnceLock::new(),
             edge_terminal_receipt: OnceLock::new(),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
-        }
+        })
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -1509,6 +1516,21 @@ mod tests {
             }]
         );
         assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn baseline_palette_observes_cancelled_operations_without_a_theme() {
+        let control = merman_core::OperationControl::new();
+        control.cancel();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        let config = effective_config(json!({}));
+        let model = model_with_sections([Some(0), Some(1)]);
+        let error = MindmapNodePalettePlan::resolve(None, &config, &model, &meter)
+            .expect_err("baseline preparation must observe operation cancellation");
+        assert!(matches!(error, OperationWorkError::Cancelled(_)));
     }
 
     #[test]

@@ -35,6 +35,7 @@ pub(crate) struct ConfigWork {
     pub(crate) detector_replay_steps: usize,
     pub(crate) detector_replay_peak_frames: usize,
     pub(crate) detector_replay_peak_path_segments: usize,
+    pub(crate) explicit_path_candidates: usize,
 }
 
 #[cfg(test)]
@@ -916,7 +917,7 @@ impl MermaidConfig {
     }
 
     pub(crate) fn freeze_theme_compatibility(&mut self) {
-        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.take()
+        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.as_ref()
         else {
             return;
         };
@@ -938,9 +939,34 @@ impl MermaidConfig {
     }
 
     pub(crate) fn explicit_config_owns_path(&self, dotted_path: &str) -> bool {
+        if dotted_path.is_empty() {
+            return !self.explicit_config_paths.is_empty();
+        }
+        let owns = |path: &str| {
+            #[cfg(test)]
+            record_config_work(|work| work.explicit_path_candidates += 1);
+            self.explicit_config_paths.contains(path)
+        };
+        if owns("") || owns(dotted_path) {
+            return true;
+        }
+        for (index, _) in dotted_path.match_indices('.') {
+            if owns(&dotted_path[..index]) {
+                return true;
+            }
+        }
+        // Descendants are contiguous in lexical order. Starting at the dotted prefix
+        // avoids unrelated keys such as `a-ignored` hiding an owned `a.child`.
+        let prefix = format!("{dotted_path}.");
+        #[cfg(test)]
+        record_config_work(|work| work.explicit_path_candidates += 1);
         self.explicit_config_paths
-            .iter()
-            .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
+            .range::<str, _>((
+                std::ops::Bound::Included(prefix.as_str()),
+                std::ops::Bound::Unbounded,
+            ))
+            .next()
+            .is_some_and(|candidate| candidate.starts_with(&prefix))
     }
 
     /// Reports whether a surviving compatibility fallback assignment owns this exact path.
@@ -1993,6 +2019,48 @@ mod tests {
         assert!(config.explicit_config_owns_path("flowchart.nodeSpacing.unmaterializedDescendant"));
         assert!(!config.explicit_config_owns_path("flowchart.rankSpacing"));
         assert!(!config.explicit_config_owns_path("retainedScalar.child"));
+    }
+
+    #[test]
+    fn explicit_ownership_lookup_preserves_dotted_path_boundaries() {
+        let paths = [
+            "", "a", "a.", "a.b", "a..b", "a-b", "a/b", "a.b.c", "ab", "é.葉", "é",
+        ];
+        for owner in paths {
+            let mut config = MermaidConfig::empty_object();
+            Arc::make_mut(&mut config.explicit_config_paths).insert(Arc::from(owner));
+            for query in paths {
+                assert_eq!(
+                    config.explicit_config_owns_path(query),
+                    dotted_paths_overlap(owner, query),
+                    "owner={owner:?}, query={query:?}"
+                );
+            }
+        }
+        let empty = MermaidConfig::empty_object();
+        assert!(!empty.explicit_config_owns_path(""));
+        let mut config = MermaidConfig::empty_object();
+        Arc::make_mut(&mut config.explicit_config_paths)
+            .extend([Arc::from("a-ignored"), Arc::from("a.child")]);
+        assert!(config.explicit_config_owns_path("a"));
+    }
+
+    #[test]
+    fn explicit_ownership_lookup_does_not_scan_unrelated_paths() {
+        for count in [100, 1_000, 10_000] {
+            let mut config = MermaidConfig::empty_object();
+            Arc::make_mut(&mut config.explicit_config_paths)
+                .extend((0..count).map(|index| Arc::from(format!("junk{index}"))));
+            let (_, work) = measure_config_work(|| {
+                for _ in 0..100 {
+                    assert!(!config.explicit_config_owns_path("themeVariables.cScale1"));
+                }
+            });
+            assert!(
+                work.explicit_path_candidates <= 400,
+                "unrelated paths must not multiply each ownership lookup: {count}: {work:?}"
+            );
+        }
     }
 
     #[test]

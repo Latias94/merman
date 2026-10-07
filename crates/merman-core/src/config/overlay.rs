@@ -1529,7 +1529,7 @@ mod tests {
         config.freeze_theme_compatibility();
         assert_eq!(config.post_detection_default_blocked("a"), None);
 
-        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
         config
             .capture_post_detection_default_decisions(
                 "flowchart",
@@ -1542,6 +1542,14 @@ mod tests {
             .unwrap();
         assert_eq!(config.post_detection_default_blocked("a"), None);
         config.freeze_theme_compatibility();
+        assert_eq!(config.post_detection_default_blocked("a"), Some(false));
+        let fields = config.mermaid_compatibility_fields().unwrap();
+        config.freeze_theme_compatibility();
+        assert_eq!(config.theme_parse_binding(), Some(&binding));
+        assert_eq!(
+            config.mermaid_compatibility_fields().as_ref(),
+            Some(&fields)
+        );
         assert_eq!(config.post_detection_default_blocked("a"), Some(false));
     }
 

@@ -159,3 +159,24 @@ size-win claim. Neither experiment is a prerequisite for the core ownership
 changes, but their optional status does not close the U1/U3/U5 scope differences
 or the U8 verification gaps above. The remaining optimization frontier requires a
 separate registered workload, not a speculative family fast path or cache.
+
+
+## PR review follow-up: explicit ownership lookup
+
+The follow-up to baseline `6ef39febc` removes the full scan of explicit config
+paths from each ownership query. The existing ordered set now supplies exact
+and ancestor lookups, followed by a bounded descendant-prefix lookup. For `P`
+explicit paths, query depth `D`, maximum path length `L`, and `E` Mindmap edges,
+the repeated lookup bound changes from `O(E * P * L)` string work to
+`O(E * (D + 1) * log(P + 1) * L)`. Each query allocates at most `O(L)` temporary
+prefix space; there is no persistent index or dependency change.
+
+The test-only probe counter observes at most 400 set operations for 100 absent
+two-segment queries at each of 100, 1,000, and 10,000 unrelated explicit paths.
+The old scan fails that gate at the first scale with 10,000 candidate visits.
+This is structural complexity evidence, not a latency or allocation benchmark;
+the counter does not count the ordered set's internal string comparisons.
+Boundary tests preserve empty-path, ancestor/descendant, separator, and Unicode
+semantics. Mindmap palette preparation also checks cancellation while traversing
+nodes and edges, including the unthemed baseline. These changes are not included
+in the historical latency and binary-size measurements above.
