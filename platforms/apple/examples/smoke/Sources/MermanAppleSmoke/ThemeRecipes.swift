@@ -25,9 +25,11 @@ private func recipeSources() throws -> [(String, String)] {
 }
 
 private func recipeOptions(_ theme: Any, family: String) throws -> String {
+    // Cyberpunk Flowchart effects are qualified on the classic writer. The family-scoped
+    // setting leaves the other recipes on their default Mermaid looks.
     String(decoding: try encodeRecipeJSON([
         "version": 3, "theme": theme,
-        "site_config": ["htmlLabels": false],
+        "site_config": ["htmlLabels": false, "flowchart": ["look": "classic"]],
         "svg": ["diagram_id": "apple-recipe-\(family)"],
     ]), as: UTF8.self)
 }
@@ -199,7 +201,8 @@ func verifyThemePresetRecipes(client: Merman) throws {
             if name != "class-unsupported-width" || family != "class" {
                 try requireRecipe(evidence["theme_status"] as? String == "verified"
                                   && evidence["target_status"] as? String == "unverified",
-                                  "\(name)/\(family): unexpected qualification claim")
+                                  "\(name)/\(family): unexpected qualification claim: "
+                                  + String(decoding: encodeRecipeJSON(evidence), as: UTF8.self))
             }
             if name == "class-customized" {
                 let original = try Data(contentsOf: outputRoot.appendingPathComponent("cyberpunk/\(family).svg"))

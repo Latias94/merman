@@ -674,7 +674,6 @@ fn process_renderer_terminals(
             Event::Start(element) => {
                 let (element, has_transform) = inspect_terminal_element(
                     element,
-                    &reader,
                     &mut terminals,
                     ancestor_has_transform,
                     write_underlay,
@@ -685,7 +684,6 @@ fn process_renderer_terminals(
             Event::Empty(element) => {
                 let (element, _) = inspect_terminal_element(
                     element,
-                    &reader,
                     &mut terminals,
                     ancestor_has_transform,
                     write_underlay,
@@ -731,18 +729,13 @@ fn process_renderer_terminals(
 
 fn inspect_terminal_element(
     element: quick_xml::events::BytesStart<'_>,
-    reader: &quick_xml::Reader<&[u8]>,
     terminals: &mut BTreeMap<String, RendererTerminalXmlState>,
     ancestor_has_transform: bool,
     rewrite_style: bool,
 ) -> Result<(quick_xml::events::BytesStart<'static>, bool)> {
     use quick_xml::XmlVersion;
 
-    let name = reader
-        .decoder()
-        .decode(element.name().as_ref())
-        .map_err(|_| ExportError::RasterPaintCutover("SVG element name is not valid UTF-8"))?
-        .into_owned();
+    let name = element.name().as_ref().to_owned();
     let mut attributes = Vec::<(String, String)>::new();
     let mut terminal_id = None::<String>;
     let mut has_transform = false;
@@ -750,13 +743,9 @@ fn inspect_terminal_element(
         let attribute = attribute.map_err(|_| {
             ExportError::RasterPaintCutover("finalized SVG contains an invalid attribute")
         })?;
-        let key = reader
-            .decoder()
-            .decode(attribute.key.as_ref())
-            .map_err(|_| ExportError::RasterPaintCutover("SVG attribute name is not valid UTF-8"))?
-            .into_owned();
+        let key = attribute.key.as_ref().to_owned();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ExportError::RasterPaintCutover("SVG attribute value is not valid XML"))?
             .into_owned();
         if key == "id" && terminals.contains_key(&value) {
@@ -861,16 +850,15 @@ fn terminal_attribute<'a>(attributes: &'a [(String, String)], key: &str) -> Opti
 }
 
 fn style_overrides_lifeline_geometry(style: &str) -> Result<bool> {
-    use cssparser::{Delimiter, Parser, ParserInput};
+    use cssparser::{Delimiter, Parser};
 
-    let mut input = ParserInput::new(style);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(style);
     while !parser.is_exhausted() {
         let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
             while declaration.next_including_whitespace().is_ok() {}
-            Ok::<_, cssparser::ParseError<'_, ()>>(
+            Ok::<_, cssparser::ParseError<()>>(
                 property.eq_ignore_ascii_case("transform")
                     || property.eq_ignore_ascii_case("x1")
                     || property.eq_ignore_ascii_case("y1")
