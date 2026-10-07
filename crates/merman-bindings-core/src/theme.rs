@@ -80,7 +80,7 @@ pub(crate) fn validate_theme_input_json_with(
 }
 
 // Borrow payloads so version and authoring admission precede Value normalization. In particular,
-// normalizing first would silently discard duplicate definition fields.
+// normalizing first would silently discard duplicate definition or complete-spec fields.
 #[derive(Deserialize)]
 struct RecipeInputProbe<'a> {
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
@@ -89,13 +89,8 @@ struct RecipeInputProbe<'a> {
     kind: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     definition: Option<&'a RawValue>,
-    #[serde(
-        default,
-        borrow,
-        rename = "complete_spec",
-        deserialize_with = "present_raw_value"
-    )]
-    _complete_spec: Option<&'a RawValue>,
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    complete_spec: Option<&'a RawValue>,
 }
 
 fn present_raw_value<'de, D>(deserializer: D) -> Result<Option<&'de RawValue>, D::Error>
@@ -124,6 +119,10 @@ fn check_recipe_json_input(
             .map_err(|error| {
                 crate::theme_definition::materialization_error(compiler.resource_policy(), error)
             })?;
+    }
+    if let Some(complete_spec) = probe.complete_spec {
+        serde_json::from_str::<DiagramThemeSpecWireV1>(complete_spec.get())
+            .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
     }
     Ok(())
 }
@@ -457,6 +456,8 @@ mod tests {
     fn recipe_raw_admission_rejects_duplicates_and_invalid_versions_in_both_entries() {
         let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
         let mut invalid = vec![
+            r##"{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000"},"canvas":{"base":"#0000ff"}}}"##.to_owned(),
+            r##"{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000","base":"#0000ff"}}}"##.to_owned(),
             r#"{"schema_version":1,"kind":"complete_spec","complete_spec":{"future":true},"complete_spec":{}}"#.to_owned(),
             format!(r#"{{"kind":"definition","schema_version":null,"schema_version":1,"definition":{definition}}}"#),
             format!(r#"{{"kind":"definition","schema_version":2,"schema_\u0076ersion":1,"definition":{definition}}}"#),
