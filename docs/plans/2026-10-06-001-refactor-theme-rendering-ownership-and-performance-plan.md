@@ -39,13 +39,16 @@ The earlier goal text names the original checkout; this isolated lane is authori
   `layout-elk,layout-cytoscape,math`; the relevant tests and backend paths are unchanged from base.
 - Three existing facade theme-coverage assertions (Flowchart/ER paint and GitGraph palette) remain
   separate baseline debt, already recorded in the embedded-font-retirement verification.
-- `verify-generated` cannot complete in this checkout until the pinned Mermaid CLI dependencies
-  and DOMPurify reference checkout are available. No generated-verification success is claimed.
+- `verify-generated`, production-feature Clippy, and targeted SVG DOM parity pass with the pinned
+  local Mermaid CLI and DOMPurify dependencies. Accepted browser text-layout residuals remain.
 - U6 is deferred: traversal fusion is outside the ownership repair and needs an independent
   error-order/resource experiment. U7 compiler movement is deferred: no dependency edge has
-  changed, and an equal-capability size audit remains required before claiming size improvement.
-- U8 remains open: clean-revision calibrated latency confirmation, size attribution, and the
-  final evidence report must finish before the goal can be marked complete. No speedup is claimed.
+  changed, and the equal-capability CLI audit found no stripped-size change.
+- U8 is closed in the [2026-10-07 confirmation report](../performance/theme_ownership_refactor_2026-10-07.md):
+  eight A/A and eight balanced AB/BA pairs per public fixture confirm non-regression for all four
+  workloads and improvement for three; raw CLI size decreases 9,136 bytes, stripped size is
+  unchanged. The complete render integration inventory and workspace-wide strict verification
+  were not run; the report identifies the verified suites and existing baseline test debt.
 
 ## Product Contract
 

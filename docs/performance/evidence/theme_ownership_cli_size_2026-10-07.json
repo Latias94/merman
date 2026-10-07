@@ -1,0 +1,133 @@
+{
+  "recipe": {
+    "base_product_revision": "5c40e66679755fd0339653737cf5e55f596092cd",
+    "equivalent_source_baseline": "97ed7fcb9ab97538384ebcd0aa5a808cf01cd258",
+    "documentation_only_delta": [
+      "docs/performance/evidence/theme_main_integration_2026-10-06.json",
+      "docs/performance/evidence/theme_main_integration_attribution_2026-10-06.json",
+      "docs/performance/theme_main_integration_2026-10-06.md",
+      "docs/performance/theme_main_integration_attribution_2026-10-06.md"
+    ],
+    "base_artifact": "<local-worktrees>/main-theme-integration-repair/target/bench/experiments/theme-main-2026-10-06/cli-head/merman-cli",
+    "head_revision": "ab91b43963088734e163b667a07d0a49e2305ff2",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "merman-cli",
+      "--bin",
+      "merman-cli",
+      "--profile",
+      "dist",
+      "--target-dir",
+      "<local-worktrees>/main-theme-integration-repair/target",
+      "--no-default-features",
+      "--features",
+      "all-diagrams,analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,rustdoc,shell-completions,svg,system-clock,system-random,system-timezone,system-timing"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_INCREMENTAL": "0"
+    },
+    "lock_sha256": "4941348855bcbd5f33da6f45ce4a4ea66675a6492bcd6965ebbfbe0c3debdd7b",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+  },
+  "artifacts": {
+    "base": {
+      "raw_bytes": 53462736,
+      "raw_sha256": "034300f5b652a18f120d0d60a626aaf01d7dc3be36cd11b5202b8c014f552628",
+      "raw_gzip9_bytes": 22054346,
+      "stripped_bytes": 46613400,
+      "stripped_sha256": "f17c453d1e6e2dd7dc71f0a269d19ecf2711a6084d45924ab3fbe59ab4becb55",
+      "stripped_gzip9_bytes": 20151439
+    },
+    "head": {
+      "raw_bytes": 53453600,
+      "raw_sha256": "c613a36f951cbd641172f1e31f17c081a028e1004b1520de3debda23a07ce8e2",
+      "raw_gzip9_bytes": 22044537,
+      "stripped_bytes": 46613400,
+      "stripped_sha256": "00eba09eb8858de09e5c60b2d32d3ddef4e86d70a86cb0c4ee909ec883ca0d14",
+      "stripped_gzip9_bytes": 20142472
+    }
+  },
+  "controls": {
+    "base --version": "1d9335b29635cf25ac0ca19cd7aeb632fc935847887e1499daf1ff307e1546b8",
+    "base capabilities": "e88476322552dcefbcedf2e6c2505b568b3d503baf0711fb7cf06a3a3debf029",
+    "head --version": "1d9335b29635cf25ac0ca19cd7aeb632fc935847887e1499daf1ff307e1546b8",
+    "head capabilities": "e88476322552dcefbcedf2e6c2505b568b3d503baf0711fb7cf06a3a3debf029",
+    "class_medium": {
+      "source_sha256": "e99fac382b50d6499b96c5793deeb833d0bb92283127bfe17fffc8bbc909b637",
+      "outputs": {
+        "base": {
+          "bytes": 81907,
+          "sha256": "244c3823dd64c7722c74196837964aadb63aeafde72db7852591e688af0b53b5"
+        },
+        "head": {
+          "bytes": 81907,
+          "sha256": "244c3823dd64c7722c74196837964aadb63aeafde72db7852591e688af0b53b5"
+        },
+        "head-stripped": {
+          "bytes": 81907,
+          "sha256": "244c3823dd64c7722c74196837964aadb63aeafde72db7852591e688af0b53b5"
+        }
+      },
+      "matched": true
+    },
+    "mindmap_medium": {
+      "source_sha256": "a0fe4aa2a0ef2fb356ffbb627026d88c3bf86ea4c3ba17c01e6575bc8e22a8bc",
+      "outputs": {
+        "base": {
+          "bytes": 35247,
+          "sha256": "2c2dabb42515f6766dbb3d5d301f6094379fce5c8a4c251f76004a1bce4f2d46"
+        },
+        "head": {
+          "bytes": 35247,
+          "sha256": "2c2dabb42515f6766dbb3d5d301f6094379fce5c8a4c251f76004a1bce4f2d46"
+        },
+        "head-stripped": {
+          "bytes": 35247,
+          "sha256": "2c2dabb42515f6766dbb3d5d301f6094379fce5c8a4c251f76004a1bce4f2d46"
+        }
+      },
+      "matched": true
+    },
+    "flowchart_medium": {
+      "source_sha256": "b65d43d4c67df71bc188829344583b977b3c2a805e5649d711d849a7a56d6572",
+      "outputs": {
+        "base": {
+          "bytes": 82242,
+          "sha256": "6ff2e0a5be2e8911e3cba7b6ee656c3a9577cbb4b566103240d57c00bf77b170"
+        },
+        "head": {
+          "bytes": 82242,
+          "sha256": "6ff2e0a5be2e8911e3cba7b6ee656c3a9577cbb4b566103240d57c00bf77b170"
+        },
+        "head-stripped": {
+          "bytes": 82242,
+          "sha256": "6ff2e0a5be2e8911e3cba7b6ee656c3a9577cbb4b566103240d57c00bf77b170"
+        }
+      },
+      "matched": true
+    },
+    "sequence_medium": {
+      "source_sha256": "1e5132d50777a0f768646d4dbd06fc79b7ca05827ecee78ff8e296b57cfaebe9",
+      "outputs": {
+        "base": {
+          "bytes": 32463,
+          "sha256": "d9cae5a46f540467f921747c2b356002f967e8fca6f2f4b94eb1c9d4a74f0478"
+        },
+        "head": {
+          "bytes": 32463,
+          "sha256": "d9cae5a46f540467f921747c2b356002f967e8fca6f2f4b94eb1c9d4a74f0478"
+        },
+        "head-stripped": {
+          "bytes": 32463,
+          "sha256": "d9cae5a46f540467f921747c2b356002f967e8fca6f2f4b94eb1c9d4a74f0478"
+        }
+      },
+      "matched": true
+    }
+  },
+  "same_capabilities": true
+}
