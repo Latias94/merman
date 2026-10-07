@@ -908,36 +908,30 @@ fn draw_diamond_node(
         charset.rounded_top_right,
         layout.style,
     )?;
-    set_node_border(
-        canvas,
-        layout.x,
-        layout.y + 1,
-        charset.rounded_top_left,
-        layout.style,
-    )?;
-    set_node_border(
-        canvas,
-        right,
-        layout.y + 1,
-        charset.rounded_top_right,
-        layout.style,
-    )?;
+    // The second row is the sloped shoulder of the diamond. Repeating the
+    // rounded corners here makes Unicode output look like two stacked boxes.
+    let (top_left_slope, top_right_slope) = if charset.unicode {
+        ('╱', '╲')
+    } else {
+        ('/', '\\')
+    };
+    set_node_border(canvas, layout.x, layout.y + 1, top_left_slope, layout.style)?;
+    set_node_border(canvas, right, layout.y + 1, top_right_slope, layout.style)?;
     set_node_border(canvas, layout.x, center_y, '<', layout.style)?;
     set_node_border(canvas, right, center_y, '>', layout.style)?;
+    let (bottom_left_slope, bottom_right_slope) = if charset.unicode {
+        ('╲', '╱')
+    } else {
+        ('\\', '/')
+    };
     set_node_border(
         canvas,
         layout.x,
         bottom - 1,
-        charset.rounded_bottom_left,
+        bottom_left_slope,
         layout.style,
     )?;
-    set_node_border(
-        canvas,
-        right,
-        bottom - 1,
-        charset.rounded_bottom_right,
-        layout.style,
-    )?;
+    set_node_border(canvas, right, bottom - 1, bottom_right_slope, layout.style)?;
     set_node_border(
         canvas,
         layout.x,
