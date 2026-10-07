@@ -19,8 +19,52 @@ use std::sync::Arc;
 
 mod appearance;
 mod source_presentation;
+#[cfg(test)]
 pub(crate) use appearance::resolve_appearance;
+pub(crate) use appearance::{AppearanceDecision, MaterializationPlan};
 pub(crate) use source_presentation::is_presentation_field;
+
+/// Test-only observations of actual JSON copy-on-write and operation appearance work.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ConfigWork {
+    pub(crate) json_cow_copies: usize,
+    pub(crate) appearance_selections: usize,
+    pub(crate) selected_theme_materializations: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONFIG_WORK: std::cell::RefCell<Vec<ConfigWork>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+pub(crate) fn record_config_work(mut record: impl FnMut(&mut ConfigWork)) {
+    CONFIG_WORK.with(|scopes| {
+        for scope in scopes.borrow_mut().iter_mut() {
+            record(scope);
+        }
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn measure_config_work<T>(operation: impl FnOnce() -> T) -> (T, ConfigWork) {
+    struct Scope;
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            CONFIG_WORK.with(|scopes| {
+                scopes.borrow_mut().pop();
+            });
+        }
+    }
+    CONFIG_WORK.with(|scopes| scopes.borrow_mut().push(ConfigWork::default()));
+    let scope = Scope;
+    let result = operation();
+    let work =
+        CONFIG_WORK.with(|scopes| *scopes.borrow().last().expect("active config work scope"));
+    drop(scope);
+    (result, work)
+}
 
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
     "secure",
@@ -922,6 +966,8 @@ impl MermaidConfig {
 
     fn value_mut(&mut self) -> &mut Value {
         if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
+            #[cfg(test)]
+            record_config_work(|work| work.json_cow_copies += 1);
             self.value = Arc::new(clone_value_nonrecursive(self.value.as_ref()));
         }
         Arc::make_mut(&mut self.value)

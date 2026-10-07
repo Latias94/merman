@@ -2,7 +2,156 @@
 
 use crate::{MermaidConfig, MermaidThemeId, family};
 use serde_json::Value;
+use std::borrow::Cow;
 
+const APPEARANCE_KEYS: [&str; 3] = ["theme", "look", "layout"];
+
+#[derive(Clone, Copy)]
+enum AppearanceOrigin {
+    Source,
+    Initialize,
+    Compatibility,
+    Default,
+}
+
+struct AppearanceWinner<'a> {
+    value: Cow<'a, Value>,
+    origin: AppearanceOrigin,
+}
+
+/// A pure selection from authored layers. Applying it never re-reads or collapses those layers.
+pub(crate) struct AppearanceDecision<'a> {
+    section: &'a str,
+    winners: [Option<AppearanceWinner<'a>>; 3],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum MaterializationPlan {
+    InheritInitialized,
+    Materialize {
+        selected: MermaidThemeId,
+        source_selects_theme: bool,
+    },
+}
+
+impl<'a> AppearanceDecision<'a> {
+    pub(crate) fn resolve(
+        diagram_type: &'a str,
+        source: &'a MermaidConfig,
+        initialize: &'a MermaidConfig,
+        compatibility: Option<&'a MermaidConfig>,
+        defaults: &'a MermaidConfig,
+    ) -> Self {
+        #[cfg(test)]
+        super::record_config_work(|work| work.appearance_selections += 1);
+        let section =
+            family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
+        let winners = APPEARANCE_KEYS.map(|key| {
+            [
+                (source, AppearanceOrigin::Source),
+                (initialize, AppearanceOrigin::Initialize),
+            ]
+            .into_iter()
+            .find_map(|(layer, origin)| {
+                read_appearance(layer, section, key).map(|value| AppearanceWinner {
+                    value: Cow::Borrowed(value),
+                    origin,
+                })
+            })
+            .or_else(|| {
+                compatibility
+                    .and_then(|layer| read_appearance(layer, section, key))
+                    .map(|value| AppearanceWinner {
+                        value: Cow::Borrowed(value),
+                        origin: AppearanceOrigin::Compatibility,
+                    })
+            })
+            // Mindmap chooses Cose only in the absence of an authored layout, including null.
+            .or_else(|| {
+                (section == "mindmap" && key == "layout").then(|| AppearanceWinner {
+                    value: Cow::Owned(Value::String("cose-bilkent".to_string())),
+                    origin: AppearanceOrigin::Default,
+                })
+            })
+            .or_else(|| {
+                read_appearance(defaults, section, key).map(|value| AppearanceWinner {
+                    value: Cow::Borrowed(value),
+                    origin: AppearanceOrigin::Default,
+                })
+            })
+        });
+        Self { section, winners }
+    }
+
+    fn source_selects_theme(&self) -> bool {
+        self.winners[0].as_ref().is_some_and(|winner| {
+            matches!(winner.origin, AppearanceOrigin::Source)
+                && winner
+                    .value
+                    .as_str()
+                    .is_some_and(|name| MermaidThemeId::parse(name).is_ok())
+        })
+    }
+
+    pub(crate) fn materialization_plan(
+        &self,
+        current_theme: Option<&str>,
+        site_theme: Option<&str>,
+    ) -> MaterializationPlan {
+        let resolved_theme = self.winners[0]
+            .as_ref()
+            .and_then(|winner| winner.value.as_str())
+            .or(current_theme);
+        let source_selects_theme = self.source_selects_theme();
+        if resolved_theme == Some("null") || (!source_selects_theme && resolved_theme == site_theme)
+        {
+            MaterializationPlan::InheritInitialized
+        } else {
+            MaterializationPlan::Materialize {
+                selected: MermaidThemeId::parse(
+                    resolved_theme.expect("appearance resolves a registered theme"),
+                )
+                .expect("appearance validates registered themes"),
+                source_selects_theme,
+            }
+        }
+    }
+
+    pub(crate) fn apply_to(&self, effective: &mut MermaidConfig) {
+        for (key, winner) in APPEARANCE_KEYS.into_iter().zip(&self.winners) {
+            let Some(winner) = winner else {
+                continue;
+            };
+            let value = winner.value.as_ref();
+            let explicit = matches!(
+                winner.origin,
+                AppearanceOrigin::Source | AppearanceOrigin::Initialize
+            );
+            let scoped_key = format!("{}.{key}", self.section);
+            // The detector may add or delete scoped keys between applications of the same decision.
+            let section_has_key = effective
+                .as_value()
+                .get(self.section)
+                .and_then(|section| section.get(key))
+                .is_some();
+            if explicit {
+                // Equal values can still acquire a different owner.
+                effective.set_value_explicit(key, value.clone());
+            } else if effective.as_value().get(key) != Some(value) {
+                effective.set_value_preserving_theme_compatibility(key, value.clone());
+            }
+            if section_has_key {
+                if explicit {
+                    effective.set_value_explicit(&scoped_key, value.clone());
+                } else if effective.as_value()[self.section].get(key) != Some(value) {
+                    effective.set_value_preserving_theme_compatibility(&scoped_key, value.clone());
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn resolve_appearance(
     diagram_type: &str,
     source: &MermaidConfig,
@@ -11,52 +160,10 @@ pub(crate) fn resolve_appearance(
     defaults: &MermaidConfig,
     effective: &mut MermaidConfig,
 ) -> bool {
-    let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
-    let source_selects_theme = read_appearance(source, section, "theme")
-        .and_then(Value::as_str)
-        .is_some_and(|name| MermaidThemeId::NAMES.contains(&name));
-    for key in ["theme", "look", "layout"] {
-        // Mindmap's database chooses Cose only when the caller supplied no layout.
-        // Resolve this while authored layers are available, before global defaults
-        // become indistinguishable from an explicit request (including null).
-        let mindmap_default = (section == "mindmap" && key == "layout")
-            .then(|| Value::String("cose-bilkent".to_string()));
-        let winner = [source, initialize]
-            .into_iter()
-            .find_map(|layer| read_appearance(layer, section, key))
-            .map(|value| (value, true))
-            .or_else(|| {
-                compatibility
-                    .and_then(|layer| read_appearance(layer, section, key))
-                    .map(|value| (value, false))
-            })
-            .or_else(|| mindmap_default.as_ref().map(|value| (value, false)))
-            .or_else(|| read_appearance(defaults, section, key).map(|value| (value, false)));
-        let Some((value, explicit)) = winner else {
-            continue;
-        };
-        let scoped_key = format!("{section}.{key}");
-        let section_has_key = effective
-            .as_value()
-            .get(section)
-            .and_then(|section| section.get(key))
-            .is_some();
-        if explicit {
-            effective.set_value_explicit(key, value.clone());
-        } else if effective.as_value().get(key) != Some(value) {
-            effective.set_value_preserving_theme_compatibility(key, value.clone());
-        }
-        // Mermaid keeps an existing scoped setting in step with the resolved top-level
-        // setting, but does not create appearance keys in otherwise unrelated sections.
-        if section_has_key {
-            if explicit {
-                effective.set_value_explicit(&scoped_key, value.clone());
-            } else if effective.as_value()[section].get(key) != Some(value) {
-                effective.set_value_preserving_theme_compatibility(&scoped_key, value.clone());
-            }
-        }
-    }
-    source_selects_theme
+    let decision =
+        AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
+    decision.apply_to(effective);
+    decision.source_selects_theme()
 }
 
 fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Option<&'a Value> {
@@ -105,6 +212,80 @@ mod tests {
             &mut effective,
         );
         effective
+    }
+
+    #[test]
+    fn one_decision_rechecks_scoped_presence_and_keeps_equal_value_ownership() {
+        let source = MermaidConfig::from_value(json!({"theme": "dark", "layout": null}));
+        let empty = MermaidConfig::empty_object();
+        let defaults = MermaidConfig::from_value(json!({"theme": "default", "layout": "dagre"}));
+        let decision =
+            AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+        let mut effective = MermaidConfig::from_value(json!({"theme": "dark"}));
+        decision.apply_to(&mut effective);
+        assert!(effective.explicit_config_owns_path("theme"));
+        assert!(effective.explicit_config_owns_path("layout"));
+        assert_eq!(effective.as_value()["layout"], Value::Null);
+        assert!(effective.as_value().get("flowchart").is_none());
+
+        effective.set_value("flowchart.theme", json!("forest"));
+        decision.apply_to(&mut effective);
+        assert_eq!(effective.get_str("flowchart.theme"), Some("dark"));
+        assert!(effective.explicit_config_owns_path("flowchart.theme"));
+        assert!(effective.as_value()["flowchart"].get("layout").is_none());
+    }
+
+    #[test]
+    fn materialization_plan_preserves_null_and_scoped_selection_rules() {
+        let empty = MermaidConfig::empty_object();
+        let defaults = MermaidConfig::from_value(json!({"theme": "dark"}));
+        for (source, expected) in [
+            (json!({}), MaterializationPlan::InheritInitialized),
+            (
+                json!({"theme": null}),
+                MaterializationPlan::InheritInitialized,
+            ),
+            (
+                json!({"theme": "unknown"}),
+                MaterializationPlan::InheritInitialized,
+            ),
+            (
+                json!({"theme": "null"}),
+                MaterializationPlan::InheritInitialized,
+            ),
+            (
+                json!({"theme": "dark"}),
+                MaterializationPlan::Materialize {
+                    selected: MermaidThemeId::Dark,
+                    source_selects_theme: true,
+                },
+            ),
+            (
+                json!({"theme": "base", "flowchart": {"theme": "forest"}}),
+                MaterializationPlan::Materialize {
+                    selected: MermaidThemeId::Forest,
+                    source_selects_theme: true,
+                },
+            ),
+        ] {
+            let source = MermaidConfig::from_value(source);
+            let decision =
+                AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+            assert_eq!(
+                decision.materialization_plan(Some("dark"), Some("dark")),
+                expected
+            );
+        }
+        let initialize = MermaidConfig::from_value(json!({"flowchart": {"theme": "forest"}}));
+        let decision =
+            AppearanceDecision::resolve("flowchart-v2", &empty, &initialize, None, &defaults);
+        assert_eq!(
+            decision.materialization_plan(Some("dark"), Some("dark")),
+            MaterializationPlan::Materialize {
+                selected: MermaidThemeId::Forest,
+                source_selects_theme: false,
+            }
+        );
     }
 
     #[test]

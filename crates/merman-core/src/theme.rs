@@ -1866,10 +1866,11 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
 }
 
 pub(crate) fn materialize_selected_theme(
-    raw_merged_config: &MermaidConfig,
+    mut effective_config: MermaidConfig,
     selected_theme: MermaidThemeId,
 ) -> Result<MermaidConfig, ThemeResolutionError> {
-    let mut effective_config = raw_merged_config.clone();
+    #[cfg(test)]
+    crate::config::record_config_work(|work| work.selected_theme_materializations += 1);
     effective_config.set_value_preserving_theme_compatibility(
         "theme",
         Value::String(selected_theme.as_str().to_string()),
@@ -2791,6 +2792,22 @@ mod tests {
                 format!("unsupported Mermaid theme `{invalid}`")
             );
         }
+    }
+
+    #[test]
+    fn owned_staged_theme_materialization_needs_no_json_cow_copy() {
+        let raw = MermaidConfig::from_value(json!({
+            "theme": "base", "themeVariables": { "primaryColor": "#123456" },
+        }));
+        let (materialized, work) = crate::config::measure_config_work(|| {
+            materialize_selected_theme(raw, MermaidThemeId::Base).unwrap()
+        });
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+        assert_eq!(work.selected_theme_materializations, 1, "{work:?}");
     }
 
     #[test]
