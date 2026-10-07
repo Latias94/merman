@@ -8489,6 +8489,127 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
 }
 
 #[test]
+fn state_explicit_config_typography_outranks_theme_in_measurement_svg_and_evidence() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("monospace").unwrap())
+        .with_font_size_px(20.0)
+        .unwrap()
+        .with_font_weight(700)
+        .unwrap()
+        .with_font_style(crate::diagram_theme::FontStyle::Italic);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_default(typography)),
+        )
+        .unwrap();
+    let source = "stateDiagram-v2\nReady --> Done: Next\n";
+    for (origin, engine, source) in [
+        (
+            "site",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {"fontFamily": "serif", "fontSize": 30}
+            }))),
+            source.to_string(),
+        ),
+        (
+            "source",
+            Engine::new(),
+            format!(
+                "%%{{init: {{\"themeVariables\": {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}}}%%\n{source}"
+            ),
+        ),
+        (
+            "site-root",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "fontFamily": "serif", "fontSize": 30
+            }))),
+            source.to_string(),
+        ),
+        (
+            "source-root",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+            format!("%%{{init: {{\"fontFamily\": \"serif\", \"fontSize\": 30}}}}%%\n{source}"),
+        ),
+    ] {
+        let parsed = theme
+            .install_parse_compatibility(engine)
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let host = Arc::new(SidecarRecordingHost::new(SidecarHostOutcome::Success));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.state-config-typography").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let measurements = host
+            .snapshot()
+            .into_iter()
+            .filter(|request| ["Ready", "Done", "Next"].contains(&request.text.as_str()))
+            .collect::<Vec<_>>();
+        assert!(
+            !measurements.is_empty(),
+            "{origin}: expected State measurements"
+        );
+        assert!(
+            measurements
+                .iter()
+                .all(|request| request.font_size_bits == 30.0_f64.to_bits()),
+            "{origin}: configured size must win measurement: {measurements:?}"
+        );
+        assert!(
+            rendered.svg().contains("font-family:serif !important"),
+            "{origin}: {}",
+            rendered.svg()
+        );
+        assert!(
+            rendered.svg().contains("font-size:30px !important"),
+            "{origin}: {}",
+            rendered.svg()
+        );
+        assert!(!rendered.svg().contains("font-size:20px !important"));
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            let key = FamilyThemeMechanismKey::Typography(property);
+            assert!(
+                !rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .contains(&key),
+                "{origin}: config-owned typography must not credit the theme"
+            );
+        }
+        for property in [
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+        ] {
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .contains(&FamilyThemeMechanismKey::Typography(property)),
+                "{origin}: unrelated theme typography must remain active"
+            );
+        }
+    }
+}
+
+#[test]
 fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
     let typography = ThemeTextStyle::default()
         .with_letter_spacing_px(10.0)

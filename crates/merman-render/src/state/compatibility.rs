@@ -1,10 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use merman_core::MermaidConfig;
 use merman_core::diagrams::state::StateDiagramRenderNode;
 use serde_json::Value;
 
-use crate::diagram_theme::ThemeTarget;
+use crate::diagram_theme::{ThemeTarget, ThemeTypographyProperty};
 
 /// Concrete State terminal whose Mermaid compatibility value can outrank typed paint.
 ///
@@ -375,6 +375,8 @@ pub(crate) struct StateCompatibilityPlan {
     html_labels: bool,
     pub(crate) font_family_css: String,
     pub(crate) font_size_px: f64,
+    pub(crate) typography_config_owned: BTreeSet<ThemeTypographyProperty>,
+    pub(crate) configured_font_stack: Option<crate::text::ParsedCssFontStack>,
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) error_bkg: String,
@@ -433,9 +435,40 @@ impl StateCompatibilityPlan {
             crate::config::config_diagram_look(resolver.value).as_str(),
         );
         let html_labels = crate::config::config_effective_html_labels(resolver.value);
-        let font_family_css = crate::config::config_font_family_css(resolver.value);
-        let font_size_px =
-            crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0).max(1.0);
+        // Generated theme defaults must not hide an explicitly configured root font value.
+        // Among explicit values, retain Mermaid's themeVariables-before-root precedence.
+        let owned_font_family = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .filter(|path| resolver.path_is_owned(path))
+            .find_map(|path| {
+                let value = value_at_dotted_path(resolver.value, path)?.as_str()?;
+                let css = crate::config::normalize_css_font_family(value);
+                (!css.is_empty()).then_some(css)
+            });
+        let owned_font_size = ["themeVariables.fontSize", "fontSize"]
+            .into_iter()
+            .filter(|path| resolver.path_is_owned(path))
+            .find_map(|path| {
+                value_at_dotted_path(resolver.value, path).and_then(crate::config::json_f64_css_px)
+            });
+        let mut typography_config_owned = BTreeSet::new();
+        if owned_font_family.is_some() {
+            typography_config_owned.insert(ThemeTypographyProperty::FontStack);
+        }
+        if owned_font_size.is_some() {
+            typography_config_owned.insert(ThemeTypographyProperty::FontSize);
+        }
+        let font_family_css = owned_font_family
+            .unwrap_or_else(|| crate::config::config_font_family_css(resolver.value));
+        let configured_font_stack = typography_config_owned
+            .contains(&ThemeTypographyProperty::FontStack)
+            .then(|| crate::text::parse_css_font_stack(&font_family_css))
+            .flatten();
+        let font_size_px = owned_font_size
+            .unwrap_or_else(|| {
+                crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
+            })
+            .max(1.0);
 
         let text_color = resolver.direct_string(&["themeVariables.textColor"], || {
             StateResolvedValue::constant("#333".to_string())
@@ -997,6 +1030,8 @@ impl StateCompatibilityPlan {
             html_labels,
             font_family_css,
             font_size_px,
+            typography_config_owned,
+            configured_font_stack,
             text_color: text_color.value,
             line_color: line_color.value,
             error_bkg: error_bkg.value,
