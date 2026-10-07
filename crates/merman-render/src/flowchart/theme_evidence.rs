@@ -323,6 +323,7 @@ pub(crate) struct FlowchartEdgeLabelThemeEmission {
 pub(crate) struct FlowchartClusterThemeEmission {
     pub(crate) fill: FlowchartThemeFacetEmission,
     pub(crate) stroke: FlowchartThemeFacetEmission,
+    pub(crate) stroke_width: FlowchartThemeFacetEmission,
 }
 
 impl FlowchartNodeThemeEmission {
@@ -581,6 +582,7 @@ impl FlowchartEdgeThemeStyle {
 pub(crate) struct FlowchartClusterThemeStyle {
     fill: Option<FlowchartPaintOutcome>,
     stroke: Option<FlowchartPaintOutcome>,
+    stroke_width: Option<FlowchartScalarOutcome>,
     matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
@@ -635,8 +637,11 @@ impl FlowchartClusterThemeStyle {
                     rule_index,
                     FamilyThemeRuleFacet::Effect,
                 ),
-                ResolvedStyleProperty::StrokeWidth
-                | ResolvedStyleProperty::StrokeDasharray
+                ResolvedStyleProperty::StrokeWidth => {
+                    resolved.stroke_width =
+                        resolve_stroke_width(theme, rule_index, style.stroke_width_resolution());
+                }
+                ResolvedStyleProperty::StrokeDasharray
                 | ResolvedStyleProperty::StrokeLinecap
                 | ResolvedStyleProperty::StrokeLinejoin
                 | ResolvedStyleProperty::Opacity
@@ -675,17 +680,31 @@ impl FlowchartClusterThemeStyle {
             .flatten()
     }
 
+    pub(crate) fn stroke_width_value(&self, precedence: FlowchartFacetPrecedence) -> Option<f32> {
+        (!precedence.overrides_theme())
+            .then(|| {
+                self.stroke_width
+                    .as_ref()
+                    .and_then(FlowchartScalarOutcome::value)
+            })
+            .flatten()
+    }
+
     pub(crate) fn append_inline_style(
         &self,
         out: &mut String,
         fill_precedence: FlowchartFacetPrecedence,
         stroke_precedence: FlowchartFacetPrecedence,
+        stroke_width_precedence: FlowchartFacetPrecedence,
     ) {
         if let Some(fill) = self.fill_value(fill_precedence, true) {
             push_inline_declaration(out, "fill", fill);
         }
         if let Some(stroke) = self.stroke_value(stroke_precedence, true) {
             push_inline_declaration(out, "stroke", stroke);
+        }
+        if let Some(width) = self.stroke_width_value(stroke_width_precedence) {
+            push_inline_declaration(out, "stroke-width", &format!("{width}px"));
         }
     }
 }
@@ -1640,6 +1659,13 @@ impl FlowchartThemeEvidenceRecorder {
             style.stroke.as_ref(),
             emission.stroke.precedence,
             emission.stroke.verified,
+        );
+        record_scalar_outcome(
+            &mut state.cluster,
+            style.stroke_width.as_ref(),
+            emission.stroke_width.precedence,
+            emission.stroke_width.verified,
+            ThemeCapability::BorderStyling,
         );
         state
             .cluster
@@ -3444,6 +3470,50 @@ mod tests {
         FlowchartClusterThemeEmission {
             fill: FlowchartThemeFacetEmission::new(no_override(), fill),
             stroke: FlowchartThemeFacetEmission::new(no_override(), stroke),
+            stroke_width: FlowchartThemeFacetEmission::absent(),
+        }
+    }
+
+    #[test]
+    fn cluster_width_requires_the_width_terminal_even_when_paint_was_emitted() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Cluster,
+                        ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartClusterThemeStyle::resolve(Some(&theme), None, &meter).unwrap();
+        for verified in [false, true] {
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            let mut emission = cluster_emission(true, true);
+            emission.stroke_width = FlowchartThemeFacetEmission::new(no_override(), verified);
+            recorder
+                .record_cluster_emission(&style, emission, &[], &meter)
+                .unwrap();
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert_eq!(evidence.applied().len(), usize::from(verified));
+            if verified {
+                assert!(evidence.residuals().is_empty());
+                assert!(
+                    evidence
+                        .applied_capabilities()
+                        .contains(&ThemeCapability::BorderStyling)
+                );
+            } else {
+                assert_eq!(evidence.residuals().len(), 1);
+                assert_eq!(
+                    evidence.residuals()[0].reason(),
+                    FamilyThemeResidualReason::UnsupportedGeometry
+                );
+            }
         }
     }
 

@@ -489,3 +489,132 @@ fn flowchart_cluster_theme_is_not_applicable_without_a_cluster() {
     assert!(!svg.contains("fill:#ef4444 !important"));
     assert!(!svg.contains("stroke:#2563eb !important"));
 }
+
+#[test]
+fn cluster_stroke_width_reaches_rect_and_rough_outline_with_source_precedence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+            ))),
+        )
+        .unwrap();
+    for layout in ["dagre", "swimlane"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for (source_style, expected) in [("", "3px"), ("style Group stroke-width:0px\n", "0px")]
+            {
+                let rendered = try_render(
+                    &format!("{CLUSTER_SOURCE}{source_style}"),
+                    &theme,
+                    MermaidConfig::from_value(json!({
+                        "layout": layout,
+                        "look": look,
+                        "flowchart": {"look": look},
+                        "handDrawnSeed": 7,
+                    })),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap_or_else(|error| panic!("{layout}/{look}/{source_style}: {error}"));
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let cluster = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-et") == Some("cluster")
+                            || node.attribute("class").is_some_and(|classes| {
+                                classes.split_whitespace().any(|class| class == "swimlane")
+                            })
+                    })
+                    .expect("visible cluster");
+                let outlines = cluster
+                    .descendants()
+                    .filter(|node| {
+                        (node.has_tag_name("rect") || node.has_tag_name("path"))
+                            && node
+                                .attribute("style")
+                                .is_some_and(|style| style.contains("stroke-width:"))
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    !outlines.is_empty(),
+                    "{layout}/{look}: emitted width terminal"
+                );
+                for outline in outlines {
+                    assert!(
+                        outline
+                            .attribute("style")
+                            .unwrap()
+                            .contains(&format!("stroke-width:{expected} !important")),
+                        "{layout}/{look}: {outline:?}"
+                    );
+                    if look == "handDrawn" {
+                        assert_eq!(
+                            outline.attribute("stroke-width"),
+                            Some(if source_style.is_empty() { "3" } else { "0" })
+                        );
+                    }
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.theme_residual_count(), 0, "{layout}/{look}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(source_style.is_empty()),
+                    "{layout}/{look}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_stroke_width(0.0).unwrap(),
+            ))),
+        )
+        .unwrap();
+    for look in ["classic", "neo", "handDrawn"] {
+        let rendered = try_render(
+            CLUSTER_SOURCE,
+            &theme,
+            MermaidConfig::from_value(json!({"look": look, "flowchart": {"look": look}})),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        assert!(rendered.svg().contains("stroke-width:0px !important"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    let absent = try_render(
+        "flowchart LR\nA --> B\n",
+        &theme,
+        MermaidConfig::default(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(absent.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+
+    let source = "agentflow-beta LR\nflow group[Group]\na[Alpha] --> b[Beta]\nend\n";
+    let config = MermaidConfig::from_value(json!({"look": "classic"}));
+    let unrelated = try_render(
+        source,
+        &theme,
+        config,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert!(!unrelated.svg().contains("stroke-width:0px !important"));
+    let evidence = merman_render::__private::family_evidence(unrelated.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    // Agentflow shares a shape writer, but Cluster is outside its theme target domain.
+    assert_eq!(evidence.required_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}

@@ -61,6 +61,7 @@ fn write_swimlane_rect(
     compiled: &FlowchartCompiledStyles,
     class_name: &str,
     node_style: &str,
+    typed_stroke_width: Option<f32>,
     paint_owner_id: impl std::fmt::Display,
     x: f64,
     y: f64,
@@ -70,7 +71,10 @@ fn write_swimlane_rect(
     stroke: &str,
 ) -> FlowchartShapeFacetEmissionReceipt {
     if flowchart_config_look(ctx.config) == "handDrawn" {
-        let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
+        let stroke_width = parse_css_px_f32(
+            compiled.stroke_width.as_ref(),
+            typed_stroke_width.unwrap_or(1.3),
+        );
         let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
         // RoughJS creates the outline before the fill. Generating both paths
         // and omitting the fill path for the body therefore preserves the
@@ -172,8 +176,16 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         compiled.source_stroke_status(),
         ctx.cluster_stroke_config_override,
     );
+    let stroke_width_precedence =
+        FlowchartFacetPrecedence::new(compiled.source_stroke_width_status(), false);
+    let typed_stroke_width = cluster_theme.stroke_width_value(stroke_width_precedence);
     let mut node_style = compiled.node_style.trim().to_string();
-    cluster_theme.append_inline_style(&mut node_style, fill_precedence, stroke_precedence);
+    cluster_theme.append_inline_style(
+        &mut node_style,
+        fill_precedence,
+        stroke_precedence,
+        stroke_width_precedence,
+    );
     let label_style = compiled.label_style.trim();
     let render_title =
         subgraph
@@ -260,6 +272,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &compiled,
             "swimlane-body",
             &node_style,
+            typed_stroke_width,
             lane_dom_id,
             body_x,
             lane_top,
@@ -274,6 +287,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &compiled,
             "swimlane-title",
             &node_style,
+            typed_stroke_width,
             lane_dom_id,
             lane_left,
             lane_top,
@@ -309,6 +323,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &compiled,
             "swimlane-body",
             &node_style,
+            typed_stroke_width,
             lane_dom_id,
             lane_left,
             body_y,
@@ -323,6 +338,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &compiled,
             "swimlane-title",
             &node_style,
+            typed_stroke_width,
             lane_dom_id,
             lane_left,
             lane_top,
@@ -352,6 +368,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             stroke: FlowchartThemeFacetEmission::new(
                 stroke_precedence,
                 shell_receipt.stroke_verified(),
+            ),
+            stroke_width: FlowchartThemeFacetEmission::new(
+                stroke_width_precedence,
+                shell_receipt.body.stroke_width && shell_receipt.title.stroke_width,
             ),
         },
         &source_residuals,

@@ -79,6 +79,7 @@ fn write_flowchart_cluster_shape(
     ctx: &FlowchartRenderCtx<'_>,
     compiled_styles: &FlowchartCompiledStyles,
     rect_style: &str,
+    typed_stroke_width: Option<f32>,
     fill_path_id: &str,
     fill: &str,
     stroke: &str,
@@ -135,7 +136,10 @@ fn write_flowchart_cluster_shape(
     }
 
     if flowchart_config_look(ctx.config) == "handDrawn" {
-        let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);
+        let stroke_width = parse_css_px_f32(
+            compiled_styles.stroke_width.as_ref(),
+            typed_stroke_width.unwrap_or(1.3),
+        );
         let stroke_dasharray = compiled_styles
             .stroke_dasharray
             .as_deref()
@@ -199,6 +203,7 @@ fn record_cluster_shape_emission(
     receipt: FlowchartShapeFacetEmissionReceipt,
     fill_precedence: FlowchartFacetPrecedence,
     stroke_precedence: FlowchartFacetPrecedence,
+    stroke_width_precedence: FlowchartFacetPrecedence,
 ) -> crate::Result<()> {
     let source_residuals =
         compiled_styles.emitted_shape_source_residuals_with_receipt(cluster_id, receipt);
@@ -207,6 +212,10 @@ fn record_cluster_shape_emission(
         FlowchartClusterThemeEmission {
             fill: FlowchartThemeFacetEmission::new(fill_precedence, receipt.fill),
             stroke: FlowchartThemeFacetEmission::new(stroke_precedence, receipt.stroke),
+            stroke_width: FlowchartThemeFacetEmission::new(
+                stroke_width_precedence,
+                receipt.stroke_width,
+            ),
         },
         &source_residuals,
         ctx.work_meter,
@@ -269,8 +278,17 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         compiled_styles.source_stroke_status(),
         ctx.cluster_stroke_config_override,
     );
+    // Cluster CSS has a fixed width fallback; node strokeWidth config does not own it.
+    let stroke_width_precedence =
+        FlowchartFacetPrecedence::new(compiled_styles.source_stroke_width_status(), false);
+    let typed_stroke_width = cluster_theme.stroke_width_value(stroke_width_precedence);
     let mut rect_style = compiled_styles.node_style.trim().to_string();
-    cluster_theme.append_inline_style(&mut rect_style, fill_precedence, stroke_precedence);
+    cluster_theme.append_inline_style(
+        &mut rect_style,
+        fill_precedence,
+        stroke_precedence,
+        stroke_width_precedence,
+    );
     let fill = cluster_theme
         .fill_value(fill_precedence, true)
         .unwrap_or(&ctx.cluster_fill_color);
@@ -386,6 +404,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ctx,
             &compiled_styles,
             &rect_style,
+            typed_stroke_width,
             &fill_path_id,
             fill,
             stroke,
@@ -402,6 +421,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             shape_source_receipt,
             fill_precedence,
             stroke_precedence,
+            stroke_width_precedence,
         )?;
         let _ = write!(
             out,
@@ -528,6 +548,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         ctx,
         &compiled_styles,
         &rect_style,
+        typed_stroke_width,
         &fill_path_id,
         fill,
         stroke,
@@ -544,6 +565,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         shape_source_receipt,
         fill_precedence,
         stroke_precedence,
+        stroke_width_precedence,
     )?;
     let _ = write!(
         out,
