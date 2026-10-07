@@ -53,6 +53,8 @@ const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 const renderRuntimeExportNames = [
   "renderSvg",
   "svgPlanJson",
+  "edgeGeometryJson",
+  "edgeGeometryJsonWithTextMeasurer",
   "renderSvgWithTextMeasurer",
   "layoutJsonWithTextMeasurer",
   "renderSvgElement",
@@ -61,11 +63,14 @@ const renderRuntimeExportNames = [
   "parseObject",
   "layoutJson",
   "layoutObject",
+  "edgeGeometryObject",
 ];
 
 const renderWasmExportNames = [
   "renderSvg",
   "svgPlanJson",
+  "edgeGeometryJson",
+  "edgeGeometryJsonWithTextMeasurer",
   "renderSvgWithTextMeasurer",
   "layoutJsonWithTextMeasurer",
   "parseJson",

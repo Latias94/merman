@@ -179,7 +179,8 @@
     { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10, "executable": true },
     { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11, "executable": true },
     { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12, "executable": true },
-    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true }
+    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true },
+    { "id": "edge_geometry_json", "c_name": "MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON", "code": 14, "executable": true }
   ],
   "callbacks": [
     {

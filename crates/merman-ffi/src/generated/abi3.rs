@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5";
+    "sha256:750705737201639db1b1d1318412f5ea0734381d562231c68e1ec7d0f842e48d";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -274,6 +274,12 @@ pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG_PLAN_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON: &str = "svg-plan-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON: &str = "application/json";
+pub const MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON: MermanNativeOperationCode = 14;
+pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_EDGE_GEOMETRY_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_EDGE_GEOMETRY_JSON: bool = true;
+pub const MERMAN_NATIVE_OPERATION_ID_EDGE_GEOMETRY_JSON: &str = "edge-geometry-json";
+pub const MERMAN_NATIVE_OPERATION_CAPABILITY_EDGE_GEOMETRY_JSON: &str = "svg";
+pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_EDGE_GEOMETRY_JSON: &str = "application/json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MermanNativeOperationFailureDescriptor {
@@ -422,6 +428,15 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
         media_type: Some("application/json"),
         requires_uri: false,
     },
+    MermanNativeOperationDescriptor {
+        code: MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON,
+        executable: true,
+        non_executable_failure: None,
+        operation_id: Some("edge-geometry-json"),
+        capability_id: Some("svg"),
+        media_type: Some("application/json"),
+        requires_uri: false,
+    },
 ];
 
 pub fn merman_native_operation_descriptor(
@@ -449,6 +464,7 @@ pub fn merman_native_operation_key(
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisJson),
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisFactsJson),
         MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON => Some(merman_bindings_core::OperationKey::SvgPlanJson),
+        MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON => Some(merman_bindings_core::OperationKey::EdgeGeometryJson),
         _ => None,
     }
 }
@@ -470,6 +486,7 @@ pub const fn merman_native_operation_code(
         merman_bindings_core::OperationKey::DocumentAnalysisJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
         merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON),
         merman_bindings_core::OperationKey::SvgPlanJson => Some(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON),
+        merman_bindings_core::OperationKey::EdgeGeometryJson => Some(MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON),
         _ => None,
     }
 }

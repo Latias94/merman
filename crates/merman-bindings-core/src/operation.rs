@@ -100,6 +100,7 @@ impl BindingOperationKind {
             OperationKey::SemanticJson | OperationKey::SvgPlanJson => BindingResourceScope::Model,
             OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
+            OperationKey::EdgeGeometryJson => BindingResourceScope::Svg,
             OperationKey::Svg => BindingResourceScope::Svg,
             OperationKey::Png => BindingResourceScope::Png,
             OperationKey::Jpeg => BindingResourceScope::Jpeg,
@@ -1185,6 +1186,9 @@ impl BindingEngine {
             OperationKey::LayoutJson => self
                 .layout_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
+            OperationKey::EdgeGeometryJson => self
+                .edge_geometry_json_data(source, control.clone())
+                .map(BindingOperationOutput::plain),
             OperationKey::AnalysisJson => self
                 .analyze_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
@@ -1367,7 +1371,7 @@ mod tests {
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 13);
+        assert_eq!(operations.len(), 14);
         for operation in operations {
             assert_eq!(
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),
@@ -1385,6 +1389,28 @@ mod tests {
         assert_eq!(operation.availability_capability_id(), Some("svg"));
         assert_eq!(operation.media_type(), "application/json");
         assert!(!operation.requires_uri());
+    }
+
+    #[test]
+    fn edge_geometry_json_is_a_descriptor_owned_operation() {
+        let operation = BindingOperationKind::from_id("edge-geometry-json").unwrap();
+
+        assert_eq!(operation.availability_capability_id(), Some("svg"));
+        assert_eq!(operation.media_type(), "application/json");
+        assert!(!operation.requires_uri());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn edge_geometry_json_is_scoped_to_the_svg_resource_budget() {
+        let operation = BindingOperationKind::from_id("edge-geometry-json").unwrap();
+        let scope = operation.resource_scope();
+
+        // Renderer-scale output, so hosts may cap it with the same `max_svg_bytes` override that
+        // `svg` accepts. The `layout` scope rejects render limits, which is why this operation is
+        // not scoped like `layout-json`.
+        assert!(scope.accepts("max_svg_bytes"));
+        assert!(!BindingResourceScope::Layout.accepts("max_svg_bytes"));
     }
 
     #[test]

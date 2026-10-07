@@ -75,6 +75,8 @@ macro_rules! native_sdk_artifact_contract {
             $crate::OperationKey::DocumentAnalysisFactsJson,
             #[cfg(feature = "analysis")]
             $crate::OperationKey::DocumentAnalysisJson,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::EdgeGeometryJson,
             #[cfg(feature = "jpeg")]
             $crate::OperationKey::Jpeg,
             #[cfg(feature = "svg")]

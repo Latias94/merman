@@ -335,7 +335,8 @@ impl BindingEngine {
             | crate::OperationKey::Png
             | crate::OperationKey::Jpeg
             | crate::OperationKey::Pdf
-            | crate::OperationKey::LayoutJson => {
+            | crate::OperationKey::LayoutJson
+            | crate::OperationKey::EdgeGeometryJson => {
                 #[cfg(feature = "svg")]
                 {
                     control
@@ -351,6 +352,9 @@ impl BindingEngine {
                             .map(BindingOperationOutput::plain),
                         crate::OperationKey::LayoutJson => render
                             .layout_json(source, control.clone())
+                            .map(BindingOperationOutput::plain),
+                        crate::OperationKey::EdgeGeometryJson => render
+                            .edge_geometry_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
                         crate::OperationKey::Png => {
                             #[cfg(feature = "png")]
@@ -405,6 +409,9 @@ impl BindingEngine {
                         )),
                         crate::OperationKey::LayoutJson => {
                             Err(common::feature_required_error("layout_json", "svg"))
+                        }
+                        crate::OperationKey::EdgeGeometryJson => {
+                            Err(common::feature_required_error("edge_geometry_json", "svg"))
                         }
                         crate::OperationKey::Png => {
                             Err(common::feature_required_error("PNG rendering", "png"))
@@ -594,6 +601,13 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("layout-json", source))
     }
 
+    pub fn edge_geometry_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "edge-geometry-json",
+            source,
+        ))
+    }
+
     pub(crate) fn layout_json_data(
         &self,
         source: &[u8],
@@ -608,6 +622,23 @@ impl BindingEngine {
         {
             let _ = (source, control);
             Err(common::feature_required_error("layout_json", "svg"))
+        }
+    }
+
+    pub(crate) fn edge_geometry_json_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "svg")]
+        {
+            self.render.edge_geometry_json(source, control)
+        }
+
+        #[cfg(not(feature = "svg"))]
+        {
+            let _ = (source, control);
+            Err(common::feature_required_error("edge_geometry_json", "svg"))
         }
     }
 

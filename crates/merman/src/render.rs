@@ -551,6 +551,8 @@ pub enum RenderTarget {
     #[cfg(feature = "svg")]
     LayoutJson(SvgRequest),
     #[cfg(feature = "svg")]
+    EdgeGeometryJson(SvgRequest),
+    #[cfg(feature = "svg")]
     SvgPlan(SvgRequest),
     #[cfg(feature = "ascii")]
     Ascii(AsciiRequest),
@@ -569,9 +571,10 @@ impl RenderTarget {
             #[cfg(feature = "ascii")]
             Self::Ascii(_) => None,
             #[cfg(feature = "svg")]
-            Self::Svg(request) | Self::LayoutJson(request) | Self::SvgPlan(request) => {
-                Some(request.environment.input_resources)
-            }
+            Self::Svg(request)
+            | Self::LayoutJson(request)
+            | Self::EdgeGeometryJson(request)
+            | Self::SvgPlan(request) => Some(request.environment.input_resources),
             #[cfg(feature = "png")]
             Self::Png(request) => Some(request.svg.environment.input_resources),
             #[cfg(feature = "jpeg")]
@@ -695,6 +698,15 @@ impl<'a> RenderRequest<'a> {
     }
 
     #[cfg(feature = "svg")]
+    pub fn edge_geometry_json(
+        source: &'a str,
+        control: OperationControl,
+        request: SvgRequest,
+    ) -> Self {
+        Self::new(source, RenderTarget::EdgeGeometryJson(request), control)
+    }
+
+    #[cfg(feature = "svg")]
     pub fn svg_plan(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::SvgPlan(request), control)
     }
@@ -740,6 +752,8 @@ pub enum RenderOutput {
     Svg(Option<SvgOutput>),
     #[cfg(feature = "svg")]
     LayoutJson(Option<SvgLayoutOutput>),
+    #[cfg(feature = "svg")]
+    EdgeGeometryJson(Option<merman_render::model::EdgePaintGeometryOutput>),
     #[cfg(feature = "svg")]
     SvgPlan(Option<merman_render::family::RenderCapabilityPlan>),
     #[cfg(feature = "ascii")]
@@ -888,6 +902,10 @@ impl SemanticArtifact {
                 render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
             }
             #[cfg(feature = "svg")]
+            RenderTarget::EdgeGeometryJson(request) => {
+                render_edge_geometry_json_target(self, request).map(RenderOutput::EdgeGeometryJson)
+            }
+            #[cfg(feature = "svg")]
             RenderTarget::SvgPlan(request) => {
                 render_svg_plan_target(self, request).map(RenderOutput::SvgPlan)
             }
@@ -915,6 +933,8 @@ impl RenderOutput {
             RenderTarget::Svg(_) => Self::Svg(None),
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
+            #[cfg(feature = "svg")]
+            RenderTarget::EdgeGeometryJson(_) => Self::EdgeGeometryJson(None),
             #[cfg(feature = "svg")]
             RenderTarget::SvgPlan(_) => Self::SvgPlan(None),
             #[cfg(feature = "ascii")]
@@ -978,6 +998,30 @@ fn render_layout_json_target(
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
     let layout = artifact.layout_json().map_err(RenderError::from)?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+}
+
+#[cfg(feature = "svg")]
+fn render_edge_geometry_json_target(
+    semantic: SemanticArtifact,
+    request: SvgRequest,
+) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request
+        .environment
+        .begin_session_in_context(operation.context, operation.control);
+    let artifact = merman_render::family::prepare_with_render_policy(
+        parsed,
+        &request.layout,
+        session,
+        request.presentation,
+    )
+    .map_err(RenderError::from)?;
+    let diagram_type = artifact.metadata().diagram_type.clone();
+    let geometry = artifact.edge_geometry_json().map_err(RenderError::from)?;
+    Ok(Some(merman_render::model::EdgePaintGeometryOutput::new(
+        diagram_type,
+        geometry,
+    )))
 }
 
 #[cfg(feature = "svg")]

@@ -1064,6 +1064,28 @@ impl FamilyRenderArtifact {
         Ok(serde_json::Value::Object(projection))
     }
 
+    /// Post-paint edge geometry, recovered while emitting the diagram.
+    ///
+    /// `layout_json` reports `LayoutEdge::points` before the endpoints are clipped to the endpoint
+    /// shapes' ink. This returns the values that end up on screen, in the same layout coordinate
+    /// space, so a consumer no longer has to render a whole SVG and recover them from the
+    /// `data-points` attribute.
+    ///
+    /// Consumes the artifact, exactly like [`Self::render_svg`], because it runs the same compute
+    /// pass. Returns an empty vector for families that do not route through the flowchart
+    /// renderer.
+    pub fn edge_geometry_json(self) -> Result<Vec<crate::model::EdgePaintGeometry>> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        let options =
+            crate::svg::normalize_svg_render_options(&SvgRenderOptions::default(), &self.session)?;
+        let debug = SvgDebugOptions::default();
+        let mut geometry = Vec::new();
+        let svg = render_family_artifact_svg(&self, &options, &debug, Some(&mut geometry))?;
+        admit_rendered_svg_output(&self.session, &svg)?;
+        self.session.checkpoint(OperationPhase::Emit)?;
+        Ok(geometry)
+    }
+
     pub fn render_svg(
         self,
         options: &SvgRenderOptions,
@@ -1080,7 +1102,7 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let svg = render_family_artifact_svg(&self, options, render_debug)?;
+        let svg = render_family_artifact_svg(&self, options, render_debug, None)?;
         admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         if let Some((destination, staging, _)) = trace_stage {
@@ -1123,6 +1145,7 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
     #[cfg(feature = "diagram-agentflow")]
@@ -1156,6 +1179,7 @@ fn render_family_artifact_svg(
         &artifact.session,
         &options,
         debug,
+        edge_paint_geometry,
     )
 }
 
@@ -2200,6 +2224,150 @@ mod tests {
             .unwrap()
     }
 
+    /// Decodes the `data-points` attribute the SVG emitter writes on every edge `<path>`.
+    ///
+    /// Deliberately an independent reader: the equivalence assertion below is only meaningful
+    /// if it goes through the serialized form rather than the in-memory value it came from.
+    fn decode_data_points(svg: &str) -> Vec<(String, Vec<(f64, f64)>)> {
+        let mut out = Vec::new();
+        for chunk in svg.split("<path").skip(1) {
+            let Some(tag) = chunk.split('>').next() else {
+                continue;
+            };
+            if !tag.contains("data-points=") {
+                continue;
+            }
+            let id = tag
+                .split("data-id=\"")
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .unwrap_or_default()
+                .to_owned();
+            let encoded = tag
+                .split("data-points=\"")
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .expect("edge path carries data-points");
+            use base64::Engine as _;
+            let raw = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .expect("data-points is base64");
+            let points: Vec<serde_json::Value> =
+                serde_json::from_slice(&raw).expect("data-points is JSON");
+            out.push((
+                id,
+                points
+                    .iter()
+                    .map(|p| {
+                        (
+                            p["x"].as_f64().expect("point x"),
+                            p["y"].as_f64().expect("point y"),
+                        )
+                    })
+                    .collect(),
+            ));
+        }
+        out
+    }
+
+    fn parse_flowchart(source: &str) -> ParsedDiagramRender {
+        Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart")
+    }
+
+    #[test]
+    fn edge_geometry_json_points_match_the_emitted_data_points() {
+        // Circle endpoints exercise the difference between `layoutJson.points` and the clipped
+        // polyline reported by the renderer. The reverse labelled edge also keeps this aligned
+        // with the minimal reproduction from issue #172.
+        let source = r#"flowchart TD
+    S[Start] --> M((Circle))
+    M -->|back| S
+"#;
+
+        let geometry = prepare(
+            parse_flowchart(source),
+            &LayoutOptions::default(),
+            session(),
+        )
+        .expect("prepare flowchart")
+        .edge_geometry_json()
+        .expect("edge geometry json");
+        let svg = prepare(
+            parse_flowchart(source),
+            &LayoutOptions::default(),
+            session(),
+        )
+        .expect("prepare flowchart")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render flowchart")
+        .svg()
+        .to_owned();
+
+        let from_svg = decode_data_points(&svg);
+        assert!(
+            !from_svg.is_empty(),
+            "the emitter must have written data-points for this diagram"
+        );
+        assert_eq!(
+            geometry.len(),
+            from_svg.len(),
+            "every rendered edge must have a structured counterpart"
+        );
+
+        let mut compared = 0;
+        for edge in &geometry {
+            let Some((_, expected)) = from_svg.iter().find(|(id, _)| id == &edge.id) else {
+                continue;
+            };
+            let actual = edge
+                .points
+                .as_ref()
+                .unwrap_or_else(|| panic!("edge {} must have clipped points", edge.id));
+            assert_eq!(actual.len(), expected.len(), "edge {} point count", edge.id);
+            for (index, (point, (ex, ey))) in actual.iter().zip(expected).enumerate() {
+                let (ax, ay) = (point.x, point.y);
+                assert_eq!(ax, *ex, "edge {} point {index} x", edge.id);
+                assert_eq!(ay, *ey, "edge {} point {index} y", edge.id);
+            }
+            compared += 1;
+        }
+        assert_eq!(compared, from_svg.len(), "every SVG edge was compared");
+
+        // The clipped polyline must differ from the layout polyline here, otherwise this test
+        // would be asserting equality of two things that were never different.
+        let layout = prepare(
+            parse_flowchart(source),
+            &LayoutOptions::default(),
+            session(),
+        )
+        .expect("prepare flowchart")
+        .layout_json()
+        .expect("layout json");
+        let layout_edges = layout["layout"]["FlowchartV2"]["edges"]
+            .as_array()
+            .expect("layout edges");
+        let differed = geometry.iter().filter(|edge| {
+            layout_edges
+                .iter()
+                .find(|candidate| candidate["id"] == edge.id.as_str())
+                .and_then(|candidate| candidate["points"].as_array())
+                .zip(edge.points.as_ref())
+                .is_some_and(|(layout_points, clipped)| {
+                    layout_points.len() != clipped.len()
+                        || layout_points.iter().zip(clipped).any(|(l, c)| {
+                            l["x"].as_f64() != Some(c.x) || l["y"].as_f64() != Some(c.y)
+                        })
+                })
+        });
+        assert!(
+            differed.count() > 0,
+            "this diagram must exercise clipping, otherwise it proves nothing"
+        );
+    }
+
     #[test]
     fn agentflow_layout_config_prioritizes_family_measurement_keys() {
         let config = merman_core::MermaidConfig::from_value(json!({
@@ -2869,6 +3037,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
+                None,
             )
             .expect("render self-loop SVG");
             assert!(
@@ -3004,6 +3173,7 @@ linkStyle 0 font-size:12px,font-style:italic
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
+                None,
             )
             .expect("render Swimlane SVG");
             assert!(

@@ -126,6 +126,12 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "edge-geometry-json",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "jpeg",
         "availability_capability_id": "jpeg",
         "output_id": "jpeg",

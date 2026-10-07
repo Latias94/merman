@@ -24,6 +24,31 @@ export function svgPlanJson(
   return getMerman().svgPlanJson(source, encodeOptions(options));
 }
 
+export function edgeGeometryJson(source: string, options?: SvgBindingOptions | string): string {
+  return getMerman().edgeGeometryJson(source, encodeOptions(options));
+}
+
+export function edgeGeometryObject<T = unknown>(
+  source: string,
+  options?: SvgBindingOptions | string
+): T {
+  return JSON.parse(edgeGeometryJson(source, options)) as T;
+}
+
+export function edgeGeometryJsonWithTextMeasurer(
+  source: string,
+  measurer: HostTextMeasurer,
+  options?: SvgBindingOptions | string
+): string {
+  const edgeGeometryWithMeasurer = getMerman().edgeGeometryJsonWithTextMeasurer;
+  if (!edgeGeometryWithMeasurer) {
+    throw new Error(
+      "Merman WASM does not expose edgeGeometryJsonWithTextMeasurer(). Rebuild @mermanjs/web."
+    );
+  }
+  return edgeGeometryWithMeasurer(source, encodeOptions(options), measurer);
+}
+
 export function renderSvgWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,

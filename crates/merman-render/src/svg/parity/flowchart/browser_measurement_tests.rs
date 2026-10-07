@@ -194,6 +194,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 svg_label_sidecar: &sidecar,
             },
             &execution,
+            None,
         )
         .unwrap()
         .to_string();

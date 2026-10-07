@@ -81,6 +81,11 @@ final class MermanOperation {
     native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
     false,
   );
+  static const edgeGeometryJson = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON,
+    native.MERMAN_NATIVE_OPERATION_ID_EDGE_GEOMETRY_JSON,
+    false,
+  );
 
   static const List<MermanOperation> knownValues = <MermanOperation>[
     svg,
@@ -96,6 +101,7 @@ final class MermanOperation {
     documentAnalysisJson,
     documentAnalysisFactsJson,
     svgPlanJson,
+    edgeGeometryJson,
   ];
 
   factory MermanOperation.fromNativeCode(int nativeCode) {

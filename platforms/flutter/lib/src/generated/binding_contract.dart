@@ -656,6 +656,14 @@ const List<MermanBindingOperationExpectation>
     availabilityCapabilityId: "analysis",
   ),
   MermanBindingOperationExpectation(
+    operationId: "edge-geometry-json",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+  ),
+  MermanBindingOperationExpectation(
     operationId: "jpeg",
     outputId: "jpeg",
     mediaType: "image/jpeg",

@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed`
+Semantic digest: `sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d`
 
 ## Public Leaves
 
@@ -48,6 +48,7 @@ Semantic digest: `sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c06
 | `ascii` | `ascii` | `ascii` | none | `text/plain; charset=utf-8` | no | `native`, `web` |
 | `document-analysis-facts-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
 | `document-analysis-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
+| `edge-geometry-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
 | `jpeg` | `jpeg` | `jpeg` | `svg` | `image/jpeg` | no | `native` |
 | `layout-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
 | `pdf` | `pdf` | `pdf` | `svg` | `application/pdf` | no | `native` |

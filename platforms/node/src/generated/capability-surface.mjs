@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d";
 
 export const NODE_BINDING_OPERATIONS = [
   {
@@ -23,6 +23,10 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "document-analysis-json",
+    "compiled_prerequisites": []
+  },
+  {
+    "id": "edge-geometry-json",
     "compiled_prerequisites": []
   },
   {
