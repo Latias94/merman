@@ -143,6 +143,11 @@ impl StandaloneSvgArtifact {
                 {
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
+                Err(crate::Error::ResourceLimitExceeded(limit)) => {
+                    return Err(
+                        SvgPostprocessExecution::new(session).terminate_resource_error(limit)
+                    );
+                }
                 Err(error) => return Err(error),
             }
         };
@@ -285,6 +290,63 @@ mod tests {
         assert_eq!(limit.limit, "max_svg_elements");
     }
 
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn standalone_resource_failure_remains_terminal_after_later_cancellation() {
+        use merman_core::{Engine, OperationControl, OperationLedgerError, ParseOptions};
+
+        for portability in [
+            ThemePortabilityRequirement::BestEffort,
+            ThemePortabilityRequirement::RequirePortable,
+        ] {
+            let control = OperationControl::new();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(portability)
+                .with_resource_policy(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxSvgElements, 1)
+                        .unwrap(),
+                )
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    "flowchart TD\nA --> B\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let rendered =
+                crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                    .unwrap()
+                    .render_svg(
+                        &crate::svg::SvgRenderOptions::default(),
+                        &crate::svg::SvgDebugOptions::default(),
+                    )
+                    .unwrap();
+            let error = rendered
+                .finalize_standalone(None)
+                .err()
+                .expect("standalone finalization must enforce the element limit");
+            assert_max_svg_elements(error);
+
+            let terminal = control
+                .terminal_checkpoint_at(OperationPhase::Export)
+                .expect_err("the finalization failure must terminate the shared operation");
+            let OperationLedgerError::ResourceLimitExceeded(limit) = &terminal else {
+                panic!("expected a resource terminal, got {terminal}");
+            };
+            assert_eq!(limit.id, "max_svg_elements");
+            assert_eq!(limit.phase, OperationPhase::Postprocess);
+            control.cancel();
+            assert_eq!(
+                control.terminal_checkpoint_at(OperationPhase::Emit),
+                Err(terminal),
+                "later cancellation must replay the first resource failure",
+            );
+        }
+    }
+
     #[test]
     fn omitted_pipeline_observation_propagates_svg_element_limit() {
         let session = session_with_max_svg_elements(2);
@@ -415,11 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_parity_does_not_apply_native_backend_depth_ceiling() {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-            .begin_session()
-            .unwrap();
+    fn parity_backend_depth_ceiling_remains_observational() {
         let depth = crate::resources::MAX_RESVG_TREE_DEPTH + 1;
         let mut svg =
             String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">"#);
@@ -427,23 +485,41 @@ mod tests {
         svg.push_str(&"</g>".repeat(depth));
         svg.push_str("</svg>");
 
-        let artifact = StandaloneSvgArtifact::finalize_exact(
-            svg,
-            None,
-            PreparedTextEvidenceLease::default(),
-            true,
-            &SvgPipeline::parity(),
-            &session,
-        )
-        .expect("backend incompatibility is evidence, not a standalone SVG resource failure");
+        for (portability, expected_status) in [
+            (
+                ThemePortabilityRequirement::BestEffort,
+                StandaloneSvgTerminalStatus::Unverified,
+            ),
+            (
+                ThemePortabilityRequirement::RequirePortable,
+                StandaloneSvgTerminalStatus::ValidationFailed,
+            ),
+        ] {
+            let control = merman_core::OperationControl::new();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+                .with_theme_portability_requirement(portability)
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            let artifact = StandaloneSvgArtifact::finalize_exact(
+                svg.clone(),
+                None,
+                PreparedTextEvidenceLease::default(),
+                true,
+                &SvgPipeline::parity(),
+                &session,
+            )
+            .expect("backend incompatibility is evidence, not a standalone SVG resource failure");
 
-        assert_eq!(
-            artifact.terminal_status(),
-            StandaloneSvgTerminalStatus::Unverified
-        );
-        assert!(artifact.finalization_report().is_none());
-        #[cfg(merman_internal_theme_acceptance)]
-        assert!(artifact.svg_artifact_receipt().is_none());
+            assert_eq!(artifact.terminal_status(), expected_status);
+            assert!(artifact.finalization_report().is_none());
+            assert_eq!(
+                control.terminal_checkpoint_at(OperationPhase::Export),
+                Ok(())
+            );
+            #[cfg(merman_internal_theme_acceptance)]
+            assert!(artifact.svg_artifact_receipt().is_none());
+        }
     }
 
     #[test]
