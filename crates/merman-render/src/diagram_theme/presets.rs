@@ -685,11 +685,14 @@ mod tests {
                     )
                 })
                 .collect::<Vec<_>>();
-            assert!(!routes.is_empty(), "{family} {target:?} typography is retained");
             assert!(
-                routes.iter().all(|route| {
-                    route.disposition() == FamilyThemeDisposition::TypedAdapter
-                }),
+                !routes.is_empty(),
+                "{family} {target:?} typography is retained"
+            );
+            assert!(
+                routes
+                    .iter()
+                    .all(|route| { route.disposition() == FamilyThemeDisposition::TypedAdapter }),
                 "{family} {target:?} must not request unsupported typography: {routes:?}"
             );
             assert_eq!(

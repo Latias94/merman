@@ -227,7 +227,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "flowchart",
         target: "cluster",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "stroke-paint"],
+        facets: &["fill", "stroke-paint", "stroke-width"],
     },
     RuleClaim {
         family: "flowchart",
@@ -724,7 +724,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "swimlane",
         target: "cluster",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "stroke-paint"],
+        facets: &["fill", "stroke-paint", "stroke-width"],
     },
     RuleClaim {
         family: "swimlane",

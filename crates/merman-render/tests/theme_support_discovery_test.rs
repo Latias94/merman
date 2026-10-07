@@ -87,6 +87,16 @@ fn family_owned_partial_route_is_reported_as_conditional() {
 fn direct_only_family_slices_are_reported_as_conditional() {
     for (family, target, facet) in [
         (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::StrokeWidth,
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::StrokeWidth,
+        ),
+        (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Message,
             ThemeRuleFacetV1::StrokeWidth,
