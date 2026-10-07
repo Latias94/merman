@@ -131,6 +131,11 @@ jobs:
         with:
           tool: cargo-semver-checks@0.50.0
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: nextest
+
       - name: Install CLI validators and native qualification fonts
         timeout-minutes: 10
         run: |
@@ -444,8 +449,9 @@ jobs:
       - name: Verify non-publishing cargo-dist plan
         run: |
           set -euo pipefail
-          dist plan "--tag=$RELEASE_TAG" --output-format=json > plan-dist-manifest.json
-          python3 scripts/release_artifact_bundle.py verify-plan plan-dist-manifest.json \
+          mkdir -p target
+          dist plan "--tag=$RELEASE_TAG" --output-format=json > target/plan-dist-manifest.json
+          python3 scripts/release_artifact_bundle.py verify-plan target/plan-dist-manifest.json \
             --tag "$RELEASE_TAG" \
             --version "$VERSION" \
             --target "$TARGET" \
@@ -487,7 +493,7 @@ jobs:
             "--tag=$RELEASE_TAG" \
             --artifacts=local \
             --target="$TARGET" \
-            --output-format=json > native-dist-manifest.json
+            --output-format=json > target/native-dist-manifest.json
 
       - name: Execute final native archives
         run: |
@@ -535,8 +541,8 @@ jobs:
         with:
           name: preflight-cli-lsp-${{ matrix.target }}
           path: |
-            plan-dist-manifest.json
-            native-dist-manifest.json
+            target/plan-dist-manifest.json
+            target/native-dist-manifest.json
             target/distrib/merman-*-${{ matrix.target }}.tar.xz
             target/distrib/merman-*-${{ matrix.target }}.tar.xz.sha256
           if-no-files-found: error

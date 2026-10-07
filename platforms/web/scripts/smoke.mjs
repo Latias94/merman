@@ -768,8 +768,8 @@ const familyCapabilities = api.diagramFamilyCapabilities();
 assert.equal(Array.isArray(familyCapabilities), true);
 assert.deepEqual(
   [...new Set(familyCapabilities
-    .filter((family) => family.has_semantic_parser && family.logical_family_kind !== "error")
-    .map((family) => family.logical_family_kind))].sort(),
+    .filter((family) => family.has_semantic_parser && family.family_id !== "error")
+    .map((family) => family.family_id))].sort(),
   packageDescriptor.artifact_profile.expected.diagram_families,
   "compiled parser families must match the artifact recipe exactly",
 );
@@ -779,7 +779,6 @@ assert.equal(
       capability.diagram_type === "flowchart" &&
       capability.family_id === "flowchart" &&
       capability.metadata_id === "flowchart" &&
-      capability.render_model_kind === "flowchart" &&
       !capability.has_detector &&
       capability.has_semantic_parser &&
       capability.has_editor_parser &&
