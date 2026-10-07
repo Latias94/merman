@@ -1402,6 +1402,7 @@ jobs:
     needs:
       - validate-inputs
       - versions-and-packages
+      - mermaid-reference-materialized
       - cli-and-lsp-archives
       - python-wheel
       - android-aar

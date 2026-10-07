@@ -1,4 +1,4 @@
-# ADR-0089: Shared Rustdoc Markdown And Deferred Macro Rendering
+# ADR-0093: Shared Rustdoc Markdown And Deferred Macro Rendering
 
 - Status: accepted
 - Date: 2026-09-10

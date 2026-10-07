@@ -26,7 +26,7 @@ verification, not a full workspace/platform run or C7a freeze.
    and rustdoc application test exercises plain docs and a descendant Mermaid diagram; renamed
    direct dependencies retain their existing regression coverage.
 
-The shared Markdown ADR is now ADR-0089; its predecessor is the existing ADR-0087 dual-product
+The shared Markdown ADR is now ADR-0093 (renumbered after main assigned ADR-0089 to ELK defaults); its predecessor is the existing ADR-0087 dual-product
 boundary. The related ADR-0076 references were corrected. The headless plan now names
 `ThemeDefinitionV1` / `CompiledDiagramTheme` and `custom_diagram_theme.rs`. It does not authorize
 restoring HostTheme or the removed presentation compatibility layer.
