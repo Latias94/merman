@@ -858,6 +858,11 @@ jobs:
           install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
           "${typst_root}/typst" --version
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.87.22
+        with:
+          tool: nextest
+
       - name: Test Typst plugin crate
         run: |
           cargo nextest run --locked -p merman-typst-plugin --no-default-features

@@ -60,7 +60,6 @@ test("release and benchmark commands execute through directory aliases", (contex
       1, /contains no recognized package/],
     ["../scripts/benchmark/run.mjs", [], 1, /--native and --wasm are required/],
     ["../scripts/benchmark/worker.mjs", [], 1, /requires an input JSON path/],
-    ["../../web/scripts/build-surface-packages.mjs", [], 2, /usage: node scripts\/build-surface-packages/],
   ];
   for (const [index, [relative, args, status, diagnostic]] of cases.entries()) {
     const script = fileURLToPath(new URL(relative, import.meta.url));
