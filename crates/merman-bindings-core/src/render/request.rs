@@ -89,6 +89,27 @@ impl RenderRequestPlan {
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
 
+    pub(super) fn edge_geometry_json(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let output = self
+            .renderer
+            .render(self.request(
+                source,
+                merman::RenderTarget::EdgeGeometryJson(self.svg.clone()),
+                control,
+            ))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::EdgeGeometryJson(edge_geometry_json) = output else {
+            return Err(unexpected_render_output("edge-geometry-json"));
+        };
+        let edge_geometry_json = edge_geometry_json.ok_or_else(no_diagram_error)?;
+
+        serde_json::to_vec(&edge_geometry_json).map_err(internal_json_error)
+    }
+
     pub(super) fn svg_plan_json(
         &self,
         source: &str,

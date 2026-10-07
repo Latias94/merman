@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -48,6 +48,7 @@ pub const BINDING_OPERATION_IDS: &[&str] = &[
     "describe-theme-support-json",
     "document-analysis-facts-json",
     "document-analysis-json",
+    "edge-geometry-json",
     "export-theme-preset-json",
     "jpeg",
     "layout-json",
@@ -256,6 +257,7 @@ pub enum OperationKey {
     DescribeThemeSupportJson,
     DocumentAnalysisFactsJson,
     DocumentAnalysisJson,
+    EdgeGeometryJson,
     ExportThemePresetJson,
     Jpeg,
     LayoutJson,
@@ -276,6 +278,7 @@ impl OperationKey {
         Self::DescribeThemeSupportJson,
         Self::DocumentAnalysisFactsJson,
         Self::DocumentAnalysisJson,
+        Self::EdgeGeometryJson,
         Self::ExportThemePresetJson,
         Self::Jpeg,
         Self::LayoutJson,
@@ -296,6 +299,7 @@ impl OperationKey {
             "describe-theme-support-json" => Some(Self::DescribeThemeSupportJson),
             "document-analysis-facts-json" => Some(Self::DocumentAnalysisFactsJson),
             "document-analysis-json" => Some(Self::DocumentAnalysisJson),
+            "edge-geometry-json" => Some(Self::EdgeGeometryJson),
             "export-theme-preset-json" => Some(Self::ExportThemePresetJson),
             "jpeg" => Some(Self::Jpeg),
             "layout-json" => Some(Self::LayoutJson),
@@ -322,16 +326,17 @@ impl OperationKey {
             Self::DescribeThemeSupportJson => &OPERATION_SPECS[3],
             Self::DocumentAnalysisFactsJson => &OPERATION_SPECS[4],
             Self::DocumentAnalysisJson => &OPERATION_SPECS[5],
-            Self::ExportThemePresetJson => &OPERATION_SPECS[6],
-            Self::Jpeg => &OPERATION_SPECS[7],
-            Self::LayoutJson => &OPERATION_SPECS[8],
-            Self::MaterializeThemeJson => &OPERATION_SPECS[9],
-            Self::Pdf => &OPERATION_SPECS[10],
-            Self::Png => &OPERATION_SPECS[11],
-            Self::SemanticJson => &OPERATION_SPECS[12],
-            Self::Svg => &OPERATION_SPECS[13],
-            Self::SvgPlanJson => &OPERATION_SPECS[14],
-            Self::ValidationJson => &OPERATION_SPECS[15],
+            Self::EdgeGeometryJson => &OPERATION_SPECS[6],
+            Self::ExportThemePresetJson => &OPERATION_SPECS[7],
+            Self::Jpeg => &OPERATION_SPECS[8],
+            Self::LayoutJson => &OPERATION_SPECS[9],
+            Self::MaterializeThemeJson => &OPERATION_SPECS[10],
+            Self::Pdf => &OPERATION_SPECS[11],
+            Self::Png => &OPERATION_SPECS[12],
+            Self::SemanticJson => &OPERATION_SPECS[13],
+            Self::Svg => &OPERATION_SPECS[14],
+            Self::SvgPlanJson => &OPERATION_SPECS[15],
+            Self::ValidationJson => &OPERATION_SPECS[16],
         }
     }
 }
@@ -429,6 +434,19 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         input_kind: "mermaid-source",
         media_type: "application/json",
         requires_uri: true,
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+    },
+    OperationSpec {
+        key: OperationKey::EdgeGeometryJson,
+        id: "edge-geometry-json",
+        maturity: "stable",
+        capability: Some(CapabilityKey::Svg),
+        output: None,
+        compiled_prerequisites: &[],
+        description: "Render Mermaid input and report post-paint edge geometry as JSON.",
+        input_kind: "mermaid-source",
+        media_type: "application/json",
+        requires_uri: false,
         targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {

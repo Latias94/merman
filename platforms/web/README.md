@@ -17,7 +17,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. This guide targets the unpublished `0.8.0` candidate with Mermaid 12.1 behavior and schema-3 ASCII output. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until this package group is published. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+All public browser packages use one lockstep version. Version `0.8.0` is published on npm with Mermaid 12.1 behavior and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.

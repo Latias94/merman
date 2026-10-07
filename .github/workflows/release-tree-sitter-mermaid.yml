@@ -707,7 +707,7 @@ jobs:
             exit 1
           }
           if gh release create "$RELEASE_TAG" "$release_dir"/* \
-            --verify-tag --generate-notes --title "$RELEASE_TAG"; then
+            --verify-tag --generate-notes --latest=false --title "$RELEASE_TAG"; then
             exit 0
           fi
           sleep 10

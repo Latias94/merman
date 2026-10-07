@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -118,11 +119,26 @@ class RegistryCandidateGenerationTests(unittest.TestCase):
             self.assertTrue(all(path.is_file() for path in first.manifests))
 
             scoop = json.loads(first_files["scoop/merman-cli.json"])
+            self.assertEqual(
+                first_files["scoop/merman-cli.json"],
+                (json.dumps(scoop, indent=4) + "\n").encode(),
+            )
             download = scoop["architecture"]["64bit"]
             expected_url = f"{REPOSITORY_URL}/releases/download/v{VERSION}/{ARCHIVE_NAME}"
             self.assertEqual(download, {"url": expected_url, "hash": DIGEST})
             self.assertEqual(scoop["bin"], "merman-cli.exe")
-            self.assertEqual(scoop["checkver"], {"github": REPOSITORY_URL})
+            self.assertEqual(
+                scoop["checkver"]["url"],
+                "https://api.github.com/repos/Latias94/merman/releases",
+            )
+            releases = json.dumps([
+                {"tag_name": "tree-sitter-mermaid-v0.4.0"},
+                {"tag_name": "v0.9.0-alpha.1"},
+                {"tag_name": "v0.8.0"},
+                {"tag_name": "v0.7.0"},
+            ])
+            versions = re.findall(scoop["checkver"]["regex"], releases)
+            self.assertEqual(versions, ["0.8.0", "0.7.0"])
 
             installer = first_files[
                 "winget/manifests/l/Latias94/MermanCLI/0.8.0/Latias94.MermanCLI.installer.yaml"

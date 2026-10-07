@@ -180,9 +180,10 @@
     { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11, "executable": true },
     { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12, "executable": true },
     { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true },
-    { "id": "describe_theme_support_json", "c_name": "MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON", "code": 14, "executable": true },
-    { "id": "export_theme_preset_json", "c_name": "MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON", "code": 15, "executable": true },
-    { "id": "materialize_theme_json", "c_name": "MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON", "code": 16, "executable": true }
+    { "id": "edge_geometry_json", "c_name": "MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON", "code": 14, "executable": true },
+    { "id": "describe_theme_support_json", "c_name": "MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON", "code": 15, "executable": true },
+    { "id": "export_theme_preset_json", "c_name": "MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON", "code": 16, "executable": true },
+    { "id": "materialize_theme_json", "c_name": "MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON", "code": 17, "executable": true }
   ],
   "callbacks": [
     {

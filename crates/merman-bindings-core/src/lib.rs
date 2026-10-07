@@ -148,7 +148,7 @@ pub use render::render_pdf;
 #[cfg(feature = "png")]
 pub use render::render_png;
 #[cfg(feature = "svg")]
-pub use render::{layout_json, render_svg};
+pub use render::{edge_geometry_json, layout_json, render_svg};
 #[cfg(feature = "svg")]
 pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
@@ -221,6 +221,11 @@ pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Binding
 #[cfg(not(feature = "svg"))]
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     execute_once_data("layout-json", source, None, options_json)
+}
+
+#[cfg(not(feature = "svg"))]
+pub fn edge_geometry_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    execute_once_data("edge-geometry-json", source, None, options_json)
 }
 
 #[cfg(not(feature = "png"))]

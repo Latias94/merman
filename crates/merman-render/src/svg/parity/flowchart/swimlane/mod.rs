@@ -73,6 +73,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
@@ -94,6 +95,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             edge_theme: artifact.edge_theme(),
         },
         options,
+        edge_paint_geometry,
     )
 }
 

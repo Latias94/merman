@@ -48,6 +48,7 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::DocumentAnalysisJson,
     OperationKey::DescribeThemeSupportJson,
     OperationKey::ExportThemePresetJson,
+    OperationKey::EdgeGeometryJson,
     OperationKey::LayoutJson,
     OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
@@ -2248,7 +2249,7 @@ mod tests {
     fn shared_operation_projection_consumes_the_complete_typed_matrix() {
         let projection = shared_operation_contract_projection();
         assert_eq!(projection.schema_version, 1);
-        assert_eq!(projection.operation_expectations.len(), 16);
+        assert_eq!(projection.operation_expectations.len(), 17);
         assert_eq!(
             projection.operation_metadata_contract,
             operation_metadata_contract()

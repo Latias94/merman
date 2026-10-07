@@ -13,6 +13,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         FlowchartSvgModelRequest {
@@ -31,6 +32,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             edge_theme: artifact.edge_theme(),
         },
         options,
+        edge_paint_geometry,
     )
 }
 
@@ -53,6 +55,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
 pub(super) fn render_flowchart_svg_model(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let FlowchartSvgModelRequest {
         layout,
@@ -473,6 +476,32 @@ pub(super) fn render_flowchart_svg_model(
                 .map_or(0, |effects| effects.expected_applications()),
     );
 
+    // `data_points` is written only by `finish_edge_route` inside the viewbox pass and is
+    // read-only afterwards, so this is the exact point list the emitted `data-points`
+    // attribute carries — before any emit-phase mutation of the cache.
+    let clipped_points: Option<
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, Vec<crate::model::LayoutPoint>>,
+    > = edge_paint_geometry.as_ref().map(|_| {
+        let mut map = FxHashMap::default();
+        for edge in &render_edges {
+            let Some(entry) = edge_path_cache.get(&edge.key) else {
+                continue;
+            };
+            map.insert(
+                edge.key,
+                entry
+                    .geom
+                    .data_points
+                    .iter()
+                    .map(|point| crate::model::LayoutPoint {
+                        x: point.x + entry.origin_x - ctx.tx,
+                        y: point.y + entry.origin_y - ctx.ty,
+                    })
+                    .collect(),
+            );
+        }
+        map
+    });
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_id: if swimlane_layout.is_some() {
             crate::DiagramFamilyId::SWIMLANE
@@ -643,6 +672,16 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     let rooted = root_document.complete(out.finish()?)?;
+    if let Some(out) = edge_paint_geometry {
+        out.extend(render_edges.iter().map(|edge| {
+            crate::model::EdgePaintGeometry {
+                id: edge.as_ref().id.clone(),
+                points: clipped_points
+                    .as_ref()
+                    .and_then(|map| map.get(&edge.key).cloned()),
+            }
+        }));
+    }
     if let Some(evidence) = marker_plan.finish_theme_evidence(ctx.resolved_theme, ctx.work_meter)? {
         theme_evidence.record_marker_evidence(evidence);
     }
@@ -907,6 +946,7 @@ mod integration_tests {
                 svg_label_sidecar: &sidecar,
             },
             &execution,
+            None,
         )
         .expect_err("diagram-ID rejection must stop before the invalid image node is emitted");
 
@@ -1027,6 +1067,7 @@ mod integration_tests {
                     svg_label_sidecar: &sidecar,
                 },
                 &execution,
+                None,
             )
             .unwrap()
             .to_string()

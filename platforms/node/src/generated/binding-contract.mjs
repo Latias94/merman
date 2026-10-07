@@ -602,6 +602,22 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
+    "operation_id": "edge-geometry-json",
+    "maturity": "stable",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
     "operation_id": "export-theme-preset-json",
     "maturity": "alpha",
     "output_id": null,

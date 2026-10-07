@@ -138,6 +138,13 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "edge-geometry-json",
+        "maturity": "stable",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "export-theme-preset-json",
         "maturity": "alpha",
         "availability_capability_id": "svg",

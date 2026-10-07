@@ -55,6 +55,8 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::ExportThemePresetJson,
     #[cfg(feature = "svg")]
+    OperationKey::EdgeGeometryJson,
+    #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     #[cfg(feature = "svg")]
     OperationKey::MaterializeThemeJson,
@@ -205,6 +207,25 @@ pub fn layout_json_with_text_measurer(
     })
 }
 
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = edgeGeometryJsonWithTextMeasurer)]
+pub fn edge_geometry_json_with_text_measurer(
+    source: &str,
+    options_json: Option<String>,
+    callback: js_sys::Function,
+) -> Result<String, JsValue> {
+    with_host_text_measure_callback(callback, || {
+        let services = merman_bindings_core::BindingEngineServices::new()
+            .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        string_result(execute_wasm_operation_with_services(
+            "edge-geometry-json",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            services,
+        ))
+    })
+}
+
 #[wasm_bindgen(js_name = parseJson)]
 pub fn parse_json(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
     string_result(execute_wasm_operation(
@@ -219,6 +240,16 @@ pub fn parse_json(source: &str, options_json: Option<String>) -> Result<String, 
 pub fn layout_json(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
     string_result(execute_wasm_operation(
         "layout-json",
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[wasm_bindgen(js_name = edgeGeometryJson)]
+pub fn edge_geometry_json(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
+    string_result(execute_wasm_operation(
+        "edge-geometry-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
         None,

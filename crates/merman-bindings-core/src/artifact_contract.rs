@@ -79,6 +79,8 @@ macro_rules! native_sdk_artifact_contract {
             $crate::OperationKey::DescribeThemeSupportJson,
             #[cfg(feature = "svg")]
             $crate::OperationKey::ExportThemePresetJson,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::EdgeGeometryJson,
             #[cfg(feature = "jpeg")]
             $crate::OperationKey::Jpeg,
             #[cfg(feature = "svg")]

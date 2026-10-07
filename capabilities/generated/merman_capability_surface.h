@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -46,6 +46,7 @@
 #define MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON "describe-theme-support-json"
 #define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON "document-analysis-facts-json"
 #define MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON "document-analysis-json"
+#define MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON "edge-geometry-json"
 #define MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON "export-theme-preset-json"
 #define MERMAN_BINDING_OPERATION_JPEG "jpeg"
 #define MERMAN_BINDING_OPERATION_LAYOUT_JSON "layout-json"
@@ -288,6 +289,11 @@ static const char *const MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS
     "web",
 };
 
+static const char *const MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS[] = {
+    "native",
+    "web",
+};
+
 static const char *const MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS[] = {
     "native",
     "typst",
@@ -357,6 +363,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "describe-theme-support-json", "alpha", "svg", "Describe the static support bound for a versioned theme query.", "theme-support-query-json", "application/json", 0, MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "document-analysis-facts-json", "stable", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "document-analysis-json", "stable", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "edge-geometry-json", "stable", "svg", "Render Mermaid input and report post-paint edge geometry as JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_EDGE_GEOMETRY_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "export-theme-preset-json", "alpha", "svg", "Export a built-in theme preset as a self-contained editable recipe.", "theme-preset-id", "application/json", 0, MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "jpeg", "stable", "jpeg", "Render Mermaid input as JPEG.", "mermaid-source", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
     { "layout-json", "stable", "svg", "Render Mermaid input into layout model JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },
@@ -368,7 +375,7 @@ static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "svg-plan-json", "stable", "svg", "Plan the capabilities required to render Mermaid input as SVG.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "validation-json", "stable", "analysis", "Validate Mermaid input and return validation JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2, NULL, NULL, 0 },
 };
-#define MERMAN_BINDING_OPERATION_COUNT 16u
+#define MERMAN_BINDING_OPERATION_COUNT 17u
 
 
 #endif /* MERMAN_CAPABILITY_SURFACE_H */

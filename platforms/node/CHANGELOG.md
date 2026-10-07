@@ -4,7 +4,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.8.0] - 2026-10-06
 
-This entry summarizes the candidate package since its introduction during the 0.8 alphas; there was no 0.7.0 Node package. It prepares 0.8.0 and does not announce npm publication. The package group remains experimental and requires Node.js 22 or newer.
+This entry summarizes the package since its introduction during the 0.8 alphas; there was no 0.7.0 Node package. All seven packages were published on npm at 0.8.0 on 2026-10-06. The package group remains experimental and requires Node.js 22 or newer.
 
 ### Added
 
@@ -14,7 +14,7 @@ This entry summarizes the candidate package since its introduction during the 0.
 ### Upgrade
 
 - Keep the loader and selected transport artifacts on one package version. Native load failures carry typed ABI/platform diagnostics; resolve these rather than substituting a browser package.
-- Relative to early 0.8 alphas, the candidate selects Mermaid 12.1.0 with Mermaid 12 ELK and Redux/Neo defaults. Review SVG snapshots and explicit top-level layout/theme/look settings. Node rendering is not browser DOM admission.
+- Relative to early 0.8 alphas, this release selects Mermaid 12.1.0 with Mermaid 12 ELK and Redux/Neo defaults. Review SVG snapshots and explicit top-level layout/theme/look settings. Node rendering is not browser DOM admission.
 
 ### Fixed
 
@@ -22,7 +22,7 @@ This entry summarizes the candidate package since its introduction during the 0.
 
 ### Further reading
 
-- Use the [package guide](README.md), [stable migration guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md) for the final candidate contract. Native Rust benchmark observations are not Node transport measurements.
+- Use the [package guide](README.md), [stable migration guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md) for the published contract. Native Rust benchmark observations are not Node transport measurements.
 
 ### Breaking changes
 

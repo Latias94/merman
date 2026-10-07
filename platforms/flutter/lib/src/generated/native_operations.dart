@@ -95,6 +95,12 @@ final class MermanOperation {
     native.MERMAN_NATIVE_OPERATION_MATURITY_SVG_PLAN_JSON,
     false,
   );
+  static const edgeGeometryJson = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON,
+    native.MERMAN_NATIVE_OPERATION_ID_EDGE_GEOMETRY_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_EDGE_GEOMETRY_JSON,
+    false,
+  );
   static const describeThemeSupportJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON,
@@ -128,6 +134,7 @@ final class MermanOperation {
     documentAnalysisJson,
     documentAnalysisFactsJson,
     svgPlanJson,
+    edgeGeometryJson,
     describeThemeSupportJson,
     exportThemePresetJson,
     materializeThemeJson,

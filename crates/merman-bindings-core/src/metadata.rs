@@ -1420,11 +1420,18 @@ mod tests {
             .find(|limit| limit.id == "max_layout_work_units");
         #[cfg(feature = "svg")]
         {
-            let expected_operation_ids =
-                ["jpeg", "layout-json", "pdf", "png", "svg", "svg-plan-json"]
-                    .into_iter()
-                    .filter(|operation_id| catalog.capabilities.has_operation(operation_id))
-                    .collect::<Vec<_>>();
+            let expected_operation_ids = [
+                "edge-geometry-json",
+                "jpeg",
+                "layout-json",
+                "pdf",
+                "png",
+                "svg",
+                "svg-plan-json",
+            ]
+            .into_iter()
+            .filter(|operation_id| catalog.capabilities.has_operation(operation_id))
+            .collect::<Vec<_>>();
             assert_eq!(
                 layout.expect("layout descriptor").operation_ids,
                 expected_operation_ids

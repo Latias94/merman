@@ -3905,10 +3905,39 @@ impl FamilyRenderArtifact {
         Ok(serde_json::Value::Object(projection))
     }
 
+    /// Post-paint edge geometry, recovered while emitting the diagram.
+    ///
+    /// `layout_json` reports `LayoutEdge::points` before the endpoints are clipped to the endpoint
+    /// shapes' ink. This returns the values that end up on screen, in the same layout coordinate
+    /// space, so a consumer no longer has to render a whole SVG and recover them from the
+    /// `data-points` attribute.
+    ///
+    /// Consumes the artifact, exactly like [`Self::render_svg`], because it runs the same compute
+    /// pass. Returns an empty vector for families that do not route through the flowchart
+    /// renderer.
+    pub fn edge_geometry_json(self) -> Result<Vec<crate::model::EdgePaintGeometry>> {
+        let mut geometry = Vec::new();
+        self.render_svg_with_edge_geometry(
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            Some(&mut geometry),
+        )?;
+        Ok(geometry)
+    }
+
     pub fn render_svg(
         self,
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
+    ) -> Result<RenderedFamilySvg> {
+        self.render_svg_with_edge_geometry(options, debug, None)
+    }
+
+    fn render_svg_with_edge_geometry(
+        self,
+        options: &SvgRenderOptions,
+        debug: &SvgDebugOptions,
+        edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
     ) -> Result<RenderedFamilySvg> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
@@ -3921,7 +3950,8 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let rendered = render_family_artifact_svg(&self, options, render_debug)?;
+        let rendered =
+            render_family_artifact_svg(&self, options, render_debug, edge_paint_geometry)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let filter_receipt = match &self.family {
@@ -4037,6 +4067,7 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
+    edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<crate::svg::RootThemeAppliedSvg> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
@@ -4072,6 +4103,7 @@ fn render_family_artifact_svg(
         execution,
         &options,
         debug,
+        edge_paint_geometry,
     )
 }
 

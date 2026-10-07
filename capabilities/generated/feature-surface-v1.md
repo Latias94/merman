@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2`
+Semantic digest: `sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4`
 
 ## Public Leaves
 
@@ -49,6 +49,7 @@ Semantic digest: `sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e6308
 | `describe-theme-support-json` | `alpha` | `svg` | none | none | `theme-support-query-json` | `application/json` | no | `native`, `web`, `typst` |
 | `document-analysis-facts-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
 | `document-analysis-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
+| `edge-geometry-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
 | `export-theme-preset-json` | `alpha` | `svg` | none | none | `theme-preset-id` | `application/json` | no | `native`, `web`, `typst` |
 | `jpeg` | `stable` | `jpeg` | `jpeg` | `svg` | `mermaid-source` | `image/jpeg` | no | `native` |
 | `layout-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |

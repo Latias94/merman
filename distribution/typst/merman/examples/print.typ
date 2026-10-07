@@ -1,4 +1,4 @@
-#import "@preview/merman:0.3.0": mermaid, mermaid-profile
+#import "@preview/merman:0.4.0": mermaid, mermaid-profile
 
 #set page(paper: "a4", margin: 20mm)
 

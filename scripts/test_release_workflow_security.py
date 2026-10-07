@@ -260,6 +260,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("gh release create", publish_github)
         self.assertIn("GH_REPO: ${{ github.repository }}", publish_github)
         self.assertIn("verify_existing_release", publish_github)
+        self.assertIn("--latest=false", publish_github)
         self.assertIn(
             "if: ${{ inputs.publish && inputs.publish_github_release }}",
             publish_github,
@@ -881,6 +882,10 @@ jobs:
                 self.assertIn("github.run_attempt > 1", publish)
                 self.assertIn("github.run_attempt > 1 && github.run_id || needs.validate-inputs.outputs.recovery_run_id", publish)
                 self.assertIn("--paginate --slurp", publish)
+                find_report = publish.split("find_report() {", 1)[1].split("\n          }", 1)[0]
+                self.assertNotIn("--jq", find_report)
+                self.assertIn('jq -r --arg expected_name "$expected_name"', find_report)
+                self.assertIn("if length == 1 then .[0].name else empty end", find_report)
                 self.assertIn("prior_attempt=$((RUN_ATTEMPT - 1))", publish)
                 self.assertIn("--publication-run-id", publish)
                 self.assertIn("--recovery-run-id", publish)

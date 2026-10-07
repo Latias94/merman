@@ -8,13 +8,13 @@ Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Da
 
 ## Install
 
-This guide targets the unpublished `0.8.0` candidate with its complete Native Assets matrix. The latest published version is `0.8.0-alpha.7`; use its tagged documentation until `0.8.0` is available. Pin the exact version when pairing the Dart facade with its native libraries:
+Version `0.8.0` is published on pub.dev with its complete Native Assets matrix. Pin the exact version when pairing the Dart facade with its native libraries:
 
 ```sh
 flutter pub add 'merman:0.8.0'
 ```
 
-The `0.8.0` candidate includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
+Version `0.8.0` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
 
 ```yaml
 dependencies:

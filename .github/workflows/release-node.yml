@@ -644,8 +644,8 @@ jobs:
           fi
           find_report() {
             local expected_name="merman-node-npm-reconciliation-report-attempt-$prior_attempt"
-            gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts" \
-              --jq "[.[].artifacts[] | select(.expired == false and .name == \"$expected_name\")] | if length == 1 then .[0].name else empty end"
+            gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts" | \
+              jq -r --arg expected_name "$expected_name" '[.[].artifacts[] | select(.expired == false and .name == $expected_name)] | if length == 1 then .[0].name else empty end'
           }
           report_name="$(find_report)"
           if [ -z "$report_name" ] && [ "$RUN_ATTEMPT" -gt 1 ] && [ -n "$ANCESTOR_RUN_ID" ]; then

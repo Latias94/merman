@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -121,6 +121,16 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": true
   },
   {
+    "id": "edge-geometry-json",
+    "maturity": "stable",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
     "id": "export-theme-preset-json",
     "maturity": "alpha",
     "capability": "svg",
@@ -218,6 +228,7 @@ export const WEB_BINDING_OPERATION_IDS = [
   "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "edge-geometry-json",
   "export-theme-preset-json",
   "layout-json",
   "materialize-theme-json",

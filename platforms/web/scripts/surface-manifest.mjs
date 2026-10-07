@@ -60,6 +60,8 @@ const renderRuntimeExportNames = [
   "renderSvgResult",
   "renderSvgResultWithTextMeasurer",
   "svgPlanJson",
+  "edgeGeometryJson",
+  "edgeGeometryJsonWithTextMeasurer",
   "renderSvgWithTextMeasurer",
   "layoutJsonWithTextMeasurer",
   "renderSvgElement",
@@ -68,6 +70,7 @@ const renderRuntimeExportNames = [
   "parseObject",
   "layoutJson",
   "layoutObject",
+  "edgeGeometryObject",
 ];
 
 const renderWasmExportNames = [
@@ -78,6 +81,8 @@ const renderWasmExportNames = [
   "renderSvgResult",
   "renderSvgResultWithTextMeasurer",
   "svgPlanJson",
+  "edgeGeometryJson",
+  "edgeGeometryJsonWithTextMeasurer",
   "renderSvgWithTextMeasurer",
   "layoutJsonWithTextMeasurer",
   "parseJson",

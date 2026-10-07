@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:55f8b9460ad34c8bade74372c157300eebdef0cd7bb22ffa7d5ab2e454cc5aa2";
+    "sha256:dba2870ab611b435c600961b56537a79a0199dc83186bbd96b99830d33e9f02f";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -287,7 +287,14 @@ pub const MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON: &str = "svg-plan-json";
 pub const MERMAN_NATIVE_OPERATION_MATURITY_SVG_PLAN_JSON: &str = "stable";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON: &str = "application/json";
-pub const MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON: MermanNativeOperationCode = 14;
+pub const MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON: MermanNativeOperationCode = 14;
+pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_EDGE_GEOMETRY_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_EDGE_GEOMETRY_JSON: bool = true;
+pub const MERMAN_NATIVE_OPERATION_ID_EDGE_GEOMETRY_JSON: &str = "edge-geometry-json";
+pub const MERMAN_NATIVE_OPERATION_MATURITY_EDGE_GEOMETRY_JSON: &str = "stable";
+pub const MERMAN_NATIVE_OPERATION_CAPABILITY_EDGE_GEOMETRY_JSON: &str = "svg";
+pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_EDGE_GEOMETRY_JSON: &str = "application/json";
+pub const MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON: MermanNativeOperationCode = 15;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_DESCRIBE_THEME_SUPPORT_JSON: bool = false;
 pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_DESCRIBE_THEME_SUPPORT_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON: &str =
@@ -295,14 +302,14 @@ pub const MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON: &str =
 pub const MERMAN_NATIVE_OPERATION_MATURITY_DESCRIBE_THEME_SUPPORT_JSON: &str = "alpha";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_DESCRIBE_THEME_SUPPORT_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DESCRIBE_THEME_SUPPORT_JSON: &str = "application/json";
-pub const MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON: MermanNativeOperationCode = 15;
+pub const MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON: MermanNativeOperationCode = 16;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_EXPORT_THEME_PRESET_JSON: bool = false;
 pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_EXPORT_THEME_PRESET_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_EXPORT_THEME_PRESET_JSON: &str = "export-theme-preset-json";
 pub const MERMAN_NATIVE_OPERATION_MATURITY_EXPORT_THEME_PRESET_JSON: &str = "alpha";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_EXPORT_THEME_PRESET_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_EXPORT_THEME_PRESET_JSON: &str = "application/json";
-pub const MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON: MermanNativeOperationCode = 16;
+pub const MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON: MermanNativeOperationCode = 17;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_MATERIALIZE_THEME_JSON: bool = false;
 pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_MATERIALIZE_THEME_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_MATERIALIZE_THEME_JSON: &str = "materialize-theme-json";
@@ -473,6 +480,16 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
         requires_uri: false,
     },
     MermanNativeOperationDescriptor {
+        code: MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON,
+        executable: true,
+        non_executable_failure: None,
+        operation_id: Some("edge-geometry-json"),
+        maturity: Some("stable"),
+        capability_id: Some("svg"),
+        media_type: Some("application/json"),
+        requires_uri: false,
+    },
+    MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
         executable: true,
         non_executable_failure: None,
@@ -529,6 +546,7 @@ pub fn merman_native_operation_key(
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisJson),
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisFactsJson),
         MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON => Some(merman_bindings_core::OperationKey::SvgPlanJson),
+        MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON => Some(merman_bindings_core::OperationKey::EdgeGeometryJson),
         MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON => Some(merman_bindings_core::OperationKey::DescribeThemeSupportJson),
         MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON => Some(merman_bindings_core::OperationKey::ExportThemePresetJson),
         MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON => Some(merman_bindings_core::OperationKey::MaterializeThemeJson),
@@ -553,6 +571,7 @@ pub const fn merman_native_operation_code(
         merman_bindings_core::OperationKey::DocumentAnalysisJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
         merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON),
         merman_bindings_core::OperationKey::SvgPlanJson => Some(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON),
+        merman_bindings_core::OperationKey::EdgeGeometryJson => Some(MERMAN_NATIVE_OPERATION_EDGE_GEOMETRY_JSON),
         merman_bindings_core::OperationKey::DescribeThemeSupportJson => Some(MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON),
         merman_bindings_core::OperationKey::ExportThemePresetJson => Some(MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON),
         merman_bindings_core::OperationKey::MaterializeThemeJson => Some(MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON),

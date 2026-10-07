@@ -877,6 +877,18 @@ impl Merman {
         )))
     }
 
+    pub fn edge_geometry_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::EdgeGeometryJson,
+            source,
+            options_json,
+        )))
+    }
+
     pub fn svg_plan_json(
         &self,
         source: String,
@@ -1243,6 +1255,18 @@ impl MermanEngine {
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
             OperationKey::LayoutJson,
+            source,
+            options_json,
+        )))
+    }
+
+    pub fn edge_geometry_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::EdgeGeometryJson,
             source,
             options_json,
         )))
@@ -3090,6 +3114,24 @@ mod tests {
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn engine_returns_edge_geometry_json() {
+        let json: Value = serde_json::from_str(
+            &engine()
+                .edge_geometry_json("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["diagram_type"], "flowchart-v2");
+
+        let edges = json["edges"].as_array().expect("edges array");
+        assert!(!edges.is_empty());
+        assert!(edges.iter().all(|edge| edge["id"].as_str().is_some()));
     }
 
     #[cfg(feature = "analysis")]

@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.8.0] - 2026-10-06
 
-This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. It prepares the stable candidate and does not announce PyPI publication.
+This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. Version 0.8.0 was published on PyPI on 2026-10-06.
 
 ### Breaking changes
 
@@ -19,7 +19,7 @@ This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. 
 
 ### Changed
 
-- The selected engine advances from Mermaid 11.15.0 in the previous stable line to the 12.1.0 candidate. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
+- The selected engine advances from Mermaid 11.15.0 in the previous stable line to Mermaid 12.1.0. Review ELK layout defaults, Redux/Neo appearance, SVG IDs, and geometry; request top-level `layout: dagre`, `theme: default`, and `look: classic` when those presentation choices are required. This does not preserve every old SVG byte.
 - Default native artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis. Math, PNG/JPEG/PDF, and native runtime adapters require a matching custom artifact; query the loaded runtime catalog before using optional operations.
 
 ### Fixed

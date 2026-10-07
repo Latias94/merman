@@ -686,6 +686,16 @@ const List<MermanBindingOperationExpectation>
     compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
+    operationId: "edge-geometry-json",
+    maturity: "stable",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
     operationId: "export-theme-preset-json",
     maturity: "alpha",
     outputId: null,

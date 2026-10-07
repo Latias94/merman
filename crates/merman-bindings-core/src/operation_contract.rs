@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn shared_expectation_matrix_covers_every_descriptor_operation() {
         let rows = binding_operation_expectations();
-        assert_eq!(rows.len(), 16);
+        assert_eq!(rows.len(), 17);
         for (row, operation) in rows.iter().zip(BindingOperationKind::all()) {
             assert_eq!(row.operation_id(), operation.operation_id());
             assert_eq!(row.maturity(), operation.maturity());
@@ -596,7 +596,7 @@ mod tests {
 
         let matrix: serde_json::Value =
             serde_json::from_slice(&binding_operation_expectations_json().unwrap()).unwrap();
-        assert_eq!(matrix.as_array().unwrap().len(), 16);
+        assert_eq!(matrix.as_array().unwrap().len(), 17);
         assert_eq!(matrix[0]["operation_id"], "analysis-facts-json");
         assert_eq!(matrix[0]["maturity"], "stable");
         assert_eq!(matrix[0]["input_kind"], "mermaid-source");
@@ -616,6 +616,6 @@ mod tests {
         assert_eq!(png["output_id"], "png");
         assert_eq!(png["availability_capability_id"], "png");
         assert_eq!(png["compiled_prerequisite_ids"], serde_json::json!(["svg"]));
-        assert_eq!(matrix[15]["operation_id"], "validation-json");
+        assert_eq!(matrix[16]["operation_id"], "validation-json");
     }
 }

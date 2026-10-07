@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:d0622e8ab61f2e9b59cc05168bd9495a08dfcce7ea18519d55e63087665af3c2";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4";
 
 export const NODE_BINDING_OPERATIONS = [
   {
@@ -37,6 +37,12 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "document-analysis-json",
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "edge-geometry-json",
     "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
