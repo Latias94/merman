@@ -242,6 +242,17 @@ fn flowchart_parser_diamond_shape_renders_as_decision_terminal_shape() {
 }
 
 #[test]
+fn flowchart_parser_unicode_diamond_uses_sloped_shoulders() {
+    let rendered =
+        render_flowchart("flowchart LR\nA{A} --> B", &AsciiRenderOptions::unicode()).unwrap();
+
+    assert_eq!(
+        rendered,
+        "╭───╮     ┌───┐\n╱   ╲     │   │\n< A ├────►│ B │\n╲   ╱     │   │\n╰───╯     └───┘\n"
+    );
+}
+
+#[test]
 fn flowchart_parser_subroutine_and_cylinder_shapes_render_terminal_approximations() {
     let rendered = render_flowchart(
         "flowchart LR\nA[[Sub]] --> B[(DB)]",
