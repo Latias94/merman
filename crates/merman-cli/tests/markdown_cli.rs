@@ -143,9 +143,30 @@ fn native_batch_applies_the_selected_theme_preset() {
         svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
         "batch rendering should compile the selected theme preset through the typed theme path: {svg}"
     );
-    assert!(
-        !svg.contains(r#"data-look="neo""#),
-        "a visual theme preset must not select a Mermaid look: {svg}"
+    let baseline = run_in(
+        temp.path(),
+        &["batch", "input.md", "--output-dir", "baseline", "--quiet"],
+    );
+    assert_success(&baseline);
+    let baseline = fs::read_to_string(temp.path().join("baseline/input-1.svg"))
+        .expect("baseline Flowchart SVG");
+    let node_looks = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid SVG")
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "node"))
+            })
+            .map(|node| node.attribute("data-look").unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let baseline_looks = node_looks(&baseline);
+    assert!(!baseline_looks.is_empty());
+    assert_eq!(
+        node_looks(&svg),
+        baseline_looks,
+        "a visual preset must preserve the configured default look"
     );
 }
 

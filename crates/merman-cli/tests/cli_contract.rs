@@ -615,9 +615,26 @@ fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
         svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
         "the preset should compile into typed visual theme inputs: {svg}"
     );
-    assert!(
-        !svg.contains(r#"data-look="neo""#),
-        "a visual theme preset must not select Mermaid look: {svg}"
+    let baseline = run_with_stdin(&["render", "--format", "svg", "-"], "flowchart LR\nA-->B\n");
+    assert!(baseline.status.success());
+    let baseline = String::from_utf8(baseline.stdout).expect("baseline SVG");
+    let node_looks = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid SVG")
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "node"))
+            })
+            .map(|node| node.attribute("data-look").unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let baseline_looks = node_looks(&baseline);
+    assert!(!baseline_looks.is_empty());
+    assert_eq!(
+        node_looks(&svg),
+        baseline_looks,
+        "a visual preset must preserve the configured default look"
     );
 }
 
@@ -682,9 +699,27 @@ fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
     let original: Value = serde_json::from_slice(&exported).expect("recipe JSON");
     let source = "classDiagram\nclass Account {\n +String name\n}\nclass Owned\nAccount --> Owned : link\nstyle Owned fill:#334455,stroke:#778899,stroke-width:4px\n";
 
+    let baseline = run_with_stdin(&["render", "--format", "svg", "-"], source);
+    assert!(baseline.status.success());
+    let baseline = String::from_utf8(baseline.stdout).expect("baseline SVG");
+    let baseline_doc = roxmltree::Document::parse(&baseline).expect("valid baseline XML");
+    let compatibility_fill = baseline_doc
+        .descendants()
+        .find(|node| {
+            node.attribute("id")
+                .is_some_and(|id| id.contains("-classId-Account-"))
+        })
+        .expect("baseline Account")
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("fill").is_some_and(|fill| fill != "none")
+        })
+        .and_then(|node| node.attribute("fill"))
+        .expect("baseline Account fill");
+
     for (fill, expected) in [
         (serde_json::json!("#22354d"), "#22354d"),
-        (Value::Null, "#ECECFF"),
+        (Value::Null, compatibility_fill),
         (serde_json::json!("transparent"), "transparent"),
     ] {
         let mut recipe = original.clone();
@@ -1699,7 +1734,9 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         .iter()
         .filter(|capability| capability.has_detector)
     {
-        let family = capability.family_id.as_str();
+        let family = capability
+            .render_model_kind
+            .unwrap_or(capability.family_id.as_str());
         if !family_ids.contains(&family) {
             continue;
         }

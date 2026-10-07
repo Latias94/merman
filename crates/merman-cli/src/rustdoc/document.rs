@@ -1285,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_suffix_selectors_survive_id_rebasing() {
+    fn sequence_marker_selectors_follow_rebased_terminal_ids() {
         let root = tempfile::tempdir().unwrap();
         let config = write_config(
             root.path(),
@@ -1296,8 +1296,25 @@ mod tests {
         let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
-        assert!(output.contains("[id$=&quot;-arrowhead&quot;]"), "{output}");
-        assert!(!output.contains("[id$=&quot;merman-rustdoc-"), "{output}");
+        let document = roxmltree::Document::parse(output.trim()).expect("valid generated fragment");
+        let markers = document
+            .descendants()
+            .filter(|node| node.has_tag_name("marker"))
+            .filter_map(|node| node.attribute("id"))
+            .filter(|id| id.ends_with("-arrowhead"))
+            .collect::<Vec<_>>();
+        assert!(!markers.is_empty(), "{output}");
+        for marker in markers {
+            assert!(marker.starts_with("merman-rustdoc-"), "{marker}");
+            assert!(
+                output.contains(&format!("[id=&quot;{marker}&quot;]")),
+                "{output}"
+            );
+        }
+        assert!(
+            !output.contains("[id=&quot;merman-arrowhead&quot;]"),
+            "{output}"
+        );
     }
 
     #[test]

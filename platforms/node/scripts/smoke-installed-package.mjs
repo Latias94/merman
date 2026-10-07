@@ -79,6 +79,8 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
       import.meta.url,
     ), "utf8");
   }
+  // Cyberpunk Flowchart effects are qualified on the classic writer. Keep that selection
+  // scoped to Flowchart so recipe exchange still exercises other families' default looks.
   const directory = await mkdtemp(path.join(os.tmpdir(), "merman-node-recipes-"));
   const otherFamilies = new Map();
   let comparisons = 0;
@@ -112,7 +114,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
             for (const [family, source] of Object.entries(sources)) {
               results[family] = await engine.executeOperation({
                 operationId: "svg", source,
-                optionsJson: JSON.stringify({ theme, site_config: { htmlLabels: false },
+                optionsJson: JSON.stringify({ theme, site_config: { htmlLabels: false, flowchart: { look: "classic" } },
                   svg: { diagram_id: "node-recipe-" + family } }),
               });
             }
@@ -124,7 +126,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
       for (const [family, source] of Object.entries(sources)) {
         const result = await engine.executeOperation({
           operationId: "svg", source,
-          optionsJson: JSON.stringify({ theme: recipe, site_config: { htmlLabels: false },
+          optionsJson: JSON.stringify({ theme: recipe, site_config: { htmlLabels: false, flowchart: { look: "classic" } },
             svg: { diagram_id: `node-recipe-${family}` } }),
         });
         assert.deepEqual(imported[family], result, `${name}/${family}: fresh process changed output`);
