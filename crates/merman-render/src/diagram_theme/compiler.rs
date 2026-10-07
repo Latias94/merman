@@ -121,13 +121,29 @@ impl DiagramThemeCompiler {
     }
 
     /// Decodes and compiles one closed version 1 complete-spec wire under this compiler's policy.
+    ///
+    /// Encoded-byte admission counts the compact JSON payload, without a recipe or transport
+    /// envelope. Hosts accepting raw JSON must also admit their full encoded input before decoding.
     pub fn compile_spec_wire(
         &self,
         spec: super::DiagramThemeSpecWireV1,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        super::definition_admission::check_typed_input_encoded_bytes(&self.resources, &spec)
+            .map_err(|error| match error {
+                super::definition_admission::ThemeInputEncodingError::ResourceLimit(error) => {
+                    ThemeCompileError::ResourceLimit(error)
+                }
+                super::definition_admission::ThemeInputEncodingError::InvalidEncoding => {
+                    ThemeCompileValidationError::InvalidValue {
+                        field: "complete_spec",
+                    }
+                    .into()
+                }
+            })?;
         self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::CompleteSpec)
     }
 
+    // Definitions and presets admit their authored or composed wire before using this path.
     pub(super) fn compile_spec_wire_with_sources(
         &self,
         spec: super::DiagramThemeSpecWireV1,
@@ -280,6 +296,93 @@ mod tests {
         ThemeColorValue, ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
         ThemeTarget,
     };
+
+    #[test]
+    fn complete_spec_wire_enforces_encoded_payload_byte_boundary() {
+        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } =
+            DiagramThemeCompiler::new()
+                .export_preset(super::super::ThemePreset::Cyberpunk)
+                .unwrap()
+        else {
+            unreachable!()
+        };
+        let size = serde_json::to_vec(&complete_spec).unwrap().len();
+        for limit in [size - 1, size] {
+            let compiler = DiagramThemeCompiler::new().with_resource_policy(
+                ThemeResourcePolicy::interactive()
+                    .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, limit)
+                    .unwrap(),
+            );
+            let result = compiler.compile_spec_wire(complete_spec.clone());
+            if limit == size {
+                result.expect("the exact encoded complete-spec payload must fit");
+            } else {
+                let ThemeCompileError::ResourceLimit(error) = result
+                    .err()
+                    .expect("complete-spec input must obey encoded-byte admission")
+                else {
+                    panic!("encoded-byte admission must report a resource limit");
+                };
+                assert_eq!(error.limit, "max_theme_encoded_bytes");
+                assert_eq!(error.actual, size);
+                assert_eq!(error.max, limit);
+                assert_eq!(error.phase, ThemeResourceLimitPhase::ThemeInput);
+            }
+        }
+    }
+
+    #[test]
+    fn complete_spec_recipe_enforces_payload_budget_without_transport_envelope() {
+        let recipe = DiagramThemeCompiler::new()
+            .export_preset(super::super::ThemePreset::Cyberpunk)
+            .unwrap();
+        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = &recipe else {
+            unreachable!()
+        };
+        let size = serde_json::to_vec(complete_spec).unwrap().len();
+        assert!(serde_json::to_vec(&recipe).unwrap().len() > size);
+        for limit in [size - 1, size] {
+            let compiler = DiagramThemeCompiler::new().with_resource_policy(
+                ThemeResourcePolicy::interactive()
+                    .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, limit)
+                    .unwrap(),
+            );
+            let result = compiler.compile_recipe(recipe.clone());
+            if limit == size {
+                result.expect("typed recipe admission counts the payload, not its envelope");
+            } else {
+                let super::super::ThemeDefinitionCompileError::Compilation(
+                    ThemeCompileError::ResourceLimit(error),
+                ) = result
+                    .err()
+                    .expect("saved complete recipes must obey encoded-byte admission")
+                else {
+                    panic!("complete recipes must preserve the compiler resource diagnostic");
+                };
+                assert_eq!(error.limit, "max_theme_encoded_bytes");
+                assert_eq!(error.actual, size);
+                assert_eq!(error.max, limit);
+            }
+        }
+    }
+
+    #[test]
+    fn definition_recipe_admits_authored_bytes_before_internal_expansion() {
+        let definition = merman_theme_contract::ThemeDefinitionV1::new(
+            merman_theme_contract::ThemeTokensV1::default(),
+        );
+        let size = serde_json::to_vec(&definition).unwrap().len();
+        let expanded = super::super::materialize_theme(&definition).unwrap();
+        assert!(serde_json::to_vec(&expanded.into_spec()).unwrap().len() > size);
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size)
+                .unwrap(),
+        );
+        compiler
+            .compile_recipe(merman_theme_contract::ThemeRecipeV1::Definition { definition })
+            .expect("internally expanded fields must not be charged as authored input bytes");
+    }
 
     #[test]
     fn diagnostic_sources_follow_interleaved_complete_spec_entries() {

@@ -143,12 +143,9 @@ pub enum ThemeDefinitionCompileError {
 /// Internal definition-input failure detected before materialization expands a recipe.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(super) enum ThemeDefinitionAdmissionError {
-    /// The typed definition could not be serialized for resource accounting.
-    #[error("theme definition could not be encoded for admission: {message}")]
-    TypedEncoding {
-        /// A fixed bounded display message; serializer text is not propagated.
-        message: String,
-    },
+    /// The typed definition failed encoded-input admission.
+    #[error(transparent)]
+    Encoding(#[from] ThemeInputEncodingError),
     /// One typed collection exceeded its versioned implementation ceiling.
     #[error("theme definition collection `{path}` has {actual} items; maximum is {max}")]
     CollectionLimit {
@@ -161,14 +158,20 @@ pub(super) enum ThemeDefinitionAdmissionError {
         /// Maximum admitted item count.
         max: usize,
     },
-    /// The caller-owned compiler resource policy rejected the input.
+}
+
+/// A bounded wire serialization failed before semantic decoding.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(super) enum ThemeInputEncodingError {
+    #[error("typed theme input cannot be encoded for bounded admission")]
+    InvalidEncoding,
     #[error(transparent)]
     ResourceLimit(#[from] ThemeResourceLimitExceeded),
 }
 
 fn admission_contract_error(error: ThemeDefinitionAdmissionError) -> ThemeMaterializationErrorV1 {
     match error {
-        ThemeDefinitionAdmissionError::TypedEncoding { .. } => {
+        ThemeDefinitionAdmissionError::Encoding(ThemeInputEncodingError::InvalidEncoding) => {
             contract_error(ThemeMaterializationDiagnosticV1::invalid_token_value(
                 "",
                 "finite-theme-definition",
@@ -187,7 +190,9 @@ fn admission_contract_error(error: ThemeDefinitionAdmissionError) -> ThemeMateri
             max,
             "theme definition exceeds a bounded collection or string limit",
         )),
-        ThemeDefinitionAdmissionError::ResourceLimit(error) => encoded_bytes_contract_error(error),
+        ThemeDefinitionAdmissionError::Encoding(ThemeInputEncodingError::ResourceLimit(error)) => {
+            encoded_bytes_contract_error(error)
+        }
     }
 }
 
@@ -309,21 +314,20 @@ pub(super) fn check_complete_spec_encoded_bytes(
     resources: &ThemeResourcePolicy,
     spec: &merman_theme_contract::DiagramThemeSpecWireV1,
 ) -> Result<(), ThemeMaterializationErrorV1> {
-    check_typed_input_encoded_bytes(resources, spec).map_err(admission_contract_error)
+    check_typed_input_encoded_bytes(resources, spec)
+        .map_err(|error| admission_contract_error(error.into()))
 }
 
-fn check_typed_input_encoded_bytes(
+pub(super) fn check_typed_input_encoded_bytes(
     resources: &ThemeResourcePolicy,
     input: &impl serde::Serialize,
-) -> Result<(), ThemeDefinitionAdmissionError> {
+) -> Result<(), ThemeInputEncodingError> {
     let mut writer = BoundedCountingWriter::new(resources);
     let encoded = serde_json::to_writer(&mut writer, input);
     if let Some(error) = writer.take_resource_error() {
-        return Err(ThemeDefinitionAdmissionError::ResourceLimit(error));
+        return Err(ThemeInputEncodingError::ResourceLimit(error));
     }
-    encoded.map_err(|_| ThemeDefinitionAdmissionError::TypedEncoding {
-        message: "typed theme input cannot be encoded for bounded admission".to_owned(),
-    })?;
+    encoded.map_err(|_| ThemeInputEncodingError::InvalidEncoding)?;
     Ok(())
 }
 
