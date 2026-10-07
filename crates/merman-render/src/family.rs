@@ -3910,7 +3910,8 @@ impl FamilyRenderArtifact {
     /// `layout_json` reports `LayoutEdge::points` before the endpoints are clipped to the endpoint
     /// shapes' ink. This returns the values that end up on screen, in the same layout coordinate
     /// space, so a consumer no longer has to render a whole SVG and recover them from the
-    /// `data-points` attribute.
+    /// `data-points` attribute or edge-label transforms. Label positions are `None` for edges
+    /// without a positioned label.
     ///
     /// Consumes the artifact, exactly like [`Self::render_svg`], because it runs the same compute
     /// pass. Returns an empty vector for families that do not route through the flowchart

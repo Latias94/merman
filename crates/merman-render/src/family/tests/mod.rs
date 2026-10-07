@@ -103,6 +103,44 @@ fn decode_data_points(svg: &str) -> Vec<(String, Vec<(f64, f64)>)> {
     out
 }
 
+fn decode_edge_label_positions(svg: &str) -> std::collections::HashMap<String, (f64, f64)> {
+    let document = roxmltree::Document::parse(svg).expect("valid flowchart SVG");
+    let mut positions = std::collections::HashMap::new();
+    for edge_label in document.descendants().filter(|node| {
+        node.has_tag_name("g")
+            && node.attribute("class").is_some_and(|class| {
+                class
+                    .split_ascii_whitespace()
+                    .any(|part| part == "edgeLabel")
+            })
+    }) {
+        let Some(transform) = edge_label.attribute("transform") else {
+            continue;
+        };
+        let Some((x, y)) = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .and_then(|value| {
+                let (x, y) = value.split_once(',')?;
+                Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+            })
+        else {
+            continue;
+        };
+        let Some(label) = edge_label.descendants().find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "label"))
+                && node.attribute("data-id").is_some()
+        }) else {
+            continue;
+        };
+        positions.insert(label.attribute("data-id").unwrap().to_owned(), (x, y));
+    }
+    positions
+}
+
 fn parse_flowchart(source: &str) -> ParsedDiagramRender {
     Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -240,6 +278,19 @@ A -->|second owner| B
             .collect::<Vec<_>>()
     };
     assert_ne!(coordinates(&geometry[0]), coordinates(&geometry[1]));
+    let first_label = geometry[0]
+        .label_position
+        .as_ref()
+        .expect("first occurrence has a painted label");
+    let second_label = geometry[1]
+        .label_position
+        .as_ref()
+        .expect("second occurrence has a painted label");
+    assert_ne!(
+        (first_label.x, first_label.y),
+        (second_label.x, second_label.y),
+        "duplicate public IDs must not overwrite painted label positions"
+    );
     for (edge, (id, points)) in geometry.iter().zip(from_svg) {
         assert_eq!(edge.id, id);
         let actual = edge.points.as_ref().expect("clipped duplicate edge points");
@@ -11808,4 +11859,90 @@ fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
         panic!("expected structured postprocess cancellation");
     };
     assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+}
+
+#[test]
+fn edge_geometry_json_label_positions_match_emitted_positions() {
+    let cases = [
+        (
+            "issue_176_three_parallel_unequal_labels",
+            "flowchart TD\n    A -->|one| B\n    A -->|two| B\n    A -->|three| B\n",
+            3,
+        ),
+        (
+            "two_parallel_unequal_labels",
+            "flowchart TD\n    A -->|short| B\n    A -->|a substantially wider edge label| B\n",
+            2,
+        ),
+        (
+            "three_parallel_equal_labels",
+            "flowchart TD\n    A -->|same| B\n    A -->|same| B\n    A -->|same| B\n",
+            3,
+        ),
+    ];
+
+    for (case, source, expected_edges) in cases {
+        let geometry = prepare(
+            parse_flowchart(source),
+            &LayoutOptions::default(),
+            session(),
+        )
+        .expect("prepare flowchart")
+        .edge_geometry_json()
+        .expect("edge geometry json");
+        let svg = prepare(
+            parse_flowchart(source),
+            &LayoutOptions::default(),
+            session(),
+        )
+        .expect("prepare flowchart")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render flowchart")
+        .svg()
+        .to_owned();
+        let rendered = decode_edge_label_positions(&svg);
+        let positions: Vec<_> = geometry
+            .iter()
+            .map(|edge| {
+                let actual = edge.label_position.as_ref().unwrap_or_else(|| {
+                    panic!("{case}: edge {} must have a label position", edge.id)
+                });
+                let (rendered_x, rendered_y) = rendered
+                    .get(&edge.id)
+                    .unwrap_or_else(|| panic!("{case}: SVG must contain label {}", edge.id));
+                (
+                    edge.id.as_str(),
+                    actual.x,
+                    actual.y,
+                    *rendered_x,
+                    *rendered_y,
+                )
+            })
+            .collect();
+
+        assert_eq!(positions.len(), expected_edges, "{case}: edge count");
+        assert_eq!(
+            rendered.len(),
+            expected_edges,
+            "{case}: rendered label count"
+        );
+
+        // SVG labels are emitted in the root's translated coordinate space, while this API
+        // intentionally reports layout coordinates. Their pairwise deltas must therefore
+        // match exactly even when the whole diagram has a non-zero translation.
+        for left in 0..positions.len() {
+            for right in left + 1..positions.len() {
+                let (left_id, lx, ly, lrx, lry) = positions[left];
+                let (right_id, rx, ry, rrx, rry) = positions[right];
+                assert!(
+                    ((rx - lx) - (rrx - lrx)).abs() < 1e-5,
+                    "{case}: x delta for {left_id} -> {right_id} differs between geometry and SVG"
+                );
+                assert!(
+                    ((ry - ly) - (rry - lry)).abs() < 1e-5,
+                    "{case}: y delta for {left_id} -> {right_id} differs between geometry and SVG"
+                );
+            }
+        }
+    }
 }

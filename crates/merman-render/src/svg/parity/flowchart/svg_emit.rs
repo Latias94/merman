@@ -582,6 +582,7 @@ pub(super) fn render_flowchart_svg_model(
         hierarchy_plan: &hierarchy_plan,
         cluster_theme_plan: &cluster_theme_plan,
         marker_plan: &marker_plan,
+        edge_label_positions: edge_paint_geometry.as_ref().map(|_| FxHashMap::default()),
     };
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
@@ -636,6 +637,8 @@ pub(super) fn render_flowchart_svg_model(
     out.push_str("</svg>\n");
     out.checkpoint()?;
 
+    let edge_label_positions = root_session.edge_label_positions.take();
+    drop(root_session);
     drop(_g_render_svg);
     timings.total = total_timer
         .map(merman_core::runtime::OperationTimer::elapsed)
@@ -677,6 +680,9 @@ pub(super) fn render_flowchart_svg_model(
             crate::model::EdgePaintGeometry {
                 id: edge.as_ref().id.clone(),
                 points: clipped_points
+                    .as_ref()
+                    .and_then(|map| map.get(&edge.key).cloned()),
+                label_position: edge_label_positions
                     .as_ref()
                     .and_then(|map| map.get(&edge.key).cloned()),
             }
