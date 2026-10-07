@@ -1,7 +1,7 @@
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer,
-    TargetAdmissionReason, TargetAdmissionStatus,
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason,
+    TargetAdmissionStatus,
 };
 
 fn assert_recipe_round_trip(source: &str, effects: u32) {
@@ -13,9 +13,9 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
         .compile_recipe(serde_json::from_slice(&saved).unwrap())
         .unwrap();
     assert_eq!(original.recipe_fingerprint(), imported.recipe_fingerprint());
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-        MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
-    ));
+    let renderer = Renderer::new().with_engine(
+        Engine::new().with_site_config(merman_theme_acceptance::preset_qualification_config()),
+    );
     let mut outputs = Vec::new();
     for theme in [original, imported] {
         let RenderOutput::Document(Some(document)) = renderer
@@ -32,11 +32,17 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
             .unwrap();
         assert_eq!(
             png.admission().status(),
-            TargetAdmissionStatus::HostDependent
+            TargetAdmissionStatus::HostDependent,
+            "admission={:?}; fonts={:?}; filters={:?}; source={source}",
+            png.admission(),
+            png.export_report().fonts(),
+            png.export_report().native_filter_receipt(),
         );
         assert_eq!(
             png.admission().reasons(),
-            &[TargetAdmissionReason::SystemOrHostFontDependency]
+            &[TargetAdmissionReason::SystemOrHostFontDependency],
+            "admission={:?}; source={source}",
+            png.admission(),
         );
         assert_eq!(
             png.export_report()

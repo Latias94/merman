@@ -36,28 +36,28 @@ impl Palette {
         // Independent expected values: catalog recipe changes require explicit requalification.
         Ok(match preset {
             ThemePreset::Brutalist => Self {
-                canvas: "#f4f0e6",
-                actor: "#fffdf5",
-                border: "#111111",
-                text: "#111111",
-                note: "#ffd84d",
-                note_border: "#111111",
-                note_text: "#111111",
+                canvas: "#f6f3e9",
+                actor: "#ffffff",
+                border: "#000000",
+                text: "#000000",
+                note: "#FFE66D",
+                note_border: "#000000",
+                note_text: "#000000",
                 activation: "#ff6b35",
-                activation_border: "#111111",
+                activation_border: "#000000",
                 number: "#ffffff",
             },
             ThemePreset::Spotless => Self {
-                canvas: "#f7f5ef",
-                actor: "#ffffff",
-                border: "#8c867b",
-                text: "#1b1b1b",
+                canvas: "#EDE8DC",
+                actor: "#F5F1E8",
+                border: "#2C2416",
+                text: "#1a1a1a",
                 note: "#fff8e7",
                 note_border: "#b89245",
                 note_text: "#4a3712",
                 activation: "#eeeae0",
-                activation_border: "#8c867b",
-                number: "#ffffff",
+                activation_border: "#2C2416",
+                number: "#F5F1E8",
             },
             _ => {
                 return Err(C6ProofError::new(
@@ -231,8 +231,63 @@ fn check_labels(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult
 mod tests {
     use super::*;
     use merman::svg::DiagramThemeCompiler;
-    use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
+    use merman::{
+        Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer,
+        TargetAdmissionReason, TargetAdmissionStatus,
+    };
     use sha2::Digest as _;
+
+    #[test]
+    fn neo_sequence_preserves_note_pixels_and_rejects_mixed_filter_evidence() {
+        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+            MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": false,
+                "sequence": { "look": "neo" },
+            })),
+        ));
+        for preset in [ThemePreset::Spotless, ThemePreset::Brutalist] {
+            let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+            let RenderOutput::Document(Some(document)) = renderer
+                .render(
+                    RenderRequest::document(
+                        super::super::SEQUENCE_SPEC.source,
+                        OperationControl::new(),
+                        Default::default(),
+                    )
+                    .with_theme(theme),
+                )
+                .unwrap()
+            else {
+                panic!("missing Neo Sequence document")
+            };
+            let artifact =
+                C6TargetArtifact::new(TargetArtifactView::from_rendered_document(&document));
+            let observed = sealed_svg_receipt(&artifact).unwrap();
+            assert!(observed.elements().iter().any(|node| {
+                node.tag_name() == "rect"
+                    && node.has_class("note")
+                    && node.attribute("data-look") == Some("neo")
+            }));
+            let png = document
+                .export_png(
+                    &merman_export::RasterOptions::default().with_scale(4.0),
+                    OperationControl::new(),
+                )
+                .unwrap();
+            if preset == ThemePreset::Spotless {
+                // The fixed note ROI must contain note paint, not the canvas below a lost filter.
+                verify(preset, &document, &png).unwrap();
+            } else {
+                // Neo's loop-label filter is outside the exact typed-only native filter contract.
+                assert_eq!(png.admission().status(), TargetAdmissionStatus::Rejected);
+                assert!(
+                    png.admission()
+                        .reasons()
+                        .contains(&TargetAdmissionReason::NativeFilterReceiptMismatch)
+                );
+            }
+        }
+    }
 
     #[test]
     fn sequence_label_contract_rejects_changed_or_missing_text() {
@@ -253,6 +308,12 @@ mod tests {
             panic!("missing Sequence document")
         };
         let palette = Palette::for_preset(ThemePreset::Spotless).unwrap();
+        let receipt = SvgArtifactReceipt::observe_svg_for_test(
+            document.svg(),
+            sha2::Sha256::digest(document.svg().as_bytes()).into(),
+        )
+        .unwrap();
+        check_labels(&receipt, palette).unwrap();
         for (old, new) in [("Hello", "Changed"), ("Remember", "")] {
             assert!(document.svg().contains(old));
             let changed = document.svg().replace(old, new);

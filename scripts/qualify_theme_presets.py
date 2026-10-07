@@ -62,9 +62,11 @@ def qualify_cli(
     """Bind a real CLI to fresh Rust-qualified bytes, without reimplementing their checks."""
     binary = binary.resolve(strict=True)
     digest = sha256_file(binary)
-    config = {"htmlLabels": False}
     if not qualification.get("presets"):
         raise RuntimeError("CLI qualification requires actual target observations")
+    config = qualification.get("render_config")
+    if not isinstance(config, dict) or not config:
+        raise RuntimeError("CLI qualification requires the Rust runner's render configuration")
     matched = 0
     with tempfile.TemporaryDirectory(prefix="merman-preset-cli-") as temporary:
         directory = Path(temporary)

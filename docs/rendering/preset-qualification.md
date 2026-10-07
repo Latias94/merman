@@ -16,6 +16,22 @@ The other nine presets retain the small Flowchart/State/Sequence admission sourc
 This inventory does not exercise HTML labels, PDF, controlled caller fonts or installed consumers.
 The separate qualification runner adds the semantic and pixel checks described below.
 
+The shared native profile explicitly sets `htmlLabels: false`, `flowchart.look: classic`,
+`flowchart.layout: dagre`, and `sequence.look: classic`. These family settings preserve the original
+qualification conditions after Mermaid 12 changed the defaults to Neo and ELK. The fixed subgraph
+pixel checks exercise the vertical Dagre connection, its arrowhead, and the separate label
+background. Other families retain their current defaults. These are runner conditions; public
+preset recipes do not force a look or layout.
+
+The profile does not qualify the default Neo look for Flowchart or Sequence. In particular,
+Sequence Neo can combine preset-owned filters with a built-in filter on the loop label box. That
+mixed filter tree is outside the current native typed-filter receipt and remains rejected; choosing
+classic for this profile does not upgrade its admission. A separate explicit Neo PNG regression
+checks that Spotless note fill survives the built-in scoped filter.
+
+The Rust runner emits its exact `render_config`; CLI replay consumes that configuration rather
+than maintaining a separate copy. Earlier records still require fresh execution.
+
 ## Brutalist and Spotless profile
 
 The workspace-only Rust runner executes the exact Brutalist and Spotless catalog
@@ -36,8 +52,9 @@ inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md
 
 `native-cyberpunk-full-scenes-system-fonts-v1` qualifies only the three unchanged public Cyberpunk
 fixtures: Flowchart, Sequence and XY Chart, each as SVG and 1x PNG. It uses native SVG labels,
-system fonts, the original catalog recipe and default resource limits. Successful observations
-remain **HostDependent**. State is not part of this profile.
+system fonts, classic Flowchart and Sequence looks, Dagre for Flowchart, the original catalog
+recipe and default resource limits. Successful observations remain **HostDependent**. State is not
+part of this profile.
 
 The existing sealed SVG observer checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and

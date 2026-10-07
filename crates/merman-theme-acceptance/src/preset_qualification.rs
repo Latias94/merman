@@ -30,6 +30,19 @@ const QUALIFICATION_SCHEMA_REVISION: u32 = 1;
 const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v1";
 const CYBERPUNK_HOST_PROFILE: &str = "native-cyberpunk-full-scenes-system-fonts-v1";
 
+/// Site configuration shared by native preset qualification and its CLI replay.
+///
+/// Flowchart and Sequence retain the classic look observed by the original qualification scenes;
+/// Flowchart also retains Dagre layout. Other families keep their current defaults. This does not
+/// change any public preset recipe.
+pub fn preset_qualification_config() -> MermaidConfig {
+    MermaidConfig::from_value(serde_json::json!({
+        "htmlLabels": false,
+        "flowchart": { "look": "classic", "layout": "dagre" },
+        "sequence": { "look": "classic" },
+    }))
+}
+
 /// One frozen representative source used to inspect a catalog preset on both native targets.
 #[derive(Debug, Clone, Copy)]
 pub struct PresetQualificationSpec {
@@ -339,8 +352,9 @@ pub struct PresetAdmissionError {
 
 /// Executes the catalog's own recipe without substituting a C6 proof recipe or modifying rules.
 ///
-/// The fixed profile disables HTML labels and retains the default deterministic environment and
-/// font policy. Best-effort production rendering allows inspection of rejected admission receipts;
+/// The fixed profile disables HTML labels, uses classic Flowchart and Sequence looks with Dagre
+/// for Flowchart, and retains the default deterministic environment and font policy. Best-effort
+/// rendering allows inspection of rejected admission receipts;
 /// it does not upgrade their status. Failures to produce an artifact remain explicit errors.
 pub fn inspect_preset_admission(
     preset: ThemePreset,
@@ -373,9 +387,8 @@ fn execute_preset(
         resource_fingerprint: *theme.report().font_catalog_fingerprint().as_bytes(),
         observations: Vec::with_capacity(specs.len() * 2),
     };
-    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-        MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
-    ));
+    let renderer =
+        Renderer::new().with_engine(Engine::new().with_site_config(preset_qualification_config()));
     for &spec in specs {
         let output = renderer
             .render(
@@ -528,9 +541,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(ThemePreset::Spotless)
             .unwrap();
-        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-            MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
-        ));
+        let renderer = Renderer::new()
+            .with_engine(Engine::new().with_site_config(preset_qualification_config()));
         for spec in [FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC] {
             let RenderOutput::Document(Some(document)) = renderer
                 .render(

@@ -223,7 +223,7 @@ fn verify_pixels(
 mod tests {
     use super::*;
     use merman::svg::{DiagramThemeCompiler, ThemePreset};
-    use merman::{Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer};
+    use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
     use merman_render::__private::SvgArtifactReceipt;
     use sha2::{Digest as _, Sha256};
 
@@ -231,9 +231,9 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(ThemePreset::Cyberpunk)
             .unwrap();
-        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-            MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
-        ));
+        let renderer = Renderer::new().with_engine(
+            Engine::new().with_site_config(super::super::preset_qualification_config()),
+        );
         let RenderOutput::Document(Some(document)) = renderer
             .render(
                 RenderRequest::document(source, OperationControl::new(), Default::default())

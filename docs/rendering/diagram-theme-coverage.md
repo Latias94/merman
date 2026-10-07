@@ -623,7 +623,12 @@ The preset admission runner executes all ten exact catalog recipes, then exports
 document to PNG. Cyberpunk uses the unchanged complete Flowchart, Sequence and XY Chart sources
 from `merman-theme-fixtures/fixtures/public-cyberpunk`; the other nine presets retain the small
 Flowchart, State and Sequence sources. These admission runs use native SVG labels, system fonts,
-default resource limits and 1x PNG. They do not cover HTML labels or PDF.
+default resource limits and 1x PNG. The shared runner explicitly uses `flowchart.look: classic`,
+`flowchart.layout: dagre`, and `sequence.look: classic`; other families retain their defaults. Public
+preset recipes do not force a look or layout. CLI qualification replays the Rust runner's emitted
+configuration. These observations do not cover HTML labels, PDF, or the default Neo look for
+Flowchart and Sequence. Sequence Neo trees that mix typed preset filters with built-in filters remain
+outside this qualification and retain their strict native admission rejection.
 On 2026-09-11 the 60 artifact observations comprised 18 HostDependent Flowchart/State/Sequence outputs from the native
 candidates and 42 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
 requests (two compatibility residuals per family). Native candidates omit those requests.

@@ -388,6 +388,7 @@ fn flowchart(receipt: &SvgArtifactReceipt) -> C6ProofResult<()> {
     })?[0];
     props(surface, &[("fill", NAVY), ("stroke", CYAN)])?;
     by_class(receipt, "rect", "background", 2)?;
+    // The frozen Dagre profile emits one label owner per edge, including the unlabelled edge.
     for (id, label) in [
         ("L_Browse_Stock_0", ""),
         ("L_Stock_Cart_0", "Yes"),

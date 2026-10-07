@@ -21,8 +21,8 @@ pub(super) fn verify(
     // These expectations are independent of the recipe builder. A palette change must update
     // the declared profile and its qualification schema, not silently redefine the oracle.
     let (canvas, surface, text, border) = match preset {
-        ThemePreset::Brutalist => ("#f4f0e6", "#fffdf5", "#111111", "#111111"),
-        ThemePreset::Spotless => ("#f7f5ef", "#ffffff", "#1b1b1b", "#b8b2a7"),
+        ThemePreset::Brutalist => ("#f6f3e9", "#ffffff", "#000000", "#000000"),
+        ThemePreset::Spotless => ("#EDE8DC", "#F5F1E8", "#1a1a1a", "#2C2416"),
         _ => return Err(C6ProofError::new("preset-scope", "undeclared preset")),
     };
     verify_host_admission(document, png)?;
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn host_profile_rejects_blank_output_and_missing_label_ink() {
-        let colors = ["#f4f0e6", "#fffdf5", "#111111"];
+        let colors = ["#f6f3e9", "#ffffff", "#000000"];
         let view = [0.0, 0.0, 120.0, 80.0];
         let bounds = [20.0, 20.0, 80.0, 40.0];
         let mut raster =

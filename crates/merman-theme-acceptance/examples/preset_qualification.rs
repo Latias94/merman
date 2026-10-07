@@ -9,7 +9,7 @@ fn main() {
 #[cfg(merman_internal_theme_acceptance)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use merman::svg::ThemePreset;
-    use merman_theme_acceptance::run_preset_qualification;
+    use merman_theme_acceptance::{preset_qualification_config, run_preset_qualification};
     use serde_json::json;
 
     fn hex(bytes: &[u8]) -> String {
@@ -69,7 +69,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!(
         "{}",
-        serde_json::to_string(&json!({"catalog": catalog, "presets": presets}))?
+        serde_json::to_string(&json!({
+            "catalog": catalog,
+            "presets": presets,
+            "render_config": preset_qualification_config().as_value(),
+        }))?
     );
     Ok(())
 }

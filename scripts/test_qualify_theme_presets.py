@@ -94,6 +94,11 @@ class CliQualificationTests(unittest.TestCase):
         for entry in self.catalog["presets"]:
             entry["family_designs"] = [{"family_id": "flowchart", "treatment": "base_only"}]
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
+        self.qualification["render_config"] = {
+            "htmlLabels": False,
+            "flowchart": {"look": "classic", "layout": "dagre"},
+            "sequence": {"look": "classic"},
+        }
         preset = self.qualification["presets"][0]
         preset["profile"] = "native-flowchart-state-sequence-system-fonts-v1"
         for cell in preset["cells"]:
@@ -118,16 +123,23 @@ class CliQualificationTests(unittest.TestCase):
             }).encode(), stderr=b"")
         self.assertEqual(options["input"], self.qualification["presets"][0]["cells"][0]["source"].encode())
         config_path = Path(command[command.index("--config-file") + 1])
-        self.assertEqual(json.loads(config_path.read_text()), {"htmlLabels": False})
+        self.assertEqual(json.loads(config_path.read_text()), self.qualification["render_config"])
         output = command[command.index("--format") + 1]
         return subprocess.CompletedProcess(command, 0, stdout=self.payloads[output], stderr=b"")
 
     def test_cli_matches_every_qualified_target_and_preserves_scale(self):
         evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
         self.assertEqual(evidence["matched_outputs"], 2)
+        self.assertEqual(evidence["render_config"], self.qualification["render_config"])
         self.assertEqual(evidence["executable_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
         self.assertEqual(self.commands[0][-3:], ["--svg-pipeline", "resvg-safe", "-"])
         self.assertEqual(self.commands[1][-3:], ["--scale", "4.0", "-"])
+
+    def test_cli_requires_runner_owned_render_configuration(self):
+        del self.qualification["render_config"]
+        with self.assertRaisesRegex(RuntimeError, "render configuration"):
+            qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+        self.assertEqual(self.commands, [])
 
     def test_catalog_qualifies_only_receipt_scopes_after_matching_production_metadata(self):
         evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)

@@ -17,7 +17,7 @@ use crate::runner::{
 #[derive(Clone, Copy)]
 struct Palette {
     canvas: &'static str,
-    node: &'static str,
+    nodes: [&'static str; 2],
     node_border: &'static str,
     text: &'static str,
     cluster: &'static str,
@@ -30,28 +30,28 @@ impl Palette {
     fn for_preset(preset: ThemePreset) -> C6ProofResult<Self> {
         Ok(match preset {
             ThemePreset::Brutalist => Self {
-                canvas: "#f4f0e6",
-                node: "#fffdf5",
-                node_border: "#111111",
-                text: "#111111",
+                canvas: "#f6f3e9",
+                nodes: ["#ffffff", "#FFE66D"],
+                node_border: "#000000",
+                text: "#000000",
                 cluster: "#ffe88a",
-                cluster_border: "#111111",
-                edge: "#111111",
-                background: "#fffdf5",
+                cluster_border: "#000000",
+                edge: "#000000",
+                background: "#ffffff",
             },
             ThemePreset::Spotless => Self {
-                canvas: "#f7f5ef",
-                node: "#ffffff",
-                node_border: "#b8b2a7",
-                text: "#1b1b1b",
+                canvas: "#EDE8DC",
+                nodes: ["#F5F1E8"; 2],
+                node_border: "#2C2416",
+                text: "#1a1a1a",
                 cluster: "#f0ece2",
-                cluster_border: "#8c867b",
+                cluster_border: "#2C2416",
                 edge: "#2c2416",
-                background: "#f7f5ef",
+                background: "#EDE8DC",
             },
             ThemePreset::Cyberpunk => Self {
                 canvas: "#051423",
-                node: "#051423",
+                nodes: ["#051423"; 2],
                 node_border: "#00f2ff",
                 text: "#00f2ff",
                 cluster: "#051423",
@@ -142,7 +142,10 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
         })?;
     require_text(receipt, cluster_title, "Review", palette.text)?;
     let mut node_bounds = Vec::with_capacity(2);
-    for (id, label) in [("A", "Alpha"), ("B", "Beta")] {
+    for ((id, label), color) in [("A", "Alpha"), ("B", "Beta")]
+        .into_iter()
+        .zip(palette.nodes)
+    {
         let nodes: Vec<_> = receipt
             .elements()
             .iter()
@@ -166,7 +169,7 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
             .ok_or_else(|| C6ProofError::new("preset-flowchart-node", "missing node surface"))?;
         c6_ensure!(
             "preset-flowchart-node",
-            rect.style_value("fill") == Some(palette.node)
+            rect.style_value("fill") == Some(color)
                 && rect.style_value("stroke") == Some(palette.node_border),
             "wrong node paint"
         );
@@ -270,7 +273,7 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
     require_exact_writer_declaration(receipt, &format!("#{root} .edgeLabel rect"), "opacity", "1")?;
     // Global marker CSS remains unchanged. The referenced shape inherits the winning Edge
     // paint through its own attributes; no explicit Marker rule is qualified here.
-    require_exact_writer_declaration(receipt, &format!("#{root} .marker"), "fill", "#333333")?;
+    require_exact_writer_declaration(receipt, &format!("#{root} .marker"), "fill", "#000000")?;
     Ok(Geometry {
         view: receipt.view_box(),
         cluster: cluster_bounds,
@@ -344,8 +347,8 @@ fn check_pixels(
         palette.cluster_border,
         "cluster border",
     )?;
-    for (bounds, label) in nodes.into_iter().zip(["Alpha", "Beta"]) {
-        prove_surface(raster, view, inset(bounds, 6.0), palette.node, label)?;
+    for ((bounds, label), color) in nodes.into_iter().zip(["Alpha", "Beta"]).zip(palette.nodes) {
+        prove_surface(raster, view, inset(bounds, 6.0), color, label)?;
         prove_color(
             raster,
             view,
@@ -491,14 +494,13 @@ fn prove_ink(
 mod tests {
     use super::*;
     use merman::svg::DiagramThemeCompiler;
-    use merman::{Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer};
+    use merman::{Engine, OperationControl, RenderOutput, RenderRequest, Renderer};
     use sha2::Digest as _;
 
     fn document(preset: ThemePreset) -> RenderedDocument {
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
-        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-            MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
-        ));
+        let renderer = Renderer::new()
+            .with_engine(Engine::new().with_site_config(crate::preset_qualification_config()));
         let RenderOutput::Document(Some(document)) = renderer
             .render(
                 RenderRequest::document(
@@ -540,7 +542,7 @@ mod tests {
         let document = document(preset);
         let palette = Palette::for_preset(preset).unwrap();
         let receipt = observe(document.svg());
-        assert!(check_svg(&receipt, palette).is_ok());
+        check_svg(&receipt, palette).unwrap();
         let edge = receipt
             .elements()
             .iter()
@@ -679,7 +681,11 @@ mod tests {
         } = geometry;
         let center = a[0] + a[2] / 2.0;
         for (region, replacement, stage) in [
-            ([view[0], view[1], view[2], 3.0], palette.node, "surface"),
+            (
+                [view[0], view[1], view[2], 3.0],
+                palette.nodes[0],
+                "surface",
+            ),
             (
                 [view[0] + 6.0, view[1] + 6.0, view[2] - 12.0, 22.0],
                 palette.canvas,

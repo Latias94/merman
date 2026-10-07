@@ -29,7 +29,7 @@ mod preset_qualification;
 pub use preset_qualification::{
     PresetAdmissionError, PresetAdmissionObservation, PresetAdmissionReport,
     PresetQualificationReceipt, PresetQualificationSpec, inspect_preset_admission,
-    run_preset_qualification,
+    preset_qualification_config, run_preset_qualification,
 };
 
 mod route_retirement_manifest;
