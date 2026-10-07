@@ -161,6 +161,10 @@ pub struct EdgePaintGeometry {
     /// `None` when the renderer produced no path for this edge (for example an edge with fewer
     /// than two layout points).
     pub points: Option<Vec<LayoutPoint>>,
+    /// Center of the edge label after paint-time positioning, in layout coordinates.
+    ///
+    /// `None` when the edge has no positioned label.
+    pub label_position: Option<LayoutPoint>,
 }
 
 /// Versioned container for [`EdgePaintGeometry`].
