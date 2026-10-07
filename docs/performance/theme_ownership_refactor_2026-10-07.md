@@ -1,13 +1,15 @@
-# Theme ownership refactor: confirmation and closeout - 2026-10-07
+# Theme ownership refactor: confirmation and partial closeout - 2026-10-07
 
 ## Decision
 
-Accept the operation-ownership and SVG-sealing refactor on macOS ARM64. The
+Accept the measured operation-ownership and SVG-sealing changes on macOS ARM64
+within the verification scope below; full plan completion is not established. The
 adjacent clean source baseline is `97ed7fcb9ab97538384ebcd0aa5a808cf01cd258`;
 the measured candidate is `ab91b43963088734e163b667a07d0a49e2305ff2`
 on `refactor/theme-ownership-performance`. Four public end-to-end workloads
 confirm latency non-regression; three also confirm improvement. No pull request
-is part of this closeout.
+is part of this report. These historical measurements apply only to the stated
+revisions, not to subsequent review fixes or the current working tree.
 
 The operation builder now owns appearance selection, theme materialization and
 the final effective configuration. Detector checkpoints retain an old value
@@ -18,7 +20,33 @@ partitioning and validation. The final native bytes receive one resource
 fingerprint. Class node expectations are retained in the completed receipt,
 while typed marker expectations are built only when the resolved stroke plan
 uses them. The public/native projections, security checks, error order and
-ordinary source/style/marker evidence remain intact.
+ordinary source/style/marker evidence are covered by the named historical tests
+below; this does not establish the unrun full verification matrix.
+
+## Implementation scope and review follow-up
+
+- U1 provides test-only counts for COW, appearance, materialization, replay and
+  resource fingerprinting. It does not provide copied-byte, prepared-text scan
+  or Class expectation allocation counters. No allocation or scan-byte reduction
+  is established by this report.
+- U3 tracks mutation epochs/path stamps and uses checkpoint snapshots and diffs.
+  It does not implement the plan's ordered setter journal. The ownership and
+  replay changes should not be described as delivery of that proposed mechanism.
+- U5 retains Class expectations in requested receipts and builds typed marker
+  expectations when needed. It does not introduce the proposed cross-family
+  operation-level evidence-obligations request. Receipt reuse and conditional
+  construction are narrower than completion of that design.
+- U4's consuming seal, final-byte fingerprint boundary, single validation of
+  identical public/native projections, and centralized finalization-report
+  ownership are implemented and covered by focused regression tests. The new
+  review fix is not included in the historical end-to-end performance results
+  below.
+- U8 remains partially verified: the full render integration inventory and
+  workspace-wide strict checks were not run. The report records measured results
+  and known gaps, not blanket completion of the plan's Definition of Done.
+
+These are implementation boundaries, not a mandate to introduce a journal or
+cross-family evidence framework solely to match the original plan.
 
 ## Confirmation: native end-to-end latency
 
@@ -97,6 +125,9 @@ removable binary size.
 
 ## Correctness and boundaries
 
+The following results are historical verification of the measured refactor.
+They do not include a latency measurement for the focused U4 review fix.
+
 - Core `all-diagrams`: 1,900/1,900 nextest passed.
 - Render full-feature unit tests plus Flowchart SVG, root canvas and typed-family
   integrations: 3,093/3,093 passed, two skipped.
@@ -124,6 +155,7 @@ U6 strict-validation traversal fusion remains a separate experiment: changing
 traversal order needs independent syntax/error/resource evidence. U7 theme
 compiler movement or type erasure is deferred because the unchanged dependency
 boundary and equal-capability size control do not support a migration or a
-size-win claim. Neither experiment is a prerequisite for the completed U1-U5
-and U8 ownership refactor. The remaining optimization frontier requires a
+size-win claim. Neither experiment is a prerequisite for the core ownership
+changes, but their optional status does not close the U1/U3/U5 scope differences
+or the U8 verification gaps above. The remaining optimization frontier requires a
 separate registered workload, not a speculative family fast path or cache.

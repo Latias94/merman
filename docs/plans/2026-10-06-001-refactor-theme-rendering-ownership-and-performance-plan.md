@@ -26,12 +26,27 @@ execution: code
 The implementation lane is `refactor/theme-ownership-performance`, based on `97ed7fcb9`.
 The earlier goal text names the original checkout; this isolated lane is authoritative.
 
-- U1–U5 are implemented in `fdf302d31`, `c186ad38c`, and `8529c2a9b`; operation-isolation
-  coverage and Mermaid 12.1 State snapshots are synchronized in `80246241b`.
+- The initial ownership changes are in `fdf302d31`, `c186ad38c`, and `8529c2a9b`;
+  operation-isolation coverage and Mermaid 12.1 State snapshots are synchronized in
+  `80246241b`. This is not a claim that every planned U1–U5 mechanism or gate shipped.
+- U1 instrumentation covers COW, appearance, materialization, replay, and resource
+  fingerprint counts. Copied-byte, prepared-text scan, and Class expectation allocation
+  counters were not implemented; the corresponding allocation/scan claims remain unproven.
+- U3 uses mutation epochs/path stamps plus checkpoint snapshots and diffs, not the ordered
+  setter journal proposed below. Its accepted scope is ownership and replay preservation,
+  not completion of that proposed journal design.
+- U5 retains Class expectations in requested receipts and constructs typed marker
+  expectations on demand. It does not implement the proposed cross-family operation-level
+  evidence-obligations request or prove an allocation reduction with counters.
+- U4 established the consuming seal and final-byte fingerprint boundary. The follow-up removed
+  repeated native validation when public/native SVG bytes are identical and made the
+  finalization report the sole owner of reference/resource evidence. Focused regression tests
+  cover both the single-validation boundary and the delegated accessors; the earlier end-to-end
+  performance confirmation does not measure this follow-up.
 - Detector replay preserves arbitrary replacement, same-value writes, nested operation ownership,
   cancellation, and bounded traversal storage. The final adversarial review found no remaining
   P1/P2 in the nested ownership repair.
-- Verification: core 1,900/1,900; full-feature render unit tests plus Flowchart SVG, root canvas,
+- Historical verification for the measured refactor: core 1,900/1,900; full-feature render unit tests plus Flowchart SVG, root canvas,
   and typed-family integrations 3,093/3,093 (two skipped); facade operation isolation, theme
   layering, and render operation 51/51. Formatting and diff whitespace checks pass.
 - The reduced `all-diagrams`-only render run passed 4,422 and failed six existing tests whose
@@ -44,11 +59,17 @@ The earlier goal text names the original checkout; this isolated lane is authori
 - U6 is deferred: traversal fusion is outside the ownership repair and needs an independent
   error-order/resource experiment. U7 compiler movement is deferred: no dependency edge has
   changed, and the equal-capability CLI audit found no stripped-size change.
-- U8 is closed in the [2026-10-07 confirmation report](../performance/theme_ownership_refactor_2026-10-07.md):
-  eight A/A and eight balanced AB/BA pairs per public fixture confirm non-regression for all four
+- U8 has partial closeout evidence in the [2026-10-07 confirmation report](../performance/theme_ownership_refactor_2026-10-07.md),
+  not full completion of the verification contract. For base `97ed7fcb9` and candidate
+  `ab91b4396`, eight A/A and eight balanced AB/BA pairs per public fixture confirm non-regression for all four
   workloads and improvement for three; raw CLI size decreases 9,136 bytes, stripped size is
   unchanged. The complete render integration inventory and workspace-wide strict verification
   were not run; the report identifies the verified suites and existing baseline test debt.
+  These missing gates prevent a blanket Definition of Done claim.
+
+The implementation units below retain the original intended design and acceptance gates.
+The checkpoint above records deviations and verification gaps; unimplemented mechanisms are
+not instructions to add a framework merely to match the plan.
 
 ## Product Contract
 

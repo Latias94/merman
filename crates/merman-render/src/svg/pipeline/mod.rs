@@ -135,8 +135,6 @@ pub struct ResvgCompatibleSvg {
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
     prepared_math_evidence_valid: bool,
-    reference_plan: SvgReferencePlan,
-    resource_closure: SvgResourceClosure,
     finalization_report: SvgFinalizationReport,
     font_catalog: crate::diagram_theme::FontCatalog,
     font_source_policy: crate::diagram_theme::FontSourcePolicy,
@@ -309,11 +307,9 @@ impl ResvgCompatibleSvg {
             })
             .transpose()?;
         let native_svg = prepared_text_svg.as_deref().unwrap_or(svg.as_str());
-        let terminal = if prepared_text_svg.is_some() {
-            final_validation::validate_resvg_compatible_svg_with_execution(native_svg, execution)?
-        } else {
-            terminal
-        };
+        // The native projection is the original postprocessed SVG. Prepared-text partitioning
+        // only strips renderer-owned IDs from the public projection, so the terminal validation
+        // already attached to these bytes remains authoritative and must not be rerun.
         let font_catalog = session.font_catalog().clone();
         let font_source_policy = session.font_source_policy().clone();
         let resource_fingerprint = resource_closure::fingerprint_svg_resources(
@@ -330,8 +326,6 @@ impl ResvgCompatibleSvg {
             prepared_math_evidence,
             prepared_math_terminal_receipt,
             prepared_math_evidence_valid,
-            reference_plan: terminal.reference_plan.clone(),
-            resource_closure: terminal.resource_closure.clone(),
             finalization_report: SvgFinalizationReport::from_pipeline(pipeline, &terminal),
             font_catalog,
             font_source_policy,
@@ -386,12 +380,12 @@ impl ResvgCompatibleSvg {
 
     /// Returns the reference-expansion preflight retained at terminal finalization.
     pub const fn reference_plan(&self) -> &SvgReferencePlan {
-        &self.reference_plan
+        self.finalization_report.reference_plan()
     }
 
     /// Returns the terminal same-document and inline-resource inventory.
     pub const fn resource_closure(&self) -> &SvgResourceClosure {
-        &self.resource_closure
+        self.finalization_report.resource_closure()
     }
 
     /// Returns the exact font catalog authorized by the render session.
@@ -442,8 +436,6 @@ impl fmt::Debug for ResvgCompatibleSvg {
                 "prepared_math_terminal_receipt",
                 &self.prepared_math_terminal_receipt,
             )
-            .field("reference_plan", &self.reference_plan)
-            .field("resource_closure", &self.resource_closure)
             .field("finalization_report", &self.finalization_report)
             .field("font_catalog", &self.font_catalog.fingerprint())
             .field("font_source_policy", &self.font_source_policy)
@@ -462,8 +454,6 @@ impl PartialEq for ResvgCompatibleSvg {
             && self.prepared_math_evidence == other.prepared_math_evidence
             && self.prepared_math_terminal_receipt == other.prepared_math_terminal_receipt
             && self.prepared_math_evidence_valid == other.prepared_math_evidence_valid
-            && self.reference_plan == other.reference_plan
-            && self.resource_closure == other.resource_closure
             && self.finalization_report == other.finalization_report
             && self.font_catalog.fingerprint() == other.font_catalog.fingerprint()
             && self.font_source_policy == other.font_source_policy
@@ -1223,6 +1213,62 @@ mod tests {
                 session.font_source_policy(),
             ),
         );
+    }
+
+    #[test]
+    fn prepared_text_seal_reuses_supplied_terminal_validation() {
+        let session = render_session();
+        let pipeline = SvgPipeline::resvg_safe();
+        let id =
+            crate::text::PreparedTextLabelId::new(crate::text::PreparedTextLabelFamily::State, 0);
+        let evidence = PreparedTextEvidenceLease::new(
+            vec![crate::text::PreparedTextLabelLedgerEntry::for_test(
+                id, "label",
+            )],
+            Vec::new(),
+        );
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}">label</text></svg>"#,
+            id.as_svg_id()
+        );
+        let metadata =
+            SvgPostprocessMetadata::from_svg(&svg).with_family_id(crate::DiagramFamilyId::STATE);
+
+        let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
+            let (svg, terminal) = pipeline
+                .process_cow_with_reference_plan(
+                    Cow::Owned(svg),
+                    &metadata,
+                    &session,
+                    None,
+                    true,
+                    false,
+                )
+                .unwrap();
+            ResvgCompatibleSvg::seal(
+                svg.into_owned(),
+                terminal,
+                evidence,
+                true,
+                PreparedMathEvidenceLease::default(),
+                true,
+                &pipeline,
+                &session,
+            )
+            .unwrap()
+        });
+
+        assert_eq!(sealed.prepared_text_label_ledger().len(), 1);
+        assert_eq!(sealed.native_export_svg().len(), work.svg_bytes);
+        assert_eq!(
+            sealed.reference_plan(),
+            sealed.finalization_report().reference_plan()
+        );
+        assert_eq!(
+            sealed.resource_closure(),
+            sealed.finalization_report().resource_closure()
+        );
+        assert_eq!(work.calls, 1);
     }
 
     #[test]

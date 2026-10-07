@@ -26,6 +26,39 @@ const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
 const VALIDATION_PASS: &str = "validate-resvg-compatible-svg";
 const XML_VALIDATION_PASS: &str = "validate-well-formed-svg";
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct TerminalValidationWork {
+    pub calls: usize,
+    pub svg_bytes: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static TERMINAL_VALIDATION_WORK: std::cell::Cell<Option<TerminalValidationWork>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(super) fn measure_terminal_validation_work<T>(
+    operation: impl FnOnce() -> T,
+) -> (T, TerminalValidationWork) {
+    struct Restore(Option<TerminalValidationWork>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TERMINAL_VALIDATION_WORK.set(self.0);
+        }
+    }
+
+    let _restore = Restore(TERMINAL_VALIDATION_WORK.replace(Some(Default::default())));
+    let output = operation();
+    let work = TERMINAL_VALIDATION_WORK
+        .get()
+        .expect("terminal validation scope is active");
+    (output, work)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SvgStructureMetrics {
     pub(crate) elements: usize,
@@ -485,6 +518,14 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<TerminalSvgValidation> {
+    #[cfg(test)]
+    TERMINAL_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.calls += 1;
+            work.svg_bytes += svg.len();
+            work
+        }));
+    });
     let mut checkpoint = || execution.checkpoint();
     let mut check_structure =
         |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth);
