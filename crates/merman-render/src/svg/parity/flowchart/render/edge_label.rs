@@ -133,7 +133,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> Option<crate::model::LayoutPoint> {
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let compiled_label_styles = flowchart_compile_styles(
@@ -260,7 +260,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             );
                         }
                         out.push_str("</g></g></g>");
-                        return;
+                        return Some(position);
                     }
                 } else {
                     let label_box = centered_svg_edge_label_box(
@@ -305,7 +305,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                     }
                     out.push_str("</g></g></g>");
-                    return;
+                    return Some(position);
                 }
             }
 
@@ -359,7 +359,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                 }
                 out.push_str("</g></g></g>");
-                return;
+                return Some(crate::model::LayoutPoint { x, y });
             }
         }
 
@@ -370,7 +370,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
-        return;
+        return None;
     }
 
     let label_html = if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
@@ -419,7 +419,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            return;
+            return Some(position);
         }
 
         if !crate::flowchart::flowchart_label_text_is_empty_for_mode(
@@ -490,7 +490,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            return;
+            return Some(crate::model::LayoutPoint { x, y });
         }
     }
 
@@ -501,6 +501,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         escape_xml_display(&div_style_prefix),
         span_style_attr
     );
+    None
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
@@ -511,12 +512,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> Option<crate::model::LayoutPoint> {
     let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return;
+        return None;
     };
     let Some(label) = layout_edge.label.as_ref() else {
-        return;
+        return None;
     };
 
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
@@ -586,7 +587,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             OptionalStyleXmlAttr(&html_label_style),
             label_html,
         );
-        return;
+        return Some(position);
     }
 
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
@@ -606,6 +607,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let wrapped = prepared.wrapped_lines();
     write_flowchart_svg_source_word_lines(out, &wrapped, true);
     out.push_str("</g></g></g>");
+    Some(position)
 }
 
 #[cfg(test)]

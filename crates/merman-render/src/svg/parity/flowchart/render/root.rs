@@ -15,6 +15,28 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
     pub(in crate::svg::parity::flowchart) edge_cache:
         &'cache mut FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
+    pub(in crate::svg::parity::flowchart) edge_label_positions:
+        Option<FxHashMap<String, crate::model::LayoutPoint>>,
+}
+
+fn record_edge_label_position(
+    positions: &mut Option<FxHashMap<String, crate::model::LayoutPoint>>,
+    ctx: &FlowchartRenderCtx<'_>,
+    edge_id: &str,
+    position: Option<crate::model::LayoutPoint>,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    let (Some(positions), Some(position)) = (positions, position) else {
+        return;
+    };
+    positions.insert(
+        edge_id.to_owned(),
+        crate::model::LayoutPoint {
+            x: position.x + origin_x - ctx.tx,
+            y: position.y + origin_y - ctx.ty,
+        },
+    );
 }
 
 struct FlowchartRootFrame<'a> {
@@ -96,7 +118,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 let Some(current) = frame.as_ref() else {
                     break;
                 };
-                render_swimlane_edge_label_node(
+                let position = render_swimlane_edge_label_node(
                     out,
                     ctx,
                     id,
@@ -104,6 +126,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                     current.origin_x,
                     current.content_origin_y,
                     &*session.edge_cache,
+                );
+                record_edge_label_position(
+                    &mut session.edge_label_positions,
+                    ctx,
+                    &edge.id,
+                    position,
+                    current.origin_x,
+                    current.content_origin_y,
                 );
                 ctx.checkpoint_emit()?;
                 continue;
@@ -389,7 +419,15 @@ fn render_flowchart_elk_edge_labels(
         if edge_label_is_empty(ctx, e) {
             continue;
         }
-        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
+        let position = render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
+        record_edge_label_position(
+            &mut session.edge_label_positions,
+            ctx,
+            &e.id,
+            position,
+            0.0,
+            0.0,
+        );
     }
     out.push_str("</g>");
     Ok(())
@@ -592,7 +630,7 @@ fn initialize_flowchart_root_frame<'a>(
             }
             for e in &edges {
                 ctx.checkpoint_emit()?;
-                render_flowchart_edge_label(
+                let position = render_flowchart_edge_label(
                     out,
                     ctx,
                     e,
@@ -600,19 +638,35 @@ fn initialize_flowchart_root_frame<'a>(
                     frame.content_origin_y,
                     &*session.edge_cache,
                 );
+                record_edge_label_position(
+                    &mut session.edge_label_positions,
+                    ctx,
+                    &e.id,
+                    position,
+                    origin_x,
+                    frame.content_origin_y,
+                );
             }
         } else {
             // Mermaid emits HTML edge-label wrappers in graph edge order. Empty labels stay in
             // place as zero-sized foreignObjects instead of being partitioned ahead of labels.
             for e in &edges {
                 ctx.checkpoint_emit()?;
-                render_flowchart_edge_label(
+                let position = render_flowchart_edge_label(
                     out,
                     ctx,
                     e,
                     origin_x,
                     frame.content_origin_y,
                     &*session.edge_cache,
+                );
+                record_edge_label_position(
+                    &mut session.edge_label_positions,
+                    ctx,
+                    &e.id,
+                    position,
+                    origin_x,
+                    frame.content_origin_y,
                 );
             }
         }
