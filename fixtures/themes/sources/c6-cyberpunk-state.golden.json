@@ -18,9 +18,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -37,9 +40,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -56,9 +62,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -75,9 +84,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -94,9 +106,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -113,9 +128,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -124,7 +142,7 @@
         "start": "root_start",
         "end": "Boot",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
@@ -133,14 +151,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "Boot",
         "end": "Scan",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "acquire target",
@@ -149,14 +167,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "Scan",
         "end": "Breach",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "bypass firewall",
@@ -165,14 +183,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "Breach",
         "end": "Escape",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "exfiltrate",
@@ -181,14 +199,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge4",
         "start": "Escape",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
@@ -197,7 +215,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},

@@ -18,9 +18,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -37,9 +40,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -56,9 +62,12 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -67,7 +76,7 @@
         "start": "root_start",
         "end": "Ready",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
@@ -76,14 +85,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "Ready",
         "end": "Running",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "start",
@@ -92,14 +101,14 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "Running",
         "end": "Ready",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "reset",
@@ -108,7 +117,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
