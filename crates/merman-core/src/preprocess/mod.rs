@@ -48,10 +48,6 @@ pub(crate) struct PreprocessCaptureOutcome {
 }
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Keep the common successful preprocessing result inline instead of allocating on every parse"
-)]
 pub(crate) enum PreprocessCaptureResult {
     Ready(Box<PreprocessResult>),
     Failed(Error),

@@ -467,6 +467,15 @@ jobs:
           cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
           cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
 
+      - name: Install native export test fonts (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
+
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: cargo nextest run --locked --no-fail-fast --cargo-quiet
@@ -867,7 +876,7 @@ jobs:
         run: |
           cargo nextest run --locked -p merman-typst-plugin --no-default-features
           cargo nextest run --locked -p merman-typst-plugin --no-default-features \
-            --features analysis,layout-cytoscape,layout-elk,svg
+            --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
 
       - name: Check exact Typst WASM size budget
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json

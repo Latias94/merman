@@ -53,10 +53,10 @@ fn bridge_inventory_confirms_complete_legacy_route_retirement() {
 }
 
 #[test]
-fn class_edge_label_background_selector_has_no_historical_group_consumer() {
-    // Independent upstream SVG witnesses cover classic/Dagre, handDrawn/Dagre, and ELK.
+fn class_edge_label_background_selector_has_no_current_upstream_group_consumer() {
+    // Current upstream SVG witnesses cover classic/Dagre, handDrawn/Dagre, and ELK.
     // The fixture set does not expose a separate HTML/SVG switch for every look; this test
-    // records only dimensions represented by checked-in historical artifacts.
+    // records only dimensions represented by the current checked-in artifacts.
     let fixtures = [
         include_str!(
             "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"
@@ -81,7 +81,7 @@ fn class_edge_label_background_selector_has_no_historical_group_consumer() {
             let group = &svg[start..end];
             assert!(
                 !group.contains("data-look="),
-                "historical Class edgeLabel group unexpectedly carries data-look: {group}"
+                "current upstream Class edgeLabel group unexpectedly carries data-look: {group}"
             );
             cursor = end.saturating_add(4);
             if cursor >= svg.len() {
@@ -97,36 +97,17 @@ fn class_edge_label_background_selector_has_no_historical_group_consumer() {
 #[test]
 fn class_edge_label_background_historical_projection_baseline_digest() {
     use sha2::{Digest as _, Sha256};
+    // These declarations retain the original retirement witness independently of upstream refreshes.
+    // See fixtures/class-edge-label-projection/README.md for their source and extraction order.
     let fixtures = [
-        include_str!(
-            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"
-        ),
-        include_str!(
-            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.svg"
-        ),
-        include_str!(
-            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.svg"
-        ),
+        include_str!("fixtures/class-edge-label-projection/classic-dagre.css"),
+        include_str!("fixtures/class-edge-label-projection/handdrawn-dagre.css"),
+        include_str!("fixtures/class-edge-label-projection/classic-elk.css"),
     ];
     let mut digest = Sha256::new();
-    for svg in fixtures {
-        let style = svg
-            .split_once("<style>")
-            .and_then(|(_, rest)| rest.split_once("</style>"))
-            .map(|(style, _)| style)
-            .expect("historical Class fixture style block");
-        for marker in [
-            ".edgeLabel[data-look=\"neo\"]",
-            ".edgeLabel .label rect",
-            ".labelBkg",
-            ".edgeLabel .label span",
-        ] {
-            let start = style.find(marker).expect("historical Class CSS marker");
-            let end = style[start..]
-                .find('}')
-                .map(|offset| start + offset + 1)
-                .expect("historical Class CSS declaration");
-            digest.update(&style[start..end]);
+    for declarations in fixtures {
+        for declaration in declarations.lines() {
+            digest.update(declaration);
         }
     }
     let digest: [u8; 32] = digest.finalize().into();
