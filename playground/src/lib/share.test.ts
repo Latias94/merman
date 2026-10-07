@@ -8,7 +8,10 @@ import {
   decodeShareHash,
   encodeShareHash,
   SHARE_LIMITS,
+  SHARE_THEME_RECIPE_BYTES,
+  SHARE_V3_LIMITS,
   WORKSPACE_V2_DEFAULTS,
+  WORKSPACE_V3_DEFAULTS,
   type ShareCommandEnvironment,
 } from "./share.ts";
 import {
@@ -23,6 +26,7 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   diagramTheme: "forest",
   diagramFont: "arial",
   themePresetId: "future-theme",
+  themeRecipeJson: null,
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -32,6 +36,119 @@ test("round-trips one complete workspace snapshot through the s2 envelope", () =
   assert.match(hash, /^#s2:[A-Za-z0-9_-]+$/u);
   assert.deepEqual(decodeShareHash(hash), COMPLETE_SNAPSHOT);
   assert.equal(Object.hasOwn(decodeS2Payload(hash), "renderViewportMode"), false);
+});
+
+const CUSTOM_THEME_RECIPE = JSON.stringify({
+  schema_version: 1,
+  kind: "definition",
+  definition: { tokens: { primaryColor: "#ff66aa" } },
+});
+
+test("round-trips a custom recipe through s3 without changing s2 links", () => {
+  const snapshot = {
+    ...COMPLETE_SNAPSHOT,
+    themePresetId: null,
+    themeRecipeJson: CUSTOM_THEME_RECIPE,
+  };
+  const hash = encodeShareHash(snapshot);
+  assert.match(hash, /^#s3:[A-Za-z0-9_-]+$/u);
+  assert.deepEqual(decodeShareHash(hash), snapshot);
+  assert.equal(decodeShareHash(s2Payload({}))?.themeRecipeJson, null);
+  assert.match(encodeShareHash(COMPLETE_SNAPSHOT), /^#s2:/u);
+  assert.equal(
+    decodeShareHash(s2Payload({ themeRecipeJson: CUSTOM_THEME_RECIPE })),
+    null,
+  );
+});
+
+test("s3 defaults do not inherit later application or caller theme choices", () => {
+  assert.equal(Object.isFrozen(WORKSPACE_V3_DEFAULTS), true);
+  assert.notEqual(WORKSPACE_V3_DEFAULTS, WORKSPACE_V2_DEFAULTS);
+  const callerDefaults = {
+    ...COMPLETE_SNAPSHOT,
+    themePresetId: null,
+    themeRecipeJson: CUSTOM_THEME_RECIPE,
+  };
+  assert.deepEqual(
+    decodeShareHash(s3Payload({}), callerDefaults),
+    WORKSPACE_V3_DEFAULTS,
+  );
+  assert.equal(
+    decodeShareHash(encodedPayload({
+      code: "flowchart LR\nA --> B",
+      theme: "default",
+    }), callerDefaults)?.themeRecipeJson,
+    null,
+  );
+});
+
+test("rejects mixed preset and custom recipe selections on encode and decode", () => {
+  assert.throws(
+    () =>
+      encodeShareHash({
+        ...COMPLETE_SNAPSHOT,
+        themeRecipeJson: CUSTOM_THEME_RECIPE,
+      }),
+    /share URL contract/u,
+  );
+  assert.equal(
+    decodeShareHash(s3Payload({
+      themePresetId: "brutalist",
+      themeRecipeJson: CUSTOM_THEME_RECIPE,
+    })),
+    null,
+  );
+});
+
+test("bounds custom recipes by UTF-8 bytes and checks only their envelope", () => {
+  const recipeLimit = SHARE_THEME_RECIPE_BYTES;
+  assert.equal(recipeLimit, 256 * 1024);
+  const base = JSON.stringify({
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: {},
+  });
+  const maximumRecipe = base + " ".repeat(recipeLimit - base.length);
+  const snapshot = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    themeRecipeJson: maximumRecipe,
+  };
+  assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
+  for (const themeRecipeJson of [
+    maximumRecipe + " ",
+    base + "中".repeat(Math.ceil(recipeLimit / 3)),
+    "null",
+    "[]",
+    "not-json",
+    JSON.stringify({ schema_version: 2, kind: "definition" }),
+    JSON.stringify({ schema_version: 1, kind: "unknown" }),
+  ]) {
+    assert.throws(
+      () => encodeShareHash({ ...snapshot, themeRecipeJson }),
+      /share URL contract/u,
+    );
+    assert.equal(decodeShareHash(s3Payload({ themeRecipeJson })), null);
+  }
+});
+
+test("grants the additional decompression budget only to s3", () => {
+  const payload = {
+    code: "a".repeat(SHARE_LIMITS.sourceBytes),
+    config: "b".repeat(SHARE_LIMITS.configBytes),
+    themeRecipeJson: CUSTOM_THEME_RECIPE + " ".repeat(128 * 1024),
+  };
+  assert.notEqual(decodeShareHash(s3Payload(payload)), null);
+  assert.equal(decodeShareHash(s2Payload(payload)), null);
+  assert.equal(
+    decodeShareHash(`#s3:${"A".repeat(SHARE_V3_LIMITS.encodedBytes + 1)}`),
+    null,
+  );
+  assert.equal(
+    decodeShareHash(s3Payload({
+      ignored: "x".repeat(SHARE_V3_LIMITS.jsonBytes),
+    })),
+    null,
+  );
 });
 
 test("keeps the complete v2 defaults immutable and independent from caller defaults", () => {
@@ -367,4 +484,8 @@ function deterministicNoise(length: number): string {
     characters[index] = String.fromCharCode(32 + (state % 95));
   }
   return characters.join("");
+}
+
+function s3Payload(payload: Record<string, unknown>): string {
+  return s2Payload(payload).replace("#s2:", "#s3:");
 }

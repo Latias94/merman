@@ -16,8 +16,8 @@
   "toolbar": {
     "examples": "Examples",
     "theme": "Theme",
-    "mermaidTheme": "Mermaid themes",
-    "themePreset": "Merman theme preset",
+    "mermaidTheme": "Mermaid compatibility theme",
+    "themePreset": "Merman visual preset",
     "svgOutput": "SVG output",
     "renderSettings": "Render settings",
     "textMeasurement": "Text measurement",
@@ -100,7 +100,9 @@
     "copied": "Copied!",
     "copyFailed": "Copy failed",
     "openMermaidLive": "Open in Mermaid Live",
-    "openMermaidLiveDesc": "Official editor"
+    "openMermaidLiveDesc": "Official editor",
+    "externalThemeLimit": "Mermaid.ink and Mermaid Live links omit Merman visual presets and custom themes.",
+    "themeNotIncluded": "Merman theme was not included. Use a workspace link or export SVG to preserve it."
   },
   "bench": {
     "title": "Browser Benchmark",
@@ -439,5 +441,26 @@
     "treeView": "TreeView",
     "requirement": "Requirement",
     "unknown": "Unknown"
+  },
+  "customTheme": {
+    "title": "Custom Merman theme",
+    "open": "Custom theme…",
+    "edit": "Edit custom theme…",
+    "active": "Applied",
+    "description": "Edit a theme recipe, start from a preset, or import a JSON file. Your diagram changes only after validation succeeds.",
+    "new": "New recipe",
+    "usePreset": "Use selected preset",
+    "import": "Import JSON",
+    "download": "Download JSON",
+    "recipeLabel": "Theme recipe JSON",
+    "help": "A versioned recipe contains a definition (tokens and styles) or a complete_spec. Workspace links include the applied recipe.",
+    "limitations": "Alpha format: future releases may require migration. Fonts must be available on the receiving device. Styling support varies by diagram family and output; validation does not certify every export.",
+    "cancel": "Cancel",
+    "apply": "Validate and apply",
+    "applied": "Custom theme applied",
+    "importing": "Reading theme…",
+    "tooLarge": "Theme JSON must be {{limit}} KiB or smaller.",
+    "diagnosticDetails": "Diagnostic details",
+    "unchanged": "The applied theme has not changed."
   }
 }

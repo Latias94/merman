@@ -44,6 +44,8 @@ export interface AppState {
   setDiagramTheme: (theme: Theme) => void;
   themePresetId: string | null;
   setThemePresetId: (presetId: string | null) => void;
+  themeRecipeJson: string | null;
+  setThemeRecipeJson: (recipeJson: string | null) => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -78,6 +80,7 @@ export function selectWorkspaceSnapshot(
     mermaidConfig: state.mermaidConfig,
     diagramTheme: state.diagramTheme,
     themePresetId: state.themePresetId,
+    themeRecipeJson: state.themeRecipeJson,
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
@@ -146,7 +149,14 @@ export const useAppStore = create<AppState>((set) => ({
   diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
   setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
   themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
-  setThemePresetId: (themePresetId) => set({ themePresetId }),
+  setThemePresetId: (themePresetId) => set({ themePresetId, themeRecipeJson: null }),
+  themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
+  setThemeRecipeJson: (themeRecipeJson) =>
+    set(
+      themeRecipeJson === null
+        ? { themeRecipeJson }
+        : { themeRecipeJson, themePresetId: null },
+    ),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,

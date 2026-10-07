@@ -66,6 +66,8 @@ export type MermanAsciiResult =
 
 export interface MermanDomainFacade {
   readonly packageVersion: string;
+  exportThemePreset: typeof import("@mermanjs/web").exportThemePreset;
+  validateThemeRecipe(recipeJson: string): string;
   runtimeCatalog(): RuntimeCatalog;
   themeCatalog(): ThemeCatalog;
   diagramFamilyCapabilities(): DiagramFamilyCapability[];

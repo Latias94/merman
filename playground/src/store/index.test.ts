@@ -43,6 +43,7 @@ test("applies one complete workspace snapshot with one coherent notification", (
     mermaidConfig: '{"look":"neo"}',
     diagramTheme: "forest",
     themePresetId: "future-theme",
+    themeRecipeJson: null,
     svgPipeline: "readable",
     textMeasurementMode: "headless",
     diagramFont: "arial",
@@ -85,6 +86,7 @@ test("applies startup workspace, view preferences, and warning in one store tran
       diagramTheme: "forest",
       diagramFont: "arial",
       themePresetId: "future-theme",
+      themeRecipeJson: null,
       svgPipeline: "readable",
       textMeasurementMode: "headless",
     },
@@ -137,3 +139,41 @@ function renderingState() {
     svgPipeline: state.svgPipeline,
   };
 }
+
+test("preset and custom recipe setters replace one another atomically", () => {
+  useAppStore.getState().setThemePresetId("brutalist");
+  const recipe = '{"schema_version":1,"kind":"definition","definition":{}}';
+  const notifications: Array<[string | null, string | null]> = [];
+  const unsubscribe = useAppStore.subscribe((state) => {
+    notifications.push([state.themePresetId, state.themeRecipeJson]);
+  });
+
+  useAppStore.getState().setThemeRecipeJson(recipe);
+  assert.equal(
+    selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeJson,
+    recipe,
+  );
+  useAppStore.getState().setThemePresetId("spotless");
+  useAppStore.getState().setThemeRecipeJson(null);
+  useAppStore.getState().setThemeRecipeJson(recipe);
+  useAppStore.getState().setThemePresetId(null);
+  unsubscribe();
+
+  assert.deepEqual(notifications, [
+    [null, recipe],
+    ["spotless", null],
+    ["spotless", null],
+    [null, recipe],
+    [null, null],
+  ]);
+});
+
+test("applying and selecting a custom workspace retains its recipe", () => {
+  const snapshot: WorkspaceSnapshot = {
+    ...selectWorkspaceSnapshot(useAppStore.getState()),
+    themePresetId: null,
+    themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+  };
+  useAppStore.getState().applyWorkspaceSnapshot(snapshot);
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), snapshot);
+});

@@ -30,6 +30,7 @@ export interface MermanOperationOptions {
   readonly diagramFont?: DiagramFont;
   readonly layoutEnvironment?: MermanLayoutEnvironment;
   readonly themePresetId?: string | null;
+  readonly themeRecipeJson?: string | null;
   readonly svgPipeline?: MermanSvgPipeline;
   readonly textMeasurementMode?: MermanTextMeasurementMode;
 }
@@ -45,6 +46,7 @@ export function isMermanSvgPipeline(
 
 export interface ConfiguredMermanOperationInput {
   readonly bindingOptions: Readonly<HostTextMeasurerSvgBindingOptions>;
+  readonly bindingOptionsJson: string | null;
   readonly configurationError: ErrorProjection | null;
   readonly configuredSource: string;
   readonly source: string;
@@ -65,6 +67,7 @@ export interface FrozenRenderOperation
   readonly diagramFont: DiagramFont;
   readonly layoutEnvironment: Readonly<MermanLayoutEnvironment>;
   readonly themePresetId: string | null;
+  readonly themeRecipeJson: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly theme: WorkspaceSnapshot["diagramTheme"];
   readonly versions: Readonly<RenderOperationVersions>;
@@ -92,6 +95,7 @@ export function configuredMermanOperationInput(
     layoutEnvironment: options?.layoutEnvironment,
     themePresetId:
       options?.themePresetId ?? DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
+    themeRecipeJson: options?.themeRecipeJson ?? null,
     svgPipeline: options?.svgPipeline ?? DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
     textMeasurementMode:
       options?.textMeasurementMode ??
@@ -117,6 +121,7 @@ export function freezeRenderOperation({
       diagramFont: workspace.diagramFont,
       layoutEnvironment: frozenLayout,
       themePresetId: workspace.themePresetId,
+      themeRecipeJson: workspace.themeRecipeJson,
       svgPipeline: workspace.svgPipeline,
       textMeasurementMode: workspace.textMeasurementMode,
     },
@@ -130,6 +135,7 @@ export function freezeRenderOperation({
     diagramFont: workspace.diagramFont,
     layoutEnvironment: frozenLayout,
     themePresetId: workspace.themePresetId,
+    themeRecipeJson: workspace.themeRecipeJson,
     svgPipeline: workspace.svgPipeline,
     theme: workspace.diagramTheme,
     versions: Object.freeze({ ...versions }),
@@ -143,14 +149,18 @@ export function renderOperationWithSvgPipeline(
 ): FrozenRenderOperation {
   if (operation.svgPipeline === svgPipeline) return operation;
   const { svg: _svg, ...bindingOptions } = operation.bindingOptions;
+  const nextOptions = Object.freeze({
+    ...bindingOptions,
+    ...(svgPipeline === "parity"
+      ? {}
+      : { svg: Object.freeze({ pipeline: svgPipeline }) }),
+  });
   return Object.freeze({
     ...operation,
-    bindingOptions: Object.freeze({
-      ...bindingOptions,
-      ...(svgPipeline === "parity"
-        ? {}
-        : { svg: Object.freeze({ pipeline: svgPipeline }) }),
-    }),
+    bindingOptions: nextOptions,
+    bindingOptionsJson: operation.themeRecipeJson
+      ? themeRecipeOptionsJson(nextOptions, operation.themeRecipeJson)
+      : null,
     svgPipeline,
   });
 }
@@ -164,6 +174,7 @@ export function sameRenderOperation(
     left.theme === right.theme &&
     left.configJson === right.configJson &&
     left.themePresetId === right.themePresetId &&
+    left.themeRecipeJson === right.themeRecipeJson &&
     left.textMeasurementMode === right.textMeasurementMode &&
     left.diagramFont === right.diagramFont &&
     left.layoutEnvironment.containerWidth ===
@@ -187,6 +198,7 @@ interface NormalizedMermanOptions {
   readonly diagramFont: DiagramFont;
   readonly layoutEnvironment?: Readonly<MermanLayoutEnvironment>;
   readonly themePresetId: string | null;
+  readonly themeRecipeJson: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
 }
@@ -199,6 +211,7 @@ function freezeConfiguredInput(
 ): ConfiguredMermanOperationInput {
   let configuredSource = source;
   let configurationError: ErrorProjection | null = null;
+  let bindingOptionsJson: string | null = null;
   let initializationConfig: Readonly<MermaidConfigObject> | undefined;
   try {
     ({ configuredSource, initializationConfig } = buildMermaidOperationInput(
@@ -207,8 +220,20 @@ function freezeConfiguredInput(
   } catch (error) {
     configurationError = projectError(error);
   }
+  const bindingOptions = bindingOptionsForRender(options, initializationConfig);
+  try {
+    if (options.themeRecipeJson !== null) {
+      if (options.themePresetId !== null) {
+        throw new Error("Select a Merman preset or a custom theme, not both.");
+      }
+      bindingOptionsJson = themeRecipeOptionsJson(bindingOptions, options.themeRecipeJson);
+    }
+  } catch (error) {
+    configurationError = projectError(error);
+  }
   return Object.freeze({
-    bindingOptions: bindingOptionsForRender(options, initializationConfig),
+    bindingOptions,
+    bindingOptionsJson,
     configurationError,
     configuredSource,
     source,
@@ -258,4 +283,24 @@ function freezeLayoutEnvironment(
       ? {}
       : { screenAvailableWidth: value.screenAvailableWidth }),
   });
+}
+
+/** Keep authored JSON intact so Rust can reject duplicate fields and unknown schema members. */
+export function themeRecipeOptionsJson(
+  options: Readonly<HostTextMeasurerSvgBindingOptions>,
+  recipeJson: string,
+): string {
+  const recipe: unknown = JSON.parse(recipeJson);
+  if (
+    !recipe || typeof recipe !== "object" || Array.isArray(recipe) ||
+    !("schema_version" in recipe) || recipe.schema_version !== 1 ||
+    !("kind" in recipe) || (recipe.kind !== "definition" && recipe.kind !== "complete_spec")
+  ) {
+    throw new Error("Expected a version 1 theme recipe (definition or complete_spec).");
+  }
+  // JSON.parse above verifies this is one complete value before inserting it into the envelope.
+  const { theme: _theme, ...base } = options;
+  const encodedBase = JSON.stringify(base);
+  const prefix = encodedBase === "{}" ? "{" : `${encodedBase.slice(0, -1)},`;
+  return `${prefix}"theme":${recipeJson}}`;
 }

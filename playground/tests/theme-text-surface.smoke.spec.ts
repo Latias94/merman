@@ -53,6 +53,7 @@ test("observes State dark native Note text after the production Playground mount
     mermaidConfig: '{"htmlLabels":false}',
     diagramTheme: "default",
     themePresetId: "editor-dark",
+    themeRecipeJson: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "trebuchet",

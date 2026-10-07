@@ -3,6 +3,32 @@
 This guide describes the unpublished `v0.8.0-alpha.7` source contract. It does not claim that
 published alpha.6 packages implement this API. Examples assume an initialized SVG-capable runtime.
 
+## Edit and share in the Playground
+
+Open **Theme → Custom theme…**. Edit the versioned JSON recipe, import a `.json` file,
+or choose **Use selected preset** to customize the currently selected Merman preset.
+**Validate and apply** compiles the recipe through the same Rust theme compiler as rendering.
+Invalid JSON, unsupported schema fields, and invalid theme values leave the applied theme unchanged.
+Closing the dialog discards unapplied edits. **Download JSON** validates and saves the draft
+without applying it; the file is also accepted by native CLI `render --theme-file` and Web
+`options.theme`.
+
+A Merman visual preset and a custom recipe are mutually exclusive. Selecting a preset (including
+None) clears the custom recipe. The separate **Mermaid compatibility theme** and Mermaid config
+still apply; explicit source configuration may override parts of the Merman theme.
+
+**Share → Copy workspace link** includes the applied recipe together with the diagram, config,
+font selection, and SVG pipeline. Custom recipes use the `s3` compressed URL format; preset-only
+workspaces continue to use `s2`, and existing links remain readable. Recipe JSON is limited to
+256 KiB before compression, with additional limits on the complete URL. Use **Download JSON**
+when distributing a reusable theme separately from a diagram. Links reference the receiving
+Playground runtime; they do not pin an engine version or embed fonts.
+
+External Markdown image links and Mermaid Live carry Mermaid configuration only. They cannot
+reproduce Merman presets or custom recipes; use a Playground workspace link or export the rendered
+SVG when preserving the Merman appearance matters. Theme validation checks the recipe, not visual
+quality or compatibility with every diagram family and export target.
+
 ## Choose a recipe for a diagram
 
 A theme has a shared base and optional family-scoped rules. Select one recipe, then apply its

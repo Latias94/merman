@@ -117,6 +117,34 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
 });
 
+test("custom recipe reaches the Rust transport intact and changes render identity", () => {
+  const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#123456","accent":"#abcdef"}}}';
+  const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
+    themeRecipeJson: recipe,
+  });
+  assert.equal(input.configurationError, null);
+  // Duplicate fields must reach Rust admission instead of disappearing in JSON.parse.
+  assert.ok(input.bindingOptionsJson?.includes(recipe));
+  assert.deepEqual(JSON.parse(input.bindingOptionsJson!).theme, JSON.parse(recipe));
+  const custom = operation({ workspace: { themeRecipeJson: recipe } });
+  assert.equal(sameRenderOperation(operation(), custom), false);
+  const exported = renderOperationWithSvgPipeline(custom, "resvg-safe");
+  assert.ok(exported.bindingOptionsJson?.includes(recipe));
+  assert.equal(JSON.parse(exported.bindingOptionsJson!).svg.pipeline, "resvg-safe");
+});
+
+test("invalid recipe and mixed selections are configuration errors", () => {
+  for (const options of [
+    { themeRecipeJson: "null" },
+    { themeRecipeJson: "{}" },
+    { themeRecipeJson: '{"schema_version":1,"kind":"definition"},"site_config":{}' },
+    { themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}', themePresetId: "brutalist" },
+  ]) {
+    const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", options);
+    assert.ok(input.configurationError);
+  }
+});
+
 test("preserves initialization independently from later source appearance", () => {
   const source = '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
   const input = configuredMermanOperationInput(source, "dark", '{"layout":"dagre","secure":["theme"],"flowchart":{"curve":"linear"}}', { diagramFont: "arial" });

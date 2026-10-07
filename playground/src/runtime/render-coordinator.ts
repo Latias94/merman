@@ -712,6 +712,7 @@ function sameScheduledOperationInput(
     left.workspace.mermaidConfig === right.workspace.mermaidConfig &&
     left.workspace.diagramTheme === right.workspace.diagramTheme &&
     left.workspace.themePresetId === right.workspace.themePresetId &&
+    left.workspace.themeRecipeJson === right.workspace.themeRecipeJson &&
     left.workspace.svgPipeline === right.workspace.svgPipeline &&
     left.workspace.textMeasurementMode ===
       right.workspace.textMeasurementMode &&
@@ -723,7 +724,7 @@ function collectSvgPlan(
   facade: MermanDomainFacade,
   operation: FrozenRenderOperation,
 ): SvgPlanResult | null {
-  if (!operation.themePresetId) {
+  if (!operation.themePresetId && !operation.themeRecipeJson) {
     return null;
   }
 

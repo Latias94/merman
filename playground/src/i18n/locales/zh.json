@@ -16,8 +16,8 @@
   "toolbar": {
     "examples": "示例",
     "theme": "主题",
-    "mermaidTheme": "Mermaid 原生主题",
-    "themePreset": "Merman 主题预设",
+    "mermaidTheme": "Mermaid 兼容主题",
+    "themePreset": "Merman 视觉预设",
     "svgOutput": "SVG 输出",
     "renderSettings": "渲染设置",
     "textMeasurement": "文本测量",
@@ -100,7 +100,9 @@
     "copied": "已复制！",
     "copyFailed": "复制失败",
     "openMermaidLive": "在 Mermaid Live 打开",
-    "openMermaidLiveDesc": "官方编辑器"
+    "openMermaidLiveDesc": "官方编辑器",
+    "externalThemeLimit": "Mermaid.ink 与 Mermaid Live 链接不包含 Merman 视觉预设和自定义主题。",
+    "themeNotIncluded": "未包含 Merman 主题。请分享工作区链接或导出 SVG 来保留主题效果。"
   },
   "bench": {
     "title": "浏览器基准测试",
@@ -439,5 +441,26 @@
     "treeView": "树视图",
     "requirement": "需求图",
     "unknown": "未知"
+  },
+  "customTheme": {
+    "title": "自定义 Merman 主题",
+    "open": "自定义主题…",
+    "edit": "编辑自定义主题…",
+    "active": "已应用",
+    "description": "编辑主题配方、从预设开始，或导入 JSON 文件。只有校验成功并应用后才会修改图表。",
+    "new": "新建配方",
+    "usePreset": "使用当前预设",
+    "import": "导入 JSON",
+    "download": "下载 JSON",
+    "recipeLabel": "主题配方 JSON",
+    "help": "版本化配方包含 definition（tokens 和 styles）或 complete_spec。工作区链接会包含已应用的配方。",
+    "limitations": "Alpha 格式：后续版本可能需要迁移。接收方设备必须具备所选字体。样式支持因图表类型和输出格式而异；通过校验不代表所有导出效果均已验证。",
+    "cancel": "取消",
+    "apply": "校验并应用",
+    "applied": "已应用自定义主题",
+    "importing": "正在读取主题…",
+    "tooLarge": "主题 JSON 不能超过 {{limit}} KiB。",
+    "diagnosticDetails": "诊断详情",
+    "unchanged": "已应用的主题未改变。"
   }
 }

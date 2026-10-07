@@ -65,6 +65,21 @@ The selected `RenderOutput` variant contains `None` when the source has no Merma
 Cancellation, resource exhaustion, parse errors, and unavailable output capabilities remain
 separate structured errors.
 
+## Diagram themes
+
+The current source branch includes compiled visual presets such as Brutalist, Spotless, and
+Cyberpunk. Select a preset from the Playground's **Theme** menu, or run the Rust example:
+
+```sh
+cargo run --locked -p merman --features svg --example theme_preset > themed.svg
+```
+
+Use **Custom theme…** to import, edit, validate, and download a versioned theme recipe. Workspace
+share links preserve the applied custom recipe. The same JSON can be used through Rust, Web,
+Node, and native CLI APIs. The authoring format is alpha; see
+[Create, Customize, and Share Diagram Themes](docs/rendering/custom-diagram-themes.md) for examples,
+configuration precedence, and export limitations.
+
 ## One-shot and repeated rendering
 
 A `Renderer` stores defaults. Each `RenderRequest` describes one independent operation.

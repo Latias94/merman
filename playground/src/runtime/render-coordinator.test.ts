@@ -138,6 +138,12 @@ test("request identity includes the compiled theme and stores the same-snapshot 
       svgPipeline: "readable",
       textMeasurementMode: "browser",
     },
+    {
+      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+    },
+    {
+      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{}}}',
+    },
   ];
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
@@ -157,7 +163,7 @@ test("request identity includes the compiled theme and stores the same-snapshot 
       true,
     );
 
-    if (!workspace.themePresetId) {
+    if (!workspace.themePresetId && !workspace.themeRecipeJson) {
       assert.equal(planCalls.length, previousPlanCallCount);
       assert.equal(state.svgPlan, null);
       continue;
@@ -173,7 +179,7 @@ test("request identity includes the compiled theme and stores the same-snapshot 
     assert.deepEqual(state.svgPlan?.required_capability_ids, []);
   }
 
-  assert.equal(planCalls.length, 2);
+  assert.equal(planCalls.length, 4);
 });
 
 test("deduplicates only when both the operation and facade authority are unchanged", async () => {

@@ -1,4 +1,11 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -34,6 +41,7 @@ import {
   ToolbarArtifactActions,
   useToolbarArtifactActions,
 } from "@/src/components/ToolbarArtifactActions";
+import { ThemeEditorDialog } from "@/src/components/ThemeEditorDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -41,6 +49,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
@@ -58,6 +67,7 @@ import {
   GitFork,
   Languages,
   Type,
+  FileJson,
 } from "lucide-react";
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
@@ -84,6 +94,10 @@ function openIdOptions(
 
 export function ToolbarControls() {
   const { t } = useTranslation();
+  const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const desktopThemeTrigger = useRef<HTMLButtonElement>(null);
+  const compactThemeTrigger = useRef<HTMLButtonElement>(null);
+  const themeEditorRestoreFocus = useRef<HTMLButtonElement | null>(null);
   const {
     diagramTheme,
     setDiagramTheme,
@@ -97,6 +111,7 @@ export function ToolbarControls() {
     uiTheme,
     setUITheme,
     themePresetId,
+    themeRecipeJson,
   } = useAppStore(
     useShallow((state) => ({
       diagramFont: state.diagramFont,
@@ -110,6 +125,7 @@ export function ToolbarControls() {
       svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
       themePresetId: state.themePresetId,
+      themeRecipeJson: state.themeRecipeJson,
       uiTheme: state.uiTheme,
     })),
   );
@@ -196,10 +212,13 @@ export function ToolbarControls() {
     changeLanguage(lang as "en" | "zh");
   }, []);
 
-  const renderThemeMenuContent = () => (
+  const renderThemeMenuContent = (trigger: RefObject<HTMLButtonElement | null>) => (
     <DropdownMenuContent
       align="end"
-      className="max-h-[min(80vh,42rem)] overflow-y-auto"
+      className="max-h-[min(80vh,42rem)] max-w-[calc(100vw-2rem)] overflow-y-auto"
+      onCloseAutoFocus={(event) => {
+        if (themeEditorOpen) event.preventDefault();
+      }}
     >
       <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
       {themePresetId && (
@@ -224,7 +243,7 @@ export function ToolbarControls() {
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("toolbar.themePreset")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={themePresetId ?? NO_THEME_PRESET}
+        value={themeRecipeJson ? "__custom__" : themePresetId ?? NO_THEME_PRESET}
         onValueChange={(value) =>
           setThemePresetId(normalizeThemePresetId(value))
         }
@@ -253,6 +272,19 @@ export function ToolbarControls() {
         })}
       </DropdownMenuRadioGroup>
 
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onSelect={() => {
+          themeEditorRestoreFocus.current = trigger.current;
+          setThemeEditorOpen(true);
+        }}
+      >
+        <FileJson className="size-4" />
+        {t(themeRecipeJson ? "customTheme.edit" : "customTheme.open")}
+        {themeRecipeJson && (
+          <span className="ml-auto text-xs text-muted-foreground">{t("customTheme.active")}</span>
+        )}
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
@@ -372,6 +404,12 @@ export function ToolbarControls() {
 
   return (
     <>
+      {themeEditorOpen && (
+        <ThemeEditorDialog
+          onClose={() => setThemeEditorOpen(false)}
+          restoreFocus={() => themeEditorRestoreFocus.current?.focus({ preventScroll: true })}
+        />
+      )}
       <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 xl:hidden">
         <DropdownMenu>
           <Tooltip>
@@ -381,6 +419,7 @@ export function ToolbarControls() {
                   variant="outline"
                   size="icon-sm"
                   aria-label={t("toolbar.theme")}
+                  ref={compactThemeTrigger}
                 >
                   <Palette className="size-4" />
                 </Button>
@@ -388,7 +427,7 @@ export function ToolbarControls() {
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.theme")}</TooltipContent>
           </Tooltip>
-          {renderThemeMenuContent()}
+          {renderThemeMenuContent(compactThemeTrigger)}
         </DropdownMenu>
 
         <DropdownMenu>
@@ -432,6 +471,7 @@ export function ToolbarControls() {
                   size="sm"
                   className="w-8 px-0 sm:w-auto sm:px-2.5"
                   aria-label={t("toolbar.theme")}
+                  ref={desktopThemeTrigger}
                 >
                   <Palette className="size-4" />
                   <span className="hidden sm:inline">{renderThemeLabel}</span>
@@ -441,7 +481,7 @@ export function ToolbarControls() {
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.theme")}</TooltipContent>
           </Tooltip>
-          {renderThemeMenuContent()}
+          {renderThemeMenuContent(desktopThemeTrigger)}
         </DropdownMenu>
 
         {/* Render settings. */}
