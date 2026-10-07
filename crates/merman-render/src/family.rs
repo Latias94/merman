@@ -3575,19 +3575,15 @@ impl RenderedFamilySvg {
         } else {
             PreparedMathEvidenceLease::default()
         };
-        let svg = pipeline
-            .process_owned_resvg_compatible_with_metadata_and_math_evidence(
-                source_svg,
-                &output_metadata,
-                &self.session,
-                prepared_math_evidence_valid.then_some(&prepared_math_evidence),
-            )?
-            .attach_prepared_text_evidence(
-                prepared_text_ledger,
-                prepared_text_evidence_valid,
-                SvgPostprocessExecution::new(&self.session),
-            )?
-            .attach_prepared_math_evidence(prepared_math_evidence, prepared_math_evidence_valid)?;
+        let svg = pipeline.process_owned_resvg_compatible_with_metadata_and_evidence(
+            source_svg,
+            &output_metadata,
+            &self.session,
+            prepared_text_ledger,
+            prepared_text_evidence_valid,
+            prepared_math_evidence,
+            prepared_math_evidence_valid,
+        )?;
         self.session.work_meter().preflight_svg_byte_count(
             svg.as_str().len(),
             ResourceLimitPhase::SvgPostprocess,

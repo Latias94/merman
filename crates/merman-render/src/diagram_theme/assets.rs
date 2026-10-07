@@ -234,6 +234,11 @@ impl fmt::Debug for FontCatalogFingerprint {
 pub struct FontAssetFingerprint([u8; 32]);
 
 impl FontAssetFingerprint {
+    #[cfg(test)]
+    pub(crate) const fn for_test(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }

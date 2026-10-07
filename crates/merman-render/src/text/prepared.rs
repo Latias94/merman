@@ -2006,6 +2006,28 @@ pub struct PreparedTextLabelLedgerEntry {
 }
 
 impl PreparedTextLabelLedgerEntry {
+    /// A valid host-dependent label for internal projection-boundary tests, without a font backend.
+    #[cfg(test)]
+    pub(crate) fn for_test(id: PreparedTextLabelId, text: &str) -> Self {
+        let range = TextByteRange::new(0, text.len());
+        Self {
+            id,
+            catalog_fingerprint: FontCatalog::system_fonts().fingerprint(),
+            request_digest: TextLayoutRequestDigest::from_bytes([1; 32]),
+            provenance: PreparedTextLabelProvenance::HostDependent,
+            projection_spans: vec![SourceVisibleSpan::new(range, range)].into(),
+            line_ranges: vec![range].into(),
+            line_texts: vec![Arc::from(text)].into(),
+            runs: vec![PreparedTextLabelEvidence::new(
+                range,
+                range,
+                PreparedTextFaceKey::new(FontAssetFingerprint::for_test([2; 32]), 0),
+                FontSource::System,
+            )]
+            .into(),
+        }
+    }
+
     pub const fn id(&self) -> PreparedTextLabelId {
         self.id
     }

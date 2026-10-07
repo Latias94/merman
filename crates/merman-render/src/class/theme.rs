@@ -22,7 +22,7 @@ pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use namespace_title::ClassNamespaceTitleThemePlan;
 use node::ClassNodeThemePlan;
 pub(crate) use terminal::ClassTerminalReceiptSummary;
-use terminal::ExpectedStroke;
+use terminal::{ClassClusterTerminalExpectation, ExpectedStroke};
 pub(crate) use terminal::{
     ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
     ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
@@ -328,6 +328,7 @@ impl ClassRelationThemePlan {
             .map(|expected| (expected.rule_index, expected.css.as_str()))
     }
 
+    #[cfg(test)]
     pub(crate) fn begin_terminal_receipt(
         &self,
         relations: Vec<ClassRelationTerminalExpectation>,
@@ -357,14 +358,26 @@ impl ClassRelationThemePlan {
         markers: Vec<ClassMarkerTerminalExpectation>,
         hand_drawn: bool,
     ) -> ClassRelationThemeReceipt {
-        self.begin_terminal_receipt(relations, markers, hand_drawn)
-            .with_nodes(nodes)
-            .with_clusters(
-                cluster_ids,
-                self.cluster_plan.fill.clone(),
-                self.cluster_plan.stroke.clone(),
-            )
-            .with_namespace_title(self.namespace_title_plan.fill.clone())
+        ClassRelationThemeReceipt::new_with_clusters(
+            relations,
+            if self.stroke.is_some() {
+                markers
+            } else {
+                Vec::new()
+            },
+            self.stroke.clone(),
+            hand_drawn,
+            ClassClusterTerminalExpectation {
+                ids: cluster_ids,
+                fill: self.cluster_plan.fill.clone(),
+                stroke: self.cluster_plan.stroke.clone(),
+                namespace_title: self.namespace_title_plan.fill.clone(),
+            },
+        )
+        .with_note_attachments(self.note_attachment_indices.clone())
+        .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
+        .with_edge_label_background_paint(self.edge_label_background.clone())
+        .with_nodes(nodes)
     }
 
     pub(crate) fn resolve_node_expectations(

@@ -1166,6 +1166,7 @@ fn prepare_class_family(
             relation_theme,
             typography_theme,
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
+                execution.resolved_theme(),
                 relation_count,
                 note_attachment_count,
                 node_count,

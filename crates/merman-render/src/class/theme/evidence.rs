@@ -15,6 +15,12 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::{ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTerminalReceiptSummary};
 
+#[derive(Debug, Clone, Copy)]
+enum ClassThemeEvidenceRequest {
+    CompletionOnly,
+    ThemeEvidence,
+}
+
 /// Terminal Class theme ledger. The SVG writer may seal it only after the completed root exists.
 #[derive(Debug)]
 pub(crate) struct ClassThemeEvidenceRecorder {
@@ -23,11 +29,14 @@ pub(crate) struct ClassThemeEvidenceRecorder {
     node_count: usize,
     cluster_label_count: usize,
     table_group_lengths: Vec<usize>,
-    terminal_receipt: OnceLock<ClassRelationThemeReceipt>,
+    request: ClassThemeEvidenceRequest,
+    // Some(None) records completion without retaining the ordinary-render receipt.
+    terminal_receipt: OnceLock<Option<ClassRelationThemeReceipt>>,
 }
 
 impl ClassThemeEvidenceRecorder {
     pub(crate) fn new(
+        theme: Option<&ResolvedDiagramTheme>,
         expected_relation_paths: usize,
         expected_note_paths: usize,
         node_count: usize,
@@ -40,6 +49,11 @@ impl ClassThemeEvidenceRecorder {
             node_count,
             cluster_label_count,
             table_group_lengths,
+            request: if theme.is_some() {
+                ClassThemeEvidenceRequest::ThemeEvidence
+            } else {
+                ClassThemeEvidenceRequest::CompletionOnly
+            },
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -53,7 +67,11 @@ impl ClassThemeEvidenceRecorder {
         {
             return false;
         }
-        self.terminal_receipt.set(receipt).is_ok()
+        let retained_receipt = match self.request {
+            ClassThemeEvidenceRequest::CompletionOnly => None,
+            ClassThemeEvidenceRequest::ThemeEvidence => Some(receipt),
+        };
+        self.terminal_receipt.set(retained_receipt).is_ok()
     }
 
     pub(crate) fn finish(
@@ -66,7 +84,7 @@ impl ClassThemeEvidenceRecorder {
         let Some(theme) = theme else {
             return Ok(evidence);
         };
-        let receipt = self.terminal_receipt.get();
+        let receipt = self.terminal_receipt.get().and_then(Option::as_ref);
         let receipt_summary = receipt.map(ClassRelationThemeReceipt::terminal_summary);
         if let Some(summary) = receipt_summary.as_ref() {
             work_meter.charge(summary.work_units())?;
@@ -508,23 +526,54 @@ mod tests {
             }
             receipt
         };
-        let recorder = ClassThemeEvidenceRecorder::new(2, 0, 0, 0, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(None, 2, 0, 0, 0, Vec::new());
         assert!(!recorder.record_terminal(complete_receipt(1)));
         assert!(recorder.record_terminal(complete_receipt(2)));
         assert!(!recorder.record_terminal(complete_receipt(2)));
     }
 
     #[test]
+    fn terminal_recorder_retains_only_requested_theme_evidence() {
+        let theme = resolved_fill(ThemeTarget::Marker, None);
+        for request in [None, Some(&theme)] {
+            let recorder = ClassThemeEvidenceRecorder::new(request, 1, 0, 0, 0, Vec::new());
+            let mut receipt = ClassRelationThemeReceipt::new(
+                vec![super::super::ClassRelationTerminalExpectation::new(
+                    0, None, None,
+                )],
+                Vec::new(),
+                None,
+                false,
+            );
+            assert!(!recorder.record_terminal(receipt.clone()));
+            assert!(recorder.terminal_receipt.get().is_none());
+            receipt.record_relation(0, None, None, None, "", None, false);
+            assert!(recorder.record_terminal(receipt.clone()));
+            let retained = recorder.terminal_receipt.get().expect("completed render");
+            assert_eq!(retained.is_some(), request.is_some());
+            assert!(!recorder.record_terminal(receipt));
+        }
+    }
+
+    #[test]
     fn terminal_recorder_requires_layout_cluster_count_and_completed_checkpoints() {
-        let recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 1, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(None, 0, 0, 0, 1, Vec::new());
         assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
             Vec::new(),
             Vec::new(),
             None,
             false
         )));
-        let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
-            .with_clusters(vec!["Outer".into()], None, None);
+        let mut receipt = ClassRelationThemeReceipt::new_with_clusters(
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+            super::super::ClassClusterTerminalExpectation {
+                ids: vec!["Outer".into()],
+                ..Default::default()
+            },
+        );
         assert!(!recorder.record_terminal(receipt.clone()));
         receipt.record_cluster("Outer", None, None, "");
         assert!(recorder.record_terminal(receipt));
@@ -532,7 +581,7 @@ mod tests {
 
     #[test]
     fn terminal_recorder_requires_source_note_attachment_count() {
-        let recorder = ClassThemeEvidenceRecorder::new(0, 1, 0, 0, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(None, 0, 1, 0, 0, Vec::new());
         assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
             Vec::new(),
             Vec::new(),
@@ -549,7 +598,7 @@ mod tests {
     #[test]
     fn visible_relation_marker_keeps_unsupported_paint_as_a_residual() {
         let theme = resolved_fill(ThemeTarget::Marker, None);
-        let recorder = ClassThemeEvidenceRecorder::new(1, 0, 0, 0, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(Some(&theme), 1, 0, 0, 0, Vec::new());
         let mut receipt = ClassRelationThemeReceipt::new(
             vec![super::super::ClassRelationTerminalExpectation::new(
                 0,
@@ -587,7 +636,8 @@ mod tests {
     #[test]
     fn table_odd_even_variants_restart_for_each_member_group() {
         let odd_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Odd));
-        let odd_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 0, vec![1, 1]);
+        let odd_recorder =
+            ClassThemeEvidenceRecorder::new(Some(&odd_theme), 0, 0, 0, 0, vec![1, 1]);
         let odd_evidence = odd_recorder
             .finish(
                 Some(&odd_theme),
@@ -598,7 +648,8 @@ mod tests {
         assert_eq!(odd_evidence.residuals().len(), 1);
 
         let even_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Even));
-        let even_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 0, vec![1, 1]);
+        let even_recorder =
+            ClassThemeEvidenceRecorder::new(Some(&even_theme), 0, 0, 0, 0, vec![1, 1]);
         let even_evidence = even_recorder
             .finish(
                 Some(&even_theme),

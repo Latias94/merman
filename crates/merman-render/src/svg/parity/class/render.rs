@@ -84,11 +84,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             )
         })
         .collect();
-    let marker_expectations =
-        class_marker_terminal_expectations(&model.relations, settings.look == "neo");
+    let marker_expectations = if relation_theme.typed_stroke().is_some() {
+        class_marker_terminal_expectations(&model.relations, settings.look == "neo")
+    } else {
+        Vec::new()
+    };
     options.work_meter().charge(layout.clusters.len())?;
     let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
-        node_expectations.clone(),
+        Vec::new(),
         layout
             .clusters
             .iter()
@@ -401,6 +404,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         emit_class_render_timing(&timings, &detail, layout);
     }
     let rooted_svg = root_document.complete(out)?;
+    drop(node_expectations_by_id);
+    let relation_theme_receipt = relation_theme_receipt.with_nodes(node_expectations);
     if !theme_evidence.record_terminal(relation_theme_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Class theme receipt did not match the terminal SVG".to_string(),

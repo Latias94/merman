@@ -209,6 +209,15 @@ impl ClassMarkerTerminalExpectation {
     }
 }
 
+/// Cluster expectations are fixed before any terminal checkpoint is recorded.
+#[derive(Debug, Default)]
+pub(super) struct ClassClusterTerminalExpectation {
+    pub(super) ids: Vec<String>,
+    pub(super) fill: Option<ExpectedPaint>,
+    pub(super) stroke: Option<ExpectedPaint>,
+    pub(super) namespace_title: Option<ExpectedPaint>,
+}
+
 /// Writer-owned proof that every semantic Class node, relation, attached note, and referenced marker reached its
 /// canonical terminal SVG checkpoint with the exact typed terminal value.
 #[derive(Debug, Clone)]
@@ -242,18 +251,42 @@ pub(crate) struct ClassRelationThemeReceipt {
 }
 
 impl ClassRelationThemeReceipt {
+    #[cfg(test)]
     pub(super) fn new(
         expected_relations: Vec<ClassRelationTerminalExpectation>,
         expected_markers: Vec<ClassMarkerTerminalExpectation>,
         expected_stroke: Option<ExpectedStroke>,
         hand_drawn: bool,
     ) -> Self {
+        Self::new_with_clusters(
+            expected_relations,
+            expected_markers,
+            expected_stroke,
+            hand_drawn,
+            ClassClusterTerminalExpectation::default(),
+        )
+    }
+
+    pub(super) fn new_with_clusters(
+        expected_relations: Vec<ClassRelationTerminalExpectation>,
+        expected_markers: Vec<ClassMarkerTerminalExpectation>,
+        expected_stroke: Option<ExpectedStroke>,
+        hand_drawn: bool,
+        clusters: ClassClusterTerminalExpectation,
+    ) -> Self {
+        let mut expected_clusters = BTreeSet::new();
+        let mut duplicate_expected_cluster = false;
+        for id in clusters.ids {
+            if !expected_clusters.insert(id) {
+                duplicate_expected_cluster = true;
+            }
+        }
         Self {
-            expected_clusters: BTreeSet::new(),
-            duplicate_expected_cluster: false,
-            expected_cluster_fill: None,
-            expected_cluster_stroke: None,
-            expected_namespace_title: None,
+            expected_clusters,
+            duplicate_expected_cluster,
+            expected_cluster_fill: clusters.fill,
+            expected_cluster_stroke: clusters.stroke,
+            expected_namespace_title: clusters.namespace_title,
             cluster_events: BTreeMap::new(),
             duplicate_cluster_event: false,
             expected_nodes: BTreeMap::new(),
@@ -278,22 +311,6 @@ impl ClassRelationThemeReceipt {
         }
     }
 
-    pub(super) fn with_clusters(
-        mut self,
-        ids: Vec<String>,
-        fill: Option<ExpectedPaint>,
-        stroke: Option<ExpectedPaint>,
-    ) -> Self {
-        for id in ids {
-            if !self.expected_clusters.insert(id) {
-                self.duplicate_expected_cluster = true;
-            }
-        }
-        self.expected_cluster_fill = fill;
-        self.expected_cluster_stroke = stroke;
-        self
-    }
-
     pub(super) fn expected_cluster_count(&self) -> usize {
         self.expected_clusters.len()
     }
@@ -306,19 +323,22 @@ impl ClassRelationThemeReceipt {
         terminal_style: &str,
     ) {
         let event = ClassClusterTerminalEvent {
-            fill_rule,
-            stroke_rule,
-            terminal_style: terminal_style.to_string(),
+            paint_matches: cluster_paint_event_matches(
+                self.expected_cluster_fill.as_ref(),
+                fill_rule,
+                terminal_style,
+                "fill",
+            ) && cluster_paint_event_matches(
+                self.expected_cluster_stroke.as_ref(),
+                stroke_rule,
+                terminal_style,
+                "stroke",
+            ),
             title: None,
         };
         if self.cluster_events.insert(id.to_string(), event).is_some() {
             self.duplicate_cluster_event = true;
         }
-    }
-
-    pub(super) fn with_namespace_title(mut self, paint: Option<ExpectedPaint>) -> Self {
-        self.expected_namespace_title = paint;
-        self
     }
 
     pub(crate) fn record_namespace_title(
@@ -337,8 +357,14 @@ impl ClassRelationThemeReceipt {
             self.duplicate_cluster_event = true;
         }
         cluster.title = Some(ClassNamespaceTitleTerminalEvent {
-            rule,
-            style: style.to_string(),
+            paint_matches: self
+                .expected_namespace_title
+                .as_ref()
+                .is_some_and(|expected| {
+                    rule == expected.rule_index
+                        && terminal_paint(style, "color") == Some(expected.css.as_str())
+                        && terminal_paint(style, "fill") == Some(expected.css.as_str())
+                }),
             visible,
             inherits_paint,
         });
@@ -365,27 +391,12 @@ impl ClassRelationThemeReceipt {
             && self.expected_clusters.len() == self.cluster_events.len()
             && self.expected_clusters.iter().all(|id| {
                 self.cluster_events.get(id).is_some_and(|event| {
-                    cluster_paint_event_matches(
-                        self.expected_cluster_fill.as_ref(),
-                        event.fill_rule,
-                        &event.terminal_style,
-                        "fill",
-                    ) && cluster_paint_event_matches(
-                        self.expected_cluster_stroke.as_ref(),
-                        event.stroke_rule,
-                        &event.terminal_style,
-                        "stroke",
-                    ) && match (&self.expected_namespace_title, &event.title) {
-                        (None, None) => true,
-                        (Some(expected), Some(title)) => {
-                            title.rule == expected.rule_index
-                                && terminal_paint(&title.style, "color")
-                                    == Some(expected.css.as_str())
-                                && terminal_paint(&title.style, "fill")
-                                    == Some(expected.css.as_str())
+                    event.paint_matches
+                        && match (&self.expected_namespace_title, &event.title) {
+                            (None, None) => true,
+                            (Some(_), Some(title)) => title.paint_matches,
+                            _ => false,
                         }
-                        _ => false,
-                    }
                 })
             })
     }
@@ -422,9 +433,15 @@ impl ClassRelationThemeReceipt {
         hand_drawn_stroke: Option<&str>,
     ) {
         let event = ClassNoteAttachmentTerminalEvent {
-            emitted_stroke: emitted_stroke.map(|(rule_index, css)| (rule_index, css.to_string())),
-            terminal_style: terminal_style.to_string(),
-            hand_drawn_stroke: hand_drawn_stroke.map(str::to_string),
+            paint_matches: stroke_event_matches(
+                self.expected_stroke.as_ref(),
+                emitted_stroke,
+                terminal_style,
+            ) && hand_drawn_stroke_matches(
+                self.expected_stroke.as_ref(),
+                self.hand_drawn,
+                hand_drawn_stroke,
+            ),
         };
         if self
             .note_attachment_events
@@ -509,7 +526,7 @@ impl ClassRelationThemeReceipt {
         .then(|| events.values().filter(|visible| **visible).count())
     }
 
-    pub(super) fn with_nodes(mut self, expected_nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
+    pub(crate) fn with_nodes(mut self, expected_nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
         for expectation in expected_nodes {
             let id = expectation.id.clone();
             if self.expected_nodes.insert(id, expectation).is_some() {
@@ -549,11 +566,18 @@ impl ClassRelationThemeReceipt {
         emitted_stroke: Option<(usize, &str)>,
         terminal_style: Option<&str>,
     ) {
+        let terminal_style = terminal_style.unwrap_or_default();
         self.marker_events.push(ClassMarkerTerminalEvent {
             name,
             fill_follows_stroke,
-            emitted_stroke: emitted_stroke.map(|(rule_index, css)| (rule_index, css.to_string())),
-            terminal_style: terminal_style.map(str::to_string),
+            paint_matches: stroke_event_matches(
+                self.expected_stroke.as_ref(),
+                emitted_stroke,
+                terminal_style,
+            ) && (!fill_follows_stroke
+                || self.expected_stroke.as_ref().is_none_or(|stroke| {
+                    terminal_paint(terminal_style, "fill") == Some(stroke.css.as_str())
+                })),
         });
     }
 
@@ -571,9 +595,16 @@ impl ClassRelationThemeReceipt {
         let event = ClassRelationTerminalEvent {
             start_marker,
             end_marker,
-            emitted_stroke: emitted_stroke.map(|(rule_index, css)| (rule_index, css.to_string())),
-            terminal_style: terminal_style.to_string(),
-            hand_drawn_stroke: hand_drawn_stroke.map(str::to_string),
+            emitted_stroke_rule: emitted_stroke.map(|(rule_index, _)| rule_index),
+            paint_matches: stroke_event_matches(
+                self.expected_stroke.as_ref(),
+                emitted_stroke,
+                terminal_style,
+            ) && hand_drawn_stroke_matches(
+                self.expected_stroke.as_ref(),
+                self.hand_drawn,
+                hand_drawn_stroke,
+            ),
         };
         if self.relation_events.insert(relation_index, event).is_some() {
             self.duplicate_relation_event = true;
@@ -599,16 +630,7 @@ impl ClassRelationThemeReceipt {
                     .is_some_and(|event| {
                         event.start_marker == expected.start_marker
                             && event.end_marker == expected.end_marker
-                            && stroke_event_matches(
-                                self.expected_stroke.as_ref(),
-                                event.emitted_stroke.as_ref(),
-                                &event.terminal_style,
-                            )
-                            && hand_drawn_stroke_matches(
-                                self.expected_stroke.as_ref(),
-                                self.hand_drawn,
-                                event.hand_drawn_stroke.as_deref(),
-                            )
+                            && event.paint_matches
                     })
             })
     }
@@ -622,17 +644,9 @@ impl ClassRelationThemeReceipt {
                 .all(|pair| pair[0] < pair[1])
             && self.note_attachment_events.len() == self.expected_note_attachments.len()
             && self.expected_note_attachments.iter().all(|index| {
-                self.note_attachment_events.get(index).is_some_and(|event| {
-                    stroke_event_matches(
-                        self.expected_stroke.as_ref(),
-                        event.emitted_stroke.as_ref(),
-                        &event.terminal_style,
-                    ) && hand_drawn_stroke_matches(
-                        self.expected_stroke.as_ref(),
-                        self.hand_drawn,
-                        event.hand_drawn_stroke.as_deref(),
-                    )
-                })
+                self.note_attachment_events
+                    .get(index)
+                    .is_some_and(|event| event.paint_matches)
             })
     }
 
@@ -645,18 +659,7 @@ impl ClassRelationThemeReceipt {
                 .all(|(event, expected)| {
                     event.name == expected.name
                         && event.fill_follows_stroke == expected.fill_follows_stroke
-                        && stroke_event_matches(
-                            self.expected_stroke.as_ref(),
-                            event.emitted_stroke.as_ref(),
-                            event.terminal_style.as_deref().unwrap_or_default(),
-                        )
-                        && (!expected.fill_follows_stroke
-                            || self.expected_stroke.as_ref().is_none_or(|stroke| {
-                                terminal_paint(
-                                    event.terminal_style.as_deref().unwrap_or_default(),
-                                    "fill",
-                                ) == Some(stroke.css.as_str())
-                            }))
+                        && event.paint_matches
                 })
     }
 
@@ -790,12 +793,10 @@ impl ClassRelationThemeReceipt {
     ) -> bool {
         self.proves_complete()
             && self.has_effective_stroke_rule(rule_index, property)
-            && self.relation_events.values().all(|event| {
-                event
-                    .emitted_stroke
-                    .as_ref()
-                    .is_some_and(|(emitted_rule, _)| *emitted_rule == rule_index)
-            })
+            && self
+                .relation_events
+                .values()
+                .all(|event| event.emitted_stroke_rule == Some(rule_index))
     }
 }
 
@@ -860,8 +861,7 @@ const NODE_PAINT_TARGETS: [(ThemeTarget, ResolvedStyleProperty); 3] = [
 
 #[derive(Debug, Clone)]
 struct ClassNamespaceTitleTerminalEvent {
-    rule: usize,
-    style: String,
+    paint_matches: bool,
     visible: bool,
     inherits_paint: bool,
 }
@@ -869,9 +869,7 @@ struct ClassNamespaceTitleTerminalEvent {
 #[derive(Debug, Clone)]
 struct ClassClusterTerminalEvent {
     title: Option<ClassNamespaceTitleTerminalEvent>,
-    fill_rule: Option<usize>,
-    stroke_rule: Option<usize>,
-    terminal_style: String,
+    paint_matches: bool,
 }
 
 fn cluster_paint_event_matches(
@@ -893,24 +891,20 @@ fn cluster_paint_event_matches(
 struct ClassRelationTerminalEvent {
     start_marker: Option<&'static str>,
     end_marker: Option<&'static str>,
-    emitted_stroke: Option<(usize, String)>,
-    terminal_style: String,
-    hand_drawn_stroke: Option<String>,
+    emitted_stroke_rule: Option<usize>,
+    paint_matches: bool,
 }
 
 #[derive(Debug, Clone)]
 struct ClassNoteAttachmentTerminalEvent {
-    emitted_stroke: Option<(usize, String)>,
-    terminal_style: String,
-    hand_drawn_stroke: Option<String>,
+    paint_matches: bool,
 }
 
 #[derive(Debug, Clone)]
 struct ClassMarkerTerminalEvent {
     name: &'static str,
     fill_follows_stroke: bool,
-    emitted_stroke: Option<(usize, String)>,
-    terminal_style: Option<String>,
+    paint_matches: bool,
 }
 
 fn node_paint_emission(
@@ -985,14 +979,14 @@ fn node_label_paint_event_matches(
 
 fn stroke_event_matches(
     expected: Option<&ExpectedStroke>,
-    emitted: Option<&(usize, String)>,
+    emitted: Option<(usize, &str)>,
     terminal_style: &str,
 ) -> bool {
     match (expected, emitted) {
         (None, None) => true,
         (Some(expected), Some((rule_index, css))) => {
-            expected.rule_index == *rule_index
-                && expected.css == *css
+            expected.rule_index == rule_index
+                && expected.css == css
                 && terminal_paint(terminal_style, "stroke") == Some(expected.css.as_str())
         }
         (Some(_), None) | (None, Some(_)) => false,
@@ -1040,6 +1034,26 @@ mod tests {
         })
     }
 
+    fn cluster_receipt(
+        ids: Vec<String>,
+        fill: Option<ExpectedPaint>,
+        stroke: Option<ExpectedPaint>,
+        namespace_title: Option<ExpectedPaint>,
+    ) -> ClassRelationThemeReceipt {
+        ClassRelationThemeReceipt::new_with_clusters(
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+            ClassClusterTerminalExpectation {
+                ids,
+                fill,
+                stroke,
+                namespace_title,
+            },
+        )
+    }
+
     fn node_paint(
         source_owned: bool,
         emitted: Option<(usize, &str)>,
@@ -1051,10 +1065,11 @@ mod tests {
     #[test]
     fn cluster_receipt_requires_exact_ids_and_each_final_paint_facet() {
         let expected = || {
-            ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false).with_clusters(
+            cluster_receipt(
                 vec!["Outer".into(), "Inner".into()],
                 expected_paint(3, "#123456"),
                 expected_paint(4, "transparent"),
+                None,
             )
         };
         let record = |receipt: &mut ClassRelationThemeReceipt, id: &str| {
@@ -1078,11 +1093,7 @@ mod tests {
         record(&mut wrong_id, "Other");
         assert!(!wrong_id.proves_complete());
         let duplicate_expectation =
-            ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false).with_clusters(
-                vec!["Outer".into(), "Outer".into()],
-                None,
-                None,
-            );
+            cluster_receipt(vec!["Outer".into(), "Outer".into()], None, None, None);
         assert!(!duplicate_expectation.proves_complete());
 
         for (fill_rule, stroke_rule, style) in [
@@ -1112,17 +1123,55 @@ mod tests {
 
     #[test]
     fn cluster_receipt_keeps_empty_paint_and_sibling_ownership_independent() {
-        let mut empty = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
-            .with_clusters(vec!["Outer".into()], None, None);
+        let mut empty = cluster_receipt(vec!["Outer".into()], None, None, None);
         empty.record_cluster("Outer", None, None, "");
         assert!(empty.proves_complete());
         assert!(!empty.proves_typed_cluster_paint(0, ResolvedStyleProperty::Fill));
-        let mut fill_only = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
-            .with_clusters(vec!["Outer".into()], expected_paint(0, "#123456"), None);
+        let mut fill_only = cluster_receipt(
+            vec!["Outer".into()],
+            expected_paint(0, "#123456"),
+            None,
+            None,
+        );
         fill_only.record_cluster("Outer", Some(0), None, "fill:#123456;");
         assert!(fill_only.proves_complete());
         assert!(fill_only.proves_typed_cluster_paint(0, ResolvedStyleProperty::Fill));
         assert!(!fill_only.proves_typed_cluster_paint(0, ResolvedStyleProperty::Stroke));
+    }
+
+    #[test]
+    fn unthemed_cluster_receipt_rejects_unexpected_paint() {
+        for (fill_rule, stroke_rule, style) in [
+            (None, None, "fill:#123456;"),
+            (None, None, "stroke:#123456;"),
+            (Some(3), None, "fill:#123456;"),
+            (None, Some(3), "stroke:#123456;"),
+        ] {
+            let mut receipt = cluster_receipt(vec!["Outer".into()], None, None, None);
+            receipt.record_cluster("Outer", fill_rule, stroke_rule, style);
+            assert!(!receipt.proves_complete(), "accepted {style}");
+        }
+    }
+
+    #[test]
+    fn unthemed_paths_still_require_the_matching_hand_drawn_checkpoint() {
+        for hand_drawn in [false, true] {
+            for emitted in [None, Some("#123456")] {
+                let mut relation = ClassRelationThemeReceipt::new(
+                    vec![ClassRelationTerminalExpectation::new(0, None, None)],
+                    Vec::new(),
+                    None,
+                    hand_drawn,
+                );
+                relation.record_relation(0, None, None, None, "", emitted, false);
+                assert_eq!(relation.proves_complete(), hand_drawn == emitted.is_some());
+                let mut note =
+                    ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, hand_drawn)
+                        .with_note_attachments(vec![0]);
+                note.record_note_attachment(0, None, "", emitted);
+                assert_eq!(note.proves_complete(), hand_drawn == emitted.is_some());
+            }
+        }
     }
 
     #[test]
@@ -1770,9 +1819,12 @@ mod tests {
     #[test]
     fn namespace_title_receipt_requires_the_complete_visible_color_terminal() {
         let expected = || {
-            let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
-                .with_clusters(vec!["Outer".into()], None, None)
-                .with_namespace_title(expected_paint(3, "#123456"));
+            let mut receipt = cluster_receipt(
+                vec!["Outer".into()],
+                None,
+                None,
+                expected_paint(3, "#123456"),
+            );
             receipt.record_cluster("Outer", None, None, "");
             receipt
         };

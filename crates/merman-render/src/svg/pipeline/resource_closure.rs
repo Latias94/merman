@@ -6,6 +6,40 @@ use std::fmt;
 const SVG_RESOURCE_FINGERPRINT_DOMAIN: &[u8] = b"merman.svg-export-resources.v1";
 const CSS_RESOURCE_NESTING_HARD_LIMIT: u8 = 64;
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ResourceFingerprintWork {
+    pub calls: usize,
+    pub svg_bytes: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static RESOURCE_FINGERPRINT_WORK: std::cell::Cell<Option<ResourceFingerprintWork>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+/// Counts only final resource fingerprints, excluding text/math receipts and verification hashes.
+/// The previous thread-local scope is restored even if the operation panics.
+#[cfg(test)]
+pub(super) fn measure_resource_fingerprint_work<T>(
+    operation: impl FnOnce() -> T,
+) -> (T, ResourceFingerprintWork) {
+    struct Restore(Option<ResourceFingerprintWork>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RESOURCE_FINGERPRINT_WORK.set(self.0);
+        }
+    }
+    let _restore = Restore(RESOURCE_FINGERPRINT_WORK.replace(Some(Default::default())));
+    let output = operation();
+    let work = RESOURCE_FINGERPRINT_WORK
+        .get()
+        .expect("resource fingerprint scope is active");
+    (output, work)
+}
+
 /// Stable identity of the resources retained by one sealed SVG artifact.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SvgResourceFingerprint([u8; 32]);
@@ -157,6 +191,14 @@ pub(crate) fn fingerprint_svg_resources(
     font_catalog_fingerprint: &[u8; 32],
     font_source_policy: &crate::diagram_theme::FontSourcePolicy,
 ) -> SvgResourceFingerprint {
+    #[cfg(test)]
+    RESOURCE_FINGERPRINT_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.calls += 1;
+            work.svg_bytes += svg.len();
+            work
+        }));
+    });
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, SVG_RESOURCE_FINGERPRINT_DOMAIN);
     update_len_prefixed(&mut hasher, svg.as_bytes());
