@@ -4234,15 +4234,13 @@ fn prepare_with_svg_label_preparation(
     // preparation chains. Share the completion path so each route needs only one artifact slot.
     let mut artifact = match expected_family {
         #[cfg(feature = "diagram-class")]
-        DiagramFamilyId::CLASS => preparation::prepare_class_render(parsed, options, context)?,
+        DiagramFamilyId::CLASS => preparation::prepare_class_render(parsed, options, context),
         #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
         DiagramFamilyId::ARCHITECTURE => {
-            preparation::prepare_architecture_render(parsed, options, context)?
+            preparation::prepare_architecture_render(parsed, options, context)
         }
-        _ => {
-            preparation::prepare_non_class_render(parsed, options, context, svg_label_preparation)?
-        }
-    };
+        _ => preparation::prepare_non_class_render(parsed, options, context, svg_label_preparation),
+    }?;
     artifact.required_capabilities = required_capabilities;
     artifact
         .context
