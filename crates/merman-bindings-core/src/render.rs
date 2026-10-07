@@ -520,7 +520,7 @@ A[Plain source]"##,
         let options = br##"{
             "theme": { "preset": "one-dark" },
             "site_config": {
-                "flowchart": { "layout": "dagre" }
+                "layout": "dagre"
             },
             "svg": { "diagram_id": "theme equivalence" }
         }"##;
@@ -533,7 +533,7 @@ A[Plain source]"##,
         let environment = merman::SvgEnvironment::deterministic();
         let renderer = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
             merman::MermaidConfig::from_value(serde_json::json!({
-                "flowchart": { "defaultRenderer": "dagre-wrapper" },
+                "layout": "dagre",
             })),
         ));
         let svg_request = merman::SvgRequest {

@@ -850,9 +850,11 @@ fn resource_free_font_stack_remains_available_without_embedded_fonts() {
         ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::Svg])
             .materialize();
-    let options = br#"{"theme":{"spec":{"typography":{"default":{"font_stack":["Example Host Font","sans-serif"]}}}}}"#;
+    let options = br#"{"site_config":{"layout":"dagre"},"theme":{"spec":{"typography":{"default":{"font_stack":["Example Host Font","sans-serif"]}}}}}"#;
     let engine = CONTRACT
         .create_engine(options)
         .expect("font-family names do not require font bytes");
-    assert!(engine.render_svg(b"flowchart LR\nA --> B").is_ok());
+    engine
+        .render_svg(b"flowchart LR\nA --> B")
+        .expect("host font names should render without embedded fonts");
 }
