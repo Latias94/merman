@@ -450,6 +450,16 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         && cascade_index
                             .as_mut()
                             .expect("generated labels have a cascade")
+                            .permits_source_projection(
+                                &source_stack,
+                                tag,
+                                inner,
+                                checkpoint,
+                                selector_limit,
+                            )?
+                        && cascade_index
+                            .as_mut()
+                            .expect("generated labels have a cascade")
                             .permits_in_place_fallback(
                                 &source_stack,
                                 &overlays[overlay_start..],
@@ -882,6 +892,99 @@ mod tests {
                 .any(|node| node.attribute("filter").is_some())
         );
         assert_eq!(beta.attribute("x"), Some("420"));
+    }
+
+    #[test]
+    fn unrelated_structural_selectors_do_not_hoist_filtered_text() {
+        for css in [
+            ".cluster:not(.swimlane) rect{fill:red}",
+            ".swimlane-title path:nth-of-type(2){stroke:red}",
+            ".swimlane-body path:first-of-type{stroke:red}",
+            ".other:first-child text{filter:none}",
+            "[data-other]:first-child text{filter:none}",
+            "[data-look=neo].node rect{filter:url(#other)}",
+            "[data-look=neo].node .outer-path{filter:url(#other)}",
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let document = roxmltree::Document::parse(&out).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                text.ancestors()
+                    .any(|node| node.attribute("filter") == Some("url(#glow)")),
+                "unrelated structural selector must retain the local effect: {css}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn uncertain_structural_selectors_still_reject_matching_projection() {
+        for css in [
+            ".node:not(.off) text{filter:none}",
+            ".node:first-child .nodeLabel{font-size:99px}",
+            ".node:first-child{font-size:99px}",
+            ".node .nodeLabel{filter:url(#other)}",
+            ".node{filter:url(#other)}",
+            "text:nth-of-type(2){filter:none}",
+            ":first-child{opacity:0}",
+            "text:is(.one,.two){filter:none}",
+            "text:where(.one){filter:none}",
+            "g:has(text){opacity:0}",
+            "text::before{content:'other'}",
+            r"te\78t:first-child{filter:none}",
+            r"te\78t{filter:url(#other)}",
+            "#id#id{filter:url(#other)}",
+            "[*|class]{filter:url(#other)}",
+            "text:first-child,#id#id{font-size:99px!important}",
+            "#id#id,text:first-child{font-size:99px!important}",
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let document = roxmltree::Document::parse(&out).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                !text
+                    .ancestors()
+                    .any(|node| node.attribute("filter") == Some("url(#glow)")),
+                "uncertain generated terminal must remain unproved: {css}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn source_projection_guard_uses_html_void_element_ancestry() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.node div > .nodeLabel:last-child{font-size:99px}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><br><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let fallback_start = out.find(r#"data-merman-foreignobject="fallback""#).unwrap();
+        assert!(
+            out[..fallback_start].contains("</foreignObject></g>"),
+            "the source HTML guard must reject local projection after a void element: {out}"
+        );
+    }
+
+    #[test]
+    fn structural_projection_guards_never_enter_the_style_cascade() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.node:first-child .nodeLabel{font-size:99px}</style><g class="node"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let document = roxmltree::Document::parse(&out).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert!(
+            text.attribute("style").unwrap().contains("font-size: 16px"),
+            "{out}"
+        );
     }
 
     #[test]

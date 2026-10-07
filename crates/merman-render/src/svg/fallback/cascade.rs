@@ -166,6 +166,9 @@ struct Branch {
 
 #[derive(Clone, Debug)]
 struct Rule {
+    // Conservative necessary conditions used only to reject uncertain projections.
+    projection_only: bool,
+    projection_uncertain: bool,
     branch: Branch,
     declarations: Arc<[Declaration]>,
     declaration_match_weight: usize,
@@ -711,15 +714,19 @@ impl CascadeIndex {
             for index in self.candidate_rules_for_path(&path, selector_limit)? {
                 let rule = &self.rules[index];
                 if matches_branch(&rule.branch, &path, checkpoint)?
-                    && rule.declarations.iter().any(|declaration| {
-                        match declaration.property.as_str() {
-                            "color" | "fill" | "font-family" | "font-size" | "font-weight"
-                            | "font-style" | "text-anchor" | "text-align" | "line-height" => false,
-                            "background" | "background-color" => declaration.important,
-                            "margin" => declaration.value != "0" || declaration.important,
-                            _ => true,
-                        }
-                    })
+                    && (rule.projection_only
+                        || rule.projection_uncertain
+                        || rule.declarations.iter().any(|declaration| {
+                            match declaration.property.as_str() {
+                                "color" | "fill" | "font-family" | "font-size" | "font-weight"
+                                | "font-style" | "text-anchor" | "text-align" | "line-height" => {
+                                    false
+                                }
+                                "background" | "background-color" => declaration.important,
+                                "margin" => declaration.value != "0" || declaration.important,
+                                _ => true,
+                            }
+                        }))
                 {
                     return Ok(false);
                 }
@@ -732,6 +739,78 @@ impl CascadeIndex {
             }
         }
         Ok(true)
+    }
+
+    // An unparsed declaration or conservative selector guard may also affect the original HTML
+    // through inheritance. Check that source path before projecting any filtered fallback.
+    pub(super) fn permits_source_projection<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        foreign_object: &str,
+        inner: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut path = Vec::new();
+        for element in ancestors {
+            path.push(element.clone());
+            if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+                return Ok(false);
+            }
+        }
+        path.push(Self::source_element(
+            foreign_object,
+            Namespace::Svg,
+            checkpoint,
+        )?);
+        if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+            return Ok(false);
+        }
+        let base_depth = path.len();
+        let mut scanner = SvgTagScanner::new(inner);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if let Some(name) = end_tag_name(tag.raw()) {
+                if path.len() > base_depth
+                    && path
+                        .last()
+                        .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
+                {
+                    path.pop();
+                }
+            } else if start_tag_name(tag.raw()).is_some() {
+                path.push(Self::source_element(
+                    tag.raw(),
+                    Namespace::Xhtml,
+                    checkpoint,
+                )?);
+                if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+                    return Ok(false);
+                }
+                if tag.is_self_closing()
+                    || is_void_html_element(&path.last().expect("element was pushed").local_name)
+                {
+                    path.pop();
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn source_projection_path_is_bounded<E>(
+        &mut self,
+        path: &[SourceElement],
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        for index in self.candidate_rules_for_path(path, selector_limit)? {
+            let rule = &self.rules[index];
+            if (rule.projection_only || rule.projection_uncertain)
+                && matches_branch(&rule.branch, path, checkpoint)?
+            {
+                return Ok(false);
+            }
+        }
+        Ok(!self.budget.matching_exhausted)
     }
 
     pub(super) fn permits_in_place_fallback<E>(
@@ -765,32 +844,34 @@ impl CascadeIndex {
             for index in candidates {
                 let rule = &self.rules[index];
                 if matches_branch(&rule.branch, &path, checkpoint)?
-                    && rule.declarations.iter().any(|declaration| {
-                        // Only explicitly emitted paint/typography overrides are isolated.
-                        // Parent rules and important declarations remain outside this projection.
-                        let element = path.last().expect("projected element");
-                        if element.local_name == "text" {
-                            !projection_overrides(declaration)
-                        } else if element.local_name == "rect"
-                            && element
-                                .inline
-                                .iter()
-                                .any(|d| d.property == "opacity" && d.value == "1")
-                            && element
-                                .inline
-                                .iter()
-                                .any(|d| d.property == "stroke" && d.value == "none")
-                            && element.inline.iter().any(|d| d.property == "fill")
-                        {
-                            declaration.important
-                                || !matches!(
-                                    declaration.property.as_str(),
-                                    "fill" | "stroke" | "opacity" | "background-color"
-                                )
-                        } else {
-                            true
-                        }
-                    })
+                    && (rule.projection_only
+                        || rule.projection_uncertain
+                        || rule.declarations.iter().any(|declaration| {
+                            // Only explicitly emitted paint/typography overrides are isolated.
+                            // Parent rules and important declarations remain outside this projection.
+                            let element = path.last().expect("projected element");
+                            if element.local_name == "text" {
+                                !projection_overrides(declaration)
+                            } else if element.local_name == "rect"
+                                && element
+                                    .inline
+                                    .iter()
+                                    .any(|d| d.property == "opacity" && d.value == "1")
+                                && element
+                                    .inline
+                                    .iter()
+                                    .any(|d| d.property == "stroke" && d.value == "none")
+                                && element.inline.iter().any(|d| d.property == "fill")
+                            {
+                                declaration.important
+                                    || !matches!(
+                                        declaration.property.as_str(),
+                                        "fill" | "stroke" | "opacity" | "background-color"
+                                    )
+                            } else {
+                                true
+                            }
+                        }))
                 {
                     return Ok(false);
                 }
@@ -817,7 +898,7 @@ impl CascadeIndex {
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
             checkpoint_loop(candidate_index, checkpoint)?;
             let rule = &self.rules[rule_index];
-            if !matches_branch(&rule.branch, path, checkpoint)? {
+            if rule.projection_only || !matches_branch(&rule.branch, path, checkpoint)? {
                 continue;
             }
             for declaration in rule.declarations.iter() {
@@ -1684,9 +1765,12 @@ fn parse_stylesheet<E>(
         if let Some((actual, maximum)) = parsed_declarations.limit_exceeded {
             return budget.reject_admission(actual, maximum, selector_limit);
         }
-        budget.projection_unbounded |= parsed_declarations.unparsed;
+        let projection_uncertain = parsed_declarations.unparsed;
+        // Escaped CSS identifiers remain outside the fallback selector subset. They may still
+        // target projected SVG, even when the simple branch parser cannot classify their syntax.
+        budget.projection_unbounded |= projection_uncertain && selector.contains('\\');
         let declarations = parsed_declarations.declarations;
-        if declarations.is_empty() {
+        if declarations.is_empty() && !projection_uncertain {
             continue;
         }
         if !budget.charge_declarations(declarations.len(), selector_limit)? {
@@ -1711,18 +1795,34 @@ fn parse_stylesheet<E>(
                     if !budget.charge_components(branch.component_count, selector_limit)? {
                         return Ok(false);
                     }
-                    parsed_branches.push(branch);
+                    parsed_branches.push((branch, false));
                 }
                 // A branch can be ordinary CSS syntax but outside the
                 // deliberately small fallback matcher subset. Keeping
                 // admitted siblings is safe because we never widen the
                 // unadmitted branch into a class-only match.
                 BranchParse::ValidButUnadmitted => {
-                    budget.projection_unbounded |= declarations
-                        .iter()
-                        .any(|declaration| !declaration.property.starts_with("--"));
+                    if projection_uncertain
+                        || declarations
+                            .iter()
+                            .any(|declaration| !declaration.property.starts_with("--"))
+                    {
+                        if let Some(guard) = projection_guard(branch, checkpoint)? {
+                            if !budget.charge_components(guard.component_count, selector_limit)? {
+                                return Ok(false);
+                            }
+                            parsed_branches.push((guard, true));
+                        } else {
+                            budget.projection_unbounded = true;
+                        }
+                    }
                 }
-                BranchParse::Invalid => invalid = true,
+                BranchParse::Invalid => {
+                    // Invalid in the bounded matcher need not mean invalid to a browser.
+                    // Retain the old fail-closed behavior for unclassified declarations.
+                    budget.projection_unbounded |= projection_uncertain;
+                    invalid = true;
+                }
                 BranchParse::LimitExceeded(actual) => {
                     return budget.reject_admission(
                         actual,
@@ -1731,6 +1831,13 @@ fn parse_stylesheet<E>(
                     );
                 }
             }
+        }
+        if invalid
+            && parsed_branches
+                .iter()
+                .any(|(_, projection_only)| *projection_only)
+        {
+            budget.projection_unbounded = true;
         }
         if !invalid {
             if !budget.charge_rules(parsed_branches.len(), selector_limit)? {
@@ -1746,8 +1853,10 @@ fn parse_stylesheet<E>(
                     )
                 });
             let declarations: Arc<[Declaration]> = declarations.into();
-            for branch in parsed_branches {
+            for (branch, projection_only) in parsed_branches {
                 rules.push(Rule {
+                    projection_only,
+                    projection_uncertain,
                     branch,
                     declarations: declarations.clone(),
                     declaration_match_weight,
@@ -2283,6 +2392,94 @@ fn parse_branch<E>(
         component_count,
         selector_weight: selector.len().max(1),
     }))
+}
+
+// Removing these structural restrictions yields necessary conditions, never a style match.
+// Keep the guard in the same bounded index, and reject projection when it can match a generated
+// terminal. Other pseudo classes, pseudo elements, escapes and selector-list functions stay closed.
+fn projection_guard<E>(
+    selector: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<Branch>, E> {
+    if selector.contains('\\') {
+        return Ok(None);
+    }
+    let mut parser = Parser::new(selector);
+    let mut retained = parser.position();
+    let mut necessary = String::new();
+    while !parser.is_exhausted() {
+        checkpoint()?;
+        let start = parser.position();
+        let Ok(token) = parser.next_including_whitespace_and_comments() else {
+            return Ok(None);
+        };
+        if matches!(token, Token::SquareBracketBlock) {
+            // Consume the block now so the next token's start cannot point inside an attribute.
+            if parser
+                .parse_nested_block(consume_css_parser_tokens)
+                .is_err()
+            {
+                return Ok(None);
+            }
+            continue;
+        }
+        if !matches!(token, Token::Colon) {
+            continue;
+        }
+        necessary.push_str(parser.slice(retained..start));
+        // A pseudo-only compound needs a universal guard, not an accidentally joined ancestor.
+        if necessary.is_empty()
+            || necessary.ends_with(char::is_whitespace)
+            || necessary.ends_with('>')
+        {
+            necessary.push('*');
+        }
+        match parser.next_including_whitespace_and_comments().cloned() {
+            Ok(Token::Ident(name))
+                if matches!(
+                    name.as_ref(),
+                    "first-of-type"
+                        | "last-of-type"
+                        | "only-of-type"
+                        | "first-child"
+                        | "last-child"
+                        | "only-child"
+                ) => {}
+            Ok(Token::Function(name))
+                if matches!(name.as_ref(), "not" | "nth-of-type" | "nth-child") =>
+            {
+                let argument: Result<String, ParseError<()>> = parser.parse_nested_block(|input| {
+                    let start = input.position();
+                    consume_css_parser_tokens(input)?;
+                    Ok(input.slice_from(start).trim().to_string())
+                });
+                let Ok(argument) = argument else {
+                    return Ok(None);
+                };
+                if name == "not" {
+                    let BranchParse::Admitted(argument) = parse_branch(&argument, checkpoint)?
+                    else {
+                        return Ok(None);
+                    };
+                    if argument.compounds.len() != 1 {
+                        return Ok(None);
+                    }
+                } else if argument.parse::<i32>().is_err()
+                    && !matches!(argument.as_str(), "odd" | "even")
+                {
+                    return Ok(None);
+                }
+            }
+            _ => return Ok(None),
+        }
+        retained = parser.position();
+    }
+    necessary.push_str(parser.slice_from(retained));
+    let BranchParse::Admitted(mut guard) = parse_branch(&necessary, checkpoint)? else {
+        return Ok(None);
+    };
+    guard.selector_weight = selector.len().max(1);
+    Ok(Some(guard))
 }
 
 fn flush_selector_token(
