@@ -457,6 +457,10 @@ impl PostDetectionConfigDefaults<'_> {
         dotted_path: &str,
     ) -> bool {
         application.claims_path(dotted_path)
+            || application
+                .detector_changes
+                .as_ref()
+                .is_some_and(|changes| changes.value_changed_at(dotted_path))
             || owns_path(self.explicit_site_config, effective_config, dotted_path)
             || owns_path(self.explicit_source_config, effective_config, dotted_path)
             || effective_config.path_was_mutated_after(self.config_before_overlay, dotted_path)
@@ -509,9 +513,14 @@ impl MermaidConfig {
 pub(crate) struct ConfigOverlayApplication {
     claimed_paths: BTreeSet<Arc<str>>,
     contributions: Vec<AppliedOverlayContribution>,
+    detector_changes: Option<super::DetectorConfigChanges>,
 }
 
 impl ConfigOverlayApplication {
+    pub(crate) fn set_detector_changes(&mut self, changes: Option<super::DetectorConfigChanges>) {
+        self.detector_changes = changes;
+    }
+
     pub(crate) fn finalize(&self, effective_config: &MermaidConfig) -> ConfigOverlayProvenance {
         let mut surviving_host = Vec::new();
         let mut surviving_fallback = Vec::new();

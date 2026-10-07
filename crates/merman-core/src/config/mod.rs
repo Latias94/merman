@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 mod appearance;
 mod source_presentation;
@@ -31,6 +32,9 @@ pub(crate) struct ConfigWork {
     pub(crate) json_cow_copies: usize,
     pub(crate) appearance_selections: usize,
     pub(crate) selected_theme_materializations: usize,
+    pub(crate) detector_replay_steps: usize,
+    pub(crate) detector_replay_peak_frames: usize,
+    pub(crate) detector_replay_peak_path_segments: usize,
 }
 
 #[cfg(test)]
@@ -94,8 +98,258 @@ pub struct MermaidConfig {
     overlay_provenance: ConfigOverlayProvenance,
     theme_compatibility: Option<ThemeCompatibilityState>,
     explicit_config_paths: Arc<BTreeSet<Arc<str>>>,
-    mutation_paths: Arc<BTreeMap<Arc<str>, u64>>,
+    mutation_paths: Arc<BTreeMap<Arc<str>, MutationStamp>>,
     mutation_revision: u64,
+}
+
+// Only detector checkpoints advance this clock. Ordinary setters perform a read, not a
+// contended increment, while writes to an older clone still acquire the current epoch.
+static DETECTOR_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct MutationStamp {
+    // Zero denotes a framework write or a completed operation's sealed assignment.
+    detector_epoch: u64,
+    revision: u64,
+}
+
+pub(crate) struct DetectorConfigCheckpoint {
+    before: MermaidConfig,
+    epoch: u64,
+}
+
+#[derive(Debug)]
+pub(crate) struct DetectorConfigChanges {
+    before: Option<MermaidConfig>,
+    after: MermaidConfig,
+    explicit_paths: Vec<Arc<str>>,
+    transferred_explicit_ownership: bool,
+}
+
+impl DetectorConfigCheckpoint {
+    pub(crate) fn new(config: &MermaidConfig) -> Self {
+        let epoch = DETECTOR_EPOCH
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
+                epoch.checked_add(1)
+            })
+            .expect("detector mutation epoch exhausted")
+            + 1;
+        Self {
+            before: config.clone(),
+            epoch,
+        }
+    }
+
+    pub(crate) fn finish(
+        self,
+        after: &mut MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<DetectorConfigChanges>> {
+        let transferred_explicit_ownership =
+            self.before.explicit_config_paths != after.explicit_config_paths;
+        let explicit_paths = after
+            .mutation_paths
+            .iter()
+            .filter(|(_, stamp)| stamp.detector_epoch >= self.epoch)
+            .map(|(path, _)| Arc::clone(path))
+            .collect::<Vec<_>>();
+        if !explicit_paths.is_empty() {
+            Arc::make_mut(&mut after.explicit_config_paths).extend(explicit_paths.iter().cloned());
+        }
+        let values_changed = !Arc::ptr_eq(&self.before.value, &after.value)
+            && !config_values_equal(self.before.as_value(), after.as_value(), Some(control))?;
+        if !values_changed && !transferred_explicit_ownership && explicit_paths.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(DetectorConfigChanges {
+            before: values_changed.then_some(self.before),
+            after: after.clone(),
+            explicit_paths,
+            transferred_explicit_ownership,
+        }))
+    }
+}
+
+impl DetectorConfigChanges {
+    #[cfg(test)]
+    pub(crate) fn explicit_paths(&self) -> &[Arc<str>] {
+        &self.explicit_paths
+    }
+
+    pub(crate) fn overlay_claims(&self) -> impl Iterator<Item = &Arc<str>> {
+        // Completed nested operations seal their setter events, but replacement still transfers
+        // their explicit owners. Ordinary initialized config must not become detector claims.
+        self.explicit_paths
+            .iter()
+            .filter(|_| !self.transferred_explicit_ownership)
+            .chain(
+                self.transferred_explicit_ownership
+                    .then_some(&self.after.explicit_config_paths)
+                    .into_iter()
+                    .flat_map(|paths| paths.iter()),
+            )
+    }
+
+    pub(crate) fn value_changed_at(&self, path: &str) -> bool {
+        let Some(before) = &self.before else {
+            return false;
+        };
+        match (
+            config_value_at(before.as_value(), path),
+            config_value_at(self.after.as_value(), path),
+        ) {
+            (Some(before), Some(after)) => !config_values_equal(before, after, None)
+                .expect("comparison without operation control cannot cancel"),
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    pub(crate) fn replay(
+        &self,
+        target: &mut MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        // Whole-config replacement transfers its explicit metadata. Materialization must not
+        // resurrect owners from the pre-detection host/source config; appearance is reapplied later.
+        if self.transferred_explicit_ownership {
+            target.explicit_config_paths = Arc::clone(&self.after.explicit_config_paths);
+        }
+        // Values alone do not acquire explicit ownership, but a changed compatibility binding
+        // cannot retain its previous owner. Inspect exact bound paths, not structural parents.
+        if let Some(ThemeCompatibilityState::Tracking(ownership)) = &mut target.theme_compatibility
+        {
+            for field in &mut Arc::make_mut(ownership).fields {
+                for path in &mut field.paths {
+                    control.checkpoint()?;
+                    if path.owned && self.value_changed_at(&path.path) {
+                        path.owned = false;
+                    }
+                }
+            }
+        }
+        if let Some(before) = &self.before {
+            enum Frame<'a> {
+                Visit(Option<&'a Value>, Option<&'a Value>),
+                Object {
+                    before: &'a Map<String, Value>,
+                    after: &'a Map<String, Value>,
+                    before_entries: serde_json::map::Iter<'a>,
+                    after_entries: serde_json::map::Iter<'a>,
+                },
+                LeaveChild,
+            }
+            let mut path = Vec::new();
+            let mut pending = vec![Frame::Visit(
+                Some(before.as_value()),
+                Some(self.after.as_value()),
+            )];
+            while let Some(frame) = pending.pop() {
+                control.checkpoint()?;
+                #[cfg(test)]
+                record_config_work(|work| {
+                    work.detector_replay_steps += 1;
+                    work.detector_replay_peak_frames =
+                        work.detector_replay_peak_frames.max(pending.len() + 1);
+                    work.detector_replay_peak_path_segments =
+                        work.detector_replay_peak_path_segments.max(path.len());
+                });
+                match frame {
+                    Frame::Visit(Some(Value::Object(before)), Some(Value::Object(after))) => {
+                        pending.push(Frame::Object {
+                            before,
+                            after,
+                            before_entries: before.iter(),
+                            after_entries: after.iter(),
+                        });
+                    }
+                    Frame::Visit(Some(before), Some(after))
+                        if config_values_equal(before, after, Some(control))? => {}
+                    Frame::Visit(None, None) => {}
+                    Frame::Visit(_, after) => target.replace_detector_segments(&path, after),
+                    Frame::Object {
+                        before,
+                        after,
+                        mut before_entries,
+                        mut after_entries,
+                    } => {
+                        let child = before_entries
+                            .next()
+                            .map(|(key, value)| (key.as_str(), Some(value), after.get(key)))
+                            .or_else(|| {
+                                after_entries
+                                    .find(|(key, _)| !before.contains_key(*key))
+                                    .map(|(key, value)| (key.as_str(), None, Some(value)))
+                            });
+                        if let Some((key, before_child, after_child)) = child {
+                            pending.push(Frame::Object {
+                                before,
+                                after,
+                                before_entries,
+                                after_entries,
+                            });
+                            path.push(key);
+                            pending.push(Frame::LeaveChild);
+                            pending.push(Frame::Visit(before_child, after_child));
+                        }
+                    }
+                    Frame::LeaveChild => {
+                        path.pop();
+                    }
+                }
+            }
+        }
+        // Rebuild both newly assigned and transferred explicit values, even when they matched
+        // the old initialized theme. Sealed nested assignments are owners, not new events.
+        for path in self.overlay_claims() {
+            control.checkpoint()?;
+            target.shadow_theme_compatibility_path(path);
+            target.record_mutation(path, false);
+            target.mark_explicit_config_path(path);
+            target.replace_detector_value(path, config_value_at(self.after.as_value(), path));
+        }
+        Ok(())
+    }
+}
+
+fn config_value_at<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+    if path.is_empty() {
+        return Some(root);
+    }
+    path.split('.')
+        .try_fold(root, |value, segment| value.as_object()?.get(segment))
+}
+
+fn config_values_equal(
+    left: &Value,
+    right: &Value,
+    control: Option<&OperationControl>,
+) -> OperationControlResult<bool> {
+    let mut pending = vec![(left, right)];
+    while let Some((left, right)) = pending.pop() {
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+        match (left, right) {
+            (Value::Object(left), Value::Object(right)) if left.len() == right.len() => {
+                for (key, left) in left {
+                    let Some(right) = right.get(key) else {
+                        return Ok(false);
+                    };
+                    pending.push((left, right));
+                }
+            }
+            (Value::Array(left), Value::Array(right)) if left.len() == right.len() => {
+                pending.extend(left.iter().zip(right));
+            }
+            (Value::Object(_) | Value::Array(_), _) | (_, Value::Object(_) | Value::Array(_)) => {
+                return Ok(false);
+            }
+            _ if left != right => return Ok(false),
+            _ => {}
+        }
+    }
+    Ok(true)
 }
 
 const MAX_THEME_COMPATIBILITY_VARIABLES: usize = 512;
@@ -678,7 +932,7 @@ impl MermaidConfig {
             before
                 .mutation_paths
                 .get(candidate)
-                .is_none_or(|before_revision| revision > before_revision)
+                .is_none_or(|before_revision| revision.revision > before_revision.revision)
                 && dotted_paths_overlap(candidate.as_ref(), dotted_path)
         })
     }
@@ -769,75 +1023,54 @@ impl MermaidConfig {
         }
     }
 
-    pub(crate) fn mark_mutations_after_as_explicit(&mut self, before: &Self) {
-        let paths = self
-            .mutation_paths_after(before)
-            .map(Arc::from)
-            .collect::<Vec<_>>();
-        Arc::make_mut(&mut self.explicit_config_paths).extend(paths);
+    fn replace_detector_value(&mut self, path: &str, value: Option<&Value>) {
+        let segments = if path.is_empty() {
+            Vec::new()
+        } else {
+            path.split('.').collect()
+        };
+        self.replace_detector_segments(&segments, value);
     }
 
-    pub(crate) fn mutation_paths_after<'a>(
-        &'a self,
-        before: &'a Self,
-    ) -> impl Iterator<Item = &'a str> {
-        self.mutation_paths.iter().filter_map(|(path, revision)| {
-            before
-                .mutation_paths
-                .get(path)
-                .is_none_or(|before_revision| revision > before_revision)
-                .then_some(path.as_ref())
-        })
-    }
-
-    /// Replays detector assignments after selecting and materializing operation appearance.
-    pub(crate) fn replay_mutations_after(
-        &mut self,
-        before: &Self,
-        after: &Self,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        for path in after.mutation_paths_after(before) {
-            control.checkpoint()?;
-            self.shadow_theme_compatibility_path(path);
-            self.record_mutation(path);
-            self.mark_explicit_config_path(path);
-            if path.is_empty() {
-                replace_value_nonrecursive(
-                    self.value_mut(),
-                    clone_value_nonrecursive(after.as_value()),
-                );
-                continue;
-            }
-            let value = path
-                .split('.')
-                .try_fold(after.as_value(), |value, segment| {
-                    value.as_object()?.get(segment)
-                });
+    fn replace_detector_segments(&mut self, path: &[&str], value: Option<&Value>) {
+        let Some((key, parents)) = path.split_last() else {
             if let Some(value) = value {
-                self.set_value_without_theme_compatibility_shadow(
-                    path,
-                    clone_value_nonrecursive(value),
-                );
-            } else {
-                let mut segments = path.rsplitn(2, '.');
-                let key = segments.next().expect("a nonempty mutation path");
-                let parent = match segments.next() {
-                    Some(parent) => parent
-                        .split('.')
-                        .try_fold(self.value_mut(), |value, segment| {
-                            value.as_object_mut()?.get_mut(segment)
-                        }),
-                    None => Some(self.value_mut()),
-                };
-                if let Some(parent) = parent.and_then(Value::as_object_mut)
-                    && let Some(removed) = parent.remove(key)
-                {
-                    drop_value_nonrecursive(removed);
+                replace_value_nonrecursive(self.value_mut(), clone_value_nonrecursive(value));
+            }
+            return;
+        };
+        if let Some(value) = value {
+            let mut parent = self.value_mut();
+            for segment in parents {
+                if !parent.is_object() {
+                    replace_value_nonrecursive(parent, Value::Object(Map::new()));
                 }
+                parent = parent
+                    .as_object_mut()
+                    .expect("object parent")
+                    .entry((*segment).to_owned())
+                    .or_insert(Value::Null);
+            }
+            if !parent.is_object() {
+                replace_value_nonrecursive(parent, Value::Object(Map::new()));
+            }
+            if let Some(removed) = parent
+                .as_object_mut()
+                .expect("object parent")
+                .insert((*key).to_owned(), clone_value_nonrecursive(value))
+            {
+                drop_value_nonrecursive(removed);
+            }
+        } else {
+            let parent = parents.iter().try_fold(self.value_mut(), |value, segment| {
+                value.as_object_mut()?.get_mut(*segment)
+            });
+            if let Some(parent) = parent.and_then(Value::as_object_mut)
+                && let Some(removed) = parent.remove(*key)
+            {
+                drop_value_nonrecursive(removed);
             }
         }
-        Ok(())
     }
 
     fn mark_explicit_config_path(&mut self, dotted_path: &str) {
@@ -851,7 +1084,7 @@ impl MermaidConfig {
 
     pub fn as_value_mut(&mut self) -> &mut Value {
         self.shadow_theme_compatibility_path("");
-        self.record_mutation("");
+        self.record_mutation("", true);
         self.value_mut()
     }
 
@@ -873,12 +1106,14 @@ impl MermaidConfig {
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
         self.shadow_theme_compatibility_path(dotted_path);
-        self.record_mutation(dotted_path);
+        self.record_mutation(dotted_path, true);
         self.set_value_without_theme_compatibility_shadow(dotted_path, value);
     }
 
     pub(crate) fn set_value_explicit(&mut self, dotted_path: &str, value: Value) {
-        self.set_value(dotted_path, value);
+        self.shadow_theme_compatibility_path(dotted_path);
+        self.record_mutation(dotted_path, false);
+        self.set_value_without_theme_compatibility_shadow(dotted_path, value);
         self.mark_explicit_config_path(dotted_path);
     }
 
@@ -887,7 +1122,7 @@ impl MermaidConfig {
         dotted_path: &str,
         value: Value,
     ) {
-        self.record_mutation(dotted_path);
+        self.record_mutation(dotted_path, false);
         self.set_value_without_theme_compatibility_shadow(dotted_path, value);
     }
 
@@ -943,7 +1178,7 @@ impl MermaidConfig {
         };
         for path in mutation_paths {
             self.shadow_theme_compatibility_path(&path);
-            self.record_mutation(&path);
+            self.record_mutation(&path, !explicit);
             if explicit {
                 self.mark_explicit_config_path(&path);
             }
@@ -973,10 +1208,36 @@ impl MermaidConfig {
         Arc::make_mut(&mut self.value)
     }
 
-    fn record_mutation(&mut self, dotted_path: &str) {
-        self.mutation_revision = self.mutation_revision.saturating_add(1);
-        Arc::make_mut(&mut self.mutation_paths)
-            .insert(Arc::from(dotted_path), self.mutation_revision);
+    pub(crate) fn seal_detector_mutations(&mut self) {
+        // A completed nested operation carries its existing explicit metadata, not setter events
+        // that an enclosing detector can reinterpret as its own assignments.
+        if self
+            .mutation_paths
+            .values()
+            .any(|stamp| stamp.detector_epoch != 0)
+        {
+            for stamp in Arc::make_mut(&mut self.mutation_paths).values_mut() {
+                stamp.detector_epoch = 0;
+            }
+        }
+    }
+
+    fn record_mutation(&mut self, dotted_path: &str, public_assignment: bool) {
+        self.mutation_revision = self
+            .mutation_revision
+            .checked_add(1)
+            .expect("configuration mutation revision exhausted");
+        Arc::make_mut(&mut self.mutation_paths).insert(
+            Arc::from(dotted_path),
+            MutationStamp {
+                detector_epoch: if public_assignment {
+                    DETECTOR_EPOCH.load(Ordering::Relaxed)
+                } else {
+                    0
+                },
+                revision: self.mutation_revision,
+            },
+        );
     }
 
     fn shadow_theme_compatibility_path(&mut self, dotted_path: &str) {
@@ -1483,6 +1744,189 @@ pub(crate) fn drop_value_nonrecursive(value: Value) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn detector_checkpoint_distinguishes_old_clone_setters_from_historical_journal() {
+        let mut old = MermaidConfig::from_value(json!({"custom": 7}));
+        old.set_value("custom", json!(7));
+        let mut before = old.clone();
+        before.set_value("custom", json!(7));
+        let checkpoint = DetectorConfigCheckpoint::new(&before);
+        old.set_value("custom", json!(7));
+        assert_eq!(old.mutation_revision, before.mutation_revision);
+        let changes = checkpoint
+            .finish(&mut old, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            changes
+                .explicit_paths()
+                .iter()
+                .map(AsRef::as_ref)
+                .collect::<Vec<&str>>(),
+            ["custom"]
+        );
+        assert!(!changes.value_changed_at("custom"));
+        assert!(old.explicit_config_owns_path("custom"));
+
+        let checkpoint = DetectorConfigCheckpoint::new(&before);
+        assert!(
+            checkpoint
+                .finish(&mut before, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+
+        let same_without_journal = MermaidConfig::from_value(json!({"custom": 7}));
+        let checkpoint = DetectorConfigCheckpoint::new(&same_without_journal);
+        assert!(
+            checkpoint
+                .finish(&mut before, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn detector_epoch_survives_nested_detection_and_thread_handoff() {
+        let mut config = MermaidConfig::from_value(json!({"custom": 7}));
+        let outer = DetectorConfigCheckpoint::new(&config);
+        let inner = DetectorConfigCheckpoint::new(&config);
+        config.set_value("custom", json!(7));
+        assert!(
+            inner
+                .finish(&mut config, &OperationControl::new())
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            outer
+                .finish(&mut config, &OperationControl::new())
+                .unwrap()
+                .is_some()
+        );
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let checkpoint = DetectorConfigCheckpoint::new(&config);
+            let mut config = std::thread::spawn(move || {
+                config.set_value("custom", json!(7));
+                config
+            })
+            .join()
+            .unwrap();
+            assert!(
+                checkpoint
+                    .finish(&mut config, &OperationControl::new())
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn detector_checkpoint_does_not_promote_framework_or_completed_operation_events() {
+        let mut config = MermaidConfig::from_value(json!({"custom": 7}));
+        let checkpoint = DetectorConfigCheckpoint::new(&config);
+        config.set_value_preserving_theme_compatibility("custom", json!(7));
+        assert!(
+            checkpoint
+                .finish(&mut config, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+
+        let checkpoint = DetectorConfigCheckpoint::new(&config);
+        config.set_value("custom", json!(7));
+        config.seal_detector_mutations();
+        assert!(
+            checkpoint
+                .finish(&mut config, &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+
+        let checkpoint = DetectorConfigCheckpoint::new(&config);
+        config.set_value("custom", json!(7));
+        let changes = checkpoint
+            .finish(&mut config, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(changes.explicit_paths().len(), 1);
+    }
+
+    #[test]
+    fn replacement_replay_handles_literal_keys_deletions_and_only_actual_value_changes() {
+        let before = MermaidConfig::from_value(json!({
+            "nested": {"deleted": 1}, "same": 2, "literal.key": 3,
+        }));
+        let checkpoint = DetectorConfigCheckpoint::new(&before);
+        let mut after = MermaidConfig::from_value(json!({"same": 2, "literal.key": 4}));
+        let changes = checkpoint
+            .finish(&mut after, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert!(changes.value_changed_at("nested.deleted"));
+        assert!(!changes.value_changed_at("nested.previouslyMissing"));
+        assert!(!changes.value_changed_at("same"));
+        let mut target = MermaidConfig::from_value(json!({
+            "nested": {"deleted": 1}, "same": 99, "literal.key": 3,
+        }));
+        changes
+            .replay(&mut target, &OperationControl::new())
+            .unwrap();
+        assert_eq!(target.as_value(), &json!({"same": 99, "literal.key": 4}));
+        assert!(!target.explicit_config_owns_path("nested"));
+        assert!(!target.explicit_config_owns_path("literal.key"));
+
+        let control = OperationControl::new();
+        control.cancel();
+        assert!(changes.replay(&mut target, &control).is_err());
+    }
+
+    #[test]
+    fn detector_replay_deep_chain_and_comb_keep_linear_traversal_storage() {
+        fn nested(depth: usize, comb: bool, leaf: i64) -> Value {
+            let mut value = Value::from(leaf);
+            for _ in 0..depth {
+                let mut object = Map::new();
+                object.insert("child".to_owned(), value);
+                if comb {
+                    object.insert("sibling".to_owned(), Value::from(7));
+                }
+                value = Value::Object(object);
+            }
+            value
+        }
+
+        for comb in [false, true] {
+            let depth = 20_000;
+            let before = MermaidConfig::from_value(nested(depth, comb, 1));
+            let mut target = MermaidConfig::from_value(nested(depth, comb, 1));
+            let mut after = MermaidConfig::from_value(nested(depth, comb, 2));
+            let checkpoint = DetectorConfigCheckpoint::new(&before);
+            let changes = checkpoint
+                .finish(&mut after, &OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let (result, work) =
+                measure_config_work(|| changes.replay(&mut target, &OperationControl::new()));
+            result.unwrap();
+            assert!(config_values_equal(target.as_value(), after.as_value(), None).unwrap());
+            assert!(work.detector_replay_steps <= 9 * depth + 3, "{work:?}");
+            assert!(
+                work.detector_replay_peak_frames <= 2 * depth + 2,
+                "{work:?}"
+            );
+            assert!(work.detector_replay_peak_path_segments <= depth, "{work:?}");
+
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(20);
+            let (result, work) = measure_config_work(|| changes.replay(&mut target, &control));
+            assert!(result.is_err());
+            assert!(work.detector_replay_steps <= 20, "{work:?}");
+        }
+    }
 
     #[test]
     fn dotted_path_overlap_is_symmetric_for_parent_and_child_paths() {

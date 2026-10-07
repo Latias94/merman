@@ -86,7 +86,7 @@ pub(crate) struct ParsePipeline<'a> {
 struct OperationConfigBuilder {
     effective: MermaidConfig,
     source: MermaidConfig,
-    before_detection: MermaidConfig,
+    detector_checkpoint: Option<crate::config::DetectorConfigCheckpoint>,
 }
 
 impl OperationConfigBuilder {
@@ -106,11 +106,10 @@ impl OperationConfigBuilder {
             effective.deep_merge_explicit(source.as_value());
             source
         };
-        let before_detection = effective.clone();
         Ok(Ok(Self {
             effective,
             source,
-            before_detection,
+            detector_checkpoint: None,
         }))
     }
 
@@ -123,12 +122,17 @@ impl OperationConfigBuilder {
         let Self {
             mut effective,
             source,
-            before_detection,
+            detector_checkpoint,
         } = self;
-        effective.mark_mutations_after_as_explicit(&before_detection);
+        let detector_changes = match detector_checkpoint {
+            Some(checkpoint) => checkpoint.finish(&mut effective, control)?,
+            None => None,
+        };
         let mut application = crate::config::ConfigOverlayApplication::default();
-        for path in effective.mutation_paths_after(&before_detection) {
-            application.claim_path(std::sync::Arc::from(path));
+        if let Some(changes) = &detector_changes {
+            for path in changes.overlay_claims() {
+                application.claim_path(std::sync::Arc::clone(path));
+            }
         }
         control.checkpoint()?;
         let defaults = crate::generated::upstream_default_config();
@@ -150,7 +154,6 @@ impl OperationConfigBuilder {
             } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
-                let after_detection = effective;
                 effective = match Self::materialize_operation_theme(
                     engine,
                     &decision,
@@ -161,7 +164,9 @@ impl OperationConfigBuilder {
                     Ok(config) => config,
                     Err(error) => return Ok(Err(error.into())),
                 };
-                effective.replay_mutations_after(&before_detection, &after_detection, control)?;
+                if let Some(changes) = &detector_changes {
+                    changes.replay(&mut effective, control)?;
+                }
                 // Detector writes cannot replace authored appearance. Scoped-key presence is
                 // checked again because replay can create or remove a scoped setting.
                 decision.apply_to(&mut effective);
@@ -172,6 +177,7 @@ impl OperationConfigBuilder {
             effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
             application.claim_path(std::sync::Arc::from("layout"));
         }
+        application.set_detector_changes(detector_changes);
         let before_overlay = effective.clone();
         let application = match Self::apply_post_detection_config_overlay(
             engine,
@@ -187,6 +193,7 @@ impl OperationConfigBuilder {
         };
         effective.set_overlay_provenance(application.finalize(&effective));
         effective.freeze_theme_compatibility();
+        effective.seal_detector_mutations();
         Ok(Ok(effective))
     }
 
@@ -1344,14 +1351,19 @@ impl<'a> ParsePipeline<'a> {
         };
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
-            None => match self.engine.registry.detect_type_precleaned_controlled(
-                pre.code(),
-                &mut config.effective,
-                control,
-            )? {
-                Ok(diagram_type) => diagram_type.to_owned(),
-                Err(error) => return Ok(Err(error)),
-            },
+            None => {
+                config.detector_checkpoint = Some(crate::config::DetectorConfigCheckpoint::new(
+                    &config.effective,
+                ));
+                match self.engine.registry.detect_type_precleaned_controlled(
+                    pre.code(),
+                    &mut config.effective,
+                    control,
+                )? {
+                    Ok(diagram_type) => diagram_type.to_owned(),
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
         };
         let effective_config = match config.finalize(self.engine, &diagram_type, control)? {
             Ok(config) => config,

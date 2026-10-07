@@ -106,6 +106,254 @@ fn flowchart_overlay(path: &str, value: Value) -> PostDetectionConfigOverlay {
     )
 }
 
+#[test]
+fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_paths() {
+    fn replace_config(_text: &str, config: &mut MermaidConfig) -> bool {
+        let mut replacement = crate::config::clone_value_nonrecursive(config.as_value());
+        replacement["flowchart"]["rankSpacing"] = json!(73);
+        replacement
+            .as_object_mut()
+            .unwrap()
+            .remove("themeVariables");
+        *config = MermaidConfig::from_value(replacement);
+        true
+    }
+
+    let overlay = PostDetectionConfigOverlay::new()
+        .with_family_contribution(
+            "flowchart",
+            ConfigOverlayContribution::new(
+                "replacement-probe",
+                MermaidConfig::from_value(json!({
+                    "flowchart": { "rankSpacing": 901, "nodeSpacing": 902 },
+                    "themeVariables": { "primaryColor": "#111111", "previouslyMissing": "filled" },
+                })),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    for source in ["probe", "---\nconfig:\n  theme: base\n---\nprobe"] {
+        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(overlay.clone());
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine.registry_mut().add_fn("flowchart-v2", replace_config);
+        let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+        assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(73));
+        assert_eq!(result.as_value()["flowchart"]["nodeSpacing"], json!(902));
+        assert!(
+            result.as_value()["themeVariables"]
+                .get("primaryColor")
+                .is_none()
+        );
+        assert_eq!(
+            result.get_str("themeVariables.previouslyMissing"),
+            Some("filled")
+        );
+        assert!(!result.explicit_config_owns_path("flowchart.rankSpacing"));
+        assert!(result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
+        assert!(result.fallback_overlay_owns_path("themeVariables.previouslyMissing"));
+        assert!(!result.fallback_overlay_owns_path("themeVariables.primaryColor"));
+    }
+}
+
+#[test]
+fn detector_same_value_setter_on_replacement_retains_explicit_ownership() {
+    fn replace_then_assign(_text: &str, config: &mut MermaidConfig) -> bool {
+        *config =
+            MermaidConfig::from_value(crate::config::clone_value_nonrecursive(config.as_value()));
+        let same = config.as_value()["flowchart"]["nodeSpacing"].clone();
+        config.set_value("flowchart.nodeSpacing", same);
+        true
+    }
+    for source in ["probe", "---\nconfig:\n  theme: base\n---\nprobe"] {
+        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(
+            flowchart_overlay("flowchart.nodeSpacing", json!(999)),
+        );
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("flowchart-v2", replace_then_assign);
+        let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+        assert_ne!(result.as_value()["flowchart"]["nodeSpacing"], json!(999));
+        assert!(result.explicit_config_owns_path("flowchart.nodeSpacing"));
+        assert!(!result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
+    }
+}
+
+#[test]
+fn nested_parse_replacement_does_not_promote_framework_writes_to_detector_assignments() {
+    fn replace_with_parsed_config(_text: &str, config: &mut MermaidConfig) -> bool {
+        *config = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
+            .parse_metadata_with_type_sync("flowchart-v2", "graph TD\nA-->B")
+            .unwrap()
+            .effective_config;
+        assert!(!config.explicit_config_owns_path("themeVariables.previouslyMissing"));
+        true
+    }
+    for source in ["probe", "---\nconfig:\n  theme: dark\n---\nprobe"] {
+        let mut engine = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
+            .with_fallback_post_detection_config_overlay(flowchart_overlay(
+                "themeVariables.previouslyMissing",
+                json!("filled"),
+            ));
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("flowchart-v2", replace_with_parsed_config);
+        let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+        assert_eq!(
+            result.get_str("themeVariables.previouslyMissing"),
+            Some("filled")
+        );
+        assert!(!result.explicit_config_owns_path("themeVariables.previouslyMissing"));
+        assert!(result.fallback_overlay_owns_path("themeVariables.previouslyMissing"));
+    }
+}
+
+#[test]
+fn nested_detector_same_value_ownership_blocks_outer_fallback_after_replacement() {
+    fn assign_same_value(_text: &str, config: &mut MermaidConfig) -> bool {
+        let value = config.as_value()["flowchart"]["nodeSpacing"].clone();
+        config.set_value("flowchart.nodeSpacing", value);
+        true
+    }
+    fn replace_with_nested_result(_text: &str, config: &mut MermaidConfig) -> bool {
+        let mut inner = Engine::new();
+        *inner.registry_mut() = DetectorRegistry::new();
+        inner
+            .registry_mut()
+            .add_fn("flowchart-v2", assign_same_value);
+        *config = inner
+            .parse_metadata_sync("inner-probe")
+            .unwrap()
+            .effective_config;
+        assert!(config.explicit_config_owns_path("flowchart.nodeSpacing"));
+        assert!(!config.explicit_config_owns_path("flowchart.rankSpacing"));
+        true
+    }
+
+    let expected =
+        crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"].clone();
+    let overlay = PostDetectionConfigOverlay::new()
+        .with_family_contribution(
+            "flowchart",
+            ConfigOverlayContribution::new(
+                "nested-detector-ownership",
+                MermaidConfig::from_value(json!({
+                    "flowchart": {"nodeSpacing": 999, "rankSpacing": 777},
+                })),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    for source in [
+        "outer-probe",
+        "---\nconfig:\n  theme: base\n---\nouter-probe",
+    ] {
+        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(overlay.clone());
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("flowchart-v2", replace_with_nested_result);
+        let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+        assert_eq!(result.as_value()["flowchart"]["nodeSpacing"], expected);
+        assert!(result.explicit_config_owns_path("flowchart.nodeSpacing"));
+        assert!(!result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
+        assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(777));
+        assert!(result.fallback_overlay_owns_path("flowchart.rankSpacing"));
+    }
+}
+
+#[test]
+fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
+    fn assign_initialized_background(_text: &str, config: &mut MermaidConfig) -> bool {
+        let background = config.as_value()["themeVariables"]["mainBkg"].clone();
+        config.set_value("themeVariables.mainBkg", background);
+        true
+    }
+    fn replace_with_nested_result(_text: &str, config: &mut MermaidConfig) -> bool {
+        let mut inner =
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
+        *inner.registry_mut() = DetectorRegistry::new();
+        inner
+            .registry_mut()
+            .add_fn("flowchart-v2", assign_initialized_background);
+        *config = inner
+            .parse_metadata_sync("inner-probe")
+            .unwrap()
+            .effective_config;
+        true
+    }
+
+    let initialized = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
+        .parse_metadata_with_type_sync("flowchart-v2", "graph TD\nA-->B")
+        .unwrap();
+    let source = "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nouter-probe";
+    let rebuilt = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
+        .parse_metadata_with_type_sync("flowchart-v2", source)
+        .unwrap();
+    assert_ne!(
+        rebuilt.effective_config.get_str("themeVariables.mainBkg"),
+        initialized
+            .effective_config
+            .get_str("themeVariables.mainBkg")
+    );
+    let mut engine = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
+        .with_fallback_post_detection_config_overlay(flowchart_overlay(
+            "themeVariables.mainBkg",
+            json!("#abcdef"),
+        ));
+    *engine.registry_mut() = DetectorRegistry::new();
+    engine
+        .registry_mut()
+        .add_fn("flowchart-v2", replace_with_nested_result);
+    let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+    assert_eq!(result.get_str("theme"), Some("base"));
+    assert_eq!(
+        result.get_str("themeVariables.mainBkg"),
+        initialized
+            .effective_config
+            .get_str("themeVariables.mainBkg")
+    );
+    assert!(result.explicit_config_owns_path("themeVariables.mainBkg"));
+    assert!(!result.fallback_overlay_owns_path("themeVariables.mainBkg"));
+}
+
+#[test]
+fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
+    fn replace(text: &str, config: &mut MermaidConfig) -> bool {
+        let mut value = crate::config::clone_value_nonrecursive(config.as_value());
+        if text.trim() == "changed-probe" {
+            value["flowchart"]["rankSpacing"] = json!(73);
+        }
+        *config = MermaidConfig::from_value(value);
+        true
+    }
+    for source in [
+        "unchanged-probe",
+        "changed-probe",
+        "---\nconfig:\n  theme: base\n---\nunchanged-probe",
+        "---\nconfig:\n  theme: base\n---\nchanged-probe",
+    ] {
+        let mut engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "flowchart": {"rankSpacing": 50},
+        })));
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine.registry_mut().add_fn("flowchart-v2", replace);
+        let result = engine.parse_metadata_sync(source).unwrap().effective_config;
+        assert!(!result.explicit_config_owns_path("flowchart.rankSpacing"));
+        if source.ends_with("\nchanged-probe") || source == "changed-probe" {
+            assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(73));
+        } else {
+            assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(50));
+        }
+    }
+}
+
 fn family_overlay(
     family: &str,
     contribution_id: &str,
