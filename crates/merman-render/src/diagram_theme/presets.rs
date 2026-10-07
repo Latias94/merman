@@ -657,6 +657,53 @@ mod tests {
     }
 
     #[test]
+    fn spotless_typography_rules_use_supported_family_mechanisms() {
+        use crate::diagram_theme::{FamilyThemeMechanism, FamilyThemeRuleFacet};
+
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(ThemePreset::Spotless)
+            .unwrap();
+        for (family, target, expected_weight) in [
+            (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, 700),
+            (DiagramFamilyId::FLOWCHART, ThemeTarget::EdgeLabel, 600),
+            (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, 700),
+            (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, 600),
+            (DiagramFamilyId::XY_CHART, ThemeTarget::Title, 700),
+        ] {
+            let resolved = theme.resolve(family);
+            let routes = resolved
+                .family_mechanism_routes()
+                .iter()
+                .filter(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            target: route_target,
+                            facet: FamilyThemeRuleFacet::Typography(_),
+                            ..
+                        } if route_target == target
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert!(!routes.is_empty(), "{family} {target:?} typography is retained");
+            assert!(
+                routes.iter().all(|route| {
+                    route.disposition() == FamilyThemeDisposition::TypedAdapter
+                }),
+                "{family} {target:?} must not request unsupported typography: {routes:?}"
+            );
+            assert_eq!(
+                resolved
+                    .style(target, ThemeVariant::Default, None)
+                    .typography()
+                    .font_weight(),
+                expected_weight,
+                "{family} {target:?} retains its visual hierarchy"
+            );
+        }
+    }
+
+    #[test]
     fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
         for descriptor in theme_preset_descriptors() {
             let compiler = DiagramThemeCompiler::new();

@@ -51,8 +51,9 @@ not claim pixel parity with Modern Mermaid. A successful SVG render is not proof
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
 exceed native export budgets. Brutalist now provides bold borders, ordinal accents and hard shape
-shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped typography
-without filters.
+shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
+without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
+spacing; these targets do not support typed letter-spacing rules.
 Exporting a complete recipe does not qualify every scene.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
 and approve the visual design of a particular scene. Web `renderSvg()` returns only the SVG

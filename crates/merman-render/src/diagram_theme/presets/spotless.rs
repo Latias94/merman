@@ -43,12 +43,12 @@ pub(super) fn build_recipe(
             },
         ));
     }
-    for (family, target, weight, spacing) in [
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, 700, 0.5),
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::EdgeLabel, 600, 0.3),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, 700, 0.5),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, 600, 0.3),
-        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, 700, 1.0),
+    for (family, target, weight) in [
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, 700),
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::EdgeLabel, 600),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, 700),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, 600),
+        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, 700),
     ] {
         styles.push(rule(
             family,
@@ -56,7 +56,6 @@ pub(super) fn build_recipe(
             ThemeStylePatchWireV1 {
                 typography: Some(ThemeTextStylePatchWireV1 {
                     font_weight: SpecifiedWireV1::Value(weight),
-                    letter_spacing_px: SpecifiedWireV1::Value(spacing),
                     ..Default::default()
                 }),
                 ..Default::default()

@@ -21,7 +21,7 @@ and `spotless` definitions. The implementation adapts semantic targets instead o
 | Preset | Canvas | Shapes | Text |
 | --- | --- | --- | --- |
 | Brutalist | Warm solid background | Bold borders; 6 px hard shadow on nodes, actors, notes, activations and bars; Flowchart 2n/3n/5n accent colors | Bold weights; no text shadow |
-| Spotless | Two perpendicular 40 px tiled gradients, 1 px ink lines at 2% alpha | Cream surfaces, dark brown outlines; no filters | Family-scoped weight and tracking; no text shadow |
+| Spotless | Two perpendicular 40 px tiled gradients, 1 px ink lines at 2% alpha | Cream surfaces, dark brown outlines; no filters | Family-scoped weight; no text shadow |
 
 Brutalist line series and connectors remain unfiltered. Spotless requires no filter rasterization
 for its recipe. The first local prototype added stripe backgrounds and text shadows to both
@@ -32,6 +32,19 @@ This is a scoped adaptation, not exact screenshot reproduction. Font selection r
 Reference corner radii, uppercase transformation, per-series XY colors and CSS-specific shape
 exceptions are not all reproduced. Semantic ordinal order can differ from DOM `nth-child` order.
 These differences must remain explicit during visual review; they are not grounds to claim parity.
+
+### Letter-spacing correction
+
+The initial Spotless recipe requested letter spacing for Flowchart node/edge labels, Sequence
+actor/note labels and XY Chart titles. The family support owner classifies these five routes as
+unsupported. Their writers never emitted the requested spacing; visible labels instead retained
+default spacing, and the outstanding requests made theme evidence residual.
+
+The recipe now retains the supported font weights and omits those five ineffective requests.
+This corrects the earlier tracking claim without changing the rendered typography or broadening
+family support. A preset regression checks the compiled typography routes against the existing
+family support owner. The recipe fingerprint changes, so qualification must be rerun for this
+exact recipe.
 
 ## Verification
 
