@@ -572,6 +572,16 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                     false,
                 );
             }
+            if relation.is_some()
+                && let Some(receipt) = typography_receipt.as_mut()
+            {
+                // ELK omits every label DOM terminal on this route. Record that observed
+                // absence so the receipt can distinguish it from an unvisited writer.
+                receipt.record_edge_label(e.id.as_str(), Default::default());
+                for slot in 0..4 {
+                    receipt.record_cardinality(e.id.as_str(), slot, Default::default());
+                }
+            }
             continue;
         }
 

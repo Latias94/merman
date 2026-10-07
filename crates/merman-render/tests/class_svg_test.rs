@@ -387,6 +387,43 @@ fn class_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_unlabeled_relations_complete_typed_typography_receipts_in_each_layout() {
+    let theme = class_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("ClassTyped").unwrap()),
+    );
+    for layout in ["elk", "dagre"] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "layout": layout,
+        })));
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +bark()\n  }\n",
+            &theme,
+            engine,
+        )
+        .unwrap_or_else(|error| panic!("{layout}: unlabeled relations must complete: {error}"));
+        assert!(rendered.svg().contains("font-family:ClassTyped;"));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let has_empty_edge_label = document
+            .descendants()
+            .any(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"));
+        assert_eq!(
+            has_empty_edge_label,
+            layout == "dagre",
+            "preserve each layout's empty-label DOM contract",
+        );
+        assert!(!document.descendants().any(|node| {
+            node.has_tag_name("g") && node.attribute("class") == Some("edgeTerminals")
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{layout}");
+        assert_eq!(evidence.applied_count(), 1, "{layout}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{layout}");
+    }
+}
+
 #[test]
 fn class_mixed_typography_composes_without_legacy_overlay() {
     let typography = ThemeTextStyle::default()
