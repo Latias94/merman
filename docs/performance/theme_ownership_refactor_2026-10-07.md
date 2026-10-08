@@ -50,7 +50,9 @@ cross-family evidence framework solely to match the original plan.
 
 ## Confirmation: native end-to-end latency
 
-The checked-in [raw confirmation receipt](evidence/theme_ownership_refactor_2026-10-07.json)
+The checked-in [confirmation summary](evidence/theme_ownership_refactor_2026-10-07.json)
+provides the revisions, scope, workload results and archive integrity metadata.
+The [lossless raw receipt archive](evidence/theme_ownership_refactor_2026-10-07.json.gz)
 contains the frozen executable digests, A/A calibration, ordered samples,
 simultaneous confidence bounds and exact output controls. Both executables
 passed eight A/A calibration pairs. The confirmation uses eight fresh balanced
@@ -82,11 +84,44 @@ Reproduce with `tools/bench/compare_self.py` and the checked-in
 `svg,all-diagrams,layout-cytoscape,layout-elk,math` with a shared target that
 is frozen into two separate executables before sampling. The local experiment
 and readable comparator output remain in
-`target/bench/experiments/theme-ownership-20261006/`; the raw JSON is also
-tracked alongside this report (SHA-256
-`e2e708b6a37df34bbbc292d81588d839111067d527f033de294142723435fe88`).
+`target/bench/experiments/theme-ownership-20261006/`. The complete raw receipt is
+tracked as deterministic gzip (level 9, timestamp zero, no original filename),
+reducing 1,099,801 raw bytes to 88,241 bytes. Its uncompressed SHA-256 remains
+`e2e708b6a37df34bbbc292d81588d839111067d527f033de294142723435fe88`;
+its archive SHA-256 is
+`985aadd3313ce4a60b90c629a73e8c1236d55ea5f7c95054f743326de91b0f2d`.
+The original JSON path now contains a summary, **not** a `compare-self-v2`
+receipt. Decompress the archive before passing historical evidence to any
+consumer that expects that receipt schema; no comparator changes are required.
+From the repository root, this restores and checks the exact original bytes:
+
+```python
+from pathlib import Path
+import gzip
+import hashlib
+import json
+import tempfile
+
+summary_path = Path("docs/performance/evidence/theme_ownership_refactor_2026-10-07.json")
+summary = json.loads(summary_path.read_text())
+metadata = summary["archive"]
+archive = (summary_path.parent / metadata["path"]).read_bytes()
+assert len(archive) == metadata["bytes"]
+assert hashlib.sha256(archive).hexdigest() == metadata["sha256"]
+raw = gzip.decompress(archive)
+assert len(raw) == metadata["uncompressed_bytes"]
+assert hashlib.sha256(raw).hexdigest() == metadata["uncompressed_sha256"]
+receipt = json.loads(raw)
+assert receipt["schema_version"] == metadata["receipt_schema_version"]
+output = Path(tempfile.gettempdir()) / "theme-ownership-confirmation-full.json"
+output.write_bytes(raw)
+print(output)
+```
+
 The tracked receipts replace local absolute worktree prefixes with
 `<local-worktrees>`; samples, hashes and measurement settings are unchanged.
+Compression preserves the raw receipt byte for byte, including those existing
+redactions, rather than rewriting or resampling the historical evidence.
 
 ## Artifact size and dependency attribution
 
