@@ -52,7 +52,13 @@ async function changedPixels(page: Page, before: Buffer, after: Buffer): Promise
 
 async function expectPaintedLabels(page: Page, svg: Locator, expected: string[]): Promise<void> {
   const labels = svg.locator("text, foreignObject p").filter({ hasText: /\S/u });
-  const texts = await labels.allTextContents();
+  const texts = await labels.evaluateAll((elements) => elements.map((element) => {
+    // SVG textContent concatenates wrapped row tspans without the visual line break.
+    const rows = element.querySelectorAll(":scope > tspan.row");
+    return rows.length > 0
+      ? [...rows].map((row) => row.textContent?.trim() ?? "").join(" ")
+      : element.textContent ?? "";
+  }));
   expect(texts.map((text) => text.trim()).sort()).toEqual([...expected].sort());
   const rootBounds = await svg.boundingBox();
   expect(rootBounds).not.toBeNull();
@@ -213,98 +219,101 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
   expect(canvas.layers[0].fill).toBe(`url(#${radial.id})`);
 }
 
-test("public Cyberpunk paints its layered canvas and separate shape, edge and text glows", async ({ page }) => {
-  const errors = monitorBrowserErrors(page);
-  const hash = encodeShareHash({
-    code: sceneSource("flowchart"),
-    mermaidConfig: '{"htmlLabels":false}',
-    diagramTheme: "default",
-    themePresetId: "cyberpunk",
-    themeRecipeJson: null,
-    svgPipeline: "resvg-safe",
-    textMeasurementMode: "browser",
-    diagramFont: "trebuchet",
-  });
-  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
-  await waitForPreviewSvg(page);
-  const svg = page.locator(".preview-container > div").first().locator("svg");
-  await expect(svg).toHaveCount(1);
-  await expect(svg.locator("foreignObject")).toHaveCount(0);
-  await page.evaluate(() => document.fonts.ready);
-  await expectCyberpunkCanvas(svg);
+// Theme glow terminals currently target the classic look; exercise both supported layout providers.
+for (const layout of ["elk", "dagre"] as const) {
+  test(`public Cyberpunk classic ${layout} paints its layered canvas and separate shape, edge and text glows`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    const hash = encodeShareHash({
+      code: sceneSource("flowchart"),
+      mermaidConfig: JSON.stringify({ htmlLabels: false, flowchart: { look: "classic", layout } }),
+      diagramTheme: "default",
+      themePresetId: "cyberpunk",
+      themeRecipeJson: null,
+      svgPipeline: "resvg-safe",
+      textMeasurementMode: "browser",
+      diagramFont: "trebuchet",
+    });
+    await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    const svg = page.locator(".preview-container > div").first().locator("svg");
+    await expect(svg).toHaveCount(1);
+    await expect(svg.locator("foreignObject")).toHaveCount(0);
+    await page.evaluate(() => document.fonts.ready);
+    await expectCyberpunkCanvas(svg);
 
-  const glows = await svg.evaluate((root) => [...root.querySelectorAll("[filter]")].map((terminal) => {
-    const binding = terminal.getAttribute("filter")!;
-    const id = binding.slice(5, -1);
-    const filter = root.querySelector(`[id="${id}"]`)!;
-    return {
-      kind: terminal.matches("g.node > .label-container") ? "node"
-        : terminal.matches("path.flowchart-link") ? "edge"
-          : terminal.querySelector("text") ? "text" : "unexpected",
-      deviations: [...filter.querySelectorAll("feGaussianBlur")].map((blur) => Number(blur.getAttribute("stdDeviation"))),
-    };
-  }));
-  expect(glows.map(({ kind }) => kind).sort()).toEqual([
-    ...Array<string>(3).fill("edge"), ...Array<string>(4).fill("node"), ...Array<string>(6).fill("text"),
-  ]);
-  expect(glows.filter(({ kind }) => kind === "node").map(({ deviations }) => deviations)).toEqual(Array(4).fill([8, 16]));
-  expect(glows.filter(({ kind }) => kind === "edge").map(({ deviations }) => deviations)).toEqual(Array(3).fill([6]));
-  expect(glows.filter(({ kind }) => kind === "text").map(({ deviations }) => deviations)).toEqual(Array(6).fill([5]));
-  await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
-  await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
-  await expectPaintedEffects(page, svg, 13);
-  await expectPaintedArrows(page, svg, 3);
-  errors.assertNone();
-});
-
-test("public Cyberpunk keeps HTML glyph glow separate from the label background", async ({ page }) => {
-  const errors = monitorBrowserErrors(page);
-  const hash = encodeShareHash({
-    code: sceneSource("flowchart"),
-    mermaidConfig: '{"htmlLabels":true}',
-    diagramTheme: "default",
-    themePresetId: "cyberpunk",
-    themeRecipeJson: null,
-    svgPipeline: "parity",
-    textMeasurementMode: "browser",
-    diagramFont: "trebuchet",
+    const glows = await svg.evaluate((root) => [...root.querySelectorAll("[filter]")].map((terminal) => {
+      const binding = terminal.getAttribute("filter")!;
+      const id = binding.slice(5, -1);
+      const filter = root.querySelector(`[id="${id}"]`)!;
+      return {
+        kind: terminal.matches("g.node > .label-container") ? "node"
+          : terminal.matches("path.flowchart-link") ? "edge"
+            : terminal.querySelector("text") ? "text" : "unexpected",
+        deviations: [...filter.querySelectorAll("feGaussianBlur")].map((blur) => Number(blur.getAttribute("stdDeviation"))),
+      };
+    }));
+    expect(glows.map(({ kind }) => kind).sort()).toEqual([
+      ...Array<string>(3).fill("edge"), ...Array<string>(4).fill("node"), ...Array<string>(6).fill("text"),
+    ]);
+    expect(glows.filter(({ kind }) => kind === "node").map(({ deviations }) => deviations)).toEqual(Array(4).fill([8, 16]));
+    expect(glows.filter(({ kind }) => kind === "edge").map(({ deviations }) => deviations)).toEqual(Array(3).fill([6]));
+    expect(glows.filter(({ kind }) => kind === "text").map(({ deviations }) => deviations)).toEqual(Array(6).fill([5]));
+    await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
+    await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
+    await expectPaintedEffects(page, svg, 13);
+    await expectPaintedArrows(page, svg, 3);
+    errors.assertNone();
   });
-  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
-  await waitForPreviewSvg(page);
-  await page.evaluate(() => document.fonts.ready);
-  const svg = page.locator(".preview-container > div").first().locator("svg");
-  await expectCyberpunkCanvas(svg);
-  const glyphs = svg.locator("g.node foreignObject p, g.edgeLabel foreignObject p");
-  await expect(glyphs).toHaveCount(6);
-  const facts = await glyphs.evaluateAll((nodes) => nodes.map((node) => {
-    const style = getComputedStyle(node);
-    const box = node.getBoundingClientRect();
-    const owner = style.filter !== "none" ? node : node.closest("[filter]");
-    return { text: node.textContent, weight: style.fontWeight,
-      filter: owner ? getComputedStyle(owner).filter : "none",
-      filtersBackground: !!owner?.querySelector("rect"),
-      background: style.backgroundColor, width: box.width, height: box.height };
-  }));
-  expect(facts.map(({ text }) => text).sort()).toEqual(["Add to Cart", "Browse Products", "Item in Stock?", "No", "Out of Stock", "Yes"]);
-  for (const fact of facts) {
-    expect(fact.weight).toBe("600");
-    expect(fact.filter).toContain("url(");
-    expect(fact.filtersBackground).toBe(false);
-    expect(fact.background).toBe("rgba(0, 0, 0, 0)");
-    expect(fact.width).toBeGreaterThan(0);
-    expect(fact.height).toBeGreaterThan(0);
-  }
-  const backgrounds = svg.locator("foreignObject div.labelBkg").filter({ hasText: /\S/u });
-  await expect(backgrounds).toHaveCount(2);
-  for (const background of await backgrounds.all()) {
-    await expect(background).toHaveCSS("background-color", "rgb(5, 20, 35)");
-  }
-  await svg.screenshot({ path: test.info().outputPath("public-cyberpunk-html.png") });
-  await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
-  await expectPaintedEffects(page, svg, 13);
-  await expectPaintedArrows(page, svg, 3);
-  errors.assertNone();
-});
+
+  test(`public Cyberpunk classic ${layout} keeps HTML glyph glow separate from the label background`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    const hash = encodeShareHash({
+      code: sceneSource("flowchart"),
+      mermaidConfig: JSON.stringify({ htmlLabels: true, flowchart: { look: "classic", layout } }),
+      diagramTheme: "default",
+      themePresetId: "cyberpunk",
+      themeRecipeJson: null,
+      svgPipeline: "parity",
+      textMeasurementMode: "browser",
+      diagramFont: "trebuchet",
+    });
+    await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    await page.evaluate(() => document.fonts.ready);
+    const svg = page.locator(".preview-container > div").first().locator("svg");
+    await expectCyberpunkCanvas(svg);
+    const glyphs = svg.locator("g.node foreignObject p, g.edgeLabel foreignObject p");
+    await expect(glyphs).toHaveCount(6);
+    const facts = await glyphs.evaluateAll((nodes) => nodes.map((node) => {
+      const style = getComputedStyle(node);
+      const box = node.getBoundingClientRect();
+      const owner = style.filter !== "none" ? node : node.closest("[filter]");
+      return { text: node.textContent, weight: style.fontWeight,
+        filter: owner ? getComputedStyle(owner).filter : "none",
+        filtersBackground: !!owner?.querySelector("rect"),
+        background: style.backgroundColor, width: box.width, height: box.height };
+    }));
+    expect(facts.map(({ text }) => text).sort()).toEqual(["Add to Cart", "Browse Products", "Item in Stock?", "No", "Out of Stock", "Yes"]);
+    for (const fact of facts) {
+      expect(fact.weight).toBe("600");
+      expect(fact.filter).toContain("url(");
+      expect(fact.filtersBackground).toBe(false);
+      expect(fact.background).toBe("rgba(0, 0, 0, 0)");
+      expect(fact.width).toBeGreaterThan(0);
+      expect(fact.height).toBeGreaterThan(0);
+    }
+    const backgrounds = svg.locator("foreignObject div.labelBkg").filter({ hasText: /\S/u });
+    await expect(backgrounds).toHaveCount(2);
+    for (const background of await backgrounds.all()) {
+      await expect(background).toHaveCSS("background-color", "rgb(5, 20, 35)");
+    }
+    await svg.screenshot({ path: test.info().outputPath("public-cyberpunk-html.png") });
+    await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
+    await expectPaintedEffects(page, svg, 13);
+    await expectPaintedArrows(page, svg, 3);
+    errors.assertNone();
+  });
+}
 
 for (const scene of [
   {

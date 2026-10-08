@@ -54,6 +54,14 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
+
+Flowchart node, edge and label glow/shadow effects currently require `flowchart.look: classic`.
+The default Neo look does not consume these effect bindings; selecting Cyberpunk alone does not
+change the look. Both ELK and Dagre support the Classic effect path. For example, set
+`{"flowchart":{"look":"classic","layout":"elk"}}` in Mermaid configuration to retain ELK
+and request the demonstrated Flowchart effects. Color and typography support has its own target
+coverage and should be inspected separately from effects.
+
 Exporting a complete recipe does not qualify every scene.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
 and approve the visual design of a particular scene. Web `renderSvg()` returns only the SVG
