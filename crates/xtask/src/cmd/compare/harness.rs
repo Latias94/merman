@@ -1023,31 +1023,7 @@ pub(crate) fn run_canonical_svg_compare(
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg =
-                crate::cmd::apply_upstream_svg_capture_background(fact.diagram, rendered.svg());
-            let mut fixture_notes = Vec::new();
-            let browser_measured_math = if let Some(evidence) = finish_math_evidence(
-                input.stem,
-                required_math,
-                observed_node_math_renderer.as_deref(),
-                math_evidence_before,
-            )? {
-                fixture_notes.push(format!(
-                    "observed {}: Node KaTeX successful renders={} browser measurements={}",
-                    input.stem,
-                    evidence.successful_renders(),
-                    evidence.successful_measurements()
-                ));
-                true
-            } else {
-                false
-            };
-
-            let browser_math_dimensions_are_diagnostic =
-                browser_measured_math && parity_root_requested;
-            if browser_math_dimensions_are_diagnostic {
-                fixture_notes.push(browser_measured_math_root_note(input.stem));
-            }
+            let local_svg = rendered.svg().to_owned();
 
             let mut issues = Vec::new();
             if !request.check_dom
