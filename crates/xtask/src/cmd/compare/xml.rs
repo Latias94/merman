@@ -549,7 +549,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             observed_operations
                 .observe(&format!("{diagram}/{stem}"), rendered.evidence())
                 .map_err(XtaskError::SvgCompareFailed)?;
-            let local_svg = rendered.svg();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background(&diagram, rendered.svg());
 
             let upstream_xml = match svgdom::canonical_xml(&upstream_svg, mode, dom_decimals) {
                 Ok(v) => v,
@@ -560,7 +561,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 }
             };
-            let local_xml = match svgdom::canonical_xml(local_svg, mode, dom_decimals) {
+            let local_xml = match svgdom::canonical_xml(&local_svg, mode, dom_decimals) {
                 Ok(v) => v,
                 Err(err) => {
                     missing.push(format!("{diagram}/{stem}: local xml parse failed: {err}"));

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Fixed
+
+- Core SVG and native CLI SVG output no longer add an implicit white canvas, matching Mermaid core. Use `SvgOutputPolicy.root_background_color` or CLI `--background white` when an opaque canvas is required. The `mmdc` command retains its white default; diagram-owned edge-label colors and opacity are unchanged.
+
 ## [0.8.0] - 2026-10-06
 
 `0.8.0` summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas, and targets Mermaid `12.1.0`. Rust crates and CLI/LSP archives are published; other package channels publish independently. Start with the upgrade path and three checks below, then read the sections relevant to your integration.

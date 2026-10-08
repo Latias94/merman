@@ -1,5 +1,72 @@
 //! Shared upstream SVG baseline policy.
 
+/// Capture canvas applied after core rendering on both sides of SVG comparisons.
+pub(crate) fn upstream_svg_capture_background(diagram: &str) -> Option<&'static str> {
+    (diagram != "error").then_some("white")
+}
+
+/// Mirrors the reference capture's root-only projection without finalizing HTML labels as XML.
+pub(crate) fn apply_upstream_svg_capture_background(diagram: &str, svg: &str) -> String {
+    use std::sync::LazyLock;
+    static ROOT: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"<svg\b[^>]*>").expect("root regex"));
+    static STYLE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r#"\sstyle="([^"]*)""#).expect("style regex"));
+    let Some(color) = upstream_svg_capture_background(diagram) else {
+        return svg.to_string();
+    };
+    ROOT.replace(svg, |root: &regex::Captures<'_>| {
+        let root = &root[0];
+        if let Some(style) = STYLE.captures(root) {
+            let raw = &style[1];
+            if raw.split(';').any(|declaration| {
+                declaration.split_once(':').is_some_and(|(property, _)| {
+                    property.trim().eq_ignore_ascii_case("background-color")
+                })
+            }) {
+                return root.to_string();
+            }
+            let separator = if raw.trim().is_empty() || raw.trim_end().ends_with(';') {
+                ""
+            } else {
+                ";"
+            };
+            root.replacen(
+                &style[0],
+                &format!(" style=\"{raw}{separator} background-color: {color};\""),
+                1,
+            )
+        } else {
+            root.replacen(
+                "<svg",
+                &format!("<svg style=\"background-color: {color};\""),
+                1,
+            )
+        }
+    })
+    .into_owned()
+}
+
+#[cfg(test)]
+mod capture_background_tests {
+    use super::apply_upstream_svg_capture_background;
+
+    #[test]
+    fn capture_background_preserves_root_fonts_and_browser_html() {
+        let svg = r#"<svg style="--font: &quot;Open Sans&quot;, sans-serif;"><foreignObject><img src=x/></foreignObject></svg>"#;
+        let captured = apply_upstream_svg_capture_background("usecase", svg);
+        assert_eq!(
+            captured,
+            r#"<svg style="--font: &quot;Open Sans&quot;, sans-serif; background-color: white;"><foreignObject><img src=x/></foreignObject></svg>"#
+        );
+        assert_eq!(
+            apply_upstream_svg_capture_background("usecase", &captured),
+            captured
+        );
+        assert_eq!(apply_upstream_svg_capture_background("error", svg), svg);
+    }
+}
+
 const FLOWCHART_ELK_SVG_PARITY_STEMS: &[&str] = &[
     "upstream_html_demos_ashish2_example_009",
     "upstream_html_demos_flow_elk_example_001",

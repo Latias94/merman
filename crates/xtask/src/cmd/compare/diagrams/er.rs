@@ -213,7 +213,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg = crate::cmd::apply_upstream_svg_capture_background("er", rendered.svg());
 
             let upstream_sig = sig_for_svg(input.upstream_svg, &re_marker_id, &re_marker_ref);
             let local_sig = sig_for_svg(&local_svg, &re_marker_id, &re_marker_ref);

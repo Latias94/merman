@@ -108,6 +108,11 @@ Use `--output -` to request stdout explicitly or `--output PATH` to choose a fil
 
 Run `merman-cli --help` to see only the commands compiled into your binary, then use `<command> --help` for command-owned options.
 
+Native SVG rendering leaves the canvas background unset, matching Mermaid core. Use
+`render --background white` for an opaque SVG canvas or choose another explicit color.
+The `mmdc` compatibility command defaults to white and accepts `--backgroundColor transparent`
+for host compositing. PNG/PDF backgrounds are applied by export options independently of SVG CSS.
+
 For a coding-agent or log channel, choose explicit width and Plain report output. Given a Flowchart
 or Sequence input in a build with Auto support:
 
