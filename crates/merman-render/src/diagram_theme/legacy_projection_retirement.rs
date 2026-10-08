@@ -107,26 +107,8 @@ pub struct ThemeLegacyProjectionObservation {
 }
 
 impl ThemeLegacyProjectionObservation {
-    #[cfg(any(test, merman_internal_theme_acceptance))]
-    pub(super) fn new(
-        contribution_id: String,
-        assignment_path: String,
-        value_digest: [u8; 32],
-    ) -> Self {
-        Self {
-            contribution_id,
-            assignment_path,
-            value_digest,
-        }
-    }
-
     pub fn assignment_path(&self) -> &str {
         &self.assignment_path
-    }
-
-    #[cfg(test)]
-    pub(super) const fn value_digest(&self) -> [u8; 32] {
-        self.value_digest
     }
 }
 
@@ -980,15 +962,6 @@ fn probe_digest(
         update_len_prefixed(&mut hasher, projection.assignment_path.as_bytes());
         hasher.update(projection.value_digest);
     }
-    hasher.finalize().into()
-}
-
-#[cfg(any(test, merman_internal_theme_acceptance))]
-pub(super) fn value_digest(value: &serde_json::Value) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    update_len_prefixed(&mut hasher, b"merman.theme-legacy-projection-value.v1");
-    let encoded = serde_json::to_vec(value).expect("JSON values always serialize");
-    update_len_prefixed(&mut hasher, &encoded);
     hasher.finalize().into()
 }
 
