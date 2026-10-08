@@ -360,7 +360,7 @@ jobs:
                                    .replace("\\\n", " ").split())
                 self.assertIn(
                     f"{runner} --locked -p merman-ffi --no-default-features "
-                    "--features svg --test c_consumer_smoke", command,
+                    "--features svg,diagram-flowchart --test c_consumer_smoke", command,
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-render --no-default-features "

@@ -217,7 +217,7 @@ jobs:
         shell: bash
         run: |
           cargo test --locked -p merman-ffi --no-default-features \
-            --features svg --test c_consumer_smoke
+            --features svg,diagram-flowchart --test c_consumer_smoke
           cargo test --locked -p merman-render --no-default-features \
             --features diagram-flowchart,diagram-swimlane \
             --test theme_font_capability --test flowchart_node_effects
