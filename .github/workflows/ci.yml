@@ -501,7 +501,7 @@ jobs:
             --features diagram-flowchart,diagram-swimlane \
             --test theme_font_capability --test flowchart_node_effects --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
+            --features svg,diagram-flowchart --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
           cargo nextest run --locked -p merman --no-default-features --features svg \
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \

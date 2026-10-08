@@ -369,7 +369,7 @@ jobs:
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-bindings-core --no-default-features "
-                    "--features svg --lib", command,
+                    "--features svg,diagram-flowchart --lib", command,
                 )
                 self.assertNotIn("embedded-fonts", command)
 

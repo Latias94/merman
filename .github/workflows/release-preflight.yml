@@ -222,7 +222,7 @@ jobs:
             --features diagram-flowchart,diagram-swimlane \
             --test theme_font_capability --test flowchart_node_effects
           cargo test --locked -p merman-bindings-core --no-default-features \
-            --features svg --lib
+            --features svg,diagram-flowchart --lib
           cargo test --locked -p merman --no-default-features --features svg \
             --test theme_font_capability --test flowchart_edge_label_theme
           cargo test --locked -p merman-export --no-default-features \
