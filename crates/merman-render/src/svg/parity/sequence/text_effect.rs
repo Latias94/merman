@@ -133,6 +133,11 @@ impl<'a> SequenceTextShadow<'a> {
         } else {
             x - width / 2.0
         };
+        // A native fallback face can change advances across the whole line. Allocate one
+        // additional measured line width on each side, rather than a fixed em allowance that
+        // shrinks relative to longer labels. This is bounded allocation, not certified ink;
+        // native export still verifies actual outlines and rejects underestimated metrics.
+        let horizontal_reserve = width.max(em);
         let Some(materialized) = effect.materialize_user_space(
             &self.resources,
             left,
@@ -141,9 +146,9 @@ impl<'a> SequenceTextShadow<'a> {
             center_y + height / 2.0,
             EffectOutsets {
                 top: em,
-                right: em,
+                right: horizontal_reserve,
                 bottom: em,
-                left: em,
+                left: horizontal_reserve,
             },
         )?
         else {

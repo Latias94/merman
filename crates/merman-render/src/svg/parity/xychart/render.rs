@@ -332,20 +332,23 @@ fn prepare_text_shadows(
         } else {
             -shadow.height / 2.0
         };
+        // Native fallback-face advance differences accumulate across the line. Reserve one
+        // measured line width per side, with an em minimum for short labels; an underestimated
+        // measurement cannot grant unlimited space because native export still verifies ink.
+        let horizontal_reserve = shadow.width.max(label.font_size);
         let Some(materialized) = shadow.effect.materialize_user_space(
             &options.theme_resource_policy(),
             x,
             y,
             x + shadow.width,
             y + shadow.height,
-            // One font em reserves local paint space beyond approximate layout metrics.
-            // This is an allocation policy, not an ink bound: long strings or unusual
-            // host fonts can exceed it and must still fail native containment.
+            // Vertical font bearings retain the local em allocation. Long strings or unusual
+            // host fonts can exceed either reserve and must still fail native containment.
             crate::diagram_theme::EffectOutsets {
                 top: label.font_size,
-                right: label.font_size,
+                right: horizontal_reserve,
                 bottom: label.font_size,
-                left: label.font_size,
+                left: horizontal_reserve,
             },
         )?
         else {

@@ -1066,6 +1066,52 @@ mod tests {
     }
 
     #[test]
+    fn fallback_font_line_advances_require_a_line_scaled_filter_allocation() {
+        let mut options = usvg::Options::default();
+        std::sync::Arc::make_mut(&mut options.fontdb).load_font_data(
+            include_bytes!("../../merman-render/tests/fixtures/fonts/DejaVuSerif-NativeFilter.ttf")
+                .to_vec(),
+        );
+        // These are the emitted metrics for the failing Linux title and popup-label cases.
+        // The fixed-em allocation excludes real DejaVu outlines plus their halo. A reserve
+        // proportional to the declared line metrics fits both without changing the receipt.
+        for (text, font_size, measured_width, anchor) in [
+            ("Request Volume", 20.0_f32, 112.28_f32, "middle"),
+            ("Documentation", 16.0, 95.36, "start"),
+        ] {
+            let make_svg = |reserve: f32| {
+                let origin = if anchor == "middle" { 256.0 } else { 128.0 };
+                let measured_left = if anchor == "middle" {
+                    origin - measured_width / 2.0
+                } else {
+                    origin
+                };
+                let left = measured_left - reserve - 30.0;
+                let width = measured_width + 2.0 * (reserve + 30.0);
+                format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="256" viewBox="0 0 512 256"><defs><filter id="{FIRST_ID}" filterUnits="userSpaceOnUse" x="{left}" y="64" width="{width}" height="128" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="10" flood-color="#00f2ff"/></filter></defs><text x="{origin}" y="128" text-anchor="{anchor}" dominant-baseline="middle" font-family="DejaVu Serif" font-size="{font_size}" filter="url(#{FIRST_ID})">{text}</text></svg>"##
+                )
+            };
+            let narrow = make_svg(font_size);
+            let narrow_tree = usvg::Tree::from_str(&narrow, &options).unwrap();
+            assert!(
+                preflight_native_filter_receipt(&narrow, &narrow_tree).is_none(),
+                "the old fixed-em allocation must reject overflowing {text} ink"
+            );
+            let allocated = make_svg(measured_width.max(font_size));
+            let allocated_tree = usvg::Tree::from_str(&allocated, &options).unwrap();
+            assert!(
+                preflight_native_filter_receipt(&allocated, &allocated_tree).is_some(),
+                "the line-scaled allocation must contain {text} ink and halo"
+            );
+            assert!(
+                preflight_native_filter_receipt(&narrow, &allocated_tree).is_none(),
+                "a different allocation must never certify the narrow source"
+            );
+        }
+    }
+
+    #[test]
     fn text_shadow_receipt_rejects_a_region_that_cuts_off_native_glyph_glow() {
         for (units, good, clipped) in [
             (

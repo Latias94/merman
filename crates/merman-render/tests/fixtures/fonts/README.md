@@ -13,3 +13,15 @@
 The fixture is retained only to exercise the CFF OpenType admission path. Tests derive TrueType
 and TrueType Collection inputs from the already licensed WOFF2 theme fixtures so they do not
 depend on fonts installed on the host machine.
+
+`DejaVuSerif-NativeFilter.ttf` is a 11,788-byte subset of DejaVu Serif 2.37 from
+Debian's `fonts-dejavu-core_2.37-8_all.deb`. It retains only the characters in
+`Request VolumeDocumentation`, the two labels whose native shadows exceeded the
+previous fixed-em text allocation on Linux. Native export receipt tests load it
+explicitly, so the regression is independent of the host's installed fonts.
+
+- Font license: Bitstream Vera font license; DejaVu changes are public domain.
+- License text: `DejaVu-LICENSE.txt` in this directory.
+- SHA-256: `108e66f8d1c7d2580dc8245286bd6290b815d0a002a74322322b542a832ccb7c`.
+- Subset tool: fontTools `pyftsubset`, with `--text='Request VolumeDocumentation'`,
+  `--name-IDs='*'`, and `--name-languages='*'`.
