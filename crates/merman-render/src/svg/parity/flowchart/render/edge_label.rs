@@ -513,12 +513,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
 ) -> Option<crate::model::LayoutPoint> {
-    let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return None;
-    };
-    let Some(label) = layout_edge.label.as_ref() else {
-        return None;
-    };
+    let layout_edge = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let label = layout_edge.label.as_ref()?;
 
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     // Mermaid's Swimlane adapter creates a fresh `labelRect` without copying `edge.labelType`.
