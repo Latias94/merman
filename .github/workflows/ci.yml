@@ -498,6 +498,7 @@ jobs:
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features svg --test c_consumer_smoke
           cargo nextest run --locked -p merman-render --no-default-features \
+            --features diagram-flowchart,diagram-swimlane \
             --test theme_font_capability --test flowchart_node_effects --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
             --features svg --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
