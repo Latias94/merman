@@ -4,6 +4,27 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
+## Retirement and verification boundaries: 2026-10-08
+
+The executable test-only bridge/cache, overlay builder, and parse harness have been removed.
+`legacy_family_theme_bridge.rs` now contains only final route observations and retirement tests;
+there is no compatibility provider to dispatch into. Probes compile the actual family program
+and reject any request for a legacy compatibility route. The independent 80-route historical
+ledger and its 160 value probes remain because Release Preflight still owns that contract.
+An empty current matrix is not a substitute for that independent historical witness.
+
+Production route classification remains in `family_mechanism_matrix.rs`; historical inventory
+and cutover traversal live in its `audit` module, compiled only for tests/private acceptance.
+The exhaustive matrix tests live in a separate test module. Public support claims remain
+independently authored and reconciled against the classifier; known target/facet/property IDs
+come from existing semantic and wire enums rather than a second string catalog.
+
+Verification ownership remains layered: route tests prove classification; family SVG tests prove
+terminal emission and references; native exporter tests prove output admission and glyph/filter
+containment; public consumers prove serialization and preset exchange. Only tests of the removed
+empty bridge implementation were retired. Similar-looking tests at different output boundaries
+remain because they detect different failures.
+
 ## Snapshot: 2026-09-15
 
 Compiled themes no longer install a family Legacy overlay provider. The former bridge/cache is

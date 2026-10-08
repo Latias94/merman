@@ -232,7 +232,7 @@ cargo fmt --all -- --check
 cargo nextest run --locked -p merman-render --all-features --lib
 cargo nextest run --locked -p merman --features all-diagrams,svg,png,pdf,layout-cytoscape,layout-elk,math
 cargo nextest run --locked -p merman-export --features png,pdf --lib
-python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance --features png,layout-cytoscape
+python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance -p merman --features merman/all-diagrams,merman/layout-elk,merman/math --lib -E 'package(merman-theme-acceptance)'
 cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
 cargo deny check advisories bans licenses sources
 npm --prefix playground/tests run typecheck
