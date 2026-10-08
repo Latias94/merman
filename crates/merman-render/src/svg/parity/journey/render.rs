@@ -1255,10 +1255,7 @@ mod tests {
             root_open.contains(r#"preserveAspectRatio="xMinYMin meet""#),
             "{root_open}"
         );
-        assert!(
-            root_open.contains(r#"style="background-color: white;""#),
-            "{root_open}"
-        );
+        assert!(!root_open.contains("style="), "{root_open}");
         assert!(!root_open.contains(r#"width="100%""#), "{root_open}");
         assert!(!root_open.contains("max-width"), "{root_open}");
     }

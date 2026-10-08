@@ -2089,8 +2089,7 @@ gantt
     );
 
     assert!(
-        svg.contains(r#"viewBox="0 0 420 "#)
-            && svg.contains(r#"style="max-width: 420px; background-color: white;""#),
+        svg.contains(r#"viewBox="0 0 420 "#) && svg.contains(r#"style="max-width: 420px;""#),
         "frontmatter gantt.useWidth should set rendered SVG width: {svg}"
     );
     assert_eq!(

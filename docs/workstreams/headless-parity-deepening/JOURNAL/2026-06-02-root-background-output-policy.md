@@ -3,6 +3,15 @@
 Date: 2026-06-02
 Task: HPD-080 visible rendering defect triage
 
+## Superseded decision (2026-10-08)
+
+Core SVG rendering now leaves the root background unset, matching pinned Mermaid 12.1.0.
+The earlier decision to preserve an implicit white canvas in production output is superseded.
+White remains an explicit CLI/capture projection shared by upstream generation and local
+comparison; the dedicated Error capture still omits it. Hosts can request a canvas color with
+the existing `RootBackgroundPostprocessor` or `SvgOutputPolicy.root_background_color`.
+Diagram-owned label colors and opacity retain Mermaid behavior.
+
 ## Question
 
 Zed's merman 0.6 upgrade feedback included root background and text color differences. We needed to
@@ -35,8 +44,8 @@ It does not rewrite diagram-owned palette CSS or inline node/edge/label colors.
 
 ## Decision
 
-Default SVG output should not change. The white root background is not Mermaid source behavior, but
-it is part of the current fixture/capture parity surface. Host canvas color is a valid common need,
+The original decision was that default SVG output should not change. The white root background is
+not Mermaid source behavior, but it is part of the fixture/capture parity surface. Host canvas color is a valid common need,
 so it should be explicit opt-in output policy rather than a silent default rewrite.
 
 ## Verification
@@ -54,5 +63,5 @@ so it should be explicit opt-in output policy rather than a silent default rewri
 ## Residual
 
 - Zed-style node/edge/tag-label palette cleanup remains host-specific CSS or postprocessing.
-- Do not remove the root white background from default parity SVGs unless the fixture/capture policy
-  changes.
+- The original restriction on removing the default white background is superseded above;
+  fixture/capture policy now applies white explicitly on both sides of the comparison.

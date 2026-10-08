@@ -95,11 +95,7 @@ fn fixture_captures_parse_error_svg(diagram: &str, stem: &str) -> bool {
 }
 
 fn scripted_renderer_background_color(diagram: &str) -> &'static str {
-    if captures_parse_error_svg(diagram) {
-        ""
-    } else {
-        "white"
-    }
+    super::upstream_svg_capture_background(diagram).unwrap_or_default()
 }
 
 fn scripted_renderer_page_viewport_width(diagram: &str) -> u32 {

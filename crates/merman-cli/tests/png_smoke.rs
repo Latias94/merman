@@ -1,3 +1,5 @@
+mod support;
+
 use assert_cmd::prelude::*;
 use png::ColorType;
 use std::fs;
@@ -12,6 +14,46 @@ fn repo_root() -> PathBuf {
         .and_then(|p| p.parent())
         .expect("expected crates/<name> layout")
         .to_path_buf()
+}
+
+#[test]
+fn png_canvas_uses_export_policy_instead_of_svg_css() {
+    let source = "flowchart LR\n A --> B";
+    for (args, expected) in [
+        (vec!["render", "--format", "png", "-"], [0, 0, 0, 0]),
+        (
+            vec!["mmdc", "-i", "-", "-o", "-", "-e", "png"],
+            [255, 255, 255, 255],
+        ),
+        (
+            vec![
+                "mmdc",
+                "-i",
+                "-",
+                "-o",
+                "-",
+                "-e",
+                "png",
+                "-b",
+                "transparent",
+            ],
+            [0, 0, 0, 0],
+        ),
+        (
+            vec!["render", "--format", "png", "--background", "#112233", "-"],
+            [17, 34, 51, 255],
+        ),
+    ] {
+        let output = support::run_with_stdin(&args, source);
+        assert!(output.status.success(), "{args:?}: {:?}", output.stderr);
+        let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+            .read_info()
+            .expect("PNG info");
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).expect("PNG frame");
+        assert_eq!(info.color_type, ColorType::Rgba);
+        assert_eq!(pixels[..4], expected, "canvas pixel for {args:?}");
+    }
 }
 
 #[test]

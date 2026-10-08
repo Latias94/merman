@@ -760,9 +760,7 @@ mod tests {
 
         assert!(root_open.contains(r#"width="100%""#), "{root_open}");
         assert!(
-            root_open.contains(
-                r#"style="max-width: 700px; background-color: white;" viewBox="0 0 700 700""#
-            ),
+            root_open.contains(r#"style="max-width: 700px;" viewBox="0 0 700 700""#),
             "{root_open}"
         );
         assert!(
@@ -810,10 +808,7 @@ mod tests {
             root_open.contains(r#"viewBox="0 0 700 700""#),
             "{root_open}"
         );
-        assert!(
-            root_open.contains(r#"style="background-color: white;""#),
-            "{root_open}"
-        );
+        assert!(!root_open.contains("style="), "{root_open}");
         assert!(!root_open.contains("max-width"), "{root_open}");
     }
 

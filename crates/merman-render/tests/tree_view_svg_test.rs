@@ -1723,7 +1723,8 @@ treeView-beta
     assert!(!svg.contains(r#"width="100%""#));
     assert!(svg.contains(r#"<svg id="tree-view-fixed-test" width=""#));
     assert!(svg.contains(r#"" height=""#));
-    assert!(svg.contains(r#"style="background-color: white;" viewBox="-0.5 0 "#));
+    assert!(svg.contains(r#"viewBox="-0.5 0 "#));
+    assert!(!svg.split_once('>').unwrap().0.contains("style="));
     assert!(!svg.contains("max-width:"));
 }
 

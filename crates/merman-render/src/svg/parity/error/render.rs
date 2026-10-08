@@ -19,8 +19,7 @@ pub(crate) fn render_error_diagram_svg_model(
         layout.viewbox_height,
     );
     let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.max_width_px))
-        .without_background();
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.max_width_px));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "error");
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;

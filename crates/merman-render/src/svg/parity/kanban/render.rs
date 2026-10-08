@@ -1535,10 +1535,7 @@ mod tests {
             view_box,
             vec![bounds.min_x, bounds.min_y, expected_width, expected_height]
         );
-        assert!(
-            root_open.contains(r#"style="background-color: white;""#),
-            "{root_open}"
-        );
+        assert!(!root_open.contains("style="), "{root_open}");
         assert!(!root_open.contains("max-width"), "{root_open}");
     }
 

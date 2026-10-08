@@ -88,12 +88,6 @@ impl ViewBox {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RootBackground {
-    None,
-    White,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum RootMaxWidth {
     ViewBox,
@@ -148,7 +142,6 @@ pub(super) struct RootViewportSpec {
     view_box: Option<DiagramBounds>,
     max_width: RootMaxWidth,
     sizing: RootSizing,
-    background: RootBackground,
     fixed_size: Option<(f64, f64)>,
 }
 
@@ -158,7 +151,6 @@ impl RootViewportSpec {
             view_box: Some(bounds),
             max_width: RootMaxWidth::ViewBox,
             sizing: RootSizing::Responsive,
-            background: RootBackground::White,
             fixed_size: None,
         }
     }
@@ -168,7 +160,6 @@ impl RootViewportSpec {
             view_box: None,
             max_width: RootMaxWidth::SvgNumber(max_width),
             sizing: RootSizing::Responsive,
-            background: RootBackground::White,
             fixed_size: None,
         }
     }
@@ -202,11 +193,6 @@ impl RootViewportSpec {
             use_max_width,
             height,
         };
-        self
-    }
-
-    pub(super) fn without_background(mut self) -> Self {
-        self.background = RootBackground::None;
         self
     }
 
@@ -349,14 +335,12 @@ impl<'a> RootChrome<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct DeferredRootSpec {
     sizing: RootSizing,
-    background: RootBackground,
 }
 
 impl DeferredRootSpec {
     pub(super) fn responsive() -> Self {
         Self {
             sizing: RootSizing::Responsive,
-            background: RootBackground::White,
         }
     }
 
@@ -364,7 +348,6 @@ impl DeferredRootSpec {
     pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
-            background: RootBackground::White,
         }
     }
 }
@@ -375,7 +358,6 @@ enum RootDocumentState {
         view_box_range: Range<usize>,
         max_width_range: Option<Range<usize>>,
         responsive: bool,
-        background: RootBackground,
         root_open_snapshot: String,
         root_open_end: usize,
     },
@@ -463,16 +445,11 @@ impl<'a> RootViewportContext<'a> {
         let fixed_style = if responsive {
             None
         } else {
-            with_custom_properties(root_style(None, spec.background), chrome.custom_properties)?
+            with_custom_properties(None, chrome.custom_properties)?
         };
-        let deferred_style_suffix = with_custom_properties(
-            Some(match spec.background {
-                RootBackground::None => "px;".into(),
-                RootBackground::White => "px; background-color: white;".into(),
-            }),
-            chrome.custom_properties,
-        )?
-        .unwrap_or_default();
+        let deferred_style_suffix =
+            with_custom_properties(Some("px;".into()), chrome.custom_properties)?
+                .unwrap_or_default();
         let style_placement = if responsive {
             chrome.dom.responsive_style_placement
         } else {
@@ -541,7 +518,6 @@ impl<'a> RootViewportContext<'a> {
                 view_box_range,
                 max_width_range,
                 responsive,
-                background: spec.background,
                 root_open_snapshot: out.as_str().to_string(),
                 root_open_end: out.len(),
             },
@@ -563,7 +539,6 @@ impl<'a> RootViewportContext<'a> {
             view_box_range,
             max_width_range,
             responsive,
-            background,
             root_open_snapshot,
             mut root_open_end,
         } = document.state
@@ -572,11 +547,6 @@ impl<'a> RootViewportContext<'a> {
                 message: "root document viewport was already finalized".to_string(),
             });
         };
-        if background != spec.background {
-            return Err(Error::InvalidModel {
-                message: "deferred root document belongs to a different render context".to_string(),
-            });
-        }
         let plan = self.plan(spec)?;
         if plan.responsive != responsive || plan.height.is_some() {
             return Err(Error::InvalidModel {
@@ -819,7 +789,7 @@ impl<'a> RootViewportContext<'a> {
                 use_max_width: false,
             } => (false, None, None),
         };
-        let style = root_style(responsive.then_some(max_width.as_str()), spec.background);
+        let style = responsive.then(|| format!("max-width: {max_width}px;"));
 
         Ok(RootViewportPlan {
             family: self.family,
@@ -1796,20 +1766,6 @@ impl RootViewportPlan {
     }
 }
 
-fn root_style(max_width: Option<&str>, background: RootBackground) -> Option<String> {
-    let mut style = String::new();
-    if let Some(max_width) = max_width {
-        let _ = write!(style, "max-width: {max_width}px;");
-    }
-    if background == RootBackground::White {
-        if !style.is_empty() {
-            style.push(' ');
-        }
-        style.push_str("background-color: white;");
-    }
-    (!style.is_empty()).then_some(style)
-}
-
 fn with_custom_properties(
     style: Option<String>,
     properties: &[(&str, &str)],
@@ -2768,9 +2724,10 @@ mod tests {
 
         assert!(out.starts_with(r#"<svg id="root-id" width="100%""#));
         assert!(out.contains(
-            r#"viewBox="-2 0 42 24" style="max-width: 42px; background-color: white;" preserveAspectRatio="xMinYMin meet" height="30""#
+            r#"viewBox="-2 0 42 24" style="max-width: 42px;" preserveAspectRatio="xMinYMin meet" height="30""#
         ));
-        assert!(out.contains(r#"style="max-width: 42px; background-color: white;""#));
+        assert!(out.contains(r#"style="max-width: 42px;""#));
+        assert!(!out.contains("background-color"));
     }
 
     #[test]
@@ -2788,7 +2745,7 @@ mod tests {
             .unwrap();
 
         assert!(out.contains(r#"width="100%""#));
-        assert!(out.contains(r#"style="max-width: 400px; background-color: white;""#));
+        assert!(out.contains(r#"style="max-width: 400px;""#));
         assert!(!out.contains("viewBox="));
     }
 
@@ -3071,7 +3028,7 @@ mod tests {
         assert_eq!(
             root.attribute("style"),
             Some(
-                "max-width: 30px; background-color: white; --font-family: \"Arial\", sans-serif; --marker-text: __MERMAN_ROOT_MAX_WIDTH__;"
+                "max-width: 30px; --font-family: \"Arial\", sans-serif; --marker-text: __MERMAN_ROOT_MAX_WIDTH__;"
             )
         );
     }

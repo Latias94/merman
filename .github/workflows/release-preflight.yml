@@ -223,14 +223,14 @@ jobs:
             --test theme_font_capability --test flowchart_node_effects
           cargo test --locked -p merman-bindings-core --no-default-features \
             --features svg,diagram-flowchart --lib
-          cargo test --locked -p merman --no-default-features --features svg \
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart \
             --test theme_font_capability --test flowchart_edge_label_theme
           cargo test --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib
 
       - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,png,pdf,layout-cytoscape \
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,png,pdf,layout-cytoscape \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 

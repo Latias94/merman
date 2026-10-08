@@ -47,6 +47,13 @@ collapsed into a single "supported" claim.
 
 ## Tooling
 
+The ordinary SVG capture profile applies a white root canvas after `mermaid.render`; the
+dedicated Error profile leaves it unset. This is CLI/capture output policy, not Mermaid core
+behavior. `upstream_svg_capture_background` owns the choice for both upstream generation and
+local comparisons. Comparisons apply that explicit root-only projection to the local SVG
+before evaluating all DOM modes, without ignoring background differences in the comparator.
+Public-API tests separately assert that core SVG output has no implicit canvas background.
+
 The reference workspace under `tools/mermaid-cli/` pins Mermaid `12.0.0`, the CLI host,
 companions, browser driver, and esbuild compiler. `reference-runtime.mjs` builds Mermaid's module
 entry point against that locked graph. Published Mermaid IIFE and ESM bundles embed dependency
