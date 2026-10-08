@@ -5,10 +5,10 @@
   "notes": "Provisional regression ceilings combine the higher accepted per-profile limits from the theme branch's 2026-09-14 measurement and main's 2026-09-30 Mermaid 12 measurement; they are not measurements of the merged source. Web compression follows wasm-tools strip --all on final assembled npm WASM; Typst uses the release wasm-opt -Oz and strip pipeline. Rebuild and remeasure all six final artifacts with the theme features and Mermaid 12.1 before publishing or claiming artifact-size acceptance. Historical inputs and recipes are recorded in docs/performance/theme_artifact_budget_reassessment_2026-09-14.md and the main-branch release measurements.",
   "artifact_profiles": {
     "typst-wasm": {
-      "max_raw_bytes": 19322000,
+      "max_raw_bytes": 19718000,
       "max_stripped_bytes": 11950000,
       "max_gzip_bytes": 4582000,
-      "max_brotli_bytes": 3381000
+      "max_brotli_bytes": 3425000
     },
     "web-analysis": {
       "max_raw_bytes": 3944000,
