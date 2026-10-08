@@ -3,6 +3,7 @@
 //! Runtime discovery depends only on this manifest. The private C5 family mechanism matrix is
 //! referenced below only by the C6 drift test and is never a production dependency.
 
+use super::semantic::ThemeTarget;
 use crate::DiagramFamilyId;
 use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1};
 
@@ -34,102 +35,6 @@ struct BaseClaim {
     kind: SupportClaimKind,
     properties: &'static [&'static str],
 }
-
-const MANIFEST_TARGET_IDS: &[&str] = &[
-    "canvas",
-    "node",
-    "node-label",
-    "edge",
-    "edge-label",
-    "edge-label-background",
-    "cluster",
-    "cluster-label",
-    "marker",
-    "title",
-    "text",
-    "axis",
-    "axis-title",
-    "axis-label",
-    "axis-tick",
-    "legend",
-    "table",
-    "task",
-    "task-label",
-    "packet-byte-label",
-    "packet-field-label",
-    "state",
-    "state-label",
-    "transition",
-    "transition-marker",
-    "transition-label",
-    "transition-label-background",
-    "composite",
-    "composite-header",
-    "composite-label",
-    "special-state",
-    "special-state-inner",
-    "actor",
-    "actor-label",
-    "lifeline",
-    "message",
-    "message-label",
-    "sequence-number",
-    "loop",
-    "loop-label-background",
-    "loop-label",
-    "note",
-    "note-label",
-    "activation",
-    "requirement",
-    "entity",
-    "relation",
-    "pie-slice",
-    "chart-series",
-    "timeline-event",
-    "journey-task",
-];
-
-const MANIFEST_RULE_FACET_IDS: &[&str] = &[
-    "fill",
-    "opacity",
-    "fill-opacity",
-    "stroke-paint",
-    "stroke-width",
-    "stroke-dasharray",
-    "stroke-line-cap",
-    "stroke-line-join",
-    "stroke-opacity",
-    "radius",
-    "padding",
-    "font-stack",
-    "font-size",
-    "font-weight",
-    "font-style",
-    "line-height",
-    "letter-spacing",
-    "word-spacing",
-    "text-transform",
-    "text-decoration",
-    "text-align",
-    "white-space",
-    "wrap",
-    "effect",
-];
-
-const MANIFEST_BASE_PROPERTY_IDS: &[&str] = &[
-    "font-stack",
-    "font-size",
-    "font-weight",
-    "font-style",
-    "line-height",
-    "letter-spacing",
-    "word-spacing",
-    "transform",
-    "decoration",
-    "text-align",
-    "white-space",
-    "wrap",
-];
 
 // The rows are expressed in stable contract identifiers rather than private matrix types.
 const RULE_CLAIMS: &[RuleClaim] = &[
@@ -1549,8 +1454,8 @@ fn rule_claim_for_ids(family: &str, target: &str, facet: &str) -> SupportClaimKi
         .map_or_else(
             || {
                 if is_catalog_family_id(family)
-                    && MANIFEST_TARGET_IDS.contains(&target)
-                    && MANIFEST_RULE_FACET_IDS.contains(&facet)
+                    && ThemeTarget::from_id(target).is_some()
+                    && ThemeRuleFacetV1::from_id(facet).is_some()
                 {
                     SupportClaimKind::Unsupported
                 } else {
@@ -1579,7 +1484,7 @@ fn ordinal_claim_for_ids(family: &str, target: &str) -> SupportClaimKind {
         })
         .map_or_else(
             || {
-                if is_catalog_family_id(family) && MANIFEST_TARGET_IDS.contains(&target) {
+                if is_catalog_family_id(family) && ThemeTarget::from_id(target).is_some() {
                     SupportClaimKind::Unsupported
                 } else {
                     SupportClaimKind::Missing
@@ -1603,7 +1508,9 @@ fn base_typography_claim_for_ids(family: &str, property: &str) -> SupportClaimKi
         .find(|claim| claim.family == family && claim.properties.contains(&property))
         .map_or_else(
             || {
-                if is_catalog_family_id(family) && MANIFEST_BASE_PROPERTY_IDS.contains(&property) {
+                if is_catalog_family_id(family)
+                    && ThemeSupportBaseTypographyPropertyV1::from_id(property).is_some()
+                {
                     SupportClaimKind::Unsupported
                 } else {
                     SupportClaimKind::Missing
@@ -1627,30 +1534,27 @@ mod tests {
     use merman_theme_contract::{ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1};
 
     #[test]
-    fn manifest_surface_covers_current_contract_catalogs() {
-        for &family in DiagramFamilyId::all() {
-            assert!(is_catalog_family_id(family.as_str()));
-        }
-        for &target in ThemeTarget::ALL {
+    fn manifest_claim_rows_reference_only_current_contract_identifiers() {
+        for claim in RULE_CLAIMS {
             assert!(
-                MANIFEST_TARGET_IDS.contains(&target.id()),
-                "target missing from support manifest: {}",
-                target.id()
+                ThemeTarget::from_id(claim.target).is_some(),
+                "unknown target: {}",
+                claim.target
             );
+            for &facet in claim.facets {
+                assert!(
+                    facet == "ordinal-palette" || ThemeRuleFacetV1::from_id(facet).is_some(),
+                    "unknown facet: {facet}"
+                );
+            }
         }
-        for &facet in ThemeRuleFacetV1::ALL {
-            assert!(
-                MANIFEST_RULE_FACET_IDS.contains(&facet.id()),
-                "rule facet missing from support manifest: {}",
-                facet.id()
-            );
-        }
-        for &property in ThemeSupportBaseTypographyPropertyV1::ALL {
-            assert!(
-                MANIFEST_BASE_PROPERTY_IDS.contains(&property.id()),
-                "base property missing from support manifest: {}",
-                property.id()
-            );
+        for claim in BASE_CLAIMS {
+            for &property in claim.properties {
+                assert!(
+                    ThemeSupportBaseTypographyPropertyV1::from_id(property).is_some(),
+                    "unknown base property: {property}"
+                );
+            }
         }
     }
 
@@ -1714,6 +1618,24 @@ mod tests {
         );
         assert_eq!(
             base_typography_claim_for_ids("future-family", "font-size"),
+            SupportClaimKind::Missing
+        );
+    }
+
+    #[test]
+    fn unknown_contract_identifiers_fail_closed_to_missing() {
+        for (target, facet) in [("future-target", "fill"), ("node", "future-facet")] {
+            assert_eq!(
+                rule_claim_for_ids("flowchart", target, facet),
+                SupportClaimKind::Missing
+            );
+        }
+        assert_eq!(
+            ordinal_claim_for_ids("flowchart", "future-target"),
+            SupportClaimKind::Missing
+        );
+        assert_eq!(
+            base_typography_claim_for_ids("flowchart", "future-property"),
             SupportClaimKind::Missing
         );
     }
