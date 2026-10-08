@@ -677,6 +677,8 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
         let control = color_control.as_deref().unwrap_or(&control);
         let mut changed = 0;
         let mut cyan = 0;
+        let mut painted_alpha = 0usize;
+        let mut cyan_alpha = 0usize;
         for (pixel, control) in original.chunks_exact(4).zip(control.chunks_exact(4)) {
             if pixel == control {
                 continue;
@@ -687,12 +689,19 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
                 u16::from(pixel[1]),
                 u16::from(pixel[2]),
             ];
-            cyan += usize::from(g > r + 50 && b > r + 50 && pixel[3] > 200);
+            let is_cyan = g > r + 50 && b > r + 50;
+            let alpha = usize::from(pixel[3]);
+            painted_alpha += alpha;
+            cyan_alpha += if is_cyan { alpha } else { 0 };
+            cyan += usize::from(is_cyan && pixel[3] > 200);
         }
         assert!(changed > 5, "missing {marker_name} pixels: {case}");
+        // Coverage-weight the color witness: thin diagonal markers have many partially
+        // covered cyan edge pixels, which must not be counted as non-cyan paint. Still
+        // require opaque cyan pixels so faint halos cannot certify the marker itself.
         assert!(
-            cyan > 5 && cyan * 2 > changed,
-            "expected cyan {marker_name}: {cyan}/{changed}: {case}"
+            cyan > 5 && cyan_alpha * 2 > painted_alpha,
+            "expected cyan {marker_name}: opaque={cyan}, cyan alpha={cyan_alpha}/{painted_alpha}, changed={changed}: {case}"
         );
     }
 }
