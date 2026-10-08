@@ -104,7 +104,7 @@ The snapshot must not provide runtime fallback behavior. The current typed famil
 
 ### Validation
 
-- Production builds with all diagram and output feature combinations.
+- Production builds with the supported feature recipes enumerated in Phase 0; do not imply testing the full Cargo feature power set.
 - Private theme acceptance suite and release-preflight command.
 - Tests for unknown route, route reintroduction, projection drift, and error ordering.
 - Compare public SVG and native output hashes for representative families.
@@ -138,7 +138,7 @@ shared domain identities
     -> acceptance and retirement projections
 ```
 
-Start with a hand-written shared model and drift tests. Consider generation only after two or more projections use it without losing readable diffs.
+Reuse the existing `ThemeTarget`, `DiagramFamilyId`, and contract facet/property enums rather than inventing a parallel model. Keep independently authored support claims and historical observations when they detect correlated implementation mistakes. Start with the existing shared model and drift tests. Consider generation only after two or more projections use it without losing readable diffs.
 
 ### Validation
 
@@ -174,8 +174,10 @@ Use module boundaries and `cfg` ownership to make the production path obvious. P
 Keep decision-grade evidence, but separate summary from raw observations:
 
 - retain source revision, feature recipe, tool versions, workload identity, key measurements, thresholds, and artifact hashes in a small checked-in summary;
-- move full Criterion samples, repeated command arrays, and verbose per-case output to CI artifacts or ignored `target/` records;
+- archive full Criterion samples and verbose observations durably before removing tracked evidence; ignored `target/` records are temporary working copies, not the sole archive;
 - update the performance report to point to the artifact identity and explain reproducibility.
+
+This explicitly refines the preceding plan's evidence-storage contract: raw evidence must remain durably accessible alongside its scorecard. Do not delete a tracked raw record until a stable archive and its digest are verified. Prefer lossless local compaction when no durable artifact owner is available. Do not build a new proof framework just to relocate JSON.
 
 ### Validation
 
@@ -230,7 +232,7 @@ cargo fmt --all -- --check
 cargo nextest run --locked -p merman-render --all-features --lib
 cargo nextest run --locked -p merman --features all-diagrams,svg,png,pdf,layout-cytoscape,layout-elk,math
 cargo nextest run --locked -p merman-export --features png,pdf --lib
-cargo nextest run --locked -p merman-theme-acceptance --features png,layout-cytoscape
+python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance --features png,layout-cytoscape
 cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
 cargo deny check advisories bans licenses sources
 npm --prefix playground/tests run typecheck
@@ -243,7 +245,7 @@ For each deletion or consolidation, also run the smallest affected test first, t
 
 Stop the phase and keep the previous structure if:
 
-- a public support result changes without an intentional contract update;
+- a public support result changes; any behavior change needs a separate task and is outside this refactor;
 - a route or target loses provenance;
 - a strict native receipt becomes permissive;
 - error, cancellation, or resource-limit precedence changes;
