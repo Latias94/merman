@@ -4,6 +4,7 @@ pub mod css_sanitize;
 pub mod foreign_object;
 pub(crate) mod gitgraph_label;
 pub(crate) mod id_rebase;
+pub(crate) mod id_suffix;
 pub(crate) mod presentation_fallback;
 pub mod root_background;
 pub mod scoped_css;

@@ -5,6 +5,7 @@ use super::builtin::{
         apply_drop_switch_native_fallbacks, apply_foreign_object_fallback,
         apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
+    id_suffix::apply_lower_id_suffix_selectors,
     presentation_fallback::resolve_resvg_presentation_fallbacks_with_checkpoints,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
@@ -46,6 +47,7 @@ pub(crate) enum BuiltinSvgStage {
     StripForeignObject,
     DropSwitchNativeFallbacks,
     SanitizeCss,
+    LowerIdSuffixSelectors,
     ResolvePresentationFallbacks,
     SanitizeAttributes,
 }
@@ -67,6 +69,7 @@ impl BuiltinSvgStage {
             Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
             Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
             Self::SanitizeCss => apply_sanitize_style_elements(svg, checkpoint),
+            Self::LowerIdSuffixSelectors => apply_lower_id_suffix_selectors(svg, execution),
             Self::ResolvePresentationFallbacks => {
                 resolve_resvg_presentation_fallbacks_with_checkpoints(
                     svg,
@@ -90,6 +93,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
             BuiltinSvgStage::SanitizeCss,
+            BuiltinSvgStage::LowerIdSuffixSelectors,
             BuiltinSvgStage::ResolvePresentationFallbacks,
             BuiltinSvgStage::SanitizeAttributes,
         ],
@@ -139,6 +143,7 @@ mod tests {
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,
                 BuiltinSvgStage::SanitizeCss,
+                BuiltinSvgStage::LowerIdSuffixSelectors,
                 BuiltinSvgStage::ResolvePresentationFallbacks,
                 BuiltinSvgStage::SanitizeAttributes
             ]
