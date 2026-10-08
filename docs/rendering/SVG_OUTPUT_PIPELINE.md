@@ -58,6 +58,27 @@ Typical choices:
 | `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays while retaining `<foreignObject>` labels. Consumers that render both representations may display duplicate text. |
 | `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards. Structural references are limited to same-document fragments; ordinary image resources require an approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage` accepts either form. `<a>` navigation links remain metadata outside the raster-resource contract. |
 
+### Static marker selector compatibility
+
+`resvg_safe` lowers Mermaid's single top-level `[id$="..."]` marker selectors to exact
+`[id="..."]` matches against the final SVG IDs. It expands multiple matches, removes unmatched
+branches, and retains sibling class selectors, declarations, rule order, and attribute-selector
+specificity. This also applies after scoped user CSS and ID rebasing. Parity and readable output
+keep the upstream selectors.
+
+Mermaid 11.14 introduced these selectors for diagram-prefixed markers. With usvg 0.47.0 and
+simplecss 0.2.2, an unsupported suffix selector can discard the entire selector list, including
+supported class fallbacks. This makes open ClassDiagram diamonds appear filled and also affects
+suffix-only SequenceDiagram and StateDiagram marker rules. Transparent paint is supported;
+changing the paint value alone does not fix the parser failure. See
+[Merman #181](https://github.com/Latias94/merman/issues/181). Typst's
+[#6595](https://github.com/typst/typst/issues/6595) tracks a related parser limitation with a
+different trigger.
+
+This conversion targets Mermaid's static selector shapes. Compound suffix selectors, functional
+pseudo-classes, attribute matching flags, and nested conditional rules remain unchanged; it does
+not provide general CSS3 support.
+
 ### Fallback typography boundary
 
 The fallback stage resolves supported typography against the original SVG and XHTML source context
