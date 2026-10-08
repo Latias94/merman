@@ -537,6 +537,10 @@ impl<'a> TimelineEventEmissionState<'a> {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn record_event_terminal(
         &mut self,
         event_index: usize,
@@ -604,6 +608,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         format!("node-line-{rest}")
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn render_node(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
@@ -759,6 +767,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         })
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn render_event_node<'a>(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
@@ -801,6 +813,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         ))
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn render_event(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
@@ -855,6 +871,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         Ok(())
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn render_task(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,

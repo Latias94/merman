@@ -1225,6 +1225,10 @@ impl KanbanTaskThemeReceipt {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn record_checkpointed_item(
         &mut self,
         item_index: usize,
@@ -1278,6 +1282,10 @@ impl KanbanTaskThemeReceipt {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn record_label(
         &mut self,
         item_index: usize,

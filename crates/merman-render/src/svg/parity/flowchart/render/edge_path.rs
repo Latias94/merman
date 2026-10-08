@@ -11,6 +11,10 @@ const NEO_EDGE_MASK_PREFIX: &str = "stroke-dasharray: 0 ";
 const NEO_EDGE_MASK_DASH_PAIR: &str = "2 2 ";
 const NEO_EDGE_MASK_SUFFIX: &str = "; stroke-dashoffset: 0;";
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The streaming edge writer borrows independent prepared plans, shared scratch storage, and the geometry cache without allocating an aggregate context."
+)]
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,

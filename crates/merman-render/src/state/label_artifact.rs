@@ -238,6 +238,7 @@ pub(crate) struct StateLabelSidecarBuilder {
 }
 
 impl StateLabelSidecarBuilder {
+    #[cfg(test)]
     pub(crate) fn new(prepared_text_layout: Option<&PreparedTextLayout>) -> Self {
         Self {
             prepared_active: prepared_text_layout.is_some(),

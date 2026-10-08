@@ -285,6 +285,7 @@ impl StateEdgeStylePlan {
         self.label_background_fallback_fill.as_deref()
     }
 
+    #[cfg(test)]
     pub(crate) const fn text_style(&self) -> &TextStyle {
         self.label_typography.text_style()
     }
@@ -820,6 +821,7 @@ impl StateStylePlan {
         .0
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve_with_evidence(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
@@ -1289,10 +1291,6 @@ impl StateStylePlan {
         self.edges.get(id)
     }
 
-    pub(crate) fn edges(&self) -> impl Iterator<Item = &StateEdgeStylePlan> {
-        self.edges.values()
-    }
-
     pub(crate) const fn effect_plan(&self) -> &StateEffectPlan {
         &self.effects
     }
@@ -1319,10 +1317,6 @@ impl StateStylePlan {
 
     pub(crate) fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         self.terminal_theme.finish_evidence(&self.theme_evidence)
-    }
-
-    pub(crate) fn has_pending_terminal_theme_evidence(&self) -> bool {
-        self.terminal_theme.has_pending_mechanisms()
     }
 
     pub(crate) fn record_title_terminal_emission(
@@ -3086,6 +3080,10 @@ fn css_opacity_is_valid_zero(value: &str) -> bool {
         .is_ok_and(|value| value.is_finite() && value <= 0.0)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Edge preparation receives distinct source, theme, text, and work inputs"
+)]
 fn prepare_edge(
     edge_id: &str,
     base_text_style: &TextStyle,

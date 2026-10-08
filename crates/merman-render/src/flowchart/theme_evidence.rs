@@ -427,8 +427,10 @@ impl FlowchartEdgeThemeStyle {
             ordinal,
             work_meter,
         )?;
-        let mut resolved = Self::default();
-        resolved.matched_rules = style.take_matched_rules();
+        let mut resolved = Self {
+            matched_rules: style.take_matched_rules(),
+            ..Self::default()
+        };
 
         // Fill is a semantic fallback for the stroke terminal, not a second SVG paint channel.
         // An explicit stroke owns that terminal even when its value is Clear or unsupported.
@@ -603,8 +605,10 @@ impl FlowchartClusterThemeStyle {
             ordinal,
             work_meter,
         )?;
-        let mut resolved = Self::default();
-        resolved.matched_rules = style.take_matched_rules();
+        let mut resolved = Self {
+            matched_rules: style.take_matched_rules(),
+            ..Self::default()
+        };
 
         for (property, origin) in style.winner_rule_properties() {
             let rule_index = origin.rule_index();
@@ -690,6 +694,18 @@ impl FlowchartClusterThemeStyle {
             .flatten()
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Inline terminal styles receive distinct source ownership decisions"
+    )]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Inline terminal styles receive distinct source ownership decisions"
+    )]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Emits each independently owned Flowchart paint facet with its evidence state."
+    )]
     pub(crate) fn append_inline_style(
         &self,
         out: &mut String,
@@ -1020,6 +1036,10 @@ impl FlowchartNodeThemeStyle {
         self.label.fill.is_some()
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Emits independent node paint facets with source precedence and terminal evidence."
+    )]
     pub(crate) fn append_inline_style(
         &self,
         out: &mut String,
@@ -1059,8 +1079,10 @@ fn resolve_label_theme_style(
 ) -> Result<FlowchartLabelThemeStyle, OperationWorkError> {
     let mut style =
         theme.style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)?;
-    let mut resolved = FlowchartLabelThemeStyle::default();
-    resolved.matched_rules = style.take_matched_rules();
+    let mut resolved = FlowchartLabelThemeStyle {
+        matched_rules: style.take_matched_rules(),
+        ..FlowchartLabelThemeStyle::default()
+    };
     for (property, origin) in style.winner_rule_properties() {
         let rule_index = origin.rule_index();
         match property {

@@ -5,19 +5,22 @@ use merman_theme_contract::{
     ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
-use super::{
-    ThemePreset, ThemePresetDescriptor, ThemePresetQualificationInvalidation,
-    ThemePresetQualifiedCell,
-};
+#[cfg(test)]
+use super::ThemePresetQualificationInvalidation;
+use super::{ThemePreset, ThemePresetDescriptor, ThemePresetQualifiedCell};
 use crate::DiagramFamilyId;
 use crate::diagram_theme::definition_admission::{
     check_complete_spec_encoded_bytes, materialize_theme_with_resource_policy,
 };
 use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
 
+#[cfg(test)]
 const CATALOG_SCHEMA_VERSION: u32 = 1;
+#[cfg(test)]
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
+#[cfg(test)]
 const EXPANSION_VERSION: u32 = 1;
+#[cfg(test)]
 const SPEC_SCHEMA_VERSION: u32 = 1;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
@@ -37,6 +40,7 @@ const README_STYLE_DESIGNS: &[(&str, &str)] = &[
     ("xychart", "dedicated"),
 ];
 const NO_IDS: &[&str] = &[];
+#[cfg(test)]
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
@@ -105,18 +109,26 @@ pub(super) struct PresetCatalogEntry {
     dark_mode: bool,
     profile: PresetRecipeProfile,
     maturity: &'static str,
+    #[cfg(test)]
     catalog_schema_version: u32,
+    #[cfg(test)]
     authoring_schema_version: u32,
+    #[cfg(test)]
     expansion_version: u32,
+    #[cfg(test)]
     spec_schema_version: u32,
+    #[cfg(test)]
     recipe_revision: u32,
+    #[cfg(test)]
     recipe_fingerprint: &'static str,
+    #[cfg(test)]
     resource_fingerprint: &'static str,
     recipe_builder: PresetRecipeBuilder,
     palette: PresetPalette,
     family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
+    #[cfg(test)]
     qualification_invalidation: ThemePresetQualificationInvalidation,
     required_feature_ids: &'static [&'static str],
     bundled_resource_ids: &'static [&'static str],
@@ -147,30 +159,37 @@ impl PresetCatalogEntry {
         self.maturity
     }
 
+    #[cfg(test)]
     pub(super) const fn catalog_schema_version(&self) -> u32 {
         self.catalog_schema_version
     }
 
+    #[cfg(test)]
     pub(super) const fn authoring_schema_version(&self) -> u32 {
         self.authoring_schema_version
     }
 
+    #[cfg(test)]
     pub(super) const fn expansion_version(&self) -> u32 {
         self.expansion_version
     }
 
+    #[cfg(test)]
     pub(super) const fn spec_schema_version(&self) -> u32 {
         self.spec_schema_version
     }
 
+    #[cfg(test)]
     pub(super) const fn recipe_revision(&self) -> u32 {
         self.recipe_revision
     }
 
+    #[cfg(test)]
     pub(super) const fn recipe_fingerprint(&self) -> &'static str {
         self.recipe_fingerprint
     }
 
+    #[cfg(test)]
     pub(super) const fn resource_fingerprint(&self) -> &'static str {
         self.resource_fingerprint
     }
@@ -187,6 +206,7 @@ impl PresetCatalogEntry {
         self.export_kind
     }
 
+    #[cfg(test)]
     pub(super) const fn qualification_invalidation(&self) -> ThemePresetQualificationInvalidation {
         self.qualification_invalidation
     }
@@ -238,7 +258,7 @@ const fn entry(
     display_name: &'static str,
     dark_mode: bool,
     profile: PresetRecipeProfile,
-    recipe_fingerprint: &'static str,
+    _recipe_fingerprint: &'static str,
     palette: PresetPalette,
 ) -> PresetCatalogEntry {
     PresetCatalogEntry {
@@ -248,13 +268,20 @@ const fn entry(
         dark_mode,
         profile,
         maturity: ALPHA,
+        #[cfg(test)]
         catalog_schema_version: CATALOG_SCHEMA_VERSION,
+        #[cfg(test)]
         authoring_schema_version: AUTHORING_SCHEMA_VERSION,
+        #[cfg(test)]
         expansion_version: EXPANSION_VERSION,
+        #[cfg(test)]
         spec_schema_version: SPEC_SCHEMA_VERSION,
         // Unpublished recipes share revision 1; fingerprints identify content changes.
+        #[cfg(test)]
         recipe_revision: 1,
-        recipe_fingerprint,
+        #[cfg(test)]
+        recipe_fingerprint: _recipe_fingerprint,
+        #[cfg(test)]
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: match preset {
             ThemePreset::Brutalist => super::brutalist::build_recipe,
@@ -269,6 +296,7 @@ const fn entry(
         },
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "complete_spec",
+        #[cfg(test)]
         qualification_invalidation: ThemePresetQualificationInvalidation::current(),
         required_feature_ids: NO_IDS,
         bundled_resource_ids: NO_IDS,

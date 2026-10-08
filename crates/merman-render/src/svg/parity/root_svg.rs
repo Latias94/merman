@@ -1585,6 +1585,10 @@ fn push_canvas_base(
     out.push_str(r#""/>"#);
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn push_canvas_layer(
     out: &mut impl SvgOutput,
     view_box: Option<ViewBox>,

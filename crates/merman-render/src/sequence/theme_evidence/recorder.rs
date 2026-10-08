@@ -30,6 +30,10 @@ pub(crate) struct SequenceThemeEvidenceRecorder {
 }
 
 impl SequenceThemeEvidenceRecorder {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Terminal recording receives independent emitted actor surfaces"
+    )]
     pub(crate) fn record_actor_emission(
         &self,
         actor_count: usize,

@@ -1,5 +1,9 @@
 use super::*;
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
@@ -605,6 +609,10 @@ fn prepare_state_line_hop_paths(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn render_state_root(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,

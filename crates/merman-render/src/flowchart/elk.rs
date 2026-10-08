@@ -987,6 +987,10 @@ fn comparison_sort_work_units(
     checked_adapter_mul(work_control, items, levels)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ELK preparation keeps renderer dependencies and operation controls explicit"
+)]
 fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -1117,6 +1121,10 @@ fn project_collapsed_flowchart_model(
     }))
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ELK preparation keeps renderer dependencies and operation controls explicit"
+)]
 fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,

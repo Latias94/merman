@@ -688,6 +688,10 @@ pub(super) fn class_edge_label_center(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn render_class_edge_label_group(
     out: &mut impl SvgOutput,
     dom_id: &str,

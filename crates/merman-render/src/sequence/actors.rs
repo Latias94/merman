@@ -158,6 +158,10 @@ fn actor_popup_widths(
     Ok(popup_widths)
 }
 
+#[allow(
+    clippy::type_complexity,
+    reason = "Parallel actor-indexed vectors are the existing layout result contract"
+)]
 fn measure_actor_boxes(
     ctx: &SequenceActorLayoutPlanContext<'_>,
 ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<bool>)> {

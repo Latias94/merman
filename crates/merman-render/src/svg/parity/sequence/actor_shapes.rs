@@ -280,6 +280,10 @@ pub(super) fn write_actor_man_lifeline(
 }
 
 impl ActorLabelContext<'_> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     pub(super) fn write_lifeline_root_open(
         &self,
         out: &mut impl SvgOutput,
@@ -640,6 +644,10 @@ fn write_actor_label(
     ctx.checkpoints.checkpoint()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn write_actor_label_lines<'a>(
     out: &mut impl SvgOutput,
     cx: f64,

@@ -326,10 +326,6 @@ impl<'a> SvgPostprocessContext<'a> {
         self.session.text_measurer(phase)
     }
 
-    pub(crate) const fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
-        self.session.resource_policy()
-    }
-
     pub(crate) fn controlled_text_measurer(
         &self,
         phase: TextMeasurementPhase,

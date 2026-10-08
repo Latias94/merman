@@ -849,6 +849,10 @@ pub(crate) enum BindingThemeOverlay {
 }
 
 #[derive(Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "The overlay keeps the validated request payload and resource policy together."
+)]
 pub(crate) enum BindingRequestOverlay {
     Unchanged,
     Override {
@@ -2760,7 +2764,7 @@ pub fn apply_resource_ceiling_json(
 fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
     #[cfg(feature = "svg")]
     {
-        return options_json_value_with_theme_ceiling(options_json, None);
+        options_json_value_with_theme_ceiling(options_json, None)
     }
 
     #[cfg(not(feature = "svg"))]
@@ -3176,10 +3180,12 @@ fn theme_resource_preflight_policy(
     hints: &ThemeResourceProfileHints,
     host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
 ) -> merman::svg::ThemeResourcePolicy {
-    if host_ceiling.is_none() && hints.canonical_shape && hints.locations == 1 {
-        if let Some(profile) = hints.single_profile() {
-            return merman::svg::ThemeResourcePolicy::for_profile(profile);
-        }
+    if host_ceiling.is_none()
+        && hints.canonical_shape
+        && hints.locations == 1
+        && let Some(profile) = hints.single_profile()
+    {
+        return merman::svg::ThemeResourcePolicy::for_profile(profile);
     }
 
     let mut policy = host_ceiling.cloned().unwrap_or_else(|| {

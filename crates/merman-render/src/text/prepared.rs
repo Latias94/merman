@@ -1054,6 +1054,10 @@ fn html_break_end(bytes: &[u8], start: usize) -> Option<usize> {
     (bytes.get(cursor) == Some(&b'>')).then_some(cursor + 1)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Prepared text admission keeps source, measurement, and terminal provenance together."
+)]
 fn append_transformed_graphemes(
     source: &str,
     source_range: std::ops::Range<usize>,
@@ -1805,6 +1809,10 @@ pub struct PreparedTextLineResponse {
 }
 
 impl PreparedTextLineResponse {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Prepared text admission keeps source, measurement, and terminal provenance together."
+    )]
     pub fn new(
         text: impl Into<String>,
         visible_range: TextByteRange,
@@ -3424,6 +3432,10 @@ pub struct PreparedTextLayoutResponse {
 }
 
 impl PreparedTextLayoutResponse {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Backend attestation requires explicit catalog, contract, face, and session provenance."
+    )]
     pub fn new(
         catalog_fingerprint: FontCatalogFingerprint,
         contract_version: u32,
@@ -3621,6 +3633,10 @@ impl PreparedTextLayoutBuilder {
         )
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Prepared text admission keeps source, measurement, and terminal provenance together."
+    )]
     fn admit_response(
         &mut self,
         expected_backend: &TextLayoutBackendIdentity,

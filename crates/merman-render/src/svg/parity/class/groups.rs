@@ -92,6 +92,10 @@ pub(super) fn render_class_split_edge_paths<O: SvgOutput>(
     render_class_edge_paths(out, content_bounds, detail, theme_receipt, &local_ctx)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,

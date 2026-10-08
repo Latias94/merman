@@ -554,10 +554,6 @@ impl FamilyStyleReport {
         self
     }
 
-    pub fn family_kind(&self) -> RenderFamilyKind {
-        RenderFamilyKind::from_family_id(self.family_id())
-    }
-
     pub const fn family_id(&self) -> DiagramFamilyId {
         self.family_id
     }
@@ -2689,10 +2685,6 @@ fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value
 }
 
 impl BuiltinFamilyArtifact {
-    pub fn family_kind(&self) -> RenderFamilyKind {
-        RenderFamilyKind::from_family_id(self.family_id())
-    }
-
     pub fn family_id(&self) -> DiagramFamilyId {
         match self {
             Self::Error(_) => DiagramFamilyId::ERROR,

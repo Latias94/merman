@@ -44,13 +44,12 @@ impl FlowchartEdgeEffects {
         let Some(effect) = ctx.edge_theme.effect() else {
             return Ok(plan);
         };
-        let ancestor_classes: &[&str] = if ctx.uses_elk_adapter_dom {
-            &["root", "edges", "edgePaths"]
-        } else if ctx.swimlane_direction.is_some() {
-            &["root", "edges", "edgePaths"]
-        } else {
-            &["root", "edgePaths"]
-        };
+        let ancestor_classes: &[&str] =
+            if ctx.uses_elk_adapter_dom || ctx.swimlane_direction.is_some() {
+                &["root", "edges", "edgePaths"]
+            } else {
+                &["root", "edgePaths"]
+            };
         if !super::style::edge_shadow_structural_styles_are_bounded(
             ctx.class_defs,
             ancestor_classes,

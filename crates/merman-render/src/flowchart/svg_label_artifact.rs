@@ -1015,6 +1015,7 @@ enum PreparedMathMeasurement {
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
+    #[cfg(test)]
     pub(crate) fn new(
         prepared_text_layout: Option<&PreparedTextLayout>,
         resolved_theme: Option<&ResolvedDiagramTheme>,
@@ -1163,14 +1164,6 @@ impl FlowchartSvgLabelSidecarBuilder {
                 false
             }
         }
-    }
-
-    pub(crate) fn reject_unsupported_prepared_path(&self, path: &'static str) -> bool {
-        if self.prepared_text_layout.is_none() {
-            return false;
-        }
-        self.record_prepared_error(TextLayoutError::UnsupportedPreparedTextPath(path));
-        true
     }
 
     #[cfg(test)]
@@ -1958,6 +1951,10 @@ impl FlowchartSvgLabelSidecar {
         self.label_weights
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The sidecar seals independent prepared label slots and terminal indexes"
+    )]
     fn new(
         sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
@@ -2127,6 +2124,7 @@ impl FlowchartSvgLabelSidecar {
             .copied()
     }
 
+    #[cfg(test)]
     pub(crate) fn prepared_math(
         &self,
         owner: FlowchartSvgLabelOwner,

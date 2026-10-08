@@ -1502,6 +1502,10 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout receives independent label artifacts and cumulative work controls"
+)]
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -1525,6 +1529,10 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout receives independent label artifacts and cumulative work controls"
+)]
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,

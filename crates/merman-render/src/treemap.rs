@@ -316,6 +316,10 @@ fn treemap_round_node(nodes: &mut [HierNode], idx: usize) {
     nodes[idx].y1 = nodes[idx].y1.round();
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The row tiler takes explicit rectangular bounds and the operation work meter."
+)]
 fn treemap_dice(
     nodes: &mut [HierNode],
     children: &[usize],
@@ -344,6 +348,10 @@ fn treemap_dice(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The row tiler takes explicit rectangular bounds and the operation work meter."
+)]
 fn treemap_slice(
     nodes: &mut [HierNode],
     children: &[usize],

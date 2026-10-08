@@ -322,6 +322,7 @@ impl ThemeRouteCutoverId {
 }
 
 /// One legacy projection affected by typed route ownership.
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum ThemeRouteCutoverProjection {
@@ -384,6 +385,7 @@ pub enum ThemeRouteCutoverProjection {
     MarkerPaint = 56,
 }
 
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
     const ALL: [Self; 57] = [

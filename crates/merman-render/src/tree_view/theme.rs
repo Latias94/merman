@@ -723,6 +723,10 @@ pub(crate) struct TreeViewThemeReceipt {
 }
 
 impl TreeViewThemeReceipt {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     fn new(
         expected_label_color: Option<&str>,
         expected_line_color: Option<&str>,

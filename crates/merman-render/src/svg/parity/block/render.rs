@@ -5,9 +5,7 @@ use crate::block::{
     block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
-use crate::svg::parity::roughjs_common::{
-    closed_path_d_from_points, ops_to_svg_path_d, parse_hex_color_to_srgba,
-};
+use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_path_d};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -322,6 +320,10 @@ fn write_important_declarations<'a>(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,

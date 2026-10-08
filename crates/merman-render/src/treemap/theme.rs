@@ -307,14 +307,16 @@ impl TreemapTypographyThemePlan {
         // an unused count.
         let tracks_typography_evidence =
             theme.is_some() && inherited_font_stack.typography_requested();
-        let mut possible_participating_text_count = tracks_typography_evidence
-            .then_some(usize::from(
+        let mut possible_participating_text_count = if tracks_typography_evidence {
+            usize::from(
                 layout
                     .title
                     .as_deref()
                     .is_some_and(|title| !title.trim().is_empty()),
-            ))
-            .unwrap_or_default();
+            )
+        } else {
+            0
+        };
         let mut section_source_styles = Vec::with_capacity(layout.sections.len());
         for section in &layout.sections {
             let style = resolve_treemap_source_text_style(

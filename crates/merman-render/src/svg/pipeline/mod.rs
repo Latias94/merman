@@ -239,6 +239,10 @@ impl SvgFinalizationReport {
 }
 
 impl ResvgCompatibleSvg {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The pipeline keeps family output, operation control, and metadata explicit."
+    )]
     fn seal(
         mut svg: String,
         terminal: Option<final_validation::TerminalSvgValidation>,
@@ -1052,6 +1056,10 @@ impl SvgPipeline {
         )
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The pipeline keeps family output, operation control, and metadata explicit."
+    )]
     pub(crate) fn process_owned_resvg_compatible_with_metadata_and_evidence(
         &self,
         svg: String,

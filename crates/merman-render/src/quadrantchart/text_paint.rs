@@ -301,10 +301,8 @@ impl QuadrantChartPaintPlan {
             };
             let source_owned =
                 merman_core::__private::config_path_overrides_typed_default(config, path);
-            if !source_owned {
-                if let Some(paint) = &border_paint {
-                    line.stroke_fill = paint.css().to_owned();
-                }
+            if !source_owned && let Some(paint) = &border_paint {
+                line.stroke_fill = paint.css().to_owned();
             }
             borders.push(BorderTerminal::from_line(line));
             if line.stroke_width <= 0.0 || (line.x1 == line.x2 && line.y1 == line.y2) {

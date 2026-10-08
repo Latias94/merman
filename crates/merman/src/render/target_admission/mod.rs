@@ -634,11 +634,9 @@ const NATIVE_ROOT_CAPABILITY_WHITELIST: &[merman_render::diagram_theme::ThemeCap
 fn native_root_capabilities_are_supported(
     capabilities: impl IntoIterator<Item = merman_render::diagram_theme::ThemeCapability>,
 ) -> bool {
-    capabilities.into_iter().all(|capability| {
-        NATIVE_ROOT_CAPABILITY_WHITELIST
-            .iter()
-            .any(|allowed| *allowed == capability)
-    })
+    capabilities
+        .into_iter()
+        .all(|capability| NATIVE_ROOT_CAPABILITY_WHITELIST.contains(&capability))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

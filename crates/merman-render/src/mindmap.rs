@@ -1,4 +1,4 @@
-use crate::config::{config_f64_css_px, config_string};
+use crate::config::config_f64_css_px;
 use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -376,6 +376,10 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout inputs and operation controls remain explicit at this family boundary"
+)]
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
     config: &MermaidConfig,

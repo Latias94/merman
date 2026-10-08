@@ -1022,7 +1022,7 @@ fn collect_metadata(
 ) -> Result<Vec<u8>, BindingError> {
     #[cfg(feature = "svg")]
     {
-        return collect_metadata_with_theme_compiler(artifact_contract, key, None);
+        collect_metadata_with_theme_compiler(artifact_contract, key, None)
     }
 
     #[cfg(not(feature = "svg"))]

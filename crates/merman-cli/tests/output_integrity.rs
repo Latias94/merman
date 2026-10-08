@@ -138,6 +138,10 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
         HardLink,
     }
 
+    #[allow(
+        clippy::type_complexity,
+        reason = "The fixture table keeps command, alias, output, and capability expectations together."
+    )]
     let cases: &[(&str, &str, &str, &str, AliasKind, &[&str])] = &[
         (
             "configuration",

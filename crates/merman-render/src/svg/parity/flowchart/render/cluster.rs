@@ -195,6 +195,10 @@ fn write_flowchart_cluster_shape(
     FlowchartShapeFacetEmissionReceipt::all()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The emission receipt records independent fill, stroke, and width precedence at the shape writer boundary."
+)]
 fn record_cluster_shape_emission(
     ctx: &FlowchartRenderCtx<'_>,
     cluster_theme: &crate::flowchart::FlowchartClusterThemeStyle,
@@ -443,9 +447,6 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                 write_flowchart_svg_text_markdown(out, render_title, true);
             }
         } else {
-            let owner = ctx
-                .svg_label_sidecar
-                .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
             let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
                 ctx.svg_label_sidecar,
                 title_owner,

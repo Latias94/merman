@@ -1402,6 +1402,10 @@ impl PieCss {
 }
 
 #[cfg(feature = "diagram-pie")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn write_pie_css_with_theme_overrides_and_font_family<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -1658,6 +1662,10 @@ where
 }
 
 #[cfg(feature = "diagram-gantt")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn gantt_css_with_overrides<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,

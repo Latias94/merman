@@ -531,6 +531,10 @@ pub(crate) fn measure_prepared_sequence_math_label(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Text measurement consumes independent renderer inputs and checkpoints"
+)]
 pub(super) fn measure_sequence_label_for_layout_with_prepared(
     prepared: Option<&crate::math::PreparedMathLabel>,
     measurer: &dyn TextMeasurer,
@@ -560,27 +564,6 @@ pub(super) fn measure_sequence_label_for_layout_with_prepared(
     } else {
         measure_svg_like_with_html_br(measurer, text, style, checkpoints)
     }
-}
-
-pub(super) fn measure_sequence_label_for_layout(
-    measurer: &dyn TextMeasurer,
-    text: &str,
-    style: &TextStyle,
-    config: &MermaidConfig,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    mode: SequenceMathHeightMode,
-    checkpoints: SequenceTextCheckpoints<'_>,
-) -> Result<(f64, f64)> {
-    measure_sequence_label_for_layout_with_prepared(
-        None,
-        measurer,
-        text,
-        style,
-        config,
-        math_renderer,
-        mode,
-        checkpoints,
-    )
 }
 
 #[cfg(test)]

@@ -2,7 +2,10 @@
 
 use super::StateNode;
 pub(super) use crate::config::config_f64;
-use crate::config::{config_f64_css_px, config_string, config_string_or_first_array};
+#[cfg(test)]
+use crate::config::config_string_or_first_array;
+use crate::config::{config_f64_css_px, config_string};
+#[cfg(test)]
 use crate::text::TextStyle;
 use crate::text::WrapMode;
 use dugong::{GraphLabel, RankDir};
@@ -15,6 +18,7 @@ const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
 // Mermaid state defaults set minNodeWidth to 120 in config.schema.yaml.
 const DEFAULT_STATE_LABEL_MIN_WIDTH: f64 = 120.0;
 const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
+#[cfg(test)]
 const DEFAULT_STATE_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
 
 pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
@@ -165,6 +169,7 @@ impl<'a> StateConfigView<'a> {
             .max(0.0)
     }
 
+    #[cfg(test)]
     pub(crate) fn text_style(&self) -> TextStyle {
         // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the
         // global `#id{font-size: ...}` rule (defaults to 16px). The 10px

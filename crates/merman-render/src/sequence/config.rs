@@ -18,6 +18,7 @@ pub(crate) struct SequenceTypographyMeasurementWinner {
 }
 
 impl SequenceTypographyMeasurementWinner {
+    #[cfg(test)]
     pub(crate) const fn path(self) -> &'static str {
         self.path
     }
@@ -26,8 +27,11 @@ impl SequenceTypographyMeasurementWinner {
 #[derive(Debug, Clone)]
 pub(crate) struct SequenceRoleTypographyConfig {
     measurement_style: TextStyle,
+    #[cfg(test)]
     font_stack_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
+    #[cfg(test)]
     font_size_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
+    #[cfg(test)]
     font_weight_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
     config_owned_properties: BTreeSet<ThemeTypographyProperty>,
 }
@@ -37,6 +41,7 @@ impl SequenceRoleTypographyConfig {
         &self.measurement_style
     }
 
+    #[cfg(test)]
     pub(crate) const fn measurement_winner(
         &self,
         property: ThemeTypographyProperty,
@@ -158,6 +163,7 @@ impl<'a> SequenceConfigView<'a> {
         parser.is_exhausted().then_some(css)
     }
 
+    #[cfg(test)]
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
         // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
         // A rejected global value must not reveal the overridden family setting.
@@ -252,7 +258,7 @@ impl<'a> SequenceConfigView<'a> {
         // Mermaid mirrors truthy root font values, including generated defaults, over the
         // role-local Sequence value. A role-local config only bypasses a generated root value
         // when that property participates in typed-theme ownership.
-        let (font_family, font_stack_measurement_winner) = if root_font_family_owns {
+        let (font_family, _font_stack_measurement_winner) = if root_font_family_owns {
             (
                 root_font_family,
                 Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
@@ -291,7 +297,7 @@ impl<'a> SequenceConfigView<'a> {
             role_font_size.is_some() && self.path_overrides_typed_default(size_path);
         let typed_font_size = typed_theme_properties.contains(&ThemeTypographyProperty::FontSize);
         let root_font_size_present = root_font_size_value.is_some();
-        let (font_size, font_size_measurement_winner) = if root_font_size_owns {
+        let (font_size, _font_size_measurement_winner) = if root_font_size_owns {
             (
                 root_font_size.unwrap_or(16.0),
                 Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
@@ -326,7 +332,7 @@ impl<'a> SequenceConfigView<'a> {
             root_font_weight_value.is_some() && self.path_overrides_typed_default("fontWeight");
         let role_font_weight_owns =
             role_font_weight_value.is_some() && self.path_overrides_typed_default(weight_path);
-        let (font_weight, font_weight_measurement_winner) = if root_font_weight_owns {
+        let (font_weight, _font_weight_measurement_winner) = if root_font_weight_owns {
             (
                 root_font_weight,
                 Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
@@ -380,9 +386,12 @@ impl<'a> SequenceConfigView<'a> {
                 font_weight,
                 font_style: None,
             },
-            font_stack_measurement_winner,
-            font_size_measurement_winner,
-            font_weight_measurement_winner,
+            #[cfg(test)]
+            font_stack_measurement_winner: _font_stack_measurement_winner,
+            #[cfg(test)]
+            font_size_measurement_winner: _font_size_measurement_winner,
+            #[cfg(test)]
+            font_weight_measurement_winner: _font_weight_measurement_winner,
             config_owned_properties,
         }
     }

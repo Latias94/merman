@@ -222,12 +222,12 @@ impl TimelineTextPaintPlan {
         for pending in &self.pending {
             match self.terminal.get() {
                 Some(receipt)
-                    if (pending.inherited_fill_only
-                        && receipt.source_colors_static
-                        && !receipt.inherited_fill_seen)
-                        || (!pending.inherited_fill_only
-                            && !receipt.text_seen
-                            && !receipt.inherited_fill_seen) =>
+                    if !receipt.inherited_fill_seen
+                        && if pending.inherited_fill_only {
+                            receipt.source_colors_static
+                        } else {
+                            !receipt.text_seen
+                        } =>
                 {
                     evidence.mark_not_applicable(pending.key.clone());
                 }

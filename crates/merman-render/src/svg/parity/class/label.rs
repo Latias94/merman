@@ -123,14 +123,6 @@ pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, in
     crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
-pub(super) fn write_class_svg_edge_text_markdown(
-    out: &mut impl SvgOutput,
-    markdown: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
-}
-
 pub(super) fn write_class_svg_text_markdown_with_style<'a>(
     out: &mut impl SvgOutput,
     markdown: &str,

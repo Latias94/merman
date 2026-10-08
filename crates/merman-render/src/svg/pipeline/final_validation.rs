@@ -488,6 +488,7 @@ pub(crate) fn validate_resvg_compatible_svg(
     validate_resvg_compatible_svg_inner(svg, limits)
 }
 
+#[cfg(test)]
 fn validate_resvg_compatible_svg_inner(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -856,7 +857,6 @@ struct ValidatedElement {
 
 struct ReferenceNode {
     children: Vec<usize>,
-    is_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
     use_id: Option<String>,
@@ -911,7 +911,6 @@ fn append_reference_node(
     }
     nodes.push(ReferenceNode {
         children: Vec::new(),
-        is_style: validated.is_style,
         is_marker: validated.is_marker,
         may_repeat_per_element: validated.may_repeat_per_element,
         use_id: validated.use_id,
@@ -2491,7 +2490,6 @@ mod tests {
         let real_nodes = 1 + DUPLICATES + REFERENCES;
         let node = |is_marker, parsed_id: Option<&str>, references| ReferenceNode {
             children: Vec::new(),
-            is_style: false,
             is_marker,
             may_repeat_per_element: false,
             use_id: None,
@@ -2554,7 +2552,6 @@ mod tests {
     fn effect_plan_matches_two_pass_reference_for_shared_nested_and_saturated_graphs() {
         let node = || ReferenceNode {
             children: Vec::new(),
-            is_style: false,
             is_marker: false,
             may_repeat_per_element: false,
             use_id: None,

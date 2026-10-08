@@ -35,6 +35,10 @@ pub(crate) struct ErBaseFontSizePlan {
 }
 
 impl ErBaseFontSizePlan {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
@@ -349,6 +353,10 @@ pub(crate) const ER_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
     );
 
 impl ErEntityThemePlan {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "ER admission combines source configuration, typography, model, layout, and the work meter."
+    )]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,

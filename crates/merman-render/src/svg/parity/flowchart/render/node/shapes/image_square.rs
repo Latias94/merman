@@ -1,6 +1,5 @@
 //! Flowchart v2 image square shape.
 
-use crate::svg::parity::flowchart::flowchart_label_plain_text;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
@@ -19,33 +18,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         let label_padding = if has_label { 8.0 } else { 0.0 };
         let top_label = common.node_pos == Some("t");
 
-        let assumed_aspect_ratio = 1.0f64;
-        let asset_h = common.node_asset_height.unwrap_or(60.0).max(1.0);
-        let asset_w = common.node_asset_width.unwrap_or(asset_h).max(1.0);
-        let aspect_ratio = if asset_h > 0.0 {
-            asset_w / asset_h
-        } else {
-            assumed_aspect_ratio
-        };
-
-        let default_width = ctx.wrapping_width.max(0.0);
-        let image_raw_width = asset_w.max(if has_label { default_width } else { 0.0 });
-
-        let constraint_on = common.node_constraint == Some("on");
-        let image_width = if constraint_on && common.node_asset_height.is_some() {
-            asset_h * aspect_ratio
-        } else {
-            image_raw_width
-        };
-        let image_height = if constraint_on {
-            if aspect_ratio != 0.0 {
-                image_width / aspect_ratio
-            } else {
-                asset_h
-            }
-        } else {
-            asset_h
-        };
         let mut metrics = common
             .label_emission
             .metrics(ctx, Some(common.layout_node), label);
@@ -58,7 +30,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
         let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
         let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-        let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
         let geometry = crate::flowchart::ImageSquareGeometry::from_label(
             metrics,
             has_label,

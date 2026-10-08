@@ -3,7 +3,6 @@ use crate::text::TextStyle;
 pub(super) struct SequenceRenderSettings {
     pub(super) force_menus: bool,
     pub(super) mirror_actors: bool,
-    pub(super) diagram_margin_x: f64,
     pub(super) box_margin: f64,
     pub(super) actor_height: f64,
     pub(super) box_text_margin: f64,
@@ -35,7 +34,6 @@ impl SequenceRenderSettings {
             .or_else(|| config.root_bool("forceMenus"))
             .unwrap_or(false);
         let mirror_actors = config.sequence_bool("mirrorActors", true);
-        let diagram_margin_x = config.sequence_json_number_min("diagramMarginX", 50.0, 0.0);
         let box_margin = config.sequence_json_number("boxMargin").unwrap_or(10.0);
         let actor_height = config.sequence_json_number_min("height", 65.0, 1.0);
         let box_text_margin = config.sequence_json_number("boxTextMargin").unwrap_or(5.0);
@@ -64,7 +62,6 @@ impl SequenceRenderSettings {
         Self {
             force_menus,
             mirror_actors,
-            diagram_margin_x,
             box_margin,
             actor_height,
             box_text_margin,
@@ -231,7 +228,6 @@ mod tests {
 
         assert!(!settings.force_menus);
         assert!(!settings.mirror_actors);
-        assert_eq!(settings.diagram_margin_x, 0.0);
         assert_eq!(settings.box_margin, -1.0);
         assert_eq!(settings.actor_height, 1.0);
         assert_eq!(settings.box_text_margin, -1.0);

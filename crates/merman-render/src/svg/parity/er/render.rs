@@ -104,6 +104,10 @@ fn er_redux_color_css_insertion_point(css: &str, diagram_id: &str) -> usize {
         .unwrap_or(css.len())
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn write_er_style_with_font_family(
     out: &mut impl SvgOutput,
     diagram_id: &str,
@@ -1178,7 +1182,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-                escape_xml(&d),
+                escape_xml(d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
                 escape_attr(&edge_style),

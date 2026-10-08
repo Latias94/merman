@@ -542,6 +542,10 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
 }
 
 /// Render a rectangle with Mermaid's default hand-drawn fill and stroke options.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The RoughJS rectangle adapter preserves the upstream geometry and stroke parameters alongside deterministic randomness."
+)]
 pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_rect(
     x: f64,
     y: f64,

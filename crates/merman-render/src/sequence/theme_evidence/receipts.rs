@@ -267,6 +267,7 @@ impl SequenceLifelineThemeReceipt {
         self.line.record_line_candidate();
     }
 
+    #[cfg(test)]
     pub(crate) fn record_line_emission(
         &mut self,
         actor_index: usize,
@@ -287,6 +288,10 @@ impl SequenceLifelineThemeReceipt {
         );
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Terminal line evidence retains coordinates and requested/effective widths"
+    )]
     pub(crate) fn record_line_emission_with_effective_width(
         &mut self,
         actor_index: usize,
@@ -1312,6 +1317,7 @@ impl SequenceRoleTypographyReceipt {
             .contains(&(rule_index, style_property_for_facet(facet)))
     }
 
+    #[cfg(test)]
     pub(super) fn complete(&self) -> bool {
         self.label_candidate_count() != 0
             && self

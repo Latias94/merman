@@ -79,6 +79,22 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
       import.meta.url,
     ), "utf8");
   }
+  // Clearing a typed fill returns to Cyberpunk's dark Mermaid compatibility theme.
+  // Render that theme independently so the clear case cannot copy its own result.
+  const baseline = await engine.executeOperation({
+    operationId: "svg", source: sources.class,
+    optionsJson: JSON.stringify({ site_config: { theme: "dark", htmlLabels: false },
+      svg: { diagram_id: "node-recipe-class" } }),
+  });
+  const baselineDocument = parseSvg(baseline.data);
+  const baselineAccount = Array.from(baselineDocument.getElementsByTagName("g")).find(
+    (element) => element.getAttribute("id")?.includes("-classId-Account-"),
+  );
+  assert.ok(baselineAccount, "missing dark compatibility Class terminal Account");
+  const compatibilityFill = Array.from(baselineAccount.getElementsByTagName("path")).find(
+    (shape) => (shape.parentNode.getAttribute("class") ?? "").split(/\s+/).includes("outer-path"),
+  )?.getAttribute("fill");
+  assert.equal(compatibilityFill, "#1f2020", "dark Mermaid Class compatibility fill");
   // Cyberpunk Flowchart effects are qualified on the classic writer. Keep that selection
   // scoped to Flowchart so recipe exchange still exercises other families' default looks.
   const directory = await mkdtemp(path.join(os.tmpdir(), "merman-node-recipes-"));
@@ -87,7 +103,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
   try {
     for (const [name, classFill, expectedFill] of [
       ["brand", "#22354d", "#22354d"],
-      ["clear", null, "#ECECFF"],
+      ["clear", null, compatibilityFill],
       ["transparent", "transparent", "transparent"],
     ]) {
       const recipe = customizeNodeColors(exported, {

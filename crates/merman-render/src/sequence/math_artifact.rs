@@ -119,23 +119,13 @@ pub(crate) struct SequenceMathSidecar {
 }
 
 impl SequenceMathSidecar {
+    #[cfg(test)]
     pub(crate) fn get_for_occurrence(
         &self,
         occurrence: &SequenceMathOccurrence,
     ) -> Option<&PreparedMathLabel> {
         self.entries
             .get(occurrence)
-            .and_then(|entry| entry.outcome.prepared())
-    }
-
-    pub(crate) fn get(
-        &self,
-        occurrence: &SequenceMathOccurrence,
-        source: &str,
-    ) -> Option<&PreparedMathLabel> {
-        self.entries
-            .get(occurrence)
-            .filter(|entry| entry.source.as_ref() == source)
             .and_then(|entry| entry.outcome.prepared())
     }
 

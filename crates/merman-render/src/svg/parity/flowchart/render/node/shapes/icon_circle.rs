@@ -1,6 +1,6 @@
 //! Flowchart v2 icon circle shape.
 
-use crate::svg::parity::flowchart::{escape_attr, flowchart_label_plain_text};
+use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 const FRAME_PADDING: f64 = 20.0;
@@ -34,7 +34,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
 
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
     let icon_bbox_size = if icon_name.is_some() { icon_size } else { 0.0 };
     let diameter = icon_bbox_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0;
     let outer_w = diameter.max(label_bbox_w);

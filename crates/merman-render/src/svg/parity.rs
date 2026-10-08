@@ -3,8 +3,6 @@ use super::pipeline::{
 };
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
-use crate::model::ArchitectureDiagramLayout;
 use crate::model::*;
 #[cfg_attr(
     not(feature = "all-diagrams"),

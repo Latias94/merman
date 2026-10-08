@@ -1,6 +1,3 @@
-use crate::text::{TextMeasurer, TextStyle};
-use merman_core::diagrams::sequence::SequenceActor;
-
 pub(crate) const SEQUENCE_MESSAGE_WRAP_PADDING_SIDES: f64 = 2.0;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
 pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
@@ -18,22 +15,6 @@ pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
 
 pub(crate) fn sequence_actor_popup_panel_height(link_count: usize) -> f64 {
     SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT + (link_count as f64) * SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
-}
-
-pub(crate) fn sequence_actor_popup_min_width(
-    actor: &SequenceActor,
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    wrap_padding: f64,
-    box_margin: f64,
-) -> f64 {
-    actor
-        .links
-        .keys()
-        .map(|label| {
-            measurer.measure(label, style).width.max(0.0) + 2.0 * wrap_padding + 2.0 * box_margin
-        })
-        .fold(0.0, f64::max)
 }
 
 pub(crate) fn sequence_actor_popup_rect_height(

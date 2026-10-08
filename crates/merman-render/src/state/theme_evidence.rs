@@ -391,10 +391,6 @@ impl StateThemeTerminalPlan {
         evidence
     }
 
-    pub(crate) fn has_pending_mechanisms(&self) -> bool {
-        !self.pending_mechanisms.is_empty()
-    }
-
     #[cfg(test)]
     pub(crate) fn record_complete_for_plan_test(&self) {
         if self.pending_mechanisms.is_empty() {

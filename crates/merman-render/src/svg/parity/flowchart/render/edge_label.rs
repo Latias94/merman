@@ -289,6 +289,10 @@ fn position_flowchart_edge_label(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The position resolver consumes cached geometry with its edge identity, local origin, and explicit recomputation policy."
+)]
 pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
     ctx: &FlowchartRenderCtx<'_>,
     key: crate::flowchart::FlowchartEdgeKey,

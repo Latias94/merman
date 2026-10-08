@@ -1787,15 +1787,6 @@ impl RenderEnvironment {
         self
     }
 
-    /// Installs the provisional catalog preparation backend used by custom-font themes.
-    ///
-    /// The external backend contract remains crate-private until its C4b assurance boundary is
-    /// complete. Ordinary text measurement uses the configured host `TextMeasurer`.
-    pub(crate) fn with_text_layout_backend(mut self, backend: Arc<dyn TextLayoutBackend>) -> Self {
-        self.text_layout_backend = Some(ConfiguredTextLayoutBackend(backend));
-        self
-    }
-
     /// Restricts optional renderer capabilities for every operation begun by this environment.
     ///
     /// This is primarily useful to artifact owners whose public feature contract can be narrower
@@ -1814,6 +1805,7 @@ impl RenderEnvironment {
         self
     }
 
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(crate) fn with_math_renderer(
         mut self,
         renderer: Arc<dyn MathRenderer + Send + Sync>,

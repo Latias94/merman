@@ -538,6 +538,10 @@ fn architecture_text_writer_facts(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn write_architecture_service_title(
     out: &mut impl SvgOutput,
     title: &str,

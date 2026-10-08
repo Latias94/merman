@@ -284,9 +284,9 @@ impl BlockMarkerPaintPlan {
                     style
                         .winner_rule_properties()
                         .filter_map(|(property, origin)| {
-                            (!reference_owned
-                                && !(fill_owned && property == ResolvedStyleProperty::Fill)
-                                && !(stroke_owned && property == ResolvedStyleProperty::Stroke))
+                            (!(reference_owned
+                                || fill_owned && property == ResolvedStyleProperty::Fill
+                                || stroke_owned && property == ResolvedStyleProperty::Stroke))
                                 .then_some((origin.rule_index(), property))
                         }),
                 );

@@ -231,6 +231,10 @@ impl FlowchartBaseTypographyPlan {
         )
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The plan stores independent typography ownership and measurement inputs"
+    )]
     fn new(
         font_family_css: String,
         font_size_px: f64,

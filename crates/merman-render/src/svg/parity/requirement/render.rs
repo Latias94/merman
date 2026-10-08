@@ -224,10 +224,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         out
     }
 
-    fn is_prototype_pollution_id(id: &str) -> bool {
-        id == "__proto__"
-    }
-
     struct NodeStyleOverrides {
         label_styles: String,
         label_div_style_prefix: String,

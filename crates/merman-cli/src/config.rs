@@ -11,7 +11,9 @@ use serde_json::Value;
 use std::path::Path;
 
 #[cfg(feature = "svg")]
-use crate::cli::{MathRendererKind, RenderCliArgs};
+use crate::cli::MathRendererKind;
+#[cfg(all(test, feature = "svg"))]
+use crate::cli::RenderCliArgs;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -223,7 +225,7 @@ fn parse_options_from_suppress_errors(suppress_errors: bool) -> ParseOptions {
     ParseOptions { suppress_errors }
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(test, feature = "svg"))]
 pub(crate) fn renderer_for(
     parse: &ParseCliArgs,
     render: &RenderCliArgs,
@@ -382,6 +384,7 @@ struct RendererInputs<'a> {
 
 #[cfg(feature = "svg")]
 impl<'a> RendererInputs<'a> {
+    #[cfg(test)]
     fn from_cli(render: &'a RenderCliArgs) -> Result<Self, CliError> {
         Ok(Self {
             theme: ThemeInput::resolve(

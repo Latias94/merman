@@ -1,6 +1,6 @@
 //! Flowchart v2 icon shape.
 
-use crate::svg::parity::flowchart::{escape_attr, flowchart_label_plain_text};
+use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
@@ -34,7 +34,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     // Mermaid's `labelHelper(...)` wraps icon labels in `.labelBkg` (2px padding).
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
 
     let outer_w = width.max(label_bbox_w);
     let outer_h = height + label_bbox_h + label_padding;

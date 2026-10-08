@@ -14,6 +14,10 @@ fn prepare_pair<S, L>(
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Family preparation forwards the operation-owned environment, layout, and diagnostics."
+)]
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     render_context: diagrams::flowchart::FlowchartRenderContext,

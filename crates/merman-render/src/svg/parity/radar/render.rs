@@ -4,6 +4,10 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn write_radar_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -198,6 +202,10 @@ pub(crate) fn render_radar_diagram_svg_model(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,

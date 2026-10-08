@@ -481,6 +481,10 @@ fn c4_write_hand_drawn_pair(
     out.checkpoint()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn c4_write_unified_shape(
     out: &mut impl SvgOutput,
     shape: &crate::model::C4ShapeLayout,
@@ -773,6 +777,10 @@ fn c4_write_unified_shape(
     out.checkpoint()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_c4_diagram_svg_typed(
     layout: &crate::model::C4DiagramLayout,
     model: &C4DiagramRenderModel,

@@ -479,14 +479,6 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    include_style: bool,
-) {
-    write_svg_text_markdown_centered_with_style(out, markdown, include_style.then_some(""));
-}
-
 pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,

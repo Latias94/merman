@@ -121,6 +121,10 @@ impl ClassTextPaint {
         &self.style
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn observe(
         &self,
         facts: ClassTextTerminalFacts,
@@ -652,6 +656,10 @@ impl ClassTextThemePlan {
 }
 
 impl ClassNodeLabelStyleFacts {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Records independent color, font, and font-size ownership from layout and the writer."
+    )]
     pub(crate) fn observe(
         &mut self,
         facts: &crate::text::VisibleTextStyleFacts,

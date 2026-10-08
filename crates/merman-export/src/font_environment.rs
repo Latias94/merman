@@ -365,6 +365,10 @@ impl FinalTreeFontEvidence {
         evidence
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Traverses the validated SVG tree while carrying each independent font evidence accumulator."
+    )]
     fn visit_group(
         &mut self,
         group: &usvg::Group,

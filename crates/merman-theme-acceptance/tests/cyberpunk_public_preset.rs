@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use merman::{
     Engine, OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason,

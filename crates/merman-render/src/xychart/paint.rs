@@ -661,6 +661,10 @@ impl<'a> PaintAccounting<'a> {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     fn observe(
         &mut self,
         target: ThemeTarget,

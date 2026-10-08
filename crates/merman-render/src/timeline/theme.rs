@@ -1022,6 +1022,10 @@ impl TimelineEventThemeReceipt {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn record_checkpointed_event(
         &mut self,
         event_index: usize,

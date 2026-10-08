@@ -21,6 +21,7 @@ pub const UPSTREAM_MERMAID_VERSION: &str = merman_core::baseline::PINNED_MERMAID
 const LEGACY_FAMILY_THEME_CONTRIBUTION_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const ERROR_BASELINE_VIEWBOX_WIDTH: f64 = 2412.0;
 const ERROR_BASELINE_VIEWBOX_HEIGHT: f64 = 512.0;
+#[cfg(test)]
 const ERROR_BASELINE_MAX_WIDTH_PX: f64 = 512.0;
 const ERROR_MESSAGE: &str = "Syntax error in text";
 const ERROR_MESSAGE_FONT_SIZE_PX: f64 = 150.0;
@@ -168,6 +169,7 @@ struct ErrorUnsupportedRoute {
 }
 
 impl ErrorTypographyThemePlan {
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,

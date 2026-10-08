@@ -44,6 +44,10 @@ impl SequenceActivationPlan<'_> {
         self.shadows.iter().flatten().count()
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     pub(super) fn prepare_paint(
         &mut self,
         typed_fill: bool,

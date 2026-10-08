@@ -136,13 +136,13 @@ pub(super) fn write_loop_text_lines(
             line.as_str()
         };
         let style = ctx.typography.terminal_style("", css.clone());
-        let paintless = ctx.text_shadow.is_paintless(&line);
+        let paintless = ctx.text_shadow.is_paintless(line);
         let shadow = if paintless {
             None
         } else {
             ctx.text_shadow.write_definition(
                 out,
-                &line,
+                line,
                 placement.x,
                 y + if ctx.margin == 0.0 {
                     i as f64 * ctx.style.font_size
@@ -165,7 +165,7 @@ pub(super) fn write_loop_text_lines(
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
-                text = escape_xml(&line)
+                text = escape_xml(line)
             );
         } else {
             let _ = write!(
@@ -174,7 +174,7 @@ pub(super) fn write_loop_text_lines(
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
-                text = escape_xml(&line)
+                text = escape_xml(line)
             );
         }
         ctx.typography_receipt
@@ -205,6 +205,10 @@ pub(super) fn write_loop_text_lines(
     ctx.checkpoints.checkpoint()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn write_section_title_lines(
     out: &mut impl SvgOutput,
     ctx: &LoopTextRenderContext<'_>,
@@ -250,13 +254,13 @@ pub(super) fn write_section_title_lines(
             line.as_str()
         };
         let style = ctx.typography.terminal_style("", css.clone());
-        let paintless = ctx.text_shadow.is_paintless(&line);
+        let paintless = ctx.text_shadow.is_paintless(line);
         let shadow = if paintless {
             None
         } else {
             ctx.text_shadow.write_definition(
                 out,
-                &line,
+                line,
                 x,
                 y + if ctx.margin == 0.0 {
                     i as f64 * ctx.style.font_size
@@ -278,7 +282,7 @@ pub(super) fn write_section_title_lines(
             x = fmt(x),
             y = fmt(y),
             style = escape_attr_display(&style),
-            text = escape_xml(&line)
+            text = escape_xml(line)
         );
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);

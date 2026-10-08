@@ -197,11 +197,6 @@ impl From<merman_render::Error> for RenderError {
     }
 }
 
-#[cfg(feature = "svg")]
-fn map_svg_error(error: merman_render::Error) -> RenderError {
-    RenderError::from(error)
-}
-
 /// Transport-neutral resource rejection projected by the common facade.
 ///
 /// Target adapters retain their richer policy types internally. Hosts can classify every
@@ -638,6 +633,10 @@ impl<'a> RenderRequest<'a> {
 /// Successful output from a canonical request.
 #[derive(Debug)]
 #[non_exhaustive]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Output variants preserve typed ownership of target-specific render artifacts."
+)]
 pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
@@ -963,6 +962,10 @@ fn render_svg_plan_target(
 }
 
 #[cfg(feature = "svg")]
+#[allow(
+    clippy::type_complexity,
+    reason = "The preparation tuple keeps completion, capability admission, and operation state together."
+)]
 fn prepare_resvg_target(
     semantic: SemanticArtifact,
     request: &SvgRequest,

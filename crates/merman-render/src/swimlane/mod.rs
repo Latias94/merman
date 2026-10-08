@@ -69,6 +69,10 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 
 /// Lays out a Swimlane model under the resource policy owned by the render operation.
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Swimlane preparation requires the admitted flowchart artifacts and layout inputs."
+)]
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -193,7 +197,7 @@ fn project_layout(
     working: &working::WorkingLayout,
     curve_by_id: &std::collections::HashMap<&str, &str>,
 ) -> SwimlaneLayout {
-    let bounds = output_bounds(&working);
+    let bounds = output_bounds(working);
     let nodes = working
         .nodes
         .values()

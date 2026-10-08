@@ -686,6 +686,10 @@ impl RequirementPaintThemeReceipt {
         self.inherited_edge_typography |= !text.trim().is_empty();
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+    )]
     pub(crate) fn record_checkpointed_node(
         &mut self,
         node_index: usize,

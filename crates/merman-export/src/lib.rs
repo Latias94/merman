@@ -3230,7 +3230,7 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
 fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
@@ -3242,7 +3242,7 @@ fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     }
 }
 
-#[cfg(feature = "pdf")]
+#[cfg(all(test, feature = "pdf"))]
 fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
     usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
@@ -3254,7 +3254,7 @@ fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn select_font_case_insensitively(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
@@ -3309,7 +3309,7 @@ fn select_font_case_insensitively(
     query_font_family(fontdb, usvg::fontdb::Family::Serif, weight, stretch, style)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn query_named_font_family_case_insensitively(
     fontdb: &usvg::fontdb::Database,
     requested_name: &str,
@@ -3341,7 +3341,7 @@ fn query_named_font_family_case_insensitively(
     })
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn query_font_family(
     fontdb: &usvg::fontdb::Database,
     family: usvg::fontdb::Family<'_>,
@@ -3358,7 +3358,7 @@ fn query_font_family(
     })
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
     let sans = first_font_family(fontdb, |face| !face.monospaced)
         .or_else(|| first_font_family(fontdb, |_| true));
@@ -3381,14 +3381,14 @@ fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn raster_default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
     query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
         .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
         .or_else(|| first_font_family(fontdb, |_| true))
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
 fn query_browser_like_fallback_font(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
@@ -3413,7 +3413,7 @@ fn query_browser_like_fallback_font(
     fontdb.query(&query)
 }
 
-#[cfg(feature = "pdf")]
+#[cfg(all(test, feature = "pdf"))]
 fn query_browser_like_pdf_fallback_font(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
@@ -3438,7 +3438,7 @@ fn query_browser_like_pdf_fallback_font(
     fontdb.query(&query)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn query_normal_font_family(
     fontdb: &usvg::fontdb::Database,
     family: usvg::fontdb::Family<'_>,
@@ -3456,7 +3456,7 @@ fn query_normal_font_family(
         .and_then(face_family_name)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
 where
     F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
@@ -3467,7 +3467,7 @@ where
         .and_then(face_family_name)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
     face.families
         .iter()
@@ -3476,7 +3476,7 @@ fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
         .map(|(family, _)| family.clone())
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
 fn font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
         usvg::FontFamily::Monospace => true,
@@ -3491,7 +3491,7 @@ fn font_requests_monospace(font: &usvg::Font) -> bool {
     })
 }
 
-#[cfg(feature = "pdf")]
+#[cfg(all(test, feature = "pdf"))]
 fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
         usvg::FontFamily::Monospace => true,
@@ -3506,7 +3506,7 @@ fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
     })
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 #[derive(Debug, Clone, Copy)]
 struct RgbaColor {
     red: u8,

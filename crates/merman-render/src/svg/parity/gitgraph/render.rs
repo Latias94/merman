@@ -890,6 +890,10 @@ fn gitgraph_commit_tag_label_height_px(
     crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
     model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
@@ -927,6 +931,10 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn render_gitgraph_diagram_svg_with_accessibility(
     layout: &crate::model::GitGraphDiagramLayout,
     acc_title: Option<&str>,

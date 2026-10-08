@@ -202,6 +202,7 @@ impl ThemePresetDescriptor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg(test)]
 pub(super) struct ThemePresetQualificationInvalidation {
     qualification_schema_revision: u32,
     admission_revision: u32,
@@ -209,6 +210,7 @@ pub(super) struct ThemePresetQualificationInvalidation {
     invalidate_on_resource_fingerprint_change: bool,
 }
 
+#[cfg(test)]
 impl ThemePresetQualificationInvalidation {
     pub(super) const fn current() -> Self {
         Self {
@@ -219,18 +221,22 @@ impl ThemePresetQualificationInvalidation {
         }
     }
 
+    #[cfg(test)]
     const fn qualification_schema_revision(self) -> u32 {
         self.qualification_schema_revision
     }
 
+    #[cfg(test)]
     const fn admission_revision(self) -> u32 {
         self.admission_revision
     }
 
+    #[cfg(test)]
     const fn invalidate_on_recipe_fingerprint_change(self) -> bool {
         self.invalidate_on_recipe_fingerprint_change
     }
 
+    #[cfg(test)]
     const fn invalidate_on_resource_fingerprint_change(self) -> bool {
         self.invalidate_on_resource_fingerprint_change
     }

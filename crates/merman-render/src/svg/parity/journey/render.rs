@@ -452,6 +452,10 @@ fn journey_css_from_parts(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
     model: &JourneyDiagramRenderModel,
@@ -757,10 +761,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             }
         }
 
-        if !matches!(task.mouth, crate::model::JourneyMouthKind::Ambivalent) {
-            if let Some(receipt) = text_receipt.as_mut() {
-                receipt.record_label(crate::journey::JourneyTextPaintRole::Mouth, None);
-            }
+        if !matches!(task.mouth, crate::model::JourneyMouthKind::Ambivalent)
+            && let Some(receipt) = text_receipt.as_mut()
+        {
+            receipt.record_label(crate::journey::JourneyTextPaintRole::Mouth, None);
         }
         out.push_str("</g>");
 

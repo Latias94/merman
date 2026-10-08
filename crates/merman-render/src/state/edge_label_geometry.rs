@@ -292,10 +292,12 @@ impl StateNativeLabelGeometry {
         self.height_px
     }
 
+    #[cfg(test)]
     pub(crate) const fn ink_left_from_anchor_px(&self) -> f64 {
         self.ink_left_from_anchor_px
     }
 
+    #[cfg(test)]
     pub(crate) const fn ink_right_from_anchor_px(&self) -> f64 {
         self.ink_right_from_anchor_px
     }
@@ -316,10 +318,6 @@ impl StateNativeLabelGeometry {
         self.measured_lines
             .as_ref()
             .map(|lines| lines.iter().map(|line| line.as_ref()))
-    }
-
-    pub(crate) const fn prepared_ink_extents(&self) -> Option<PreparedTextVerticalExtents> {
-        self.prepared_ink_extents
     }
 
     pub(crate) fn layout_metrics(&self) -> TextMetrics {

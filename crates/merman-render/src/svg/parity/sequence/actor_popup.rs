@@ -15,6 +15,10 @@ pub(super) struct SequenceActorPopupOptions<'a> {
     pub(super) actor_text_style: &'a TextStyle,
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn render_sequence_actor_popup_menus(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,

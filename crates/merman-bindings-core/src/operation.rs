@@ -338,6 +338,10 @@ impl BindingOperationExecution {
     }
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Execution variants retain the engine or compiler state required by their operation."
+)]
 enum PreparedOneShotExecution {
     Engine {
         engine: BindingEngine,

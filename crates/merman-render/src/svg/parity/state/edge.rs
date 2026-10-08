@@ -753,6 +753,10 @@ pub(super) fn render_state_edge_label(
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn write_visible_edge_label(
         out: &mut impl SvgOutput,
         id: &str,

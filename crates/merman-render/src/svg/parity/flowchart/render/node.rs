@@ -10,7 +10,6 @@ mod label;
 pub(in crate::svg::parity) mod roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
-pub(in crate::svg::parity::flowchart) use helpers::compute_node_label_metrics;
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
     pub node_id: &'a str,
     pub shape: &'a str,
@@ -30,7 +29,6 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
-    pub label_style: &'a str,
     pub rough_group_style: &'a str,
     pub fill_color: &'a str,
     pub stroke_color: &'a str,
@@ -367,7 +365,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             .as_ref()
             .map_or("", |(_, _, _, attr)| attr.as_str()),
         theme_style: &theme_style,
-        label_style: &compiled_styles.label_style,
         rough_group_style: &rough_group_style,
         fill_color,
         stroke_color,

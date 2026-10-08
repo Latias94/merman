@@ -337,6 +337,10 @@ fn fit_treemap_label_height(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn fit_treemap_label_width(
     font_size: f64,
     available_width: f64,

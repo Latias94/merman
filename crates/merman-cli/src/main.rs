@@ -1,3 +1,8 @@
+#![allow(
+    clippy::result_large_err,
+    reason = "CliError preserves the facade's rich render diagnostics for command-line callers."
+)]
+
 mod app;
 #[cfg(feature = "markdown")]
 mod batch;

@@ -1034,6 +1034,10 @@ fn terminal_domain(layout: &BlockDiagramLayout) -> Vec<NodeExpectation> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
+)]
 fn observe_shell_style(
     theme: &ResolvedDiagramTheme,
     style: &ResolvedThemeStyle,
@@ -1048,8 +1052,8 @@ fn observe_shell_style(
         style
             .winner_rule_properties()
             .filter_map(|(property, origin)| {
-                (!(owns_fill && property == ResolvedStyleProperty::Fill)
-                    && !(owns_stroke && property == ResolvedStyleProperty::Stroke))
+                (!(owns_fill && property == ResolvedStyleProperty::Fill
+                    || owns_stroke && property == ResolvedStyleProperty::Stroke))
                     .then_some((origin.rule_index(), property))
             }),
     );

@@ -405,7 +405,7 @@ impl OrdinalSelector {
 
     fn validate(self) -> Result<(), ThemeCompileValidationError> {
         match self {
-            Self::Exact(index) if index == 0 => Err(ThemeCompileValidationError::InvalidNumber {
+            Self::Exact(0) => Err(ThemeCompileValidationError::InvalidNumber {
                 field: "style.ordinal.index",
             }),
             Self::Cycle { period, offset } if period == 0 || offset >= period => {

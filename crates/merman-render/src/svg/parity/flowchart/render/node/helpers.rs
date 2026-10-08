@@ -266,6 +266,10 @@ pub(super) fn hand_drawn_path_pair(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The RoughJS adapter passes independent stroke inputs, deterministic randomness, and resource accounting through unchanged."
+)]
 pub(super) fn hand_drawn_path_pair_with_stroke(
     hand_drawn: bool,
     timing: crate::svg::parity::timing::RenderTiming,
@@ -538,14 +542,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     node_text_style: &crate::text::TextStyle,
 ) -> crate::text::TextMetrics {
     let layout_node = layout_node.filter(|_| !label_text.is_empty());
-    let label_text_plain = crate::svg::parity::flowchart::flowchart_label_plain_text(
-        label_text,
-        label_type,
-        ctx.node_html_labels,
-    );
     let prepared_metrics =
         || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, node_text_style);
-    let mut metrics = if let Some(layout_node) = layout_node {
+    let metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
                 width,

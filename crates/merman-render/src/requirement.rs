@@ -337,6 +337,10 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     crate::text::measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Requirement layout receives node geometry, text measurement, and the work meter."
+)]
 fn measure_requirement_label_metrics(
     measurer: &dyn TextMeasurer,
     html_style_regular: &TextStyle,
@@ -447,6 +451,10 @@ impl RequirementBoxLayout {
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Requirement layout receives node geometry, text measurement, and the work meter."
+)]
 fn requirement_box_layout(
     measurer: &dyn TextMeasurer,
     html_style_regular: &TextStyle,

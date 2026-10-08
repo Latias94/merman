@@ -49,6 +49,10 @@ fn note_rough_cache_key(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn render_state_node_svg(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,

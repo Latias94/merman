@@ -139,22 +139,10 @@ impl fmt::Debug for FontAssetSpec {
 }
 
 #[derive(Debug, Clone)]
-struct FontFamilyAliasSpec {
-    alias: String,
-    target: String,
-}
-
-#[derive(Debug, Clone)]
-struct GenericFamilySpec {
-    generic: GenericFontFamily,
-    target: String,
-}
-
-#[derive(Debug, Clone)]
 pub struct FontCatalogSpec {
     assets: Vec<FontAssetSpec>,
-    aliases: Vec<FontFamilyAliasSpec>,
-    generic_families: Vec<GenericFamilySpec>,
+    aliases: Vec<(String, String)>,
+    generic_families: Vec<(GenericFontFamily, String)>,
     available_sources: BTreeSet<FontSource>,
     embedding: FontEmbeddingRequirement,
 }
@@ -171,10 +159,7 @@ impl FontCatalogSpec {
     }
 
     pub fn with_alias(mut self, alias: impl Into<String>, target: impl Into<String>) -> Self {
-        self.aliases.push(FontFamilyAliasSpec {
-            alias: alias.into(),
-            target: target.into(),
-        });
+        self.aliases.push((alias.into(), target.into()));
         self
     }
 
@@ -183,10 +168,7 @@ impl FontCatalogSpec {
         generic: GenericFontFamily,
         target: impl Into<String>,
     ) -> Self {
-        self.generic_families.push(GenericFamilySpec {
-            generic,
-            target: target.into(),
-        });
+        self.generic_families.push((generic, target.into()));
         self
     }
 

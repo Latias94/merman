@@ -191,6 +191,10 @@ where
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The streaming CSS writer keeps independently typed SVG definition IDs and theme inputs explicit."
+)]
 pub(in crate::svg::parity) fn write_flowchart_css<
     DiagramId,
     DropShadowId,

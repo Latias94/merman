@@ -12,8 +12,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         edge,
         origin_x,
         origin_y,
-        trace_enabled,
-        collapse_degenerate_subgraph_route,
+        trace_enabled: _,
+        collapse_degenerate_subgraph_route: _,
     } = request;
 
     let le = ctx.layout_edges_by_key.get(&key)?;

@@ -11,6 +11,10 @@ use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
 use rustc_hash::FxHashMap;
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,

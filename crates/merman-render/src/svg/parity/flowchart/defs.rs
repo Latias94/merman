@@ -575,6 +575,10 @@ impl FlowchartMarkerEmissionPlan {
         (key, raw_color.as_str())
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Marker registration carries the edge identity, independent marker facets, and document scope to one checked emission boundary."
+    )]
     fn register_edge_with_identity(
         &mut self,
         key: crate::flowchart::FlowchartEdgeKey,

@@ -1,7 +1,5 @@
 //! Mermaid 11.17 collapsed Flowchart subgraph shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 

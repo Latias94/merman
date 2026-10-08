@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+#![allow(
+    clippy::result_large_err,
+    reason = "RenderError preserves rich terminal diagnostics at the public facade boundary."
+)]
 
 //! Mermaid parsing and rendering through one operation-scoped facade.
 //!

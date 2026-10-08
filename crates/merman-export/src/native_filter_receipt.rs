@@ -109,15 +109,11 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
                     record_definition(filter, &mut definitions)?;
                 }
             }
-            Event::Text(text) => {
-                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
-                    invalidate_containing_filters(depth, &mut open_filters);
-                }
+            Event::Text(text) if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {
+                invalidate_containing_filters(depth, &mut open_filters);
             }
-            Event::CData(text) => {
-                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
-                    invalidate_containing_filters(depth, &mut open_filters);
-                }
+            Event::CData(text) if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {
+                invalidate_containing_filters(depth, &mut open_filters);
             }
             Event::GeneralRef(_) => invalidate_containing_filters(depth, &mut open_filters),
             Event::Eof => break,
