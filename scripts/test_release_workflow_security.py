@@ -364,6 +364,7 @@ jobs:
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-render --no-default-features "
+                    "--features diagram-flowchart,diagram-swimlane "
                     "--test theme_font_capability --test flowchart_node_effects", command,
                 )
                 self.assertIn(
