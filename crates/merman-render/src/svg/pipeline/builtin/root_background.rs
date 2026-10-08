@@ -227,12 +227,12 @@ mod tests {
     #[test]
     fn root_background_preserves_custom_font_entities() {
         let svg = r#"<svg style="--font-family: &quot;Open Sans&quot;, sans-serif;"><g/></svg>"#;
-        let out = set_root_background_color(svg, "white");
+        let out = apply_root_background_edit(svg, "white");
         assert_eq!(
             out,
             r#"<svg style="--font-family: &quot;Open Sans&quot;, sans-serif; background-color: white;"><g/></svg>"#
         );
-        let replaced = set_root_background_color(&out, "transparent");
+        let replaced = apply_root_background_edit(&out, "transparent");
         assert_eq!(
             replaced,
             r#"<svg style="--font-family: &quot;Open Sans&quot;, sans-serif; background-color: transparent;"><g/></svg>"#
@@ -243,7 +243,7 @@ mod tests {
     fn root_background_preserves_semicolons_in_css_values() {
         let svg = r#"<svg style="--font: &quot;A;B&quot;; background-color: white;"><g/></svg>"#;
         assert_eq!(
-            set_root_background_color(svg, "#112233"),
+            apply_root_background_edit(svg, "#112233"),
             r##"<svg style="--font: &quot;A;B&quot;; background-color: #112233;"><g/></svg>"##
         );
     }
