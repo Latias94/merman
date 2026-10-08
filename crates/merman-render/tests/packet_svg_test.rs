@@ -316,13 +316,15 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
             .parse_metadata_sync(packet_source())
             .expect("parse dark Packet preset metadata");
         let parse_evidence = merman_core::__private::theme_parse_evidence(&metadata);
-        assert_eq!(parse_evidence.mermaid_residual_count(), 2);
+        // Retained dark presets expose Mermaid's compatibility theme name. Their typed palette
+        // owns the derived colors, so they intentionally do not claim Mermaid darkMode paths.
+        assert_eq!(parse_evidence.mermaid_residual_count(), 1);
         assert!(parse_evidence.mermaid_theme_field_survives());
-        assert!(parse_evidence.mermaid_dark_mode_field_survives());
+        assert!(!parse_evidence.mermaid_dark_mode_field_survives());
         assert_eq!(parse_evidence.fallback_contribution_count(), 0);
-        for path in ["theme", "darkMode", "themeVariables.darkMode"] {
-            assert!(parse_evidence.mermaid_residual_path_survives(path));
-        }
+        assert!(parse_evidence.mermaid_residual_path_survives("theme"));
+        assert!(!parse_evidence.mermaid_residual_path_survives("darkMode"));
+        assert!(!parse_evidence.mermaid_residual_path_survives("themeVariables.darkMode"));
         assert!(!parse_evidence.mermaid_residual_path_survives("themeVariables.primaryColor"));
 
         let diagram_id = format!("packet-{}", preset.id());
