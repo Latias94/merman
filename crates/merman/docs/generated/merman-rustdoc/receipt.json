@@ -30,13 +30,13 @@
       "fragment": "crate-overview",
       "source": "docs/rustdoc-src/crate-overview.md",
       "path": "crate-overview.md",
-      "sha256": "f01ffd38e71443f59f131b7e850f946b954cb8344d2cdd437b17cc50653abee8"
+      "sha256": "3d7667c6b7fd24598ee378a430dc5976cd6220ccb07b58be4af728ef3e15535a"
     },
     {
       "fragment": "render-module",
       "source": "docs/rustdoc-src/render-module.md",
       "path": "render-module.md",
-      "sha256": "f621f6d2f3238c273afec6a3fe32a14e48db38383a6722456a0189bb306eb283"
+      "sha256": "5239b35a13d18027eccfc5629792c1fcda19bf4e58f4d6072f0b0c39bb23f3fd"
     }
   ],
   "managed_files": [

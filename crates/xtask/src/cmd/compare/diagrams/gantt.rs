@@ -164,7 +164,8 @@ pub(super) fn compare_gantt_request(
             )
             .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
             let render_evidence = state.observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background("gantt", rendered.svg());
 
             Ok(CompareFixtureResult::Rendered {
                 render_evidence,

@@ -8,6 +8,7 @@ use super::{
 pub struct SvgOutputPolicy {
     pub preset: SvgPipelinePreset,
     pub css_override_policy: CssOverridePolicy,
+    /// Explicit host canvas color. `None` preserves Mermaid's unpainted root.
     pub root_background_color: Option<String>,
     pub drop_native_duplicate_fallbacks: bool,
     pub scoped_css: Option<String>,

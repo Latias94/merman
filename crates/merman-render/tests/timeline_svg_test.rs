@@ -115,9 +115,6 @@ timeline
     let root_open = svg.split_once('>').expect("root svg open tag").0;
 
     assert!(root_open.contains(r#"height=""#), "{root_open}");
-    assert!(
-        root_open.contains(r#"style="background-color: white;""#),
-        "{root_open}"
-    );
+    assert!(!root_open.contains("style="), "{root_open}");
     assert!(!root_open.contains("max-width"), "{root_open}");
 }

@@ -346,7 +346,8 @@ fn run_flowchart_compare_with_math_renderer(
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background("flowchart", rendered.svg());
             let mut notes = Vec::new();
             let browser_measured_math = if let Some(evidence) = finish_math_evidence(
                 input.stem,

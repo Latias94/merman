@@ -2003,10 +2003,7 @@ mod tests {
             root_open.contains(r#"viewBox="-8 -8 16 16""#),
             "{root_open}"
         );
-        assert!(
-            root_open.contains(r#"style="background-color: white;""#),
-            "{root_open}"
-        );
+        assert!(!root_open.contains("style="), "{root_open}");
         assert!(!root_open.contains("max-width"), "{root_open}");
     }
 

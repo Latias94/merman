@@ -44,6 +44,55 @@ fn cli_renders_svg_from_stdin_to_stdout() {
     let svg = String::from_utf8(output.stdout).expect("SVG should be UTF-8");
     assert!(svg.trim_start().starts_with("<svg"), "{svg}");
     assert!(svg.contains("<foreignObject"), "{svg}");
+    let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
+    assert!(
+        !doc.root_element()
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("background"),
+        "native SVG rendering should leave the canvas unpainted"
+    );
+}
+
+#[test]
+fn mmdc_svg_canvas_defaults_to_white_and_accepts_overrides() {
+    for color in [None, Some("transparent"), Some("#112233")] {
+        let mut args = vec!["mmdc", "-i", "-", "-o", "-"];
+        if let Some(color) = color {
+            args.extend(["-b", color]);
+        }
+        let output = run_with_stdin(&args, SOURCE);
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let svg = String::from_utf8(output.stdout).expect("UTF-8 SVG");
+        let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
+        assert!(
+            doc.root_element()
+                .attribute("style")
+                .unwrap()
+                .contains(&format!("background-color: {};", color.unwrap_or("white"))),
+            "{svg}"
+        );
+    }
+}
+
+#[test]
+fn native_svg_canvas_accepts_explicit_host_colors() {
+    for color in ["transparent", "white", "#112233"] {
+        let output = run_with_stdin(
+            &["render", "--format", "svg", "--background", color, "-"],
+            SOURCE,
+        );
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let svg = String::from_utf8(output.stdout).expect("UTF-8 SVG");
+        let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
+        assert!(
+            doc.root_element()
+                .attribute("style")
+                .unwrap()
+                .contains(&format!("background-color: {color};")),
+            "{svg}"
+        );
+    }
 }
 
 #[test]

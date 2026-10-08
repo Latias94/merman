@@ -295,6 +295,14 @@ compatibility policy for the CSS they provide.
 without relying on CSS cascade over an inline style. Passing `"transparent"` keeps the canvas
 transparent for hosts that composite diagrams over their own background.
 
+Core SVG output leaves the root background unset, matching `mermaid.render`. Theme variables
+such as `background` and `edgeLabelBackground` continue to control diagram-owned styling; they
+do not implicitly paint the canvas. Set `SvgOutputPolicy.root_background_color` (or add a
+`RootBackgroundPostprocessor`) when the host needs an explicit white, transparent, or custom
+canvas. Native CLI `render` follows the same default and accepts `--background`; the
+`mmdc` compatibility command keeps its explicit white default and accepts `--backgroundColor`.
+PNG/PDF canvas compositing is independently controlled by export options, not SVG root CSS.
+
 Binding consumers can opt into generic duplicate-fallback cleanup without writing a Rust
 postprocessor:
 

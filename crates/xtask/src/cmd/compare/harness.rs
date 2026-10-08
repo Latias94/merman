@@ -1148,23 +1148,11 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let mut svg_request = svg_request(
+            let svg_request = svg_request(
                 environment.clone(),
                 layout_options.clone(),
                 Some(diagram_id),
             );
-            // The reference CLI applies its white output background even when a
-            // negative fixture renders as Error; the dedicated Error lane omits it.
-            if semantic.semantic_kind() == "error" && fact.diagram != "error" {
-                svg_request.pipeline = Some(
-                    merman::svg::SvgOutputPolicy {
-                        root_background_color: Some("white".to_string()),
-                        ..Default::default()
-                    }
-                    .pipeline(),
-                );
-            }
-
             match fact.specialist {
                 SpecialistHook::None => {}
                 SpecialistHook::SequenceMath => {}
@@ -1191,7 +1179,8 @@ pub(crate) fn run_canonical_svg_compare(
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background(fact.diagram, rendered.svg());
             let mut fixture_notes = Vec::new();
             let browser_measured_math = if let Some(evidence) = finish_math_evidence(
                 input.stem,
@@ -2496,11 +2485,34 @@ mod tests {
                 .observe(fact.diagram, rendered.evidence())
                 .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
 
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+            let core_document =
+                roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                    panic!("{} emitted invalid root SVG: {error}", fact.diagram)
+                });
+            assert!(
+                !core_document
+                    .root_element()
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("background"),
+                "{} core root must leave its canvas unset",
+                fact.diagram
+            );
+            let captured_svg =
+                crate::cmd::apply_upstream_svg_capture_background(fact.diagram, rendered.svg());
+            let document = roxmltree::Document::parse(&captured_svg).unwrap_or_else(|error| {
                 panic!("{} emitted invalid root SVG: {error}", fact.diagram)
             });
             let root = document.root_element();
             assert!(root.has_tag_name("svg"), "{} root is not svg", fact.diagram);
+            assert_eq!(
+                root.attribute("style")
+                    .unwrap_or_default()
+                    .contains("background-color: white;"),
+                fact.diagram != "error",
+                "{} capture canvas must match upstream generation policy",
+                fact.diagram
+            );
             assert_eq!(
                 root.attribute("id"),
                 Some(diagram_id.as_str()),
@@ -3217,24 +3229,16 @@ mod tests {
             |_, _, _, _| {},
             |_, _, _| None,
             |observed, input| {
-                let mut request = svg_request(
+                let request = svg_request(
                     environment.clone(),
                     super::super::svg_compare_layout_opts(),
                     Some(super::super::sanitize_svg_id(input.stem)),
                 );
-                if diagram != "error" {
-                    request.pipeline = Some(
-                        merman::svg::SvgOutputPolicy {
-                            root_background_color: Some("white".to_string()),
-                            ..Default::default()
-                        }
-                        .pipeline(),
-                    );
-                }
                 let rendered = render_source_svg(&renderer, input.text, request)
                     .map_err(|error| error.to_string())?;
                 let render_evidence = observed.observe(input.stem, rendered.evidence())?;
-                let mut local_svg = rendered.svg().to_owned();
+                let mut local_svg =
+                    crate::cmd::apply_upstream_svg_capture_background(diagram, rendered.svg());
                 mutate_local(&mut local_svg);
                 Ok(CompareFixtureResult::Rendered {
                     render_evidence,
