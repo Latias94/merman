@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "source": {
+    "base": "origin/main",
+    "head": "65a253404",
+    "branch": "refactor/theme-ownership-performance"
+  },
+  "scope": {
+    "normal_runtime": [
+      "crates/merman-render/src/diagram_theme/compiler.rs",
+      "crates/merman-render/src/diagram_theme/family_program.rs",
+      "crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs",
+      "crates/merman-render/src/diagram_theme/support.rs",
+      "crates/merman-render/src/diagram_theme/support_manifest.rs",
+      "crates/merman-render/src/theme_route_cutover.rs"
+    ],
+    "acceptance_only": [
+      "crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs",
+      "crates/merman-render/src/diagram_theme/legacy_projection_retirement.rs",
+      "crates/merman-render/src/diagram_theme/legacy_tombstones.rs",
+      "crates/merman-theme-acceptance/src/cutover_manifest.rs"
+    ],
+    "private_acceptance_crate": "crates/merman-theme-acceptance"
+  },
+  "observations": [
+    {
+      "id": "legacy-bridge-is-not-normal-runtime",
+      "evidence": "legacy_family_theme_bridge, legacy_projection_retirement, and legacy_tombstones are cfg(any(test, merman_internal_theme_acceptance)); the acceptance crate is cfg(merman_internal_theme_acceptance) and publish=false",
+      "decision": "candidate-for-retirement",
+      "required_proof": "release-preflight and private acceptance no longer require bridge inventory or retirement receipts"
+    },
+    {
+      "id": "route-cutover-has-acceptance-only-and-runtime-parts",
+      "evidence": "theme_route_cutover is always declared; collection and receipt functions are cfg(merman_internal_theme_acceptance), while route identity and projection types are used by renderer-owned raster/theme code",
+      "decision": "retain-and-split",
+      "required_proof": "separate runtime projection identities from acceptance-only cutover evidence without changing raster ownership"
+    },
+    {
+      "id": "legacy-inventory-is-empty",
+      "evidence": "family_mechanism_matrix test legacy_route_inventory_is_empty_after_final_family_retirement asserts an empty compatibility route inventory",
+      "decision": "replace-history-with-final-snapshot-after-acceptance-review",
+      "required_proof": "no published compatibility behavior, public consumer, or release gate depends on historical bridge inventory"
+    },
+    {
+      "id": "support-and-routing-are-distinct-contracts",
+      "evidence": "support_manifest is consumed by describe_theme_support, while family_mechanism_matrix compiles renderer routes",
+      "decision": "share-domain-identities-only",
+      "required_proof": "unknown-input states, support claims, and route dispositions remain independently testable"
+    }
+  ],
+  "preserve": [
+    "unknown schema, family, output, target, and facet handling",
+    "strict native filter receipts and glyph containment",
+    "route provenance and artifact fingerprints",
+    "cancellation, resource limits, and error precedence",
+    "public support descriptors and consumer serialization"
+  ]
+}
