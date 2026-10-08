@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated": "2026-10-05",
+  "updated": "2026-10-08",
   "compression_source": "stripped",
   "notes": "Provisional regression ceilings combine the higher accepted per-profile limits from the theme branch's 2026-09-14 measurement and main's 2026-09-30 Mermaid 12 measurement; they are not measurements of the merged source. Web compression follows wasm-tools strip --all on final assembled npm WASM; Typst uses the release wasm-opt -Oz and strip pipeline. Rebuild and remeasure all six final artifacts with the theme features and Mermaid 12.1 before publishing or claiming artifact-size acceptance. Historical inputs and recipes are recorded in docs/performance/theme_artifact_budget_reassessment_2026-09-14.md and the main-branch release measurements.",
   "artifact_profiles": {
@@ -11,34 +11,34 @@
       "max_brotli_bytes": 3381000
     },
     "web-analysis": {
-      "max_raw_bytes": 3786000,
-      "max_stripped_bytes": 3785000,
-      "max_gzip_bytes": 1475000,
-      "max_brotli_bytes": 1125000
+      "max_raw_bytes": 3944000,
+      "max_stripped_bytes": 3944000,
+      "max_gzip_bytes": 1558000,
+      "max_brotli_bytes": 1195000
     },
     "web-ascii": {
-      "max_raw_bytes": 5354000,
-      "max_stripped_bytes": 5354000,
-      "max_gzip_bytes": 2025000,
-      "max_brotli_bytes": 1550000
+      "max_raw_bytes": 5522000,
+      "max_stripped_bytes": 5522000,
+      "max_gzip_bytes": 2079000,
+      "max_brotli_bytes": 1579000
     },
     "web-editor": {
-      "max_raw_bytes": 3900000,
-      "max_stripped_bytes": 3900000,
-      "max_gzip_bytes": 1525000,
-      "max_brotli_bytes": 1175000
+      "max_raw_bytes": 4060000,
+      "max_stripped_bytes": 4060000,
+      "max_gzip_bytes": 1604000,
+      "max_brotli_bytes": 1226000
     },
     "web-full": {
-      "max_raw_bytes": 16403000,
-      "max_stripped_bytes": 16403000,
-      "max_gzip_bytes": 6117000,
-      "max_brotli_bytes": 4499000
+      "max_raw_bytes": 16804000,
+      "max_stripped_bytes": 16804000,
+      "max_gzip_bytes": 6282000,
+      "max_brotli_bytes": 4646000
     },
     "web-render": {
-      "max_raw_bytes": 14460000,
-      "max_stripped_bytes": 14460000,
-      "max_gzip_bytes": 5454000,
-      "max_brotli_bytes": 4023000
+      "max_raw_bytes": 14843000,
+      "max_stripped_bytes": 14842000,
+      "max_gzip_bytes": 5606000,
+      "max_brotli_bytes": 4155000
     }
   }
 }
