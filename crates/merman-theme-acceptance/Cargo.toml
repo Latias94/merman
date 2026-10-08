@@ -16,6 +16,7 @@ png = ["dep:image", "dep:png", "merman/png", "merman-export/png"]
 jpeg = ["merman/jpeg", "merman-export/jpeg"]
 pdf = ["merman/pdf", "merman-export/pdf"]
 layout-cytoscape = ["merman/layout-cytoscape", "merman-render/layout-cytoscape"]
+all-diagrams = ["merman/all-diagrams"]
 
 [dependencies]
 merman = { workspace = true, features = ["svg"] }

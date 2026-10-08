@@ -71,18 +71,14 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 );
                 assert_eq!(
                     observation.mermaid_residual_count(),
-                    if native_candidate { 0 } else { 2 },
-                    "only retained recipes request base/dark-mode compatibility"
+                    if native_candidate { 0 } else { 1 },
+                    "only retained recipes select a Mermaid fallback theme"
                 );
                 assert_eq!(observation.bridge_residual_count(), 0);
-                // The retained Mermaid-compatibility recipes still carry the shared Text paint
-                // into Sequence, whose writer does not consume that generic target. The native
-                // candidate recipes have family-local role paints and therefore do not retain it.
-                let expected_theme_residual =
-                    usize::from(!native_candidate && family == DiagramFamilyId::SEQUENCE);
+                // Typed role paints reach the bounded terminals in these catalog scenes.
                 assert_eq!(
                     observation.theme_residual_count(),
-                    expected_theme_residual,
+                    0,
                     "theme residual classification must match the preset profile and family",
                 );
                 assert_eq!(observation.source_residual_count(), 0);

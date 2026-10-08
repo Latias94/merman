@@ -540,7 +540,8 @@ jobs:
             -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
             --lib --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png --test preset_qualification \
+            --no-default-features --features png,all-diagrams \
+              --test preset_qualification \
             --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
             --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
