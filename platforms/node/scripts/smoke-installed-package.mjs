@@ -130,7 +130,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
             for (const [family, source] of Object.entries(sources)) {
               results[family] = await engine.executeOperation({
                 operationId: "svg", source,
-                optionsJson: JSON.stringify({ theme, site_config: { htmlLabels: false, flowchart: { look: "classic" } },
+                optionsJson: JSON.stringify({ theme, site_config: { theme: "dark", htmlLabels: false, flowchart: { look: "classic" } },
                   svg: { diagram_id: "node-recipe-" + family } }),
               });
             }
@@ -142,7 +142,8 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
       for (const [family, source] of Object.entries(sources)) {
         const result = await engine.executeOperation({
           operationId: "svg", source,
-          optionsJson: JSON.stringify({ theme: recipe, site_config: { htmlLabels: false, flowchart: { look: "classic" } },
+          optionsJson: JSON.stringify({ theme: recipe,
+            site_config: { theme: "dark", htmlLabels: false, flowchart: { look: "classic" } },
             svg: { diagram_id: `node-recipe-${family}` } }),
         });
         assert.deepEqual(imported[family], result, `${name}/${family}: fresh process changed output`);
