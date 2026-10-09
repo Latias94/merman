@@ -1,6 +1,5 @@
 //! Flowchart v2 triangle (Extract).
 
-use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
@@ -17,6 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         None,
         label.text,
         label.label_type,
@@ -104,9 +104,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         );
     }
 
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let node_text_style = super::super::helpers::node_source_text_style(
+        ctx,
+        Some(common.node_id),
         common.node_classes,
         common.node_styles,
     );

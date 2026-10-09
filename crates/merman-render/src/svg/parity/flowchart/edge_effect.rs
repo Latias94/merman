@@ -23,7 +23,7 @@ impl FlowchartEdgeEffects {
             return Ok(plan);
         }
 
-        if flowchart_config_look(ctx.config) != "classic" {
+        if ctx.compatibility.look.as_str() != "classic" {
             return Ok(plan);
         }
         let Some(effect) = ctx.edge_theme.effect() else {

@@ -212,8 +212,9 @@ pub(crate) use style::{
     flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
 };
 pub(crate) use svg_label_artifact::{
-    FlowchartLabelTypographyOverrides, FlowchartPreparedMathResolution, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
+    FlowchartLabelTypographyOverrides, FlowchartNodeSourceTypography,
+    FlowchartPreparedMathResolution, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
+    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };

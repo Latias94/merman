@@ -408,6 +408,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
 ) {
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,

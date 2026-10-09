@@ -16,6 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         None,
         label.text,
         label.label_type,

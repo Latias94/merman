@@ -38,7 +38,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             ),
         })?;
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
-    let data_look = flowchart_config_diagram_look(ctx.config);
+    let data_look = ctx.compatibility.look;
     let hand_drawn = data_look.is_hand_drawn();
     let emitted_styles = ctx.edge_style_plan.edge_for(key)?;
     let animation = ctx.edge_style_plan.animation_for(key)?;

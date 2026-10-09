@@ -70,7 +70,7 @@ fn write_swimlane_rect(
     fill: Option<&str>,
     stroke: &str,
 ) -> FlowchartShapeFacetEmissionReceipt {
-    if flowchart_config_look(ctx.config) == "handDrawn" {
+    if ctx.compatibility.look.as_str() == "handDrawn" {
         let stroke_width = parse_css_px_f32(
             compiled.stroke_width.as_ref(),
             typed_stroke_width.unwrap_or(1.3),
@@ -250,7 +250,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         lane_dom_id,
         escape_xml_display(&lane.id),
     );
-    let data_look = flowchart_config_look(ctx.config);
+    let data_look = ctx.compatibility.look.as_str();
     let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id)
         .or_else(|| (subgraph.is_none() && !ctx.compatibility.palette.is_empty()).then_some(0));
     let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));

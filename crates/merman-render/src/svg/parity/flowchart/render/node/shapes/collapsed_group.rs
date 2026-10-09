@@ -56,6 +56,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
 ) -> CollapsedGroupGeometry {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,

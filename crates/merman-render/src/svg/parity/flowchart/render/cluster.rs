@@ -90,7 +90,7 @@ fn write_flowchart_cluster_shape(
 ) -> FlowchartShapeFacetEmissionReceipt {
     if ctx.diagram_type == "agentflow" {
         let stroke = &ctx.compatibility.agentflow_container_stroke;
-        if flowchart_config_look(ctx.config) == "handDrawn" {
+        if ctx.compatibility.look.as_str() == "handDrawn" {
             let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
             if let Some(stroke_d) =
                 super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
@@ -125,7 +125,7 @@ fn write_flowchart_cluster_shape(
         return FlowchartShapeFacetEmissionReceipt::none();
     }
 
-    if flowchart_config_look(ctx.config) == "handDrawn" {
+    if ctx.compatibility.look.as_str() == "handDrawn" {
         let stroke_width = parse_css_px_f32(
             compiled_styles.stroke_width.as_ref(),
             typed_stroke_width.unwrap_or(1.3),
@@ -381,7 +381,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let color_attr = super::super::agentflow::container_color_slot(ctx, &cluster.id)
         .map(|slot| format!(r#" data-color-id="color-{slot}""#))
         .unwrap_or_default();
-    let data_look = flowchart_config_look(ctx.config);
+    let data_look = ctx.compatibility.look.as_str();
 
     // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
     if !ctx.edge_html_labels {

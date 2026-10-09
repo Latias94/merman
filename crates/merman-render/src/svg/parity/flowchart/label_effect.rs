@@ -91,7 +91,7 @@ impl FlowchartLabelEffects {
         let Some(sidecar) = ctx.svg_label_sidecar else {
             return Ok(plan);
         };
-        if ctx.swimlane_direction.is_some() || flowchart_config_look(ctx.config) != "classic" {
+        if ctx.swimlane_direction.is_some() || ctx.compatibility.look.as_str() != "classic" {
             return Ok(plan);
         }
         if !ctx.effect_eligibility.label {
@@ -148,16 +148,11 @@ impl FlowchartLabelEffects {
                 if !source.label_shadow_source_is_bounded() {
                     continue;
                 }
-                let base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-                    &ctx.html_label_text_style
-                } else {
-                    &ctx.text_style
-                };
                 let text_style = weights.apply_cow(
                     ThemeTarget::NodeLabel,
-                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                        base_style,
-                        ctx.class_defs,
+                    super::render::node::helpers::node_source_text_style(
+                        ctx,
+                        Some(id),
                         info.node_classes,
                         info.node_styles,
                     ),

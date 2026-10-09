@@ -852,10 +852,48 @@ pub(crate) struct FlowchartSvgLabelSidecarBuilder {
 
 #[derive(Debug, Default)]
 struct PendingFlowchartSvgLabels {
+    node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
     sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
     render_ids: FlowchartSvgLabelSlots<Box<str>>,
+    render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FlowchartNodeSourceTypography {
+    style: TextStyle,
+    _retained_reservation: Option<PreparedTextRetainedReservation>,
+}
+
+impl FlowchartNodeSourceTypography {
+    pub(crate) fn from_style(
+        style: TextStyle,
+        work: &Arc<OperationWorkMeter>,
+    ) -> Result<Self, ResourceLimitExceeded> {
+        let retained_bytes = Self::retained_bytes(&style);
+        let reservation = work.reserve_prepared_text_retained_bytes(retained_bytes)?;
+        Ok(Self {
+            style,
+            _retained_reservation: Some(reservation),
+        })
+    }
+
+    fn retained_bytes(style: &TextStyle) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(style.font_family.as_ref().map_or(0, String::len))
+            .saturating_add(style.font_weight.as_ref().map_or(0, String::len))
+            .saturating_add(style.font_style.as_ref().map_or(0, String::len))
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES)
+    }
+}
+
+impl std::ops::Deref for FlowchartNodeSourceTypography {
+    type Target = TextStyle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.style
+    }
 }
 
 #[derive(Debug)]
@@ -1151,8 +1189,50 @@ impl FlowchartSvgLabelSidecarBuilder {
         }
     }
 
+    fn record_render_id(&self, owner: FlowchartSvgLabelOwner, render_id: &str) -> bool {
+        if self
+            .pending
+            .borrow()
+            .render_id_reservations
+            .get(owner)
+            .is_some()
+        {
+            debug_assert_eq!(
+                self.pending
+                    .borrow()
+                    .render_ids
+                    .get(owner)
+                    .map(AsRef::as_ref),
+                Some(render_id)
+            );
+            return true;
+        }
+        let retained_bytes = FLOWCHART_RENDER_ID_RECORD_BYTES
+            .saturating_add(render_id.len())
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        let reservation = match self
+            .work_meter
+            .as_ref()
+            .map(|work| work.reserve_prepared_text_retained_bytes(retained_bytes))
+            .transpose()
+        {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                self.record_prepared_resource_error(error);
+                return false;
+            }
+        };
+        let mut pending = self.pending.borrow_mut();
+        pending.render_ids.insert(owner, render_id.into());
+        if let Some(reservation) = reservation {
+            pending.render_id_reservations.insert(owner, reservation);
+        }
+        true
+    }
+
     fn reserve_prepared_label(
         &self,
+        owner: FlowchartSvgLabelOwner,
         label: &PreparedFlowchartSvgLabel,
         source: &FlowchartSvgLabelSourceEntry,
         render_id: &str,
@@ -1160,12 +1240,21 @@ impl FlowchartSvgLabelSidecarBuilder {
         let Some(work_meter) = self.work_meter.as_ref() else {
             return true;
         };
-        let retained_bytes = label
+        let mut retained_bytes = label
             .retained_bytes()
             .saturating_add(source.retained_bytes())
-            .saturating_add(FLOWCHART_RENDER_ID_RECORD_BYTES)
-            .saturating_add(render_id.len())
             .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        if self
+            .pending
+            .borrow()
+            .node_source_typography
+            .get(owner)
+            .is_none()
+        {
+            retained_bytes = retained_bytes
+                .saturating_add(FLOWCHART_RENDER_ID_RECORD_BYTES)
+                .saturating_add(render_id.len());
+        }
         match label.reserve_retained_bytes(work_meter, retained_bytes) {
             Ok(()) => true,
             Err(error) => {
@@ -1255,6 +1344,43 @@ impl FlowchartSvgLabelSidecarBuilder {
         {
             return failed_prepared_metrics();
         }
+        if matches!(
+            owner,
+            FlowchartSvgLabelOwner::Node(_)
+                | FlowchartSvgLabelOwner::EmptySubgraphNode(_)
+                | FlowchartSvgLabelOwner::SwimlaneNode(_)
+        ) && self
+            .pending
+            .borrow()
+            .node_source_typography
+            .get(owner)
+            .is_none()
+        {
+            if !self.record_render_id(owner, render_id) {
+                return failed_prepared_metrics();
+            }
+            let retained_bytes = FlowchartNodeSourceTypography::retained_bytes(request.style);
+            let reservation = match self
+                .work_meter
+                .as_ref()
+                .map(|work| work.reserve_prepared_text_retained_bytes(retained_bytes))
+                .transpose()
+            {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    self.record_prepared_resource_error(error);
+                    return failed_prepared_metrics();
+                }
+            };
+            let mut pending = self.pending.borrow_mut();
+            pending.node_source_typography.insert(
+                owner,
+                Arc::new(FlowchartNodeSourceTypography {
+                    style: request.style.clone(),
+                    _retained_reservation: reservation,
+                }),
+            );
+        }
         let weighted_wrap = self
             .label_weights
             .apply(owner.typography_target(), request.style);
@@ -1266,10 +1392,6 @@ impl FlowchartSvgLabelSidecarBuilder {
             ..request
         };
         let metrics_style = weighted_metrics.as_ref();
-        // Base typography evidence covers every visible label shell, including HTML labels that
-        // intentionally bypass native SVG source preparation. Retain their semantic owner before
-        // any measurement fast path so the terminal writer can bind source-local typography to
-        // the exact occurrence instead of falling back to an unidentified residual.
         if self
             .base_typography
             .as_ref()
@@ -1489,6 +1611,19 @@ impl FlowchartSvgLabelSidecarBuilder {
             metrics_style,
             foreground,
             render_id,
+        )
+        .saturating_sub(
+            if self
+                .pending
+                .borrow()
+                .node_source_typography
+                .get(owner)
+                .is_some()
+            {
+                FLOWCHART_RENDER_ID_RECORD_BYTES.saturating_add(render_id.len())
+            } else {
+                0
+            },
         );
         let occurrence_id = owner.prepared_math_occurrence_id();
         let outcome = match self.math_backend.as_ref() {
@@ -1525,6 +1660,19 @@ impl FlowchartSvgLabelSidecarBuilder {
             render_id,
             &occurrence_id,
             &outcome,
+        )
+        .saturating_sub(
+            if self
+                .pending
+                .borrow()
+                .node_source_typography
+                .get(owner)
+                .is_some()
+            {
+                FLOWCHART_RENDER_ID_RECORD_BYTES.saturating_add(render_id.len())
+            } else {
+                0
+            },
         );
         let Some(work_meter) = self.work_meter.as_ref() else {
             return PreparedMathMeasurement::Unavailable;
@@ -1612,7 +1760,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                 },
                 Some(metrics_typography),
             );
-            if !self.reserve_prepared_label(&label, &source, render_id) {
+            if !self.reserve_prepared_label(owner, &label, &source, render_id) {
                 return Ok(failed_prepared_metrics());
             }
             let mut pending = self.pending.borrow_mut();
@@ -1680,7 +1828,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         )
         .with_label_entry(label_entry);
         label.native_centered_paint_bounds = native_centered_paint_bounds;
-        if !self.reserve_prepared_label(&label, &source, render_id) {
+        if !self.reserve_prepared_label(owner, &label, &source, render_id) {
             return Ok(failed_prepared_metrics());
         }
         let mut pending = self.pending.borrow_mut();
@@ -1695,10 +1843,12 @@ impl FlowchartSvgLabelSidecarBuilder {
         let source_plans_by_owner = self.source_plans_by_owner.into_inner();
         let pending = self.pending.into_inner();
         FlowchartSvgLabelSidecar::new(
+            pending.node_source_typography,
             pending.sources,
             pending.prepared,
             pending.math,
             pending.render_ids,
+            pending.render_id_reservations,
             self.base_typography,
             self.label_weights,
             self.edge_label_padding,
@@ -1933,6 +2083,8 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
 /// Immutable render-side index. It is private to a single prepared Flowchart family artifact.
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartSvgLabelSidecar {
+    _render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
+    node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
     sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
@@ -1965,10 +2117,12 @@ impl FlowchartSvgLabelSidecar {
         reason = "The sidecar seals independent prepared label slots and terminal indexes"
     )]
     fn new(
+        node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
         sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
         math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
+        render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
         base_typography: Option<super::FlowchartBaseTypographyPlan>,
         label_weights: super::FlowchartLabelWeights,
         edge_label_padding: super::FlowchartEdgeLabelPadding,
@@ -1994,6 +2148,8 @@ impl FlowchartSvgLabelSidecar {
             prepared_error = Some(TextLayoutError::LimitExceeded("prepared_label_ledger"));
         }
         let mut sidecar = Self {
+            _render_id_reservations: render_id_reservations,
+            node_source_typography,
             sources,
             prepared,
             math,
@@ -2106,6 +2262,13 @@ impl FlowchartSvgLabelSidecar {
                 .or_else(|| self.node_owner_by_id.get(node_id))
                 .copied()
         }
+    }
+
+    pub(crate) fn node_source_style(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+    ) -> Option<&Arc<FlowchartNodeSourceTypography>> {
+        self.node_source_typography.get(owner)
     }
 
     pub(crate) fn edge_owner(
@@ -2573,6 +2736,165 @@ mod tests {
     use merman_core::MermaidConfig;
 
     use super::*;
+
+    #[test]
+    fn source_typography_fallback_reserves_and_releases_its_owned_fonts() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+            .unwrap();
+        let limited = Arc::new(OperationWorkMeter::new(policy));
+        let style = TextStyle {
+            font_family: Some("Caller Font".into()),
+            ..TextStyle::default()
+        };
+        let error = FlowchartNodeSourceTypography::from_style(style.clone(), &limited).unwrap_err();
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(limited.prepared_text_retained_bytes(), 0);
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let projection = Arc::new(FlowchartNodeSourceTypography::from_style(style, &work).unwrap());
+        assert!(work.prepared_text_retained_bytes() > 0);
+        let terminal = Arc::clone(&projection);
+        drop(projection);
+        assert!(work.prepared_text_retained_bytes() > 0);
+        drop(terminal);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn render_id_budget_is_single_owned_across_source_native_and_math() {
+        use crate::resources::RenderResourcePolicy;
+        fn retained_for(render_id: &str, math: bool) -> usize {
+            let work = Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            ));
+            let config = MermaidConfig::default();
+            let builder =
+                FlowchartSvgLabelSidecarBuilder::new_with_work_meter(None, None, Arc::clone(&work));
+            let style = TextStyle::default();
+            let environment = RenderEnvironment::deterministic();
+            let session = environment.begin_session().unwrap();
+            let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+            let owner = FlowchartSvgLabelOwner::Node(0);
+            builder.measure_for_layout(
+                owner,
+                render_id,
+                FlowchartLabelMetricsRequest {
+                    measurer: &measurer,
+                    raw_label: if math { "$$x$$" } else { "label" },
+                    label_type: "text",
+                    style: &style,
+                    max_width_px: None,
+                    wrap_mode: if math {
+                        WrapMode::HtmlLike
+                    } else {
+                        WrapMode::SvgLike
+                    },
+                    config: &config,
+                    math_renderer: None,
+                },
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            );
+            if !math {
+                // The native owner reservation must not charge the already indexed ID again.
+                let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+                    &measurer,
+                    &style,
+                    &style,
+                    None,
+                    true,
+                    FlowchartSvgWidthMode::Bbox,
+                )
+                .unwrap()
+                .into_owned();
+                let source = FlowchartSvgLabelSourceEntry::new("label");
+                let label = PreparedFlowchartSvgLabel::new(
+                    binding,
+                    Vec::new(),
+                    TextMetrics {
+                        width: 0.0,
+                        height: 0.0,
+                        line_count: 0,
+                    },
+                    None,
+                );
+                assert!(builder.reserve_prepared_label(owner, &label, &source, render_id));
+                let retained = work.prepared_text_retained_bytes();
+                assert!(builder.record_render_id(owner, render_id));
+                assert_eq!(work.prepared_text_retained_bytes(), retained);
+                return retained;
+            }
+            assert!(builder.pending.borrow().math.get(owner).is_some());
+            work.prepared_text_retained_bytes()
+        }
+        for math in [false, true] {
+            assert_eq!(
+                retained_for("abcdefghij", math) - retained_for("a", math),
+                9
+            );
+        }
+    }
+
+    #[test]
+    fn node_source_typography_survives_non_svg_measurement_paths() {
+        let config = MermaidConfig::default();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let style = TextStyle {
+            font_family: Some("Source Sans".to_owned()),
+            font_size: 23.0,
+            font_weight: Some("650".to_owned()),
+            font_style: Some("italic".to_owned()),
+        };
+        for (owner, label_type, wrap_mode, swimlane) in [
+            (
+                FlowchartSvgLabelOwner::Node(2),
+                "html",
+                WrapMode::HtmlLike,
+                false,
+            ),
+            (
+                FlowchartSvgLabelOwner::EmptySubgraphNode(1),
+                "markdown",
+                WrapMode::SvgLike,
+                false,
+            ),
+            (
+                FlowchartSvgLabelOwner::SwimlaneNode(3),
+                "text",
+                WrapMode::SvgLike,
+                true,
+            ),
+        ] {
+            let builder = FlowchartSvgLabelSidecarBuilder::default();
+            builder.measure_for_layout(
+                owner,
+                "source-node",
+                FlowchartLabelMetricsRequest {
+                    measurer: &measurer,
+                    raw_label: "Source label",
+                    label_type,
+                    style: &style,
+                    max_width_px: Some(80.0),
+                    wrap_mode,
+                    config: &config,
+                    math_renderer: None,
+                },
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            );
+            let sidecar = builder.finish();
+            assert_eq!(sidecar.node_owner("source-node", swimlane), Some(owner));
+            let source = Arc::clone(sidecar.node_source_style(owner).expect("source typography"));
+            drop(sidecar);
+            assert_eq!(source.font_family, style.font_family);
+            assert_eq!(source.font_size, style.font_size);
+            assert_eq!(source.font_weight, style.font_weight);
+            assert_eq!(source.font_style, style.font_style);
+        }
+    }
 
     #[test]
     fn host_label_shadow_allocation_scales_with_line_width() {

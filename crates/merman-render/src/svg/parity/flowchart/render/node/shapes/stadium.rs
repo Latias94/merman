@@ -26,6 +26,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,

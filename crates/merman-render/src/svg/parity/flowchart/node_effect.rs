@@ -12,6 +12,7 @@ use crate::flowchart::{
 
 #[derive(Debug)]
 pub(super) struct PreparedNodeTerminal {
+    pub(super) source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
     pub(super) style: FlowchartNodeThemeStyle,
     pub(super) source: FlowchartCompiledStyles,
     pub(super) selection: PreparedNodeSelection,
@@ -218,9 +219,14 @@ impl<'a> NodeSelectionInputs<'a> {
 }
 
 impl PreparedNodeTerminal {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The prepared source typography joins existing independent node facet inputs"
+    )]
     pub(super) fn prepare(
         class_defs: &indexmap::IndexMap<String, Vec<String>>,
         source_styles: (&[String], &[String]),
+        source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
         ordinal: Option<usize>,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         inputs: &NodeSelectionInputs<'_>,
@@ -231,6 +237,7 @@ impl PreparedNodeTerminal {
             flowchart_compile_node_styles(class_defs, source_styles.0, source_styles.1, &[]);
         let selection = PreparedNodeSelection::prepare(inputs, &source, &style);
         Ok(Self {
+            source_text_style,
             style,
             source,
             selection,

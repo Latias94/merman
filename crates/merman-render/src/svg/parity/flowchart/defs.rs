@@ -8,7 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::super::util::{escape_xml, escape_xml_display};
 use super::{
-    FlowchartHierarchyPlan, FlowchartMarkerBase, FlowchartRenderCtx, flowchart_config_diagram_look,
+    FlowchartHierarchyPlan, FlowchartMarkerBase, FlowchartRenderCtx,
     flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
 };
 
@@ -399,7 +399,7 @@ impl FlowchartMarkerEmissionPlan {
         ctx: &FlowchartRenderCtx<'_>,
         hierarchy_plan: &FlowchartHierarchyPlan<'_>,
     ) -> crate::Result<Self> {
-        let look = flowchart_config_diagram_look(ctx.config);
+        let look = ctx.compatibility.look;
         let hand_drawn = look.is_hand_drawn();
         let neo = look.is_neo();
         let mut plan = Self::new(hand_drawn);

@@ -20,7 +20,7 @@ use crate::svg::parity::{escape_xml_display, fmt_display};
 
 pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
     node_classes: &'a [String],
-    node_styles: &'a [String],
+    source_text_style: &'a crate::text::TextStyle,
     compiled_styles: &'a FlowchartCompiledStyles,
     typed_label_fill: Option<&'a str>,
 }
@@ -28,13 +28,13 @@ pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
 impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
     pub(super) const fn new(
         node_classes: &'a [String],
-        node_styles: &'a [String],
+        source_text_style: &'a crate::text::TextStyle,
         compiled_styles: &'a FlowchartCompiledStyles,
         typed_label_fill: Option<&'a str>,
     ) -> Self {
         Self {
             node_classes,
-            node_styles,
+            source_text_style,
             compiled_styles,
             typed_label_fill,
         }
@@ -52,23 +52,12 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         &'b self,
         ctx: &'b FlowchartRenderCtx<'_>,
     ) -> std::borrow::Cow<'b, crate::text::TextStyle> {
-        let base = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-            &ctx.html_label_text_style
-        } else {
-            &ctx.text_style
-        };
-        let source = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            base,
-            ctx.class_defs,
-            self.node_classes,
-            self.node_styles,
-        );
         ctx.svg_label_sidecar
             .map_or(
                 crate::flowchart::FlowchartLabelWeights::default(),
                 |sidecar| sidecar.label_weights(),
             )
-            .apply_cow(ThemeTarget::NodeLabel, source)
+            .apply(ThemeTarget::NodeLabel, self.source_text_style)
     }
 
     pub(super) fn metrics(
@@ -320,6 +309,7 @@ fn render_flowchart_node_label_with_wrapper(
     }
     let metrics = super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,

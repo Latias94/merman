@@ -4,6 +4,9 @@ use serde_json::Value;
 /// Operation-local visual compatibility inputs. Raw CSS remains observable in SVG.
 #[derive(Debug)]
 pub(crate) struct FlowchartCompatibilityBinding {
+    pub(crate) look: crate::config::DiagramLook<'static>,
+    pub(crate) hand_drawn_seed: Option<f64>,
+    pub(crate) look_defs: crate::svg::PreparedLookDefs,
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) arrowhead_color: String,
@@ -63,6 +66,9 @@ impl FlowchartCompatibilityBinding {
             .then(|| crate::config::json_f64(&rounded_rect_radius))
             .flatten();
         Self {
+            look: crate::config::config_diagram_look(config).into_static(),
+            hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
+            look_defs: crate::svg::PreparedLookDefs::new(config),
             rounded_rect_radius,
             rounded_rect_radius_truthy,
             rounded_rect_radius_numeric,
@@ -223,6 +229,51 @@ impl FlowchartPreparedTheme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_look_and_seed_preserve_normalized_tokens_and_numeric_only_seed() {
+        for raw in [
+            serde_json::json!(null),
+            serde_json::json!(" neo "),
+            serde_json::json!("default"),
+            serde_json::json!("handDrawn"),
+            serde_json::json!("unknown"),
+            serde_json::json!(false),
+        ] {
+            for seed in [
+                serde_json::json!(17.25),
+                serde_json::json!("17.25"),
+                serde_json::json!(null),
+            ] {
+                let config = serde_json::json!({"look": raw, "handDrawnSeed": seed});
+                let binding = FlowchartCompatibilityBinding::resolve(&config);
+                let expected = crate::config::config_diagram_look(&config);
+                assert_eq!(binding.look.as_str(), expected.as_str());
+                assert_eq!(binding.look.serialized(), expected.serialized());
+                assert_eq!(binding.hand_drawn_seed, seed.as_f64());
+            }
+        }
+    }
+
+    #[test]
+    fn prepared_defs_keep_case_sensitive_darkness_and_empty_gradient_stops() {
+        for (theme, expected_flood) in [("custom-dark", "#FFFFFF"), ("Dark", "#000000")] {
+            let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
+                "theme": theme, "themeVariables": {"useGradient": " ON ",
+                    "gradientStart": "", "secondaryBorderColor": "var(--stop)"}
+            }));
+            assert_eq!(binding.look_defs.flood_color(), expected_flood);
+            assert_eq!(binding.look_defs.gradient(), Some(("", "var(--stop)")));
+        }
+        let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
+            "themeVariables": {"useGradient": -1, "gradientStart": ""}
+        }));
+        assert_eq!(binding.look_defs.gradient(), Some(("", "")));
+        let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
+            "themeVariables": {"useGradient": "unknown"}
+        }));
+        assert_eq!(binding.look_defs.gradient(), None);
+    }
 
     #[test]
     fn rounded_radius_keeps_numeric_zero_distinct_from_string_zero_and_null() {

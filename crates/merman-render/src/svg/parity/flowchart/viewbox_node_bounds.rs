@@ -55,14 +55,9 @@ fn measure_flowchart_layout_node_label(
         .label_type
         .as_deref()
         .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
-    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-        &ctx.html_label_text_style
-    } else {
-        &ctx.text_style
-    };
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        label_base_style,
-        ctx.class_defs,
+    let node_text_style = super::render::node::helpers::node_source_text_style(
+        ctx,
+        Some(n.id.as_str()),
         &flow_node.classes,
         &flow_node.styles,
     );
@@ -606,10 +601,11 @@ mod tests {
             &model,
             &render_context,
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
             None,
             &metadata.effective_config,
             &prepared_theme,
-            execution.work_meter(),
+            session.work_meter(),
         )
         .expect("prepared nodes");
         render_flowchart_svg_model(

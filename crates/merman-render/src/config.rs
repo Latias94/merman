@@ -109,6 +109,16 @@ impl<'a> DiagramLook<'a> {
         }
     }
 
+    pub(crate) fn into_static(self) -> DiagramLook<'static> {
+        let serialized_value = match self.serialized_value {
+            "handDrawn" => "handDrawn",
+            "neo" => "neo",
+            "default" => "default",
+            _ => DEFAULT_DIAGRAM_LOOK,
+        };
+        DiagramLook::from_raw(Some(serialized_value))
+    }
+
     pub(crate) fn as_str(&self) -> &'a str {
         self.value
     }
@@ -434,6 +444,8 @@ mod tests {
         let default = config_diagram_look(&default_cfg);
         assert_eq!(default.as_str(), DEFAULT_DIAGRAM_LOOK);
         assert_eq!(default.serialized(), "default");
+        assert_eq!(default.into_static().serialized(), "default");
+        assert_eq!(default.into_static().as_str(), DEFAULT_DIAGRAM_LOOK);
         let missing_cfg = json!({});
         let missing = config_diagram_look(&missing_cfg);
         assert_eq!(missing.serialized(), DEFAULT_DIAGRAM_LOOK);

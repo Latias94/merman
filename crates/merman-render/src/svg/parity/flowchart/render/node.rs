@@ -245,7 +245,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let stroke_dasharray = selection.stroke_dasharray.as_str();
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         node_classes,
-        node_styles,
+        prepared.source_text_style.as_ref(),
         compiled_styles,
         typed_label_fill,
     );

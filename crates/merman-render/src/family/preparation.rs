@@ -87,10 +87,11 @@ fn prepare_flowchart_artifact<L>(
         &semantic,
         &render_context,
         layout_view(&layout),
+        &svg_label_sidecar,
         resolved_theme,
         effective_config,
         &prepared_theme,
-        work_meter.as_ref(),
+        &work_meter,
     )?;
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),

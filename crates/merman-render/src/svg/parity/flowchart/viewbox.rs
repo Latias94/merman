@@ -517,7 +517,7 @@ fn builtin_neo_paint_bounds(
     ctx: &FlowchartRenderCtx<'_>,
     hierarchy: &FlowchartHierarchyPlan<'_>,
 ) -> Result<Option<Bounds>> {
-    if !flowchart_config_diagram_look(ctx.config).is_neo() {
+    if !ctx.compatibility.look.is_neo() {
         return Ok(None);
     }
     let title_shift = crate::flowchart::FlowchartConfigView::new(ctx.config.as_value())

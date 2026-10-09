@@ -220,15 +220,36 @@ pub(crate) struct FlowchartPreparedNodes {
 }
 
 impl FlowchartPreparedNodes {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Node terminals bind existing layout and label artifacts to the operation theme"
+    )]
     pub(crate) fn prepare(
         model: &crate::flowchart::FlowchartModel,
         render_context: &crate::flowchart::FlowchartRenderContext,
         layout: FlowchartNodeLayoutView<'_>,
+        svg_labels: &crate::flowchart::FlowchartSvgLabelSidecar,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         config: &merman_core::MermaidConfig,
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
-        work: &crate::resources::OperationWorkMeter,
+        work: &std::sync::Arc<crate::resources::OperationWorkMeter>,
     ) -> crate::Result<Self> {
+        let swimlane = matches!(layout, FlowchartNodeLayoutView::Swimlane(_));
+        let typography = svg_labels.base_typography().map_or_else(
+            || {
+                crate::flowchart::FlowchartBaseTypographyPlan::resolve(theme, config)
+                    .render_styles(config.as_value())
+            },
+            |plan| plan.render_styles(config.as_value()),
+        );
+        let source_base = if crate::flowchart::FlowchartConfigView::new(config.as_value())
+            .node_wrap_mode()
+            == crate::text::WrapMode::HtmlLike
+        {
+            &typography.html_label_text_style
+        } else {
+            &typography.text_style
+        };
         let (owners, uses_elk) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => {
                 (&layout.edge_owners, layout.uses_elk_adapter_dom)
@@ -273,9 +294,29 @@ impl FlowchartPreparedNodes {
             } else {
                 continue;
             };
+            let source_text_style = match svg_labels
+                .node_owner(id, swimlane)
+                .and_then(|owner| svg_labels.node_source_style(owner))
+                .cloned()
+            {
+                Some(style) => style,
+                None => {
+                    let style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                        source_base,
+                        &model.class_defs,
+                        source_styles.0,
+                        source_styles.1,
+                    )
+                    .into_owned();
+                    std::sync::Arc::new(
+                        crate::flowchart::FlowchartNodeSourceTypography::from_style(style, work)?,
+                    )
+                }
+            };
             let terminal = super::node_effect::PreparedNodeTerminal::prepare(
                 &model.class_defs,
                 source_styles,
+                source_text_style,
                 ordinals.get(id.as_str()).copied(),
                 theme,
                 &selection_inputs,
@@ -298,6 +339,78 @@ impl FlowchartPreparedNodes {
     }
     pub(super) fn node(&self, id: &str) -> Option<&super::node_effect::PreparedNodeTerminal> {
         self.terminals.get(id)
+    }
+}
+
+#[cfg(test)]
+mod source_typography_tests {
+    use super::*;
+
+    #[test]
+    fn disabled_svg_label_preparation_still_enforces_retained_font_limit() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[Label]\nstyle A font-family:CallerFont,font-size:23px",
+                merman_core::ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let render_context = parsed.flowchart_render_context().unwrap().clone();
+        let (metadata, semantic) = parsed.into_parts();
+        let merman_core::RenderSemanticModel::Flowchart(model) = semantic else {
+            panic!("Flowchart model");
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let layout_work = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let edge_style = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &metadata.effective_config,
+            false,
+            &layout_work,
+        )
+        .unwrap();
+        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+            &model,
+            &render_context,
+            &metadata.effective_config,
+            &measurer,
+            None,
+            None,
+            &edge_style,
+            layout_work,
+        )
+        .unwrap();
+        let work = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                .unwrap(),
+        ));
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            None,
+            &metadata.effective_config,
+            false,
+            &work,
+        )
+        .unwrap();
+        let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let result = FlowchartPreparedNodes::prepare(
+            &model,
+            &render_context,
+            FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
+            None,
+            &metadata.effective_config,
+            &theme,
+            &work,
+        );
+        assert!(
+            matches!(result, Err(crate::Error::ResourceLimitExceeded(ref error))
+            if error.limit == "max_prepared_text_retained_bytes")
+        );
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
     }
 }
 

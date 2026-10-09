@@ -98,9 +98,9 @@ pub(super) fn render_flowchart_svg_model(
 
     let effective_config_value = effective_config.as_value();
     let hand_drawn_seed = options.rough_randomness(
-        effective_config_value
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_f64)
+        prepared_theme
+            .compatibility
+            .hand_drawn_seed
             .unwrap_or(options.seed() as f64),
         "render.flowchart.roughjs",
     );
@@ -594,10 +594,18 @@ pub(super) fn render_flowchart_svg_model(
         out.push_str("</g>");
         // The shadow filters are siblings of Mermaid's marker/root wrapper,
         // rather than children of the wrapper that owns the painted graph.
-        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
+        push_flowchart_shadow_defs(
+            &mut out,
+            &document_ids,
+            &prepared_theme.compatibility.look_defs,
+        );
         out.checkpoint()?;
     } else {
-        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
+        push_flowchart_shadow_defs(
+            &mut out,
+            &document_ids,
+            &prepared_theme.compatibility.look_defs,
+        );
         out.checkpoint()?;
         out.push_str("<g>");
         defs.push_base_markers(&mut out)?;
@@ -607,7 +615,11 @@ pub(super) fn render_flowchart_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
     }
-    push_flowchart_gradient(&mut out, &document_ids, effective_config_value);
+    push_flowchart_gradient(
+        &mut out,
+        &document_ids,
+        &prepared_theme.compatibility.look_defs,
+    );
     out.checkpoint()?;
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
@@ -802,14 +814,9 @@ mod tests {
 fn push_flowchart_shadow_defs(
     out: &mut impl crate::svg::parity::SvgOutput,
     document_ids: &FlowchartDocumentIds<'_>,
-    effective_config_value: &serde_json::Value,
+    prepared: &crate::svg::PreparedLookDefs,
 ) {
-    let flood_color = effective_config_value
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
+    let flood_color = prepared.flood_color();
     let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
     let _ = write!(
         out,
@@ -824,32 +831,14 @@ fn push_flowchart_shadow_defs(
 fn push_flowchart_gradient(
     out: &mut impl crate::svg::parity::SvgOutput,
     document_ids: &FlowchartDocumentIds<'_>,
-    effective_config_value: &serde_json::Value,
+    prepared: &crate::svg::PreparedLookDefs,
 ) {
-    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
+    let Some((gradient_start, gradient_stop)) = prepared.gradient() else {
         return;
-    }
+    };
 
-    let gradient_start =
-        config_string(effective_config_value, &["themeVariables", "gradientStart"])
-            .or_else(|| {
-                config_string(
-                    effective_config_value,
-                    &["themeVariables", "primaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config_value,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
+    let gradient_start = escape_xml(gradient_start);
+    let gradient_stop = escape_xml(gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
@@ -942,10 +931,11 @@ mod integration_tests {
             &model,
             &render_context,
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
             None,
             &metadata.effective_config,
             &prepared_theme,
-            execution.work_meter(),
+            session.work_meter(),
         )
         .expect("prepared nodes");
 
@@ -1093,10 +1083,11 @@ mod integration_tests {
                 &model,
                 &render_context,
                 super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+                &sidecar,
                 None,
                 &metadata.effective_config,
                 &prepared_theme,
-                execution.work_meter(),
+                session.work_meter(),
             )
             .expect("prepared nodes");
             render_flowchart_svg_model(

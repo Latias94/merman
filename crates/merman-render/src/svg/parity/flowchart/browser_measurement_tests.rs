@@ -223,10 +223,11 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             &model,
             &render_context,
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
             None,
             &metadata.effective_config,
             &prepared_theme,
-            execution.work_meter(),
+            session.work_meter(),
         )
         .expect("prepared nodes");
         let svg = render_flowchart_svg_model(

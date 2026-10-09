@@ -1,6 +1,5 @@
 //! Flowchart v2 manual input/file shapes.
 
-use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::{escape_xml_display, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
@@ -16,6 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         None,
         label.text,
         label.label_type,
@@ -92,9 +92,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
         );
     }
 
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let node_text_style = super::super::helpers::node_source_text_style(
+        ctx,
+        Some(common.node_id),
         common.node_classes,
         common.node_styles,
     );
@@ -116,6 +116,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -190,9 +191,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
         );
     }
 
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let node_text_style = super::super::helpers::node_source_text_style(
+        ctx,
+        Some(common.node_id),
         common.node_classes,
         common.node_styles,
     );

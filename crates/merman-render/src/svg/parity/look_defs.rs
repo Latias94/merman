@@ -12,6 +12,26 @@ pub(crate) struct PreparedLookDefs {
 }
 
 impl PreparedLookDefs {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn flood_color(&self) -> &str {
+        self.flood_color
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn gradient(&self) -> Option<(&str, &str)> {
+        self.gradient
+            .as_ref()
+            .map(|(start, stop)| (start.as_str(), stop.as_str()))
+    }
+
     #[cfg(feature = "diagram-class")]
     pub(crate) fn uses_gradient(&self) -> bool {
         self.gradient.is_some()
