@@ -110,8 +110,9 @@ try {
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
 
-For alpha.7 source consumers, `MermanThemePreset.familyDesigns` exposes the catalog's curated
-family treatment. `base_only` is the shared base appearance with necessary family adaptations;
+In the current source interface, `MermanThemePreset.familyDesigns` exposes the catalog's curated
+family treatment. Use a matching artifact that provides this metadata; a package version alone
+does not establish its availability. `base_only` is the shared base appearance with necessary family adaptations;
 `dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
 Unknown values survive decoding. This metadata does not grant qualification or portability and
 must not cause an implicit switch to a different preset when the diagram family changes.

@@ -48,8 +48,9 @@ Node artifact is more useful than native startup and throughput.
 
 ## Compiled themes (unreleased)
 
-The next package uses Options JSON 3; published alpha.6 packages still use Options 2. In a
-current source candidate, select a preset through the closed `theme` group:
+The current source interface uses Options JSON 3; published alpha.6 packages use Options 2.
+Experimental compiled-theme operations require a matching artifact that exposes them; a package
+version alone does not establish their availability. Select a preset through the closed `theme` group:
 
 ```js
 const catalog = JSON.parse(engine.metadataJson("theme-catalog"));

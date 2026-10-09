@@ -32,7 +32,7 @@ The generated API exposes:
   services;
 - `MermanOperationRequestV4` and `MermanOperationResult` for generic descriptor-owned dispatch;
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
-- `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
+- `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `3` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, details_json, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
 

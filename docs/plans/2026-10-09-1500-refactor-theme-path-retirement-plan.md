@@ -13,48 +13,60 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
-The latest frozen batch is `d88469f1f`. It prepares Class render settings, C4 source
-colors, Venn actual-area styles, Mindmap edge strokes, Sankey link selections,
-Treemap section/leaf visuals, Flowchart effect applicability and concrete edge
-stroke widths, special-shape compatibility values, Wardley root-background
-ownership, and Usecase source declarations before SVG emission. The old Class
-writer settings module and Usecase writer style compiler are removed. Static
-review found and fixed a Treemap false resource-limit rejection caused by a raw
-style-length multiplier; actual folded retained fields now own the reservation.
-Retained bytes do not measure temporary allocation peak.
+The latest frozen code batch is `7594b3272`. Sequence reuses its prepared Neo
+selection across root geometry, menus, blocks and notes. Ishikawa binds normalized
+look and optional numeric seed before emission while execution retains randomness
+and fallback ownership. Requirement binds its literal, case-sensitive theme-name
+shadow choice. The batch passed 4,848 renderer tests (six skipped), strict
+all-feature CLI Clippy, formatting and diff checks. Independent static review
+reported no confirmed regressions.
 
-This batch passed all 4,845 renderer library/integration tests across 85 binaries
-(six existing tests skipped), seven Usecase preparation tests and 33 additional
-Usecase/Wardley/root integration tests after the final edits, 25 private theme
-acceptance tests, public package/API boundary checks, strict all-feature CLI
-Clippy, formatting, and diff checks. Web TypeScript contracts (42 exports, 53
-bindings, five entries) and all 151 Web input tests also passed. These are
-incremental receipts: Flowchart source-typography reuse, the final public/native
-feature matrix, rebuilt browser artifacts, and adjacent-revision performance and
-size measurements remain outstanding. No speed or size improvement is claimed.
+The preceding `d88469f1f` batch binds Class render settings, C4 source colors,
+Venn area styles, Mindmap strokes, Sankey links, Treemap visuals, Flowchart effects
+and concrete edge widths, special shapes, Wardley background and Usecase source
+styles. Its 4,845 renderer tests passed (six skipped). A reviewed Treemap false
+resource-limit rejection was fixed by charging actual folded retained fields;
+retained bytes do not measure temporary allocation peak.
 
-- U1: Inventory recorded; all 35 supported families remain in scope.
-- U2-U4: In progress. Class and Pie changes are committed. Gantt, Radar, Quadrant, Tree View, XYChart, Timeline, Journey, Venn, Ishikawa, and Kanban bindings are committed in `6ff15c63d`. Class relation convergence, EventModeling, Treemap, ER, and Requirement are committed in `01cb9ca2d`. The next working-tree batch covers Flowchart/Swimlane/Agentflow compatibility, Sequence compatibility and prepared text/number selection, Block compatibility and node terminal declarations, Wardley, Cynefin, Info/Error, Packet, Architecture, Sankey, and State. These are bounded migrations: Flowchart, Sequence, Block, Class, Mindmap, GitGraph, C4, and Usecase still have remaining terminal-selection or visual-reader work.
-- U5: Historical authorization gates removed in `c72f605e9`; orphaned raster acceptance machinery and its callers removed in `6ff15c63d`.
-- U6: Unused lazy compatibility providers removed in `1bdc3b1a2`; orphaned fallback evidence removed in `8bc12ee5b`. Compact GitGraph/ER default input capture replaces the old requested path inventory in `6ff15c63d`.
-- U7: Current guide and example corrections committed in `0224a679d`; final stale-reference audit remains pending.
-- U8: Incremental owner checks are running. The `6ff15c63d` binding batch passed 476 core tests, 2,878 renderer unit tests (two manual tests skipped), 615 integration tests across 13 affected families, 25 private acceptance tests, 46 PNG/PDF exporter tests, public package/API boundary checks, format checks, and strict all-feature CLI Clippy. The integration test link initially exhausted disk space; rebuilding with incremental compilation and debug symbols disabled after `cargo clean --profile dev` passed. These are incremental receipts, not final feature, browser, or performance acceptance. Adjacent-revision measurements remain pending.
+- U1: Inventory complete; all 35 supported families remain in scope.
+- U2-U4: Most family terminal bindings are committed. Flowchart node source
+  typography and label-measurement reuse are still being implemented and have no
+  final acceptance receipt yet. Removing the adapter alone does not close these units.
+- U5: Historical authorization gates, orphaned raster acceptance machinery and
+  callers are removed. The final executable-call audit found no surviving invocation.
+- U6: Unused compatibility providers, fallback evidence and private conveniences
+  are removed. Mermaid public input compatibility remains in the core.
+- U7: Current recipe guides are corrected. Final active-doc audit found four
+  resource-helper schema statements and several unanchored candidate-version
+  descriptions; their corrections are in progress. Explicit historical records remain.
+- U8: Final frozen-tree feature, browser, documentation and adjacent-revision
+  performance/size verification remain open. No speed or size improvement is claimed.
 
-Source security remains unchanged: source-authored `var(...)` is filtered by the existing policy, while trusted host configuration can preserve it. Tree View tests exercise both accepted source `currentColor` and trusted host CSS, including explicit property ownership.
+Additional incremental receipts: 303 public-facade tests (two skipped), 46 native
+PNG/PDF exporter tests, 25 private acceptance tests, public package/API boundaries,
+Web TypeScript contracts (42 exports, 53 bindings, five entries), all 151 Web script
+input tests and Playground test typechecking passed. Rust license reports,
+third-party license verification and release-material synchronization passed.
+Theme-contract rustdoc passed all six examples with broken intra-doc links denied.
+These receipts do not replace rebuilt WASM and browser acceptance.
 
-The compatibility and initial terminal-selection batch above is committed as `f495a7542`; strict CLI Clippy and formatting passed before that commit. The following batch is committed as `1deaec16a`. It removes the final Mindmap adapter call and the entire unused `SvgTheme`/`MermaidThemeAdapter` closure, binds C4 and Usecase before measurement and GitGraph defaults before its writer, prepares shared Class/Block look resources, and fixes Flowchart node facet selection once per shared node record. It passed 2,904 renderer library tests (two skipped), 592 integration tests across 11 binaries, 25 private acceptance tests, all-feature CLI compilation, strict Clippy and formatting. Static review found no confirmed regressions. A GitGraph boolean-helper mismatch was corrected before acceptance, preserving the former `json_bool` coercion. A new Usecase integration fixture was corrected to observe Engine-normalized look values; raw-input owner assertions remain separate.
+### Earlier migration evidence
 
-The next working-tree batch completes Mindmap visual defaults, prepares Sequence actor/lifeline/message/control/note selections, and extracts Flowchart's unique node root schedule and parent index for hierarchy reuse. It passed 2,908 renderer library tests (two skipped), 483 affected integration tests across 13 binaries (one skipped), and static correctness review. The Sequence ordinal budget test now measures preparation against an equivalent static-rule control, preserving its once-per-actor contract. Subsequent Block edits began before lint and public-boundary checks completed; those checks encountered an intermediate marker implementation and must be rerun against the frozen combined tree. These are partial receipts, not validation of subsequent edits.
+The commits preserve each bounded migration and its tests: `6ff15c63d` covers the
+first stable family bindings; `01cb9ca2d` relation, ER, Requirement, Treemap and
+EventModeling; `f495a7542` compatibility preparation; `1deaec16a` removes the final
+`SvgTheme`/`MermaidThemeAdapter` closure; `2ea621d8b` covers Block/ER/Sequence/GitGraph
+terminal choices; `b997dc160` moves Flowchart node records into the artifact and
+prepares Class/Sequence/Requirement/GitGraph output. These batches passed their
+scoped library/integration, acceptance, boundary, formatting and Clippy checks.
+The full later renderer suite supersedes the earlier partial test counts.
 
-The combined batch is now committed as `2ea621d8b`: it additionally prepares Block edge declarations/marker references/label backgrounds, ER entity/subgraph/table/text/relation/title output styles, Sequence activation geometry and selection, and GitGraph palette ownership and terminal masks. It deletes only confirmed unused theme private conveniences. Shared SVG escaping remains one implementation. Block baseline declarations borrow static strings and marker references reuse definition indices. Validation passed 2,914 renderer library tests (two skipped), 662 integration tests across 15 binaries (one skipped), 25 private acceptance tests, public API/package boundaries, strict all-feature CLI Clippy and formatting. A review caught Sequence numeric-string activation width and ER duplicate-subgraph first-match regressions; both were fixed and the final 140 affected integration tests passed (one skipped). Static final review reported no remaining confirmed findings. Flowchart's extracted input still executes during SVG emission and is not yet an artifact migration.
-
-Web verification repair is committed as `1fb614180`. The existing license generator refreshed 13 scoped reports and their release projections after the lockfile change; dependency/license contents did not change. Two exact test expectations now match the current browser closure and Rust interactive work ceiling. All 151 Web script tests, third-party license verification and release-material synchronization passed. This does not replace rebuilding WASM or running the browser acceptance matrix.
-
-The next binding batch is committed as `b997dc160`: Flowchart/Swimlane/Agentflow node source/style/selections and the shared root schedule now belong to the artifact, using borrowed native layout views without a second layout adaptation. Class node/interface visual bindings are immutable artifact data; Sequence CSS and GitGraph final static/default/gradient values are prepared; Requirement node source/typed/default output is prepared. The batch passed 2,921 renderer library tests (two skipped), 687 existing affected integration tests across 18 binaries (one skipped), 53 Requirement integration tests (one skipped), 25 private acceptance tests, strict CLI Clippy and formatting. Static review reported no confirmed findings. Separately, all 476 core tests and Cargo deny advisories/bans/licenses/sources passed. Documentation corrections are committed as `c8dcdd721`. Remaining Flowchart shapes/effects and label-measurement convergence, Class render settings, and bounded Venn/C4/Sankey/Treemap terminal choices remain active work. Final browser, platform, example/doc and adjacent-revision measurements remain pending.
-
-Deleting the adapter does not complete U2-U4: Flowchart records still need artifact lifecycle and label-measurement convergence, Sequence still needs activation selection and final CSS slots, and remaining Class/Block/GitGraph/ER terminal arbitration must be completed. Browser, complete feature/platform checks, final current-doc audit, and calibrated adjacent-revision performance/size evidence remain pending. Current recipe inputs and historical-versus-current verification owners are clarified in `9f3e5d42d`.
-
-Additional incremental receipts: `01cb9ca2d` passed 2,885 renderer library tests, 288 affected integration tests, 25 private acceptance tests, strict CLI Clippy, and formatting. The following compatibility batch passed the public/private package boundary check. Its combined compatibility, Block-node, Sequence-text/number, and State batch passed 2,901 renderer library tests (two skipped), 638 affected integration tests across 16 binaries (two skipped), and 25 private acceptance tests. Three independent static review passes reported no confirmed regressions. A new number-ownership fixture initially used raw `MermaidConfig::from_value`, which does not establish explicit input ownership; replacing it with the actual Engine host-input path preserved the original production ownership rule and passed. Strict CLI Clippy cleanup and formatting are being finalized. These are incremental receipts, not final browser, feature, or performance acceptance.
+Review-driven corrections preserved GitGraph boolean coercion, Sequence
+numeric-string activation widths, ER duplicate-subgraph first-match behavior and
+Engine-established explicit input ownership. Source-authored `var(...)` remains
+filtered while trusted host CSS can preserve it. Shared SVG escaping has one owner.
+`1fb614180` refreshes generated license reports and Web verification expectations;
+`9f3e5d42d` and `c8dcdd721` clarify current versus historical guide ownership.
 
 ## Goal Capsule
 
