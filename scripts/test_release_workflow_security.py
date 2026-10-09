@@ -342,7 +342,7 @@ jobs:
                 )
                 self.assertIn(
                     "python3 scripts/run_theme_acceptance.py test --release --locked "
-                    "-p merman-theme-acceptance --no-default-features --features png,layout-cytoscape "
+                    "-p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape "
                     "--lib preset_qualification::", command,
                 )
 

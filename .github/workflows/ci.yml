@@ -545,7 +545,7 @@ jobs:
             --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
             --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --test theme_support_discovery_test --cargo-quiet
+            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
 
       - name: Test optimized theme evidence and qualification rejection
         if: matrix.parity
@@ -553,7 +553,7 @@ jobs:
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
           python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,layout-cytoscape \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
             --lib preset_qualification::
 
       - name: Verify published theme acceptance boundary
@@ -564,7 +564,7 @@ jobs:
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features svg,png,pdf,layout-cytoscape --test theme_authoring \
+            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape --test theme_authoring \
             --test theme_flowchart_markers --test theme_flowchart_geometry \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
             --test render_operation --test theme_composed_effects --cargo-quiet

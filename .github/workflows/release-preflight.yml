@@ -239,7 +239,7 @@ jobs:
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
           python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,layout-cytoscape \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
             --lib preset_qualification::
 
       - name: Verify published theme acceptance boundary
@@ -253,10 +253,10 @@ jobs:
       - name: Test preset qualification and legacy projection retirement
         run: |
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
-            --no-default-features --features png,layout-cytoscape \
+            --no-default-features --features png,all-diagrams,layout-cytoscape \
             --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --test theme_support_discovery_test --cargo-quiet
+            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
