@@ -28,7 +28,8 @@ pub(crate) mod config;
 mod elk_terminals;
 mod measured;
 pub(crate) mod node_binding;
-use self::config::{ClassConfigView, ClassLayoutSettings};
+use self::config::ClassLayoutSettings;
+pub(crate) use self::config::ClassRenderConfig;
 pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
 mod theme;
 use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
@@ -2279,19 +2280,20 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     typography_theme: &ClassTextThemePlan,
+    render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let settings = render_config.layout_settings();
     let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         math_renderer,
-        &settings,
+        render_config,
         false,
         typography_theme,
     )?;
-    layout_class_diagram_dagre(model, measured, &settings, work_control)
+    layout_class_diagram_dagre(model, measured, settings, work_control)
 }
 
 #[cfg(feature = "layout-elk")]
@@ -2299,6 +2301,10 @@ pub(crate) fn layout_class_diagram_typed_with_config(
 ///
 /// This remains crate-private so direct callers cannot accidentally turn ELK's unseeded
 /// `randomSeed = 0` sentinel into a process-random layout.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Class ELK receives immutable prepared settings and operation-owned execution inputs."
+)]
 pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
@@ -2306,15 +2312,16 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
     typography_theme: &ClassTextThemePlan,
+    render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let settings = render_config.layout_settings();
     let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         math_renderer,
-        &settings,
+        render_config,
         true,
         typography_theme,
     )?;
@@ -2339,26 +2346,24 @@ fn measure_class_diagram(
     mermaid_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    settings: &ClassLayoutSettings,
+    render_config: &ClassRenderConfig,
     uses_elk_adapter: bool,
     typography_theme: &ClassTextThemePlan,
 ) -> Result<MeasuredClassDiagram> {
     validate_class_namespace_hierarchy(model)?;
+    let settings = render_config.layout_settings();
     let wrap_mode_node = settings.wrap_mode_node;
     let wrap_mode_label = settings.wrap_mode_label;
     let wrap_mode_note = settings.wrap_mode_note;
     let class_padding = settings.class_padding;
-    let mut text_style = settings.text_style.clone();
-    let mut html_calc_text_style = settings.html_calc_text_style.clone();
-    typography_theme.apply_layout_text_styles(&mut text_style, &mut html_calc_text_style);
+    let text_style = render_config.text_style();
+    let html_calc_text_style = render_config.html_calc_text_style();
     if !typography_theme.seal_layout_font_size(text_style.font_size) {
         return Err(crate::Error::InvalidModel {
             message: "Class typography layout font size changed after preparation".to_string(),
         });
     }
-    let cardinality_text_style = class_cardinality_text_style(&text_style);
-    let text_style = &text_style;
-    let html_calc_text_style = &html_calc_text_style;
+    let cardinality_text_style = class_cardinality_text_style(text_style);
     let wrap_probe_font_size = settings.wrap_probe_font_size;
     let hide_empty_members_box = settings.hide_empty_members_box;
     let contains_math = class_requires_math(model);
@@ -2459,7 +2464,7 @@ fn measure_class_diagram(
                 class_namespace_label(model, id),
                 measurer,
                 text_style,
-                if ClassConfigView::new(mermaid_config.as_value()).render_edge_html_labels() {
+                if render_config.edge_use_html_labels {
                     WrapMode::HtmlLike
                 } else {
                     WrapMode::SvgLike
@@ -2520,12 +2525,11 @@ fn measure_class_diagram(
     // Interface nodes follow notes in `ClassDB.getData()` and remain at the root even when
     // their related class belongs to a namespace. `squareRect` adds fixed Neo label padding;
     // classic interfaces have no node padding.
-    let (interface_padding_x, interface_padding_y) =
-        if ClassConfigView::new(mermaid_config.as_value()).diagram_look() == "neo" {
-            (32.0, 24.0)
-        } else {
-            (0.0, 0.0)
-        };
+    let (interface_padding_x, interface_padding_y) = if render_config.look == "neo" {
+        (32.0, 24.0)
+    } else {
+        (0.0, 0.0)
+    };
     for iface in &model.interfaces {
         let label = decode_entities_minimal(iface.label.trim());
         let metrics = crate::graph_label::flowchart_label_metrics_for_layout(
@@ -2534,9 +2538,7 @@ fn measure_class_diagram(
                 raw_label: &label,
                 label_type: "text",
                 style: text_style,
-                max_width_px: Some(
-                    ClassConfigView::new(mermaid_config.as_value()).interface_wrapping_width(),
-                ),
+                max_width_px: Some(render_config.interface_wrapping_width),
                 wrap_mode: wrap_mode_node,
                 config: mermaid_config,
                 math_renderer,
@@ -2803,14 +2805,14 @@ pub fn debug_build_class_diagram_dagre_graph(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
-    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
     let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
+    let render_config = ClassRenderConfig::resolve(effective_config, &typography_theme);
     let measured = measure_class_diagram(
         model,
         effective_config,
         measurer,
         None,
-        &settings,
+        &render_config,
         false,
         &typography_theme,
     )?;
@@ -3706,15 +3708,17 @@ mod tests {
             panic!("expected Class model");
         };
         let config = &parsed.metadata().effective_config;
-        let settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+        let typography_theme = super::ClassTextThemePlan::resolve(None, config);
+        let render_config = super::ClassRenderConfig::resolve(config, &typography_theme);
+        let settings = render_config.layout_settings();
         let measured = super::measure_class_diagram(
             model,
             config,
             &DeterministicTextMeasurer::default(),
             None,
-            &settings,
+            &render_config,
             true,
-            &super::ClassTextThemePlan::resolve(None, config),
+            &typography_theme,
         )
         .expect("measure Class diagram");
         super::class_measured_to_elk_graph(
@@ -3786,16 +3790,18 @@ mod tests {
                         panic!("Class model")
                     };
                     let config = &parsed.metadata().effective_config;
-                    let layout_settings =
-                        super::ClassConfigView::new(config.as_value()).layout_settings();
+                    let typography_theme = super::ClassTextThemePlan::resolve(None, config);
+                    let render_config =
+                        super::ClassRenderConfig::resolve(config, &typography_theme);
+                    let layout_settings = render_config.layout_settings();
                     let measured = super::measure_class_diagram(
                         model,
                         config,
                         &DeterministicTextMeasurer::default(),
                         None,
-                        &layout_settings,
+                        &render_config,
                         true,
-                        &super::ClassTextThemePlan::resolve(None, config),
+                        &typography_theme,
                     )
                     .unwrap();
                     let (label_width, label_height) =
@@ -3880,15 +3886,17 @@ mod tests {
                 panic!("Class model")
             };
             let config = &parsed.metadata().effective_config;
-            let layout_settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+            let typography_theme = super::ClassTextThemePlan::resolve(None, config);
+            let render_config = super::ClassRenderConfig::resolve(config, &typography_theme);
+            let layout_settings = render_config.layout_settings();
             let mut measured = super::measure_class_diagram(
                 model,
                 config,
                 &DeterministicTextMeasurer::default(),
                 None,
-                &layout_settings,
+                &render_config,
                 true,
-                &super::ClassTextThemePlan::resolve(None, config),
+                &typography_theme,
             )
             .unwrap();
             measured
@@ -4017,15 +4025,16 @@ mod tests {
             panic!("expected Class model");
         };
         let config = &parsed.metadata().effective_config;
-        let layout_settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+        let typography_theme = super::ClassTextThemePlan::resolve(None, config);
+        let render_config = super::ClassRenderConfig::resolve(config, &typography_theme);
         let measured = super::measure_class_diagram(
             model,
             config,
             &DeterministicTextMeasurer::default(),
             None,
-            &layout_settings,
+            &render_config,
             true,
-            &super::ClassTextThemePlan::resolve(None, config),
+            &typography_theme,
         )
         .expect("measure Class diagram");
         let settings = super::ClassElkLayoutSettings {

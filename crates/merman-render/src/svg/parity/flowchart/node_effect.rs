@@ -26,6 +26,7 @@ pub(super) struct PreparedNodeEffect {
 #[derive(Debug)]
 pub(super) struct PreparedNodeSelection {
     pub(super) inline_style: Option<String>,
+    pub(super) junction_style: Option<String>,
     pub(super) theme_style: String,
     pub(super) fill: String,
     pub(super) stroke: String,
@@ -126,6 +127,12 @@ impl PreparedNodeSelection {
             })
             .or(stroke_width);
         Self {
+            junction_style: inline_style
+                .as_deref()
+                .unwrap_or(&source.node_style)
+                .trim()
+                .is_empty()
+                .then(|| format!("fill: {} !important;", ctx.node_border_color)),
             inline_style,
             theme_style,
             fill: source

@@ -1632,6 +1632,7 @@ pub(crate) struct ClassFamilyArtifact {
     pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
+    render_config: crate::class::ClassRenderConfig,
     node_visual_plan: crate::class::ClassNodeVisualPlan,
     theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
@@ -1667,6 +1668,10 @@ impl C4FamilyArtifact {
 
 #[cfg(feature = "diagram-class")]
 impl ClassFamilyArtifact {
+    pub(crate) const fn render_config(&self) -> &crate::class::ClassRenderConfig {
+        &self.render_config
+    }
+
     pub(crate) const fn node_visual_plan(&self) -> &crate::class::ClassNodeVisualPlan {
         &self.node_visual_plan
     }

@@ -35,8 +35,6 @@ mod rough;
 
 mod root;
 
-mod settings;
-
 mod viewbox;
 
 type ClassSvgModel = merman_core::models::class_diagram::ClassDiagram;

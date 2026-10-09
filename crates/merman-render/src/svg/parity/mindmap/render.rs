@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use super::super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
@@ -975,20 +973,17 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let look = binding.model_look(&e.look);
         let data_look_attr = mindmap_data_look_attr(look);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
-        let typed_stroke = node_palette.terminal_edge_stroke(edge_index);
-        let terminal_style = typed_stroke.map(|(_, css)| format!("stroke:{css} !important"));
-        let terminal_source = node_palette.terminal_edge_source(edge_index);
-        let source_stroke = terminal_source.map(|source| match source {
-            crate::mindmap::MindmapEdgeStrokeSource::ColorScale { section } => {
-                Cow::Borrowed(binding.sections[section + 1].fill.as_str())
-            }
-            crate::mindmap::MindmapEdgeStrokeSource::NodeBorder => {
-                Cow::Borrowed(writer_tokens.node_border_css())
-            }
-        });
-        let final_stroke = typed_stroke
-            .map(|(_, css)| css)
-            .or(source_stroke.as_deref());
+        let edge_paint = node_palette
+            .terminal_edge_paint(edge_index)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "Mindmap has no prepared edge paint at ordinal {}",
+                    edge_index + 1
+                ),
+            })?;
+        let terminal_style = edge_paint.style;
+        let terminal_source = edge_paint.source;
+        let final_stroke = edge_paint.stroke;
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr}"#,
@@ -997,7 +992,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             class = escape_xml(&class),
             look_attr = data_look_attr,
         );
-        if let Some(style) = terminal_style.as_deref() {
+        if let Some(style) = terminal_style {
             let _ = write!(&mut out, r#" style="{}""#, escape_attr(style));
         }
         let _ = write!(
@@ -1014,10 +1009,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 &e.id,
                 terminal_source,
                 final_stroke,
-                terminal_style.as_deref(),
+                terminal_style,
             );
         }
-        if typed_stroke.is_none()
+        if terminal_style.is_none()
             && terminal_source == Some(crate::mindmap::MindmapEdgeStrokeSource::NodeBorder)
             && let Some(stroke) = final_stroke
         {

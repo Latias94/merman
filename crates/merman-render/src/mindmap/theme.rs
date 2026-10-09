@@ -226,8 +226,15 @@ struct MindmapEdgeExpectation {
     id: Box<str>,
     source: Option<MindmapEdgeStrokeSource>,
     source_css: Option<Box<str>>,
+    terminal_style: Option<Box<str>>,
     source_owned: bool,
     winning_stroke_rule: Option<usize>,
+}
+
+pub(crate) struct MindmapEdgePaint<'a> {
+    pub(crate) source: Option<MindmapEdgeStrokeSource>,
+    pub(crate) stroke: Option<&'a str>,
+    pub(crate) style: Option<&'a str>,
 }
 
 #[derive(Debug, Default)]
@@ -304,7 +311,6 @@ impl MindmapNodePalettePlan {
             InheritedFontStackPlan::resolve_property_local(Some(theme), config);
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_node_paint(theme, config, work_meter)?;
-        plan.refresh_edge_source_css(config);
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, work_meter)?;
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
@@ -503,22 +509,6 @@ impl MindmapNodePalettePlan {
         self.node_fill = typed_fill;
         self.node_stroke = typed_stroke;
         Ok(())
-    }
-
-    fn refresh_edge_source_css(&mut self, config: &MermaidConfig) {
-        let node_border_css = self
-            .node_stroke
-            .as_ref()
-            .map(|stroke| stroke.css().to_owned())
-            .unwrap_or_else(|| mindmap_node_border_css(config));
-        for edge in &mut self.expected_edges {
-            edge.source_css = edge.source.map(|source| match source {
-                MindmapEdgeStrokeSource::ColorScale { section } => {
-                    mindmap_color_scale_css(config, section + 1).into_boxed_str()
-                }
-                MindmapEdgeStrokeSource::NodeBorder => node_border_css.clone().into_boxed_str(),
-            });
-        }
     }
 
     fn resolve_node_palette(
@@ -725,6 +715,7 @@ impl MindmapNodePalettePlan {
                     id: edge.id.clone().into_boxed_str(),
                     source,
                     source_css: None,
+                    terminal_style: None,
                     source_owned: source.is_some_and(|source| source.is_owned(config)),
                     winning_stroke_rule: None,
                 })
@@ -761,12 +752,25 @@ impl MindmapNodePalettePlan {
     }
 
     fn prepare_css_binding(
-        &self,
+        &mut self,
         config: &MermaidConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         let binding = super::css_binding::MindmapCssBinding::new(config, self);
+        for edge in &mut self.expected_edges {
+            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            edge.source_css = edge.source.map(|source| match source {
+                MindmapEdgeStrokeSource::ColorScale { section } => {
+                    binding.sections[section + 1].fill.clone().into_boxed_str()
+                }
+                MindmapEdgeStrokeSource::NodeBorder => binding.tokens.node_border_css().into(),
+            });
+            edge.terminal_style = self.edge_stroke.as_ref().and_then(|stroke| {
+                (edge.winning_stroke_rule == Some(stroke.rule_index) && !edge.source_owned)
+                    .then(|| format!("stroke:{} !important", stroke.css).into_boxed_str())
+            });
+        }
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         self.css_binding
             .set(binding)
@@ -858,13 +862,16 @@ impl MindmapNodePalettePlan {
             .then_some((stroke.rule_index, stroke.css.as_ref()))
     }
 
-    pub(crate) fn terminal_edge_source(
-        &self,
-        edge_index: usize,
-    ) -> Option<MindmapEdgeStrokeSource> {
-        self.expected_edges
-            .get(edge_index)
-            .and_then(|expectation| expectation.source)
+    pub(crate) fn terminal_edge_paint(&self, edge_index: usize) -> Option<MindmapEdgePaint<'_>> {
+        let expectation = self.expected_edges.get(edge_index)?;
+        Some(MindmapEdgePaint {
+            source: expectation.source,
+            stroke: self
+                .terminal_edge_stroke(edge_index)
+                .map(|(_, css)| css)
+                .or(expectation.source_css.as_deref()),
+            style: expectation.terminal_style.as_deref(),
+        })
     }
 
     pub(crate) fn begin_edge_terminal_receipt(&self) -> Option<MindmapEdgeStrokeReceipt> {
@@ -1318,6 +1325,53 @@ mod tests {
             .collect::<Vec<_>>();
         serde_json::from_value(json!({ "nodes": nodes, "edges": [] }))
             .expect("Mindmap theme-plan fixture")
+    }
+
+    #[test]
+    fn prepared_edge_paints_share_css_slots_without_adding_inline_inherited_strokes() {
+        let model: MindmapDiagramRenderModel = serde_json::from_value(json!({
+            "nodes": [],
+            "edges": [
+                {"id": "edge-0", "start": "a", "end": "b", "section": 0},
+                {"id": "edge-1", "start": "b", "end": "c", "section": -1},
+                {"id": "edge-2", "start": "c", "end": "d", "section": 2}
+            ]
+        }))
+        .expect("Mindmap edge fixture");
+        for (theme, look, expected_source) in [
+            (
+                "default",
+                "classic",
+                MindmapEdgeStrokeSource::ColorScale { section: 0 },
+            ),
+            ("redux", "neo", MindmapEdgeStrokeSource::NodeBorder),
+        ] {
+            let config = MermaidConfig::from_value(json!({
+                "theme": theme, "look": look,
+                "themeVariables": {"THEME_COLOR_LIMIT": 3,
+                    "cScale1": "var(--section)", "nodeBorder": "currentColor"}
+            }));
+            let plan = MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter())
+                .expect("prepare baseline edge paints");
+            let first = plan.terminal_edge_paint(0).expect("prepared first edge");
+            assert_eq!(first.source, Some(expected_source));
+            let expected_css = match expected_source {
+                MindmapEdgeStrokeSource::ColorScale { section } => {
+                    plan.css_binding().sections[section + 1].fill.as_str()
+                }
+                MindmapEdgeStrokeSource::NodeBorder => plan.css_binding().tokens.node_border_css(),
+            };
+            assert_eq!(first.stroke, Some(expected_css));
+            assert_eq!(first.style, None);
+            for index in [1, 2] {
+                let paint = plan
+                    .terminal_edge_paint(index)
+                    .expect("prepared uncolored edge");
+                assert_eq!(paint.source, None);
+                assert_eq!(paint.stroke, None);
+                assert_eq!(paint.style, None);
+            }
+        }
     }
 
     #[test]

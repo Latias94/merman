@@ -16,6 +16,8 @@ use crate::family::{
 use crate::model::TreemapDiagramLayout;
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 
+mod node_visual;
+
 #[derive(Debug, Clone, Default)]
 enum TreemapSourceTextOverride<T> {
     #[default]
@@ -27,6 +29,7 @@ enum TreemapSourceTextOverride<T> {
 
 #[derive(Debug, Clone, Default)]
 struct TreemapSourceTextStyle {
+    visual: node_visual::TreemapNodeVisual,
     font_family: TreemapSourceTextOverride<Box<str>>,
     font_size_px: TreemapSourceTextOverride<f64>,
     font_weight: TreemapSourceTextOverride<Box<str>>,
@@ -177,6 +180,7 @@ pub(crate) struct TreemapTypographyThemePlan {
     evidence: FamilyThemeEvidence,
     terminal_receipt: OnceLock<TreemapTypographyTerminalSeal>,
     _retained_reservation: PreparedTextRetainedReservation,
+    _visual_retained_reservation: Option<PreparedTextRetainedReservation>,
 }
 
 impl TreemapTypographyThemePlan {
@@ -391,7 +395,7 @@ impl TreemapTypographyThemePlan {
                 css.value_color = fill.css().to_owned();
             }
         }
-        Ok(Self {
+        Self {
             css,
             inherited_font_stack,
             text_fill,
@@ -406,7 +410,9 @@ impl TreemapTypographyThemePlan {
             evidence: FamilyThemeEvidence::from_theme(theme),
             terminal_receipt: OnceLock::new(),
             _retained_reservation: retained_reservation,
-        })
+            _visual_retained_reservation: None,
+        }
+        .prepare_node_visuals(layout, &work_meter)
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -415,6 +421,18 @@ impl TreemapTypographyThemePlan {
 
     pub(crate) fn css_binding(&self) -> &super::css_binding::TreemapCssBinding {
         &self.css
+    }
+
+    pub(crate) fn section_visual(&self, index: usize) -> Option<&node_visual::TreemapNodeVisual> {
+        self.section_source_styles
+            .get(index)
+            .map(|source| &source.visual)
+    }
+
+    pub(crate) fn leaf_visual(&self, index: usize) -> Option<&node_visual::TreemapNodeVisual> {
+        self.leaf_source_styles
+            .get(index)
+            .map(|source| &source.visual)
     }
 
     pub(crate) fn label_text_fill_css(&self) -> Option<&str> {

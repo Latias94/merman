@@ -19,22 +19,7 @@ impl FlowchartEdgeEffects {
         marker_plan: &super::defs::FlowchartMarkerEmissionPlan,
     ) -> crate::Result<Self> {
         let mut plan = Self::default();
-        let Some(theme) = ctx.resolved_theme else {
-            return Ok(plan);
-        };
-        if !theme.family_mechanism_routes().iter().any(|route| {
-            matches!(
-                route.mechanism(),
-                crate::diagram_theme::FamilyThemeMechanism::EffectBinding {
-                    target: crate::diagram_theme::ThemeTarget::Edge,
-                    ..
-                } | crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
-                    target: crate::diagram_theme::ThemeTarget::Edge,
-                    facet: crate::diagram_theme::FamilyThemeRuleFacet::Effect,
-                    ..
-                }
-            )
-        }) {
+        if !ctx.effect_eligibility.edge {
             return Ok(plan);
         }
 
@@ -70,13 +55,7 @@ impl FlowchartEdgeEffects {
             }
             let Some(paint_outset) = ctx
                 .edge_style_plan
-                .resolve_edge_stroke_width_for(
-                    edge.key,
-                    edge.edge,
-                    ctx.edge_theme,
-                    ctx.node_stroke_width,
-                    false,
-                )?
+                .stroke_width_for(edge.key)?
                 .paint_outset()
             else {
                 continue;

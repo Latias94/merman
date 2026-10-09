@@ -45,6 +45,13 @@ fn prepare_flowchart_artifact<L>(
     )?;
     let edge_theme =
         crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
+    let edge_style_plan = edge_style_plan.with_resolved_stroke_widths(
+        &semantic,
+        &edge_theme,
+        effective_config,
+        &prepared_theme.compatibility,
+        work_meter.as_ref(),
+    )?;
     let base_typography =
         crate::flowchart::FlowchartBaseTypographyPlan::resolve(resolved_theme, effective_config);
     let svg_label_sidecar = svg_label_preparation.0.then(|| {
@@ -149,10 +156,15 @@ fn prepare_sankey_family(
         layout.nodes.len(),
         execution.work_meter_ref(),
     )?;
-    let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
+    let mut node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
+        execution.work_meter_ref(),
+    )?;
+    node_palette.prepare_links(
+        &layout,
+        typography_theme.link_color(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Sankey(Box::new(
@@ -330,10 +342,12 @@ fn prepare_wardley_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
+    let mut typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
     );
+    typography_theme
+        .prepare_root_background(execution.family.root_theme_plan(), &meta.effective_config);
     let layout = crate::wardley::layout_wardley_diagram_typed_with_theme(
         &model,
         meta.title.as_deref(),
@@ -598,6 +612,7 @@ fn prepare_c4_family(
         execution.container_height,
         execution.screen_available_width,
     )?;
+    text_paint.bind_source_terminal_paint(&model, &layout, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
         pair: FamilyPair::new(model, layout),
         cluster_theme,
@@ -1178,11 +1193,14 @@ fn prepare_class_family(
         execution.resolved_theme(),
         &meta.effective_config,
     );
+    let render_config =
+        crate::class::ClassRenderConfig::resolve(&meta.effective_config, &typography_theme);
     let layout = crate::layout_class_typed_by_engine(
         &model,
         &meta.effective_config,
         execution,
         &typography_theme,
+        &render_config,
     )?;
     let cluster_label_count = layout.clusters.len();
     let relation_theme = relation_theme.with_cluster_domain(
@@ -1195,8 +1213,7 @@ fn prepare_class_family(
         &model,
         &relation_theme,
         &typography_theme,
-        crate::class::config::ClassConfigView::new(meta.effective_config.as_value())
-            .render_diagram_html_labels(),
+        render_config.diagram_use_html_labels,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Class(Box::new(
@@ -1204,6 +1221,7 @@ fn prepare_class_family(
             pair: FamilyPair::new(model, layout),
             relation_theme,
             typography_theme,
+            render_config,
             node_visual_plan,
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
                 execution.resolved_theme(),

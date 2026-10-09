@@ -51,19 +51,6 @@ fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
     }
 }
 
-fn styles(model: &UsecaseDiagramRenderModel, classes: &[String], inline: &[String]) -> String {
-    crate::usecase::compiled_styles(model, classes, inline)
-        .into_iter()
-        .filter(|(key, _)| !crate::mermaid_style::is_label_style_key(key))
-        .map(|(key, value)| {
-            format!(
-                "{key}:{} !important;",
-                value.trim_end_matches("!important").trim()
-            )
-        })
-        .collect()
-}
-
 struct UsecaseLabelRenderContext<'a> {
     config: &'a merman_core::MermaidConfig,
     measurer: &'a dyn TextMeasurer,
@@ -404,7 +391,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             escape_attr(&plan.id),
             escape_attr(&accessible)
         );
-        let style = styles(model, &boundary.classes, &boundary.styles);
+        let style = plan.source_style.as_str();
         let tab_height = if plan.package {
             plan.label.metrics.height + 10.0
         } else {
@@ -423,7 +410,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 top,
                 tab_width,
                 tab_height,
-                &style,
+                style,
             );
         }
         shapes::rect(
@@ -433,7 +420,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             top + tab_height,
             node.width,
             node.height - tab_height,
-            &style,
+            style,
         );
         write_label(
             &mut out,
@@ -596,9 +583,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             };
             let _ = write!(out, r#" role="img" aria-label="{}""#, escape_attr(&name));
         }
-        let mut edge_style = relation
-            .map(|edge| styles(model, &edge.classes, &edge.styles))
-            .unwrap_or_default();
+        let mut edge_style = plan.source_style.clone();
         if plan.dotted {
             edge_style.push_str("stroke-dasharray:3;");
         }
@@ -654,7 +639,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let source = source_nodes.get(plan.id.as_str()).copied();
         let note = notes.get(plan.id.as_str()).copied();
         let json = json_nodes.get(plan.id.as_str()).copied();
-        let (kind, name, classes, inline) = if let Some(source) = source {
+        let (kind, name, classes) = if let Some(source) = source {
             let label = &source_labels[plan.id.as_str()];
             let stereotype = source
                 .stereotype
@@ -682,7 +667,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     format!("{business}use case {label}{stereotype}")
                 },
                 source.classes.as_slice(),
-                source.styles.as_slice(),
             )
         } else if let Some(note) = note {
             (
@@ -692,7 +676,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     source_labels[note.target.as_str()],
                     accessible_label(&plan.label)
                 ),
-                [].as_slice(),
                 [].as_slice(),
             )
         } else if let Some(json) = json {
@@ -716,7 +699,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     format!("{}: {rows}", json.id)
                 },
                 json.classes.as_slice(),
-                json.styles.as_slice(),
             )
         } else {
             return Err(Error::InvalidModel {
@@ -766,7 +748,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
             fmt(node.x),
             fmt(node.y)
         );
-        let style = styles(model, classes, inline);
         shapes::write_node(
             &mut out,
             node,
@@ -774,7 +755,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             &shapes::UsecaseNodeRenderContext {
                 source,
                 note: note.is_some(),
-                style: &style,
+                style: &plan.source_style,
                 css_binding,
                 config,
                 measurer,

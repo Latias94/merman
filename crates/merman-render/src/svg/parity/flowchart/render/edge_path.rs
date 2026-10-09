@@ -51,13 +51,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         emitted_styles.source_filter_status(),
         false,
     );
-    let stroke_width = ctx.edge_style_plan.resolve_edge_stroke_width_for(
-        key,
-        edge,
-        ctx.edge_theme,
-        ctx.node_stroke_width,
-        hand_drawn,
-    )?;
+    let stroke_width = ctx.edge_style_plan.stroke_width_for(key)?;
     let stroke_width_precedence = stroke_width.precedence();
     let typed_stroke_width = stroke_width.typed_value();
     let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(

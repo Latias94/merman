@@ -2,7 +2,7 @@ use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::*;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use merman_core::theme_color::transparentize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::str::FromStr as _;
 
 fn stable_sets_key(sets: &[String]) -> String {
@@ -15,13 +15,6 @@ fn escape_css_attr(value: &str) -> String {
 
 fn data_sets_attr(sets: &[String]) -> String {
     sets.join("_")
-}
-
-fn style_value<'a>(styles: Option<&'a BTreeMap<String, String>>, key: &str) -> Option<&'a str> {
-    styles
-        .and_then(|styles| styles.get(key))
-        .map(String::as_str)
-        .filter(|value| !value.trim().is_empty())
 }
 
 fn invalid_rough_options(context: &str, error: impl std::fmt::Display) -> Error {
@@ -187,7 +180,6 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     model: &VennDiagramRenderModel,
     title_theme: &crate::venn::VennTitleThemePlan,
     typography_theme: &crate::venn::VennTypographyThemePlan,
-    effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -281,28 +273,20 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     );
     out.checkpoint()?;
 
-    let style_by_key = &theme.source_styles;
-    let is_hand_drawn = config_diagram_look(effective_config).as_str() == "handDrawn";
+    let is_hand_drawn = theme.is_hand_drawn;
     let hand_drawn_seed = options.rough_randomness(
-        effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(options.seed() as f64),
+        theme.hand_drawn_seed.unwrap_or(options.seed() as f64),
         "render.venn.roughjs",
     );
     let mut circle_index = 0usize;
 
-    for area in &layout.areas {
+    for (area, paint) in layout.areas.iter().zip(&theme.areas) {
         let sets_key = stable_sets_key(&area.sets);
-        let styles = style_by_key.get(&sets_key);
-        if area.sets.len() == 1 {
-            let paint = &theme.circles[circle_index];
+        if let crate::venn::VennAreaPaintBinding::Circle(paint) = paint {
             let base_color = &paint.fill;
-            let fill_opacity = style_value(styles, "fill-opacity").unwrap_or("0.1");
-            let stroke_color = style_value(styles, "stroke").unwrap_or(base_color.as_str());
-            let stroke_width = style_value(styles, "stroke-width")
-                .map(str::to_string)
-                .unwrap_or_else(|| fmt_string(5.0 * layout.scale));
+            let fill_opacity = paint.fill_opacity.as_str();
+            let stroke_color = paint.stroke.as_str();
+            let stroke_width = paint.stroke_width.as_str();
             let text_color = &paint.text;
             let _ = write!(
                 &mut out,
@@ -318,7 +302,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     ),
                 })?;
                 let stroke_width_value =
-                    parse_stroke_width(&stroke_width).ok_or_else(|| Error::InvalidModel {
+                    parse_stroke_width(stroke_width).ok_or_else(|| Error::InvalidModel {
                         message: format!(
                             "Venn set `{sets_key}` has invalid stroke width `{stroke_width}`"
                         ),
@@ -350,7 +334,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     fill = escape_css_attr(base_color),
                     fill_opacity = escape_css_attr(fill_opacity),
                     stroke = escape_css_attr(stroke_color),
-                    stroke_width = escape_css_attr(&stroke_width),
+                    stroke_width = escape_css_attr(stroke_width),
                 );
                 out.checkpoint()?;
             }
@@ -363,10 +347,14 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
             out.push_str("</g>");
             out.checkpoint()?;
             circle_index += 1;
-        } else {
-            let custom_fill = style_value(styles, "fill");
-            let source_text_color = style_value(styles, "color");
-            let text_color = source_text_color.unwrap_or(text_fill);
+        } else if let crate::venn::VennAreaPaintBinding::Intersection {
+            fill,
+            text,
+            source_text_owned,
+        } = paint
+        {
+            let custom_fill = fill.as_deref();
+            let text_color = text.as_str();
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}">"#,
@@ -410,7 +398,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 crate::venn::VENN_INTERSECTION_CLASS,
                 crate::venn::VENN_AREA_LABEL_CLASS,
                 crate::venn::rendered_area_label(area),
-                source_text_color.is_some(),
+                *source_text_owned,
                 text_color,
             );
             out.push_str("</g>");
@@ -468,9 +456,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
             }
 
             for node in nodes {
-                let text_color = style_by_key
-                    .get(&node.id)
-                    .and_then(|styles| style_value(Some(styles), "color"));
+                let text_color = theme.text_node_colors.get(&node.id).map(String::as_str);
                 let mut span_style = "display: flex; width: 100%; height: 100%; white-space: normal; align-items: center; justify-content: center; text-align: center; overflow-wrap: normal; word-break: normal;".to_string();
                 if let Some(text_color) = text_color {
                     span_style.push_str(" color: ");

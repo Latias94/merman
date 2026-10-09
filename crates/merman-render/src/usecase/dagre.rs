@@ -46,6 +46,7 @@ pub(super) fn expand_self_loops(
                 work.charge_adapter(1)?;
                 nodes.push(UsecaseNodePlan {
                     id: id.clone(),
+                    source_style: String::new(),
                     parent: parents[&edge.source].clone(),
                     source_label: String::new(),
                     label: UsecaseLabelPlan {

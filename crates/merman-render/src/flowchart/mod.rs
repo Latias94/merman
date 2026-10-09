@@ -19,7 +19,9 @@ pub(crate) use merman_core::diagrams::flowchart::{
 };
 use std::ops::Deref;
 
-pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
+pub(crate) use compatibility::{
+    FlowchartCompatibilityBinding, FlowchartEffectEligibility, FlowchartPreparedTheme,
+};
 pub(crate) use edge_label_padding::FlowchartEdgeLabelPadding;
 pub(crate) use edge_occurrence::{
     FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,

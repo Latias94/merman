@@ -301,6 +301,32 @@ fn try_render_treemap_svg_with_resource_policy(
 }
 
 #[test]
+fn treemap_repeated_source_declarations_fit_the_actual_retained_budget() {
+    let repeated = format!(
+        "treemap\nclassDef accent {};\n\"Leaf\": 42:::accent\n",
+        vec!["fill:red"; 1000].join(",")
+    );
+    let single = "treemap\nclassDef accent fill:red;\n\"Leaf\": 42:::accent\n";
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 65_536)
+        .unwrap();
+    let expected = try_render_treemap_svg_with_resource_policy(single, policy)
+        .expect("single source declaration fits budget");
+    let actual = try_render_treemap_svg_with_resource_policy(&repeated, policy)
+        .expect("overwritten source declarations must not inflate final visual reservation");
+    assert_eq!(
+        actual, expected,
+        "duplicate properties preserve the actual rendered SVG"
+    );
+    let document = roxmltree::Document::parse(&actual).expect("valid SVG");
+    let leaf = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("treemapLeaf"))
+        .expect("actual leaf rectangle");
+    assert_eq!(leaf.attribute("style"), Some("fill:red !important"));
+}
+
+#[test]
 fn treemap_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     let source = "treemap\n\"Section\"\n  \"Alpha\": 4\n  \"Beta\": 2\n";
     let baseline = try_render_treemap_svg_with_resource_policy(

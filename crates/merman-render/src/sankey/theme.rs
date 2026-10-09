@@ -430,10 +430,50 @@ struct SankeyNodePaint {
     typed_capability: Option<ThemeCapability>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SankeyNodeLookup {
+    first_layout_index: usize,
+    last_paint_index: usize,
+}
+
+#[derive(Debug)]
+struct SankeyPreparedLink {
+    source_layout_index: usize,
+    target_layout_index: usize,
+    paint: SankeyLinkPaintSelection,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SankeyLinkPaintSelection {
+    NodeFill {
+        paint_index: usize,
+    },
+    Gradient {
+        source_paint_index: usize,
+        target_paint_index: usize,
+    },
+    Literal,
+}
+
+pub(crate) enum SankeyLinkPaint<'a> {
+    Solid(&'a str),
+    Gradient { source: &'a str, target: &'a str },
+}
+
+pub(crate) struct SankeyLinkView<'a> {
+    pub(crate) source_layout_index: usize,
+    pub(crate) target_layout_index: usize,
+    pub(crate) paint: SankeyLinkPaint<'a>,
+}
+
 /// Resolves Sankey node paint once for terminal rectangles, derived link colors, and evidence.
 #[derive(Debug)]
 pub(crate) struct SankeyNodePalettePlan {
-    node_indices: HashMap<String, usize>,
+    node_indices: HashMap<String, SankeyNodeLookup>,
+    links: Option<Vec<SankeyPreparedLink>>,
+    literal_link_paint: Box<str>,
+    #[cfg(test)]
+    endpoint_lookups: usize,
     paints: Vec<SankeyNodePaint>,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
@@ -513,7 +553,13 @@ impl SankeyNodePalettePlan {
             let explicit_fill = node_colors
                 .and_then(|colors| colors.get(&node.id))
                 .and_then(serde_json::Value::as_str);
-            node_indices.insert(node.id.clone(), node_index);
+            node_indices
+                .entry(node.id.clone())
+                .and_modify(|lookup: &mut SankeyNodeLookup| lookup.last_paint_index = node_index)
+                .or_insert(SankeyNodeLookup {
+                    first_layout_index: node_index,
+                    last_paint_index: node_index,
+                });
             paints.push(SankeyNodePaint {
                 id: node.id.clone(),
                 ordinal: node_index + 1,
@@ -527,6 +573,10 @@ impl SankeyNodePalettePlan {
 
         Self {
             node_indices,
+            links: None,
+            literal_link_paint: "".into(),
+            #[cfg(test)]
+            endpoint_lookups: 0,
             paints,
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
@@ -541,9 +591,101 @@ impl SankeyNodePalettePlan {
             .map(|paint| paint.fill_css.as_str())
     }
 
-    pub(crate) fn fill_for_id(&self, node_id: &str) -> Option<&str> {
-        let index = *self.node_indices.get(node_id)?;
-        self.paints.get(index).map(|paint| paint.fill_css.as_str())
+    /// Selects each link once from final node paints without allocating terminal SVG IDs.
+    pub(crate) fn prepare_links(
+        &mut self,
+        layout: &SankeyDiagramLayout,
+        link_color: &str,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<()> {
+        assert!(
+            self.links.is_none(),
+            "Sankey links prepared once before emission"
+        );
+        enum Mode {
+            Source,
+            Target,
+            Gradient,
+            Literal,
+        }
+        let mode = match link_color {
+            "source" => Mode::Source,
+            "target" => Mode::Target,
+            "gradient" => Mode::Gradient,
+            _ => Mode::Literal,
+        };
+        let mut links = Vec::with_capacity(layout.links.len());
+        for link in &layout.links {
+            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+            #[cfg(test)]
+            {
+                self.endpoint_lookups += 1;
+            }
+            let source =
+                self.node_indices
+                    .get(&link.source)
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!("missing source node {}", link.source),
+                    })?;
+            #[cfg(test)]
+            {
+                self.endpoint_lookups += 1;
+            }
+            let target =
+                self.node_indices
+                    .get(&link.target)
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!("missing target node {}", link.target),
+                    })?;
+            let paint = match mode {
+                Mode::Source => SankeyLinkPaintSelection::NodeFill {
+                    paint_index: source.last_paint_index,
+                },
+                Mode::Target => SankeyLinkPaintSelection::NodeFill {
+                    paint_index: target.last_paint_index,
+                },
+                Mode::Gradient => SankeyLinkPaintSelection::Gradient {
+                    source_paint_index: source.last_paint_index,
+                    target_paint_index: target.last_paint_index,
+                },
+                Mode::Literal => SankeyLinkPaintSelection::Literal,
+            };
+            links.push(SankeyPreparedLink {
+                source_layout_index: source.first_layout_index,
+                target_layout_index: target.first_layout_index,
+                paint,
+            });
+        }
+        self.literal_link_paint = link_color.into();
+        self.links = Some(links);
+        Ok(())
+    }
+
+    pub(crate) fn terminal_link(&self, link_index: usize) -> Option<SankeyLinkView<'_>> {
+        let link = self.links.as_ref()?.get(link_index)?;
+        let paint = match link.paint {
+            SankeyLinkPaintSelection::NodeFill { paint_index } => {
+                SankeyLinkPaint::Solid(&self.paints.get(paint_index)?.fill_css)
+            }
+            SankeyLinkPaintSelection::Gradient {
+                source_paint_index,
+                target_paint_index,
+            } => SankeyLinkPaint::Gradient {
+                source: &self.paints.get(source_paint_index)?.fill_css,
+                target: &self.paints.get(target_paint_index)?.fill_css,
+            },
+            SankeyLinkPaintSelection::Literal => SankeyLinkPaint::Solid(&self.literal_link_paint),
+        };
+        Some(SankeyLinkView {
+            source_layout_index: link.source_layout_index,
+            target_layout_index: link.target_layout_index,
+            paint,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn link_lookup_stats(&self) -> (usize, usize) {
+        (self.paints.len(), self.endpoint_lookups)
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<SankeyNodePaletteReceipt> {

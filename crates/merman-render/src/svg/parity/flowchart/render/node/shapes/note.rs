@@ -1,7 +1,6 @@
 //! Flowchart v2 note shape.
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::util;
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::helpers;
@@ -18,8 +17,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
     let x = -w / 2.0;
     let y = -h / 2.0;
 
-    let note_fill = util::theme_token(ctx.config.as_value(), "noteBkgColor", "#fff5ad");
-    let note_stroke = util::theme_token(ctx.config.as_value(), "noteBorderColor", "#aaaa33");
+    let note_fill = &ctx.compatibility.note_fill;
+    let note_stroke = &ctx.compatibility.note_stroke;
 
     if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair_with_stroke(
         common.look_is_hand_drawn(),
@@ -40,9 +39,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
             escape_attr(&fill_d),
-            escape_attr(&note_fill),
+            escape_attr(note_fill),
             escape_attr(&stroke_d),
-            escape_attr(&note_stroke),
+            escape_attr(note_stroke),
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
         );
@@ -55,8 +54,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
             fmt(y),
             fmt(w),
             fmt(h),
-            escape_attr(&note_fill),
-            escape_attr(&note_stroke),
+            escape_attr(note_fill),
+            escape_attr(note_stroke),
             fmt_display(common.stroke_width as f64),
         );
     } else if let Some((fill_d, stroke_d)) =
@@ -76,14 +75,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
             escape_attr(&fill_d),
-            escape_attr(&note_fill),
+            escape_attr(note_fill),
             escape_attr(common.style)
         );
         let _ = write!(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
             escape_attr(&stroke_d),
-            escape_attr(&note_stroke),
+            escape_attr(note_stroke),
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
             escape_attr(common.style)

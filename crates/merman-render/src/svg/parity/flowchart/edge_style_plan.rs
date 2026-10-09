@@ -16,6 +16,7 @@ struct PreparedEdgeStyles {
     artifact: Arc<FlowchartEdgeStyleArtifact>,
     animation: FlowchartEdgeAnimationResolution,
     swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
+    stroke_width: Option<FlowchartEdgeStrokeWidthResolution>,
 }
 
 #[derive(Debug)]
@@ -182,6 +183,7 @@ impl FlowchartEdgeStylePlan {
                 None
             };
             let prepared = PreparedEdgeStyles {
+                stroke_width: None,
                 animation: FlowchartEdgeAnimationResolution::resolve(edge, &artifact.emission),
                 artifact,
                 swimlane_label,
@@ -243,7 +245,45 @@ impl FlowchartEdgeStylePlan {
         Ok(self.occurrence(key)?.artifact.source_stroke_width_status)
     }
 
-    pub(in crate::svg::parity::flowchart) fn resolve_edge_stroke_width_for(
+    pub(crate) fn with_resolved_stroke_widths(
+        mut self,
+        model: &crate::flowchart::FlowchartModel,
+        edge_theme: &crate::flowchart::FlowchartEdgeThemeStyle,
+        config: &merman_core::MermaidConfig,
+        compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
+        work: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let hand_drawn = flowchart_config_diagram_look(config).is_hand_drawn();
+        for (index, edge) in model.edges.iter().enumerate() {
+            work.checkpoint(merman_core::OperationPhase::Layout)?;
+            let key = crate::flowchart::FlowchartEdgeKey::new(index);
+            let width = self.resolve_edge_stroke_width(
+                key,
+                edge,
+                edge_theme,
+                compatibility.node_stroke_width,
+                hand_drawn,
+            )?;
+            self.edge_occurrences[index].stroke_width = Some(width);
+        }
+        Ok(self)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn stroke_width_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<FlowchartEdgeStrokeWidthResolution> {
+        self.occurrence(key)?
+            .stroke_width
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing prepared Flowchart stroke width for edge occurrence {}",
+                    key.semantic_index()
+                ),
+            })
+    }
+
+    fn resolve_edge_stroke_width(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
         edge: &crate::flowchart::FlowEdge,

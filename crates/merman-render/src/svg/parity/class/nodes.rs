@@ -18,9 +18,9 @@ use super::node::{
     render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
-use super::settings::ClassRenderSettings;
 use super::*;
 use super::{ClassSvgInterface, ClassSvgNode, ClassSvgNote};
+use crate::class::ClassRenderConfig;
 use crate::model::{Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRootId, LayoutEdge};
 use crate::{Error, Result};
 use rustc_hash::FxHashMap;
@@ -51,7 +51,8 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
-    pub(super) settings: &'a ClassRenderSettings,
+    pub(super) settings: &'a ClassRenderConfig,
+    pub(super) hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) mermaid_config: &'a merman_core::MermaidConfig,
@@ -717,7 +718,7 @@ fn render_class_node_id<O: SvgOutput>(
             &ClassNoteRenderContext {
                 diagram_id: ctx.diagram_id,
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
+                text_style: settings.text_style(),
                 line_height: settings.line_height,
                 use_html_labels: settings.diagram_use_html_labels
                     || crate::math::contains_delimited_math(&note.text),
@@ -726,7 +727,7 @@ fn render_class_node_id<O: SvgOutput>(
                 css_binding: ctx.typography_theme.css_binding(),
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
-                hand_drawn_seed: settings.hand_drawn_seed.clone(),
+                hand_drawn_seed: ctx.hand_drawn_seed.clone(),
                 timing: ctx.timing,
                 emit: ctx.emit,
             },
@@ -753,12 +754,9 @@ fn render_class_node_id<O: SvgOutput>(
             &ClassInterfaceRenderContext {
                 diagram_id: ctx.diagram_id,
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
+                text_style: settings.text_style(),
                 use_html_labels: settings.diagram_use_html_labels,
-                wrapping_width: crate::class::config::ClassConfigView::new(
-                    ctx.mermaid_config.as_value(),
-                )
-                .interface_wrapping_width(),
+                wrapping_width: settings.interface_wrapping_width,
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
@@ -823,7 +821,7 @@ fn render_class_node_id<O: SvgOutput>(
             node_stroke_width,
             node_stroke_dasharray,
             look: settings.look.as_str(),
-            hand_drawn_seed: settings.hand_drawn_seed.clone(),
+            hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
         },
     );
@@ -844,11 +842,11 @@ fn render_class_node_id<O: SvgOutput>(
             node_label_plan,
             &ClassHtmlNodeBodyContext {
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
-                html_calc_text_style: &settings.html_calc_text_style,
+                text_style: settings.text_style(),
+                html_calc_text_style: settings.html_calc_text_style(),
                 line_height: settings.line_height,
                 class_padding: settings.class_padding,
-                hide_empty_members_box: settings.hide_empty_members_box,
+                hide_empty_members_box: settings.hide_empty_members_box(),
                 node_stroke_style_attr: node_stroke_style_attr.as_str(),
                 node_label_style_attr: html_node_label_style_attr.as_str(),
                 node_label_fill: binding.label_fill.as_deref(),
@@ -875,10 +873,10 @@ fn render_class_node_id<O: SvgOutput>(
             basic_container.geometry,
             &ClassSvgNodeBodyContext {
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
-                wrap_probe_font_size: settings.wrap_probe_font_size,
+                text_style: settings.text_style(),
+                wrap_probe_font_size: settings.wrap_probe_font_size(),
                 class_padding: settings.class_padding,
-                hide_empty_members_box: settings.hide_empty_members_box,
+                hide_empty_members_box: settings.hide_empty_members_box(),
                 node_stroke_style_attr: node_stroke_style_attr.as_str(),
                 node_label_style_attr: svg_node_label_style_attr.as_str(),
                 node_stroke,

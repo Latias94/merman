@@ -29,6 +29,14 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) html_labels: bool,
     pub(crate) node_stroke_width: f32,
     pub(crate) node_corner_radius: f64,
+    pub(crate) rounded_rect_radius: Value,
+    pub(crate) rounded_rect_radius_truthy: bool,
+    pub(crate) rounded_rect_radius_numeric: Option<f64>,
+    pub(crate) note_fill: String,
+    pub(crate) note_stroke: String,
+    pub(crate) state_inner_fill: String,
+    pub(crate) small_state_shadow: bool,
+    pub(crate) collapsed_agentflow_stroke: String,
 }
 
 impl FlowchartCompatibilityBinding {
@@ -43,13 +51,36 @@ impl FlowchartCompatibilityBinding {
         let text_color = theme("textColor", "#333");
         let line_color = theme("lineColor", "#333333");
         let cluster_border = theme("clusterBorder", "#aaaa33");
+        let node_border = theme("nodeBorder", "#9370DB");
+        let rounded_rect_radius = config
+            .get("themeVariables")
+            .and_then(|theme| theme.get("radius"))
+            .filter(|radius| !radius.is_null())
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(5));
+        let rounded_rect_radius_truthy = crate::config::json_value_is_truthy(&rounded_rect_radius);
+        let rounded_rect_radius_numeric = rounded_rect_radius_truthy
+            .then(|| crate::config::json_f64(&rounded_rect_radius))
+            .flatten();
         Self {
+            rounded_rect_radius,
+            rounded_rect_radius_truthy,
+            rounded_rect_radius_numeric,
+            note_fill: theme("noteBkgColor", "#fff5ad"),
+            note_stroke: theme("noteBorderColor", "#aaaa33"),
+            state_inner_fill: theme("stateBorder", &node_border),
+            small_state_shadow: crate::config::value_at(config, &["themeVariables", "nodeShadow"])
+                .is_some_and(crate::config::json_value_is_truthy),
+            collapsed_agentflow_stroke: theme(
+                "flowContainerStroke",
+                &theme("secondaryBorderColor", "#aaaa33"),
+            ),
             arrowhead_color: theme("arrowheadColor", &line_color),
             node_text_color: theme("nodeTextColor", &text_color),
             title_color: theme("titleColor", &text_color),
             text_color,
             line_color,
-            node_border: theme("nodeBorder", "#9370DB"),
+            node_border,
             main_bkg: theme("mainBkg", "#ECECFF"),
             stroke_width: css("strokeWidth", "1"),
             error_bkg: theme("errorBkgColor", "#552222"),
@@ -113,6 +144,63 @@ impl FlowchartCompatibilityBinding {
 pub(crate) struct FlowchartPreparedTheme {
     pub(crate) compatibility: FlowchartCompatibilityBinding,
     pub(crate) text_surface: super::FlowchartTextSurfacePaintPlan,
+    pub(crate) effects: FlowchartEffectEligibility,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct FlowchartEffectEligibility {
+    pub(crate) edge: bool,
+    pub(crate) label: bool,
+    pub(crate) marker: bool,
+    pub(crate) marker_route_work: usize,
+}
+
+impl FlowchartEffectEligibility {
+    fn resolve(theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>) -> Self {
+        use crate::diagram_theme::{FamilyThemeMechanism, FamilyThemeRuleFacet, ThemeTarget};
+        let Some(theme) = theme else {
+            return Self::default();
+        };
+        let mut eligibility = Self {
+            marker_route_work: theme.family_mechanism_routes().len(),
+            ..Self::default()
+        };
+        for route in theme.family_mechanism_routes() {
+            match route.mechanism() {
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Edge,
+                    ..
+                }
+                | FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Edge,
+                    facet: FamilyThemeRuleFacet::Effect,
+                    ..
+                } => eligibility.edge = true,
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
+                    ..
+                }
+                | FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
+                    facet: FamilyThemeRuleFacet::Effect,
+                    ..
+                } => eligibility.label = true,
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Marker,
+                    ..
+                }
+                | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Marker,
+                }
+                | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Marker,
+                    ..
+                } => eligibility.marker = true,
+                _ => {}
+            }
+        }
+        eligibility
+    }
 }
 
 impl FlowchartPreparedTheme {
@@ -123,6 +211,7 @@ impl FlowchartPreparedTheme {
         work: &crate::resources::OperationWorkMeter,
     ) -> Result<Self, crate::resources::OperationWorkError> {
         Ok(Self {
+            effects: FlowchartEffectEligibility::resolve(theme),
             compatibility: FlowchartCompatibilityBinding::resolve(config.as_value()),
             text_surface: super::FlowchartTextSurfacePaintPlan::resolve(
                 theme, config, node_owned, work,
@@ -134,6 +223,55 @@ impl FlowchartPreparedTheme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rounded_radius_keeps_numeric_zero_distinct_from_string_zero_and_null() {
+        for (raw, expected_raw, truthy, numeric) in [
+            (
+                serde_json::json!(null),
+                serde_json::json!(5),
+                true,
+                Some(5.0),
+            ),
+            (serde_json::json!(0), serde_json::json!(0), false, None),
+            (
+                serde_json::json!("0"),
+                serde_json::json!("0"),
+                true,
+                Some(0.0),
+            ),
+            (
+                serde_json::json!("var(--radius)"),
+                serde_json::json!("var(--radius)"),
+                true,
+                None,
+            ),
+        ] {
+            let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
+                "themeVariables": { "radius": raw }
+            }));
+            assert_eq!(binding.rounded_rect_radius, expected_raw);
+            assert_eq!(binding.rounded_rect_radius_truthy, truthy);
+            assert_eq!(binding.rounded_rect_radius_numeric, numeric);
+        }
+    }
+
+    #[test]
+    fn special_shapes_preserve_raw_roles_and_distinct_collapsed_alias_fallback() {
+        let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
+            "themeVariables": {
+                "noteBkgColor": "", "noteBorderColor": "var(--note)",
+                "nodeBorder": "currentColor", "clusterBorder": "var(--cluster)",
+                "nodeShadow": {}
+            }
+        }));
+        assert_eq!(binding.note_fill, "");
+        assert_eq!(binding.note_stroke, "var(--note)");
+        assert_eq!(binding.state_inner_fill, "currentColor");
+        assert!(binding.small_state_shadow);
+        assert_eq!(binding.agentflow_container_stroke, "var(--cluster)");
+        assert_eq!(binding.collapsed_agentflow_stroke, "#aaaa33");
+    }
 
     #[test]
     fn compatibility_preserves_common_aliases_numeric_css_and_palette_slots() {

@@ -5,12 +5,9 @@ use crate::svg::parity::flowchart::{
     roughjs_paths_for_hand_drawn_svg_path,
 };
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
-use merman_core::diagrams::c4::{
-    C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
-};
+use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel, C4ShapeRenderModel};
 type C4SvgModelShape = C4ShapeRenderModel;
 type C4SvgModelBoundary = C4BoundaryRenderModel;
-type C4SvgModelRel = C4RelRenderModel;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
@@ -906,11 +903,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for b in &model.boundaries {
         boundary_meta.insert(b.alias.as_str(), b);
     }
-    let mut rel_meta: std::collections::HashMap<(&str, &str), &C4SvgModelRel> =
-        std::collections::HashMap::new();
-    for r in &model.rels {
-        rel_meta.insert((r.from_alias.as_str(), r.to_alias.as_str()), r);
-    }
     let mut cluster_theme_receipt = cluster_theme.begin_terminal_receipt();
     let mut boundary_emission_ordinal = 0usize;
     let hand_drawn_randomness = options.rough_randomness(
@@ -927,20 +919,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
                 let meta = shape_meta.get(s.alias.as_str()).copied();
-                let element_style = typography_theme
-                    .element_style(&s.type_c4_shape)
-                    .ok_or_else(|| crate::Error::InvalidModel {
-                        message: format!("c4: missing prepared element style {}", s.type_c4_shape),
-                    })?;
-                let bg_color = meta
-                    .and_then(|m| m.bg_color.as_deref())
-                    .unwrap_or(&element_style.background);
-                let border_color = meta
-                    .and_then(|m| m.border_color.as_deref())
-                    .unwrap_or(&element_style.border);
-                let font_color = meta
-                    .and_then(|m| m.font_color.clone())
-                    .unwrap_or_else(|| "#FFFFFF".to_string());
+                let paint = text_paint.element_paint(&s.alias).ok_or_else(|| {
+                    crate::Error::InvalidModel {
+                        message: format!("c4: missing prepared element paint {}", s.alias),
+                    }
+                })?;
+                let bg_color = paint.background.as_str();
+                let border_color = paint.border.as_str();
+                let font_color = paint.text.as_str();
                 let Some(meta) = meta else {
                     return Err(crate::Error::InvalidModel {
                         message: format!("c4: missing model shape {}", s.alias),
@@ -1024,7 +1010,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" style="color:{} !important" transform="translate({}, {})"><rect/>"#,
-                    escape_attr(&font_color),
+                    escape_attr(font_color),
                     fmt(label_transform.0),
                     fmt(label_transform.1),
                 );
@@ -1039,7 +1025,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             block,
                             total_width,
                             section_y,
-                            &font_color,
+                            font_color,
                         );
                         out.checkpoint()?;
                         section_y += block.height + 3.0;
@@ -1048,7 +1034,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 out.push_str("</g></g></g>");
                 out.checkpoint()?;
                 if shape_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
-                    receipt.record_owned_color(&font_color);
+                    receipt.record_owned_color(font_color);
                 }
             }
             C4PaintItem::Boundary(index) => {
@@ -1180,13 +1166,16 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.push_str("<g>");
     out.checkpoint()?;
     for (idx, rel) in layout.rels.iter().enumerate() {
-        let meta = rel_meta.get(&(rel.from.as_str(), rel.to.as_str())).copied();
-        let text_color = meta
-            .and_then(|m| m.text_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
-        let stroke_color = meta
-            .and_then(|m| m.line_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
+        let paint = text_paint
+            .relation_paint(&rel.from, &rel.to)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "c4: missing prepared relation paint {} -> {}",
+                    rel.from, rel.to
+                ),
+            })?;
+        let text_color = paint.text.as_str();
+        let stroke_color = paint.line.as_str();
         let offset_x = rel.offset_x.unwrap_or(0) as f64;
         let offset_y = rel.offset_y.unwrap_or(0) as f64;
 
@@ -1198,7 +1187,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 fmt(rel.start_point.y),
                 fmt(rel.end_point.x),
                 fmt(rel.end_point.y),
-                escape_attr(&stroke_color)
+                escape_attr(stroke_color)
             );
             out.checkpoint()?;
             if rel.rel_type != "rel_b" {
@@ -1235,7 +1224,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             let _ = write!(
                 &mut out,
                 r#"<path fill="none" stroke-width="1" stroke="{}" d="{}""#,
-                escape_attr(&stroke_color),
+                escape_attr(stroke_color),
                 escape_attr(&d)
             );
             out.checkpoint()?;
@@ -1284,11 +1273,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 font_family: message_family,
                 font_size: message_size,
                 font_weight: message_weight,
-                attrs: &[("fill", &text_color)],
+                attrs: &[("fill", text_color)],
             },
         )?;
         if label_visible && let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_owned_color(&text_color);
+            receipt.record_owned_color(text_color);
         }
 
         if let Some(techn) = &rel.techn
@@ -1305,11 +1294,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     font_family: message_family,
                     font_size: message_size,
                     font_weight: message_weight,
-                    attrs: &[("fill", &text_color), ("font-style", "italic")],
+                    attrs: &[("fill", text_color), ("font-style", "italic")],
                 },
             )?;
             if techn_visible && let Some(receipt) = text_paint_receipt.as_mut() {
-                receipt.record_owned_color(&text_color);
+                receipt.record_owned_color(text_color);
             }
         }
     }

@@ -88,25 +88,13 @@ impl FlowchartLabelEffects {
         resources: &ThemeResourcePolicy,
     ) -> crate::Result<Self> {
         let mut plan = Self::default();
-        let (Some(theme), Some(sidecar)) = (ctx.resolved_theme, ctx.svg_label_sidecar) else {
+        let Some(sidecar) = ctx.svg_label_sidecar else {
             return Ok(plan);
         };
         if ctx.swimlane_direction.is_some() || flowchart_config_look(ctx.config) != "classic" {
             return Ok(plan);
         }
-        if !theme.family_mechanism_routes().iter().any(|route| {
-            matches!(
-                route.mechanism(),
-                crate::diagram_theme::FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    ..
-                } | crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    facet: crate::diagram_theme::FamilyThemeRuleFacet::Effect,
-                    ..
-                }
-            )
-        }) {
+        if !ctx.effect_eligibility.label {
             return Ok(plan);
         }
         let weights = sidecar.label_weights();

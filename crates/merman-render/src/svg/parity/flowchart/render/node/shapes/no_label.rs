@@ -67,18 +67,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 ctx.document_ids.drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
-                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
-                    .is_some_and(crate::config::json_value_is_truthy),
+                ctx.compatibility.small_state_shadow,
                 common.theme_style,
             );
             out.push_str("/>");
             rendered(super::super::emission::FlowchartNodeShapeEmissionReceipt::start())
         }
         "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
-            let inner_fill =
-                util::config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
+            let line_color = &ctx.compatibility.line_color;
+            let inner_fill = &ctx.compatibility.state_inner_fill;
 
             let outer_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_circle_path_d(14.0, common.hand_drawn_seed)
@@ -95,8 +92,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 ctx.document_ids.drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
-                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
-                    .is_some_and(crate::config::json_value_is_truthy),
+                ctx.compatibility.small_state_shadow,
                 "",
             );
             out.push('>');
@@ -107,14 +103,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.fill_color),
                 escape_attr(common.style),
                 outer_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
                 inner_d,
-                escape_attr(&inner_fill),
+                escape_attr(inner_fill),
                 escape_attr(common.style),
                 inner_d,
-                escape_attr(&inner_fill),
+                escape_attr(inner_fill),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
@@ -132,7 +128,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             } else {
                 (10.0, 70.0)
             };
-            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = &ctx.compatibility.line_color;
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_rect(RoughRectSpec {
@@ -149,10 +145,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 fill_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 escape_attr(common.style),
                 stroke_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 util::fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
@@ -238,15 +234,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
         // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
         "f-circ" | "junction" | "filled-circle" => {
-            let border =
-                util::config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
-
-            let effective_style: std::borrow::Cow<'_, str> = if common.style.trim().is_empty() {
-                format!("fill: {border} !important;").into()
-            } else {
-                common.style.into()
-            };
+            let effective_style = common.junction_style;
 
             let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_circle_path_d(14.0, common.hand_drawn_seed)
@@ -257,12 +245,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 escape_attr(&d),
                 escape_attr(common.fill_color),
-                escape_attr(effective_style.as_ref()),
+                escape_attr(effective_style),
                 escape_attr(&d),
                 escape_attr(common.stroke_color),
                 util::fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
-                escape_attr(effective_style.as_ref()),
+                escape_attr(effective_style),
             );
             rendered(
                 super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(

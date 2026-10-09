@@ -6,7 +6,6 @@ use super::nodes::{
     render_class_render_tree,
 };
 use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
-use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
 
@@ -20,6 +19,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     relation_theme: &crate::class::ClassRelationThemePlan,
     typography_theme: &crate::class::ClassTextThemePlan,
     node_visual_plan: &crate::class::ClassNodeVisualPlan,
+    render_config: &crate::class::ClassRenderConfig,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
@@ -40,14 +40,12 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);
     let hand_drawn_seed = options.rough_randomness(
-        effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_f64)
+        render_config
+            .hand_drawn_seed
             .unwrap_or(options.seed() as f64),
         "render.class.roughjs",
     );
-    let settings =
-        ClassRenderSettings::from_config(effective_config, hand_drawn_seed, typography_theme);
+    let settings = render_config;
     let mut typography_receipt = typography_theme.begin_terminal_receipt(
         model,
         diagram_title,
@@ -163,7 +161,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     drop(build_ctx_guard);
 
-    let terminal_text_style = crate::class::class_cardinality_text_style(&settings.text_style);
+    let terminal_text_style = crate::class::class_cardinality_text_style(settings.text_style());
     let mut paint_edges = std::borrow::Cow::Borrowed(layout.edges.as_slice());
     if layout.uses_elk_adapter_dom {
         let edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
@@ -242,7 +240,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         mermaid_config: Some(mermaid_config),
         math_renderer: options.math_renderer(),
         look: settings.look.as_str(),
-        hand_drawn_seed: settings.hand_drawn_seed.clone(),
+        hand_drawn_seed: hand_drawn_seed.clone(),
         timing,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         edge_paths_class: if layout.uses_elk_adapter_dom {
@@ -266,7 +264,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         class_color_indices: &class_color_indices,
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,
-        settings: &settings,
+        settings,
+        hand_drawn_seed: &hand_drawn_seed,
         diagram_id,
         measurer,
         mermaid_config,
@@ -339,11 +338,11 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             .filter(|title| !title.is_empty())
             .map(|title| {
                 let title_style = TextStyle {
-                    font_family: settings.text_style.font_family.clone(),
+                    font_family: settings.text_style().font_family.clone(),
                     // Mermaid emits `classDiagramTitleText`, while the Class stylesheet's 18px
                     // rule targets `classTitleText`; the diagram title therefore inherits the
                     // root SVG font size.
-                    font_size: settings.text_style.font_size,
+                    font_size: settings.text_style().font_size,
                     font_weight: None,
                     font_style: None,
                 };

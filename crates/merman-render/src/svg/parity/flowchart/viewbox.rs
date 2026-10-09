@@ -224,7 +224,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     // an actually applied typed stroke, whose additional paint must fit without relayout.
     {
         let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
-        let hand_drawn = flowchart_config_diagram_look(ctx.config).is_hand_drawn();
         let _g = timing.section(viewbox_edge_curve_bounds);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         let mut prepared_routes = Vec::new();
@@ -275,13 +274,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
             }
             let paint_outset = ctx
                 .edge_style_plan
-                .resolve_edge_stroke_width_for(
-                    key,
-                    edge,
-                    ctx.edge_theme,
-                    ctx.node_stroke_width,
-                    hand_drawn,
-                )?
+                .stroke_width_for(key)?
                 .typed_value()
                 .map_or(0.0, |width| f64::from(width) / 2.0);
 
@@ -353,13 +346,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                 };
                 let paint_outset = ctx
                     .edge_style_plan
-                    .resolve_edge_stroke_width_for(
-                        key,
-                        edge,
-                        ctx.edge_theme,
-                        ctx.node_stroke_width,
-                        hand_drawn,
-                    )?
+                    .stroke_width_for(key)?
                     .typed_value()
                     .map_or(0.0, |width| f64::from(width) / 2.0);
                 if let Some(pb) = geom.pb {
@@ -400,13 +387,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                 };
                 let paint_outset = ctx
                     .edge_style_plan
-                    .resolve_edge_stroke_width_for(
-                        edge.key,
-                        edge.edge,
-                        ctx.edge_theme,
-                        ctx.node_stroke_width,
-                        hand_drawn,
-                    )?
+                    .stroke_width_for(edge.key)?
                     .typed_value()
                     .map_or(0.0, |width| f64::from(width) / 2.0);
                 let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);

@@ -27,7 +27,7 @@ mod config;
 mod theme;
 
 use config::VennConfigView;
-pub(crate) use theme::{VennTitleThemePlan, VennTypographyThemePlan};
+pub(crate) use theme::{VennAreaPaintBinding, VennTitleThemePlan, VennTypographyThemePlan};
 
 pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";
 pub(crate) const VENN_CIRCLE_CLASS: &str = "venn-circle";

@@ -403,26 +403,10 @@ impl FlowchartMarkerEmissionPlan {
         let hand_drawn = look.is_hand_drawn();
         let neo = look.is_neo();
         let mut plan = Self::new(hand_drawn);
-        if let Some(theme) = ctx.resolved_theme {
-            ctx.work_meter
-                .charge(theme.family_mechanism_routes().len())?;
-            if theme.family_mechanism_routes().iter().any(|route| {
-                use crate::diagram_theme::{FamilyThemeMechanism, ThemeTarget};
-                matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Marker,
-                        ..
-                    } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Marker
-                    } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Marker,
-                        ..
-                    }
-                )
-            }) {
-                plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
-            }
+        ctx.work_meter
+            .charge(ctx.effect_eligibility.marker_route_work)?;
+        if ctx.effect_eligibility.marker {
+            plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
         }
         for &edge in hierarchy_plan.ordered_edges() {
             let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;

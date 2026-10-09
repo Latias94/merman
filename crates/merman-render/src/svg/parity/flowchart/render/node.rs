@@ -25,6 +25,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub node_asset_height: Option<f64>,
     label_emission: &'a label::FlowchartNodeLabelEmissionPlan<'a>,
     pub style: &'a str,
+    pub junction_style: &'a str,
     pub effect_filter_attr: &'a str,
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
@@ -277,6 +278,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_asset_height,
         label_emission: &label_emission,
         style,
+        junction_style: selection.junction_style.as_deref().unwrap_or(style),
         effect_filter_attr: effect_application
             .as_ref()
             .map_or("", |(_, _, _, attr)| attr.as_str()),

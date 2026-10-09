@@ -330,6 +330,7 @@ pub(super) fn render_flowchart_svg_model(
         measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
+        effect_eligibility: &prepared_theme.effects,
         hand_drawn_seed,
         work_meter: options.work_meter(),
         resolved_theme: options.resolved_theme(),
@@ -969,7 +970,15 @@ mod integration_tests {
                     false,
                     execution.work_meter(),
                 )
-                .expect("edge style plan"),
+                .expect("edge style plan")
+                .with_resolved_stroke_widths(
+                    &model,
+                    &Default::default(),
+                    &metadata.effective_config,
+                    &prepared_theme.compatibility,
+                    execution.work_meter(),
+                )
+                .expect("prepared stroke widths"),
                 svg_label_sidecar: &sidecar,
             },
             &execution,
@@ -1111,7 +1120,15 @@ mod integration_tests {
                         false,
                         execution.work_meter(),
                     )
-                    .expect("edge style plan"),
+                    .expect("edge style plan")
+                    .with_resolved_stroke_widths(
+                        &model,
+                        &Default::default(),
+                        &metadata.effective_config,
+                        &prepared_theme.compatibility,
+                        execution.work_meter(),
+                    )
+                    .expect("prepared stroke widths"),
                     svg_label_sidecar: &sidecar,
                 },
                 &execution,

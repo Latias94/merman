@@ -346,11 +346,11 @@ use style::{is_text_style_key, parse_style_decl};
     )
 )]
 use util::{
-    config_bool, config_diagram_look, config_f64, config_string, css_rgba_fade,
-    decode_mermaid_entities_for_render_text, escape_attr_display, escape_attr_into,
-    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
-    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
-    normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
+    config_bool, config_f64, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
+    escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into, fmt, fmt_display,
+    fmt_into, fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
+    json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
+    scoped_svg_url, theme_token,
 };
 pub(crate) use util::{escape_attr, escape_xml};
 
@@ -1236,7 +1236,6 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            effective_config,
             title,
             artifact.typography_theme(),
             options,
@@ -1278,6 +1277,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.relation_theme(),
                 artifact.typography_theme(),
                 artifact.node_visual_plan(),
+                artifact.render_config(),
                 artifact.theme_evidence(),
                 effective_config,
                 title,
@@ -1416,7 +1416,6 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().semantic(),
                 artifact.title_theme(),
                 artifact.typography_theme(),
-                effective_config_value,
                 title,
                 options,
             )

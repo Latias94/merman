@@ -1144,6 +1144,7 @@ pub(crate) fn layout_class_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     typography_theme: &crate::class::ClassTextThemePlan,
+    render_config: &crate::class::ClassRenderConfig,
 ) -> Result<model::ClassDiagramLayout> {
     options
         .work_meter_ref()
@@ -1162,6 +1163,7 @@ pub(crate) fn layout_class_typed_by_engine(
             options.math_renderer(),
             options.elk_operation_seed(),
             typography_theme,
+            render_config,
             &mut work_control,
         );
     }
@@ -1171,6 +1173,7 @@ pub(crate) fn layout_class_typed_by_engine(
         options.text_measurer(),
         options.math_renderer(),
         typography_theme,
+        render_config,
         &mut work_control,
     )
 }
@@ -1333,11 +1336,16 @@ mod tests {
         };
         let typography_theme =
             crate::class::ClassTextThemePlan::resolve(None, &parsed.metadata().effective_config);
+        let render_config = crate::class::ClassRenderConfig::resolve(
+            &parsed.metadata().effective_config,
+            &typography_theme,
+        );
         layout_class_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
             &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
             &typography_theme,
+            &render_config,
         )
         .expect("class layout")
     }

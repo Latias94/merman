@@ -15,7 +15,6 @@ mod layout;
 mod measure;
 mod theme;
 
-pub(crate) use measure::styles as compiled_styles;
 pub(crate) use theme::UsecaseCssBinding;
 
 /// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
@@ -66,6 +65,7 @@ pub(crate) struct UsecaseJsonTablePlan {
 #[derive(Debug, Clone)]
 pub(crate) struct UsecaseNodePlan {
     pub id: String,
+    pub source_style: String,
     pub parent: Option<String>,
     pub source_label: String,
     pub label: UsecaseLabelPlan,
@@ -83,6 +83,7 @@ pub(crate) struct UsecaseNodePlan {
 #[derive(Debug, Clone)]
 pub(crate) struct UsecaseEdgePlan {
     pub id: String,
+    pub source_style: String,
     pub original_id: Option<String>,
     pub self_loop_node: Option<String>,
     pub dagre_recursive: bool,

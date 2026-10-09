@@ -15,7 +15,7 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-/// Owns inherited C4 text paint, not the independently colored shape and relationship labels.
+/// Owns inherited text paint and the independently selected source colors of C4 terminals.
 #[derive(Debug)]
 pub(crate) struct C4TextPaintPlan {
     fill: Option<DirectStaticPaint>,
@@ -23,6 +23,26 @@ pub(crate) struct C4TextPaintPlan {
     evidence: FamilyThemeEvidence,
     pending: Vec<C4PendingTextMechanism>,
     terminal: OnceLock<C4TextPaintTerminalSeal>,
+    source_paint: OnceLock<C4SourceTerminalPaint>,
+}
+
+#[derive(Debug)]
+struct C4SourceTerminalPaint {
+    elements: BTreeMap<String, C4ElementTerminalPaint>,
+    relations: BTreeMap<String, BTreeMap<String, C4RelationTerminalPaint>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct C4ElementTerminalPaint {
+    pub(crate) background: String,
+    pub(crate) border: String,
+    pub(crate) text: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct C4RelationTerminalPaint {
+    pub(crate) text: String,
+    pub(crate) line: String,
 }
 
 #[derive(Debug)]
@@ -67,6 +87,7 @@ impl C4TextPaintPlan {
             evidence: FamilyThemeEvidence::from_theme(theme),
             pending: Vec::new(),
             terminal: OnceLock::new(),
+            source_paint: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
         let config_owned = merman_core::__private::config_path_overrides_typed_default(
@@ -175,6 +196,103 @@ impl C4TextPaintPlan {
         self.fill.as_ref().map(DirectStaticPaint::css)
     }
 
+    pub(crate) fn bind_source_terminal_paint(
+        &self,
+        model: &merman_core::diagrams::c4::C4DiagramRenderModel,
+        layout: &crate::model::C4DiagramLayout,
+        typography: &super::C4TypographyThemePlan,
+    ) -> crate::Result<()> {
+        // The writer historically selected the last source metadata for an alias, while
+        // defaults came from the actual alias-keyed layout type. Preserve both owners.
+        let source_shapes: BTreeMap<_, _> = model
+            .shapes
+            .iter()
+            .map(|shape| (shape.alias.as_str(), shape))
+            .collect();
+        let mut elements = BTreeMap::new();
+        for shape in &layout.shapes {
+            let source = source_shapes.get(shape.alias.as_str()).ok_or_else(|| {
+                crate::Error::InvalidModel {
+                    message: format!("c4: missing model shape {}", shape.alias),
+                }
+            })?;
+            let defaults = typography
+                .element_style(&shape.type_c4_shape)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!("c4: missing prepared element style {}", shape.type_c4_shape),
+                })?;
+            elements.insert(
+                shape.alias.clone(),
+                C4ElementTerminalPaint {
+                    background: source
+                        .bg_color
+                        .as_deref()
+                        .unwrap_or(&defaults.background)
+                        .to_owned(),
+                    border: source
+                        .border_color
+                        .as_deref()
+                        .unwrap_or(&defaults.border)
+                        .to_owned(),
+                    text: source.font_color.as_deref().unwrap_or("#FFFFFF").to_owned(),
+                },
+            );
+        }
+        let source_relations: BTreeMap<_, _> = model
+            .rels
+            .iter()
+            .map(|relation| {
+                (
+                    (relation.from_alias.as_str(), relation.to_alias.as_str()),
+                    relation,
+                )
+            })
+            .collect();
+        let mut relations: BTreeMap<String, BTreeMap<String, C4RelationTerminalPaint>> =
+            BTreeMap::new();
+        for relation in &layout.rels {
+            let source = source_relations.get(&(relation.from.as_str(), relation.to.as_str()));
+            relations
+                .entry(relation.from.clone())
+                .or_default()
+                .entry(relation.to.clone())
+                .or_insert_with(|| C4RelationTerminalPaint {
+                    text: source
+                        .and_then(|source| source.text_color.as_deref())
+                        .unwrap_or("#444444")
+                        .to_owned(),
+                    line: source
+                        .and_then(|source| source.line_color.as_deref())
+                        .unwrap_or("#444444")
+                        .to_owned(),
+                });
+        }
+        self.source_paint
+            .set(C4SourceTerminalPaint {
+                elements,
+                relations,
+            })
+            .expect("C4 source paint prepared once per family artifact");
+        Ok(())
+    }
+
+    pub(crate) fn element_paint(&self, alias: &str) -> Option<&C4ElementTerminalPaint> {
+        self.source_paint
+            .get()
+            .expect("C4 source paint prepared before SVG emission")
+            .elements
+            .get(alias)
+    }
+
+    pub(crate) fn relation_paint(&self, from: &str, to: &str) -> Option<&C4RelationTerminalPaint> {
+        self.source_paint
+            .get()
+            .expect("C4 source paint prepared before SVG emission")
+            .relations
+            .get(from)?
+            .get(to)
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<C4TextPaintReceipt<'_>> {
         (!self.pending.is_empty()).then(|| C4TextPaintReceipt {
             expected_fill: self.fill_css(),
@@ -262,6 +380,67 @@ impl C4TextPaintReceipt<'_> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn source_terminal_binding_preserves_actual_layout_defaults_and_last_metadata() {
+        let model = serde_json::from_value(serde_json::json!({
+            "shapes": [
+                {"alias": "duplicate", "typeC4Shape": "person", "bgColor": "red", "fontColor": "blue"},
+                {"alias": "duplicate", "typeC4Shape": "custom", "bgColor": "", "fontColor": "var(--label)"}
+            ],
+            "rels": [
+                {"from": "duplicate", "to": "duplicate", "type": "rel", "lineColor": "red"},
+                {"from": "duplicate", "to": "duplicate", "type": "rel", "textColor": ""}
+            ]
+        })).expect("C4 source metadata fixture");
+        let block =
+            serde_json::json!({"text": "", "y": 0.0, "width": 0.0, "height": 0.0, "line_count": 0});
+        let shape = serde_json::json!({
+            "alias": "duplicate", "parent_boundary": "", "type_c4_shape": "person",
+            "x": 0.0, "y": 0.0, "width": 10.0, "height": 10.0, "margin": 0.0,
+            "image": {"width": 0.0, "height": 0.0, "y": 0.0}, "type_block": block, "label": block
+        });
+        let relation = serde_json::json!({
+            "from": "duplicate", "to": "duplicate", "rel_type": "rel",
+            "start_point": {"x": 0.0, "y": 0.0}, "end_point": {"x": 1.0, "y": 1.0}, "label": block
+        });
+        let layout = serde_json::from_value(serde_json::json!({
+            "bounds": null, "width": 10.0, "height": 10.0,
+            "container_width": 100.0, "container_height": 100.0, "c4_type": "C4Context", "title": null,
+            "boundaries": [], "shapes": [shape, shape], "rels": [relation, relation]
+        })).expect("C4 actual layout fixture");
+        let config = MermaidConfig::from_value(serde_json::json!({"c4": {
+            "person_border_color": "var(--actual-border)", "custom_border_color": "red"
+        }}));
+        let typography = super::super::C4TypographyThemePlan::resolve(None, &config, None, &model);
+        let plan = C4TextPaintPlan::resolve(
+            None,
+            &config,
+            None,
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .expect("C4 text plan");
+        plan.bind_source_terminal_paint(&model, &layout, &typography)
+            .expect("C4 terminal binding");
+        let paint = plan.element_paint("duplicate").expect("bound alias");
+        assert_eq!(paint.background, "");
+        assert_eq!(paint.border, "var(--actual-border)");
+        assert_eq!(paint.text, "var(--label)");
+        let paint = plan
+            .relation_paint("duplicate", "duplicate")
+            .expect("bound endpoint pair");
+        assert_eq!(paint.text, "");
+        assert_eq!(paint.line, "#444444");
+        assert!(plan.begin_terminal_receipt().is_none());
+        let mut receipt = title_receipt();
+        assert!(!receipt.text_seen);
+        assert!(receipt.source_colors_static);
+        receipt.record_owned_color("var(--label)");
+        assert!(receipt.text_seen);
+        assert!(!receipt.source_colors_static);
+    }
+
     fn title_receipt() -> C4TextPaintReceipt<'static> {
         C4TextPaintReceipt {
             expected_fill: Some("#123456"),
@@ -307,6 +486,7 @@ mod tests {
             evidence: FamilyThemeEvidence::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
+            source_paint: OnceLock::new(),
         };
         assert!(!plan.record_terminal(title_receipt()));
         let mut missing_title = title_receipt();

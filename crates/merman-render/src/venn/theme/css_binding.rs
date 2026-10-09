@@ -10,6 +10,19 @@ use crate::model::VennDiagramLayout;
 pub(crate) struct VennCirclePaintBinding {
     pub(crate) fill: String,
     pub(crate) text: String,
+    pub(crate) fill_opacity: String,
+    pub(crate) stroke: String,
+    pub(crate) stroke_width: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum VennAreaPaintBinding {
+    Circle(VennCirclePaintBinding),
+    Intersection {
+        fill: Option<String>,
+        text: String,
+        source_text_owned: bool,
+    },
 }
 
 #[cfg(test)]
@@ -62,8 +75,8 @@ mod tests {
             &work_meter(),
         )
         .unwrap();
-        assert_eq!(binding.circles[0].fill, "var(--circle)");
-        assert_eq!(binding.circles[0].text, "currentColor");
+        assert_eq!(binding.circle(0).fill, "var(--circle)");
+        assert_eq!(binding.circle(0).text, "currentColor");
         assert_eq!(binding.title_color, "#123456");
         assert_eq!(binding.set_text_color, "transparent");
     }
@@ -89,7 +102,7 @@ mod tests {
             &work_meter(),
         )
         .unwrap();
-        assert_eq!(binding.circles[0].text, "hsl(270, 50%, 70%)");
+        assert_eq!(binding.circle(0).text, "hsl(270, 50%, 70%)");
         assert!(matches!(
             VennCssBinding::resolve(
                 &json!({"themeVariables": {
@@ -103,6 +116,57 @@ mod tests {
             ),
             Err(crate::Error::Color(_))
         ));
+    }
+
+    #[test]
+    fn actual_area_styles_keep_scale_source_order_and_opaque_width() {
+        let mut model = model();
+        model.style_entries.push(VennStyleEntryRenderModel {
+            targets: vec!["A".into()],
+            styles: [("stroke-width".into(), "2px".into())].into(),
+        });
+        model.style_entries.push(VennStyleEntryRenderModel {
+            targets: vec!["A".into()],
+            styles: [
+                ("stroke-width".into(), "calc(1px + 2px)".into()),
+                ("fill-opacity".into(), "var(--opacity)".into()),
+                ("stroke".into(), "currentColor".into()),
+            ]
+            .into(),
+        });
+        model.style_entries.push(VennStyleEntryRenderModel {
+            targets: vec!["A".into(), "B".into()],
+            styles: [("color".into(), "var(--label)".into())].into(),
+        });
+        let config = json!({"venn": {"width": 1200}, "handDrawnSeed": 17});
+        let mut layout = crate::venn::layout_venn_diagram_typed(
+            &model,
+            None,
+            &config,
+            crate::resources::RenderResourcePolicy::interactive(),
+        )
+        .unwrap();
+        let mut intersection = layout.areas[0].clone();
+        intersection.sets = vec!["A".into(), "B".into()];
+        layout.areas.insert(0, intersection);
+        let binding =
+            VennCssBinding::resolve(&config, &model, &layout, None, None, &work_meter()).unwrap();
+        assert_eq!(binding.areas.len(), layout.areas.len());
+        assert!(
+            matches!(&binding.areas[0], VennAreaPaintBinding::Intersection {
+            fill: None, text, source_text_owned: true,
+        } if text == "var(--label)")
+        );
+        assert_eq!(binding.circle(0).stroke_width, "calc(1px + 2px)");
+        assert_eq!(binding.circle(0).stroke, "currentColor");
+        assert_eq!(binding.circle(0).fill_opacity, "var(--opacity)");
+        assert_eq!(binding.hand_drawn_seed, Some(17.0));
+        assert!(!binding.is_hand_drawn);
+
+        model.style_entries.clear();
+        let defaults =
+            VennCssBinding::resolve(&config, &model, &layout, None, None, &work_meter()).unwrap();
+        assert_eq!(defaults.circle(0).stroke_width, "3.75");
     }
 
     #[test]
@@ -133,14 +197,14 @@ mod tests {
         .unwrap();
         assert_eq!(binding.title_color, "#f43f5e");
         assert_eq!(binding.set_text_color, "#22c55e");
-        assert_eq!(binding.circles[0].fill, "#123456");
+        assert_eq!(binding.circle(0).fill, "#123456");
 
         let defaults =
             VennCssBinding::resolve(&json!({}), &model, &layout, None, None, &work_meter())
                 .unwrap();
         assert_eq!(defaults.title_color, "#333");
         assert_eq!(defaults.set_text_color, "#333");
-        assert_eq!(defaults.circles[0].fill, "#ECECFF");
+        assert_eq!(defaults.circle(0).fill, "#ECECFF");
 
         let contrast = VennCssBinding::resolve(
             &json!({"themeVariables": {"primaryColor": "#abc"}}),
@@ -151,7 +215,7 @@ mod tests {
             &work_meter(),
         )
         .unwrap();
-        assert_eq!(contrast.circles[0].text, "hsl(210, 25%, 43.3333333333%)");
+        assert_eq!(contrast.circle(0).text, "hsl(210, 25%, 43.3333333333%)");
 
         let mut palette_layout = layout.clone();
         palette_layout
@@ -170,14 +234,17 @@ mod tests {
         .unwrap();
         assert_eq!(
             palette
-                .circles
+                .areas
                 .iter()
-                .map(|circle| circle.fill.as_str())
+                .filter_map(|area| match area {
+                    VennAreaPaintBinding::Circle(circle) => Some(circle.fill.as_str()),
+                    VennAreaPaintBinding::Intersection { .. } => None,
+                })
                 .collect::<Vec<_>>(),
             ["#123456", "#abcdef", "#123456"]
         );
         assert_eq!(
-            palette.circles[0].text,
+            palette.circle(0).text,
             "hsl(210, 65.3846153846%, 50.3921568627%)"
         );
     }
@@ -187,11 +254,25 @@ mod tests {
 pub(crate) struct VennCssBinding {
     pub(crate) title_color: String,
     pub(crate) set_text_color: String,
-    pub(crate) circles: Box<[VennCirclePaintBinding]>,
-    pub(crate) source_styles: HashMap<String, BTreeMap<String, String>>,
+    pub(crate) areas: Box<[VennAreaPaintBinding]>,
+    pub(crate) text_node_colors: HashMap<String, String>,
+    pub(crate) is_hand_drawn: bool,
+    pub(crate) hand_drawn_seed: Option<f64>,
 }
 
 impl VennCssBinding {
+    #[cfg(test)]
+    fn circle(&self, index: usize) -> &VennCirclePaintBinding {
+        self.areas
+            .iter()
+            .filter_map(|area| match area {
+                VennAreaPaintBinding::Circle(circle) => Some(circle),
+                VennAreaPaintBinding::Intersection { .. } => None,
+            })
+            .nth(index)
+            .unwrap()
+    }
+
     pub(super) fn resolve(
         config: &serde_json::Value,
         model: &VennDiagramRenderModel,
@@ -214,13 +295,17 @@ impl VennCssBinding {
                 .or_default()
                 .extend(entry.styles.clone());
         }
-        let circles = layout
+        let set_text_color = text_fill
+            .map(str::to_owned)
+            .or_else(|| option("vennSetTextColor"))
+            .or_else(|| option("primaryTextColor"))
+            .or_else(|| option("textColor"))
+            .unwrap_or_else(|| "#333".into());
+        let mut circle_index = 0usize;
+        let areas = layout
             .areas
             .iter()
-            .filter(|area| area.sets.len() == 1)
-            .enumerate()
-            .map(|(index, area)| {
-                work_meter.charge(1)?;
+            .map(|area| {
                 let source = styles.get(&area.sets.join("|"));
                 let value = |key: &str| {
                     source
@@ -228,9 +313,18 @@ impl VennCssBinding {
                         .filter(|value| !value.trim().is_empty())
                         .cloned()
                 };
+                if area.sets.len() != 1 {
+                    let source_text = value("color");
+                    return Ok(VennAreaPaintBinding::Intersection {
+                        fill: value("fill"),
+                        source_text_owned: source_text.is_some(),
+                        text: source_text.unwrap_or_else(|| set_text_color.clone()),
+                    });
+                }
+                work_meter.charge(1)?;
                 let fill = value("fill").unwrap_or_else(|| {
                     palette
-                        .get(index % palette.len().max(1))
+                        .get(circle_index % palette.len().max(1))
                         .cloned()
                         .unwrap_or_else(|| primary.clone())
                 });
@@ -239,24 +333,43 @@ impl VennCssBinding {
                     None if dark => lighten(&fill, 30.0)?,
                     None => darken(&fill, 30.0)?,
                 };
-                Ok(VennCirclePaintBinding { fill, text })
+                circle_index += 1;
+                Ok(VennAreaPaintBinding::Circle(VennCirclePaintBinding {
+                    fill_opacity: value("fill-opacity").unwrap_or_else(|| "0.1".into()),
+                    stroke: value("stroke").unwrap_or_else(|| fill.clone()),
+                    stroke_width: value("stroke-width").unwrap_or_else(|| {
+                        crate::number_format::canonical_number(5.0 * layout.scale).to_string()
+                    }),
+                    fill,
+                    text,
+                }))
             })
             .collect::<crate::Result<Vec<_>>>()?
             .into_boxed_slice();
+        let text_node_colors = layout
+            .text_nodes
+            .iter()
+            .filter_map(|node| {
+                styles
+                    .get(&node.id)
+                    .and_then(|style| style.get("color"))
+                    .filter(|color| !color.trim().is_empty())
+                    .map(|color| (node.id.clone(), color.clone()))
+            })
+            .collect();
         Ok(Self {
             title_color: title_fill
                 .map(str::to_owned)
                 .or_else(|| option("vennTitleTextColor"))
                 .or_else(|| option("titleColor"))
                 .unwrap_or_else(|| "#333".into()),
-            set_text_color: text_fill
-                .map(str::to_owned)
-                .or_else(|| option("vennSetTextColor"))
-                .or_else(|| option("primaryTextColor"))
-                .or_else(|| option("textColor"))
-                .unwrap_or_else(|| "#333".into()),
-            circles,
-            source_styles: styles,
+            set_text_color,
+            areas,
+            text_node_colors,
+            is_hand_drawn: crate::config::config_diagram_look(config).as_str() == "handDrawn",
+            hand_drawn_seed: config
+                .get("handDrawnSeed")
+                .and_then(serde_json::Value::as_f64),
         })
     }
 }

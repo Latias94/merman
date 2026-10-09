@@ -250,7 +250,15 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                     false,
                     execution.work_meter(),
                 )
-                .expect("edge style plan"),
+                .expect("edge style plan")
+                .with_resolved_stroke_widths(
+                    &model,
+                    &Default::default(),
+                    &metadata.effective_config,
+                    &prepared_theme.compatibility,
+                    execution.work_meter(),
+                )
+                .expect("prepared stroke widths"),
                 svg_label_sidecar: &sidecar,
             },
             &execution,

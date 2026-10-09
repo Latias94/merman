@@ -219,6 +219,21 @@ impl WardleyTypographyThemePlan {
         &self.paint_binding
     }
 
+    pub(crate) fn prepare_root_background(
+        &mut self,
+        root_theme: Option<&crate::diagram_theme::RootThemePlan>,
+        effective_config: &MermaidConfig,
+    ) {
+        if root_theme.is_some_and(|plan| {
+            plan.replaces_default_family_background(
+                effective_config,
+                "themeVariables.wardley.backgroundColor",
+            )
+        }) {
+            self.paint_binding.background_color = "none".to_owned();
+        }
+    }
+
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
     }

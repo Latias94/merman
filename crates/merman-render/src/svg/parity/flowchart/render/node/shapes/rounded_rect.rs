@@ -19,14 +19,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     let h = common.layout_node.height.max(1.0);
     // roundedRect.ts resolves radius from the effective theme. drawRect only applies
     // truthy overrides: numeric zero keeps Flowchart's absent rx/ry, while "0" applies.
-    let config = ctx.config.as_value();
-    let default_radius = serde_json::json!(5);
-    let radius = config
-        .get("themeVariables")
-        .and_then(|theme| theme.get("radius"))
-        .filter(|radius| !radius.is_null())
-        .unwrap_or(&default_radius);
-    let radius = crate::config::json_value_is_truthy(radius).then_some(radius);
+    let radius = ctx
+        .compatibility
+        .rounded_rect_radius_truthy
+        .then_some(&ctx.compatibility.rounded_rect_radius);
     if common.look_is_hand_drawn() && radius.is_none() {
         // drawRect uses rc.rectangle when neither resolved radius is truthy.
         return super::render_process_rectangle(out, common, details);
@@ -34,7 +30,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
 
     let rough_paths = if common.look_is_hand_drawn() {
         // Preserve the source SVG arcs, including radii larger than half the box.
-        let path_data = rounded_rect_path_data(w, h, radius.unwrap_or(&default_radius));
+        let path_data = rounded_rect_path_data(w, h, &ctx.compatibility.rounded_rect_radius);
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
@@ -77,7 +73,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     } else {
         let numeric_radius = common
             .typed_corner_radius
-            .or_else(|| radius.and_then(crate::config::json_f64));
+            .or(ctx.compatibility.rounded_rect_radius_numeric);
         let _ = write!(
             out,
             r#"<rect class="basic label-container"{} style="{}"#,

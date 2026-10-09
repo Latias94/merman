@@ -19,7 +19,7 @@ use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
 
 mod css_binding;
-pub(crate) use css_binding::VennCssBinding;
+pub(crate) use css_binding::{VennAreaPaintBinding, VennCssBinding};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct VennTypographyOccurrences {
