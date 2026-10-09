@@ -974,16 +974,21 @@ impl Default for FlowchartMathTerminalStylePlan {
 }
 
 impl FlowchartMathTerminalStylePlan {
+    #[cfg(test)]
     fn from_config(config: &merman_core::MermaidConfig) -> Self {
-        let [node, title] =
-            crate::svg::render_theme::flowchart_text_surface_fills(config.as_value());
+        Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(
+            config.as_value(),
+        ))
+    }
+
+    fn from_binding(binding: &super::FlowchartCompatibilityBinding) -> Self {
         Self {
             node: super::FlowchartTerminalForeground::new(
-                &node,
+                &binding.node_text_color,
                 super::FlowchartTerminalForegroundProvenance::ThemeNode,
             ),
             title: super::FlowchartTerminalForeground::new(
-                &title,
+                &binding.title_color,
                 super::FlowchartTerminalForegroundProvenance::ThemeTitle,
             ),
         }
@@ -1075,6 +1080,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn with_math_backend(
         mut self,
         math_backend: Option<&ConfiguredMathBackend>,
@@ -1082,6 +1088,21 @@ impl FlowchartSvgLabelSidecarBuilder {
     ) -> Self {
         self.math_backend = math_backend.cloned();
         self.math_terminal_style = FlowchartMathTerminalStylePlan::from_config(config);
+        if self.work_meter.is_none() {
+            self.work_meter = Some(Arc::new(OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            )));
+        }
+        self
+    }
+
+    pub(crate) fn with_prepared_math_backend(
+        mut self,
+        math_backend: Option<&ConfiguredMathBackend>,
+        binding: &super::FlowchartCompatibilityBinding,
+    ) -> Self {
+        self.math_backend = math_backend.cloned();
+        self.math_terminal_style = FlowchartMathTerminalStylePlan::from_binding(binding);
         if self.work_meter.is_none() {
             self.work_meter = Some(Arc::new(OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

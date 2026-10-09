@@ -144,6 +144,7 @@ pub(crate) struct PacketLayoutSettings {
     pub(crate) bits_per_row: i64,
 }
 
+#[derive(Debug)]
 pub(crate) struct PacketStyleSettings {
     pub(crate) byte_font_size: String,
     pub(crate) start_byte_color: String,

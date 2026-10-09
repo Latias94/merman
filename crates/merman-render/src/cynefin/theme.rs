@@ -161,6 +161,8 @@ impl CynefinSurfaceReceipt {
 /// Final inherited Cynefin font shared by layout measurement, terminal CSS, and evidence.
 #[derive(Debug)]
 pub(crate) struct CynefinTypographyThemePlan {
+    common_css: crate::svg::PreparedCommonCss,
+    colors: super::CynefinTheme,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[CynefinUnsupportedRoute]>,
@@ -264,11 +266,20 @@ impl CynefinTypographyThemePlan {
                 });
             }
         }
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let mut colors = super::cynefin_theme(effective_config.as_value());
+        if !config_owns_text_fill && let Some(fill) = &text_fill {
+            colors.text_color = fill.css().to_owned();
+        }
+        let common_css = crate::svg::PreparedCommonCss::new(
+            effective_config.as_value(),
+            Some(inherited_font_stack.font_family_css()),
+        );
         Ok(Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                theme,
-                effective_config,
-            ),
+            common_css,
+            colors,
+            inherited_font_stack,
             evidence,
             unsupported_routes: unsupported_routes.into_boxed_slice(),
             text_fill,
@@ -279,14 +290,15 @@ impl CynefinTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.common_css.font_family()
     }
 
-    pub(crate) fn text_fill_css(&self) -> Option<&str> {
-        (!self.config_owns_text_fill)
-            .then_some(self.text_fill.as_ref())
-            .flatten()
-            .map(DirectStaticPaint::css)
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
+    }
+
+    pub(crate) fn colors(&self) -> &super::CynefinTheme {
+        &self.colors
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -481,6 +493,37 @@ mod tests {
             ),
         )
         .expect("resolve Cynefin receipt theme")
+    }
+
+    #[test]
+    fn binding_preserves_scoped_roles_and_shared_measurement_values() {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "Config Sans", "textColor": "root-text",
+                "lineColor": "root-line", "primaryTextColor": "root-label",
+                "cynefin": {
+                    "textColor": "var(--text)", "boundaryColor": "currentColor",
+                    "complexBg": "var(--complex)", "domainFontSize": "23",
+                    "itemFontSize": 15
+                }
+            }
+        }));
+        let plan = CynefinTypographyThemePlan::resolve(
+            None,
+            &config,
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(plan.colors().text_color, "var(--text)");
+        assert_eq!(plan.colors().boundary_color, "currentColor");
+        assert_eq!(plan.colors().arrow_color, "root-line");
+        assert_eq!(plan.colors().label_color, "root-label");
+        assert_eq!(plan.colors().complex_bg, "var(--complex)");
+        assert_eq!(plan.colors().domain_font_size, 23.0);
+        assert_eq!(plan.colors().item_font_size, 15.0);
+        assert_eq!(plan.font_family_css(), "Config Sans");
     }
 
     #[test]

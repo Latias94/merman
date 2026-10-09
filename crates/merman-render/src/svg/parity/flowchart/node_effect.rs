@@ -4,9 +4,7 @@ use rustc_hash::FxHashMap;
 
 use super::render::node::helpers::resolve_node_render_info;
 use super::*;
-use crate::diagram_theme::{
-    FamilyThemeMechanism, MaterializedShadowEffect, ThemeResourcePolicy, ThemeTarget,
-};
+use crate::diagram_theme::{MaterializedShadowEffect, ThemeResourcePolicy};
 use crate::flowchart::{
     FlowchartFacetPrecedence, FlowchartNodeThemeStyle, FlowchartShape, FlowchartSourceFacetStatus,
 };
@@ -31,30 +29,10 @@ impl FlowchartNodeEffects {
         resources: &ThemeResourcePolicy,
     ) -> crate::Result<Self> {
         let mut plan = Self::default();
-        let Some(theme) = ctx.resolved_theme else {
-            return Ok(plan);
-        };
-        if !theme.family_mechanism_routes().iter().any(|route| {
-            matches!(
-                route.mechanism(),
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Node,
-                    ..
-                } | FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Node,
-                    facet: crate::diagram_theme::FamilyThemeRuleFacet::Effect,
-                    ..
-                }
-            )
-        }) {
-            return Ok(plan);
-        }
-
         for id in hierarchy.rendered_node_ids() {
+            ctx.emit.checkpoint()?;
             ctx.work_meter.charge(1)?;
-            let Some(ordinal) = ctx.node_theme_ordinals.get(id).copied() else {
-                continue;
-            };
+            let ordinal = ctx.node_theme_ordinals.get(id).copied();
             let Some(node) = ctx.layout_nodes_by_id.get(id) else {
                 continue;
             };
@@ -62,7 +40,7 @@ impl FlowchartNodeEffects {
                 continue;
             };
             let style =
-                FlowchartNodeThemeStyle::resolve(Some(theme), Some(ordinal), ctx.work_meter)?;
+                FlowchartNodeThemeStyle::resolve(ctx.resolved_theme, ordinal, ctx.work_meter)?;
             let source = flowchart_compile_node_styles(
                 ctx.class_defs,
                 info.node_classes,
@@ -83,7 +61,11 @@ impl FlowchartNodeEffects {
                 })
                 .or_else(|| style.stroke_width_value(stroke_precedence, true))
                 .unwrap_or(ctx.node_stroke_width);
-            let geometry = node_shadow_geometry(info.shape, node.width, node.height)?;
+            let geometry = if style.effect().is_some() {
+                node_shadow_geometry(info.shape, node.width, node.height)?
+            } else {
+                None
+            };
             // Relative CSS widths require host geometry. Do not attach a filter whose region
             // would clip the source by substituting the renderer default stroke width.
             let shadow = if source_filter.is_absent()

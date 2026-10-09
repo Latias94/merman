@@ -69,9 +69,10 @@ impl PacketUnsupportedRoute {
     }
 }
 
-/// Final Packet base font shared by stylesheet emission and terminal evidence.
+/// Final Packet stylesheet values shared by emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct PacketTypographyThemePlan {
+    css_binding: super::config::PacketStyleSettings,
     font_family_css: Box<str>,
     byte_label_fill: Option<DirectStaticPaint>,
     field_label_fill: Option<DirectStaticPaint>,
@@ -96,8 +97,11 @@ impl PacketTypographyThemePlan {
     ) -> Result<Self, OperationWorkError> {
         let configured_font = crate::config::config_font_family_css(effective_config.as_value());
         let text_color_ownership = PacketTextColorOwnership::from_config(effective_config);
+        let mut css_binding =
+            super::PacketConfigView::new(effective_config.as_value()).style_settings();
         let Some(theme) = theme else {
             return Ok(Self {
+                css_binding,
                 font_family_css: configured_font.into_boxed_str(),
                 byte_label_fill: None,
                 field_label_fill: None,
@@ -242,7 +246,26 @@ impl PacketTypographyThemePlan {
             && field_label_fill.is_some()
             && title_fill.is_some();
 
+        for (role, configured) in [
+            (PacketTextRole::ByteStart, &mut css_binding.start_byte_color),
+            (PacketTextRole::ByteEnd, &mut css_binding.end_byte_color),
+            (PacketTextRole::Label, &mut css_binding.label_color),
+            (PacketTextRole::Title, &mut css_binding.title_color),
+        ] {
+            if !text_color_ownership.owns(role)
+                && let Some(fill) = selected_fill_for_target(
+                    role.target(),
+                    &byte_label_fill,
+                    &field_label_fill,
+                    &title_fill,
+                )
+            {
+                *configured = fill.css().to_owned();
+            }
+        }
+
         Ok(Self {
+            css_binding,
             font_family_css: font_family_css.into_boxed_str(),
             byte_label_fill,
             field_label_fill,
@@ -264,22 +287,8 @@ impl PacketTypographyThemePlan {
         &self.font_family_css
     }
 
-    pub(crate) fn fill_css<'a>(
-        &'a self,
-        role: PacketTextRole,
-        configured_fill: &'a str,
-    ) -> &'a str {
-        let target = role.target();
-        if self.text_color_ownership.owns(role) {
-            return configured_fill;
-        }
-        selected_fill_for_target(
-            target,
-            &self.byte_label_fill,
-            &self.field_label_fill,
-            &self.title_fill,
-        )
-        .map_or(configured_fill, DirectStaticPaint::css)
+    pub(crate) fn css_binding(&self) -> &super::config::PacketStyleSettings {
+        &self.css_binding
     }
 
     pub(crate) fn begin_terminal_receipt(

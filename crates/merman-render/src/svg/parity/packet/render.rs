@@ -4,22 +4,21 @@ use merman_core::diagrams::packet::PacketDiagramRenderModel;
 fn write_packet_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
     typography_theme: &crate::packet::PacketTypographyThemePlan,
     typography_receipt: &mut crate::packet::PacketSurfaceReceipt,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = crate::svg::escape_css_identifier(diagram_id);
     let font = typography_theme.font_family_css();
-    let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
+    let style = typography_theme.css_binding();
     let byte_start_role = crate::packet::PacketTextRole::ByteStart;
     let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
     let label_role = crate::packet::PacketTextRole::Label;
     let title_role = crate::packet::PacketTextRole::Title;
-    let start_byte_fill = typography_theme.fill_css(byte_start_role, &style.start_byte_color);
-    let end_byte_fill = typography_theme.fill_css(byte_end_role, &style.end_byte_color);
-    let label_fill = typography_theme.fill_css(label_role, &style.label_color);
-    let title_fill = typography_theme.fill_css(title_role, &style.title_color);
+    let start_byte_fill = style.start_byte_color.as_str();
+    let end_byte_fill = style.end_byte_color.as_str();
+    let label_fill = style.label_color.as_str();
+    let title_fill = style.title_color.as_str();
     write_mermaid_default_base_css_prefix(out, &id, font)?;
     let _ = write!(
         out,
@@ -169,7 +168,6 @@ pub(crate) fn render_packet_diagram_svg_model(
     write_packet_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
         typography_theme,
         &mut surface_receipt,
     )?;
@@ -327,14 +325,8 @@ mod tests {
             (crate::packet::PacketTextRole::Title, 0),
         ]);
         let mut css = String::new();
-        write_packet_css(
-            &mut css,
-            "pkt",
-            config.as_value(),
-            &typography_theme,
-            &mut typography_receipt,
-        )
-        .expect("write Packet CSS");
+        write_packet_css(&mut css, "pkt", &typography_theme, &mut typography_receipt)
+            .expect("write Packet CSS");
 
         assert!(css.contains("#pkt .packetByte{font-size:11px;}"));
         assert!(css.contains("#pkt .packetByte.start{fill:#111111;}"));

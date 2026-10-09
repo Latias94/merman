@@ -6,48 +6,6 @@ use crate::wardley::{
 };
 use merman_core::diagrams::wardley::WardleyDiagramRenderModel;
 
-struct WardleyTheme {
-    background_color: String,
-    axis_color: String,
-    axis_text_color: String,
-    grid_color: String,
-    component_fill: String,
-    component_stroke: String,
-    component_label_color: String,
-    link_stroke: String,
-    evolution_stroke: String,
-}
-
-impl WardleyTheme {
-    fn from_config(config: &serde_json::Value) -> Self {
-        let nested = |key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
-                .unwrap_or_else(|| fallback.to_string())
-        };
-        let nested_or_root = |key, root_key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
-                .or_else(|| config_string(config, &["themeVariables", root_key]))
-                .unwrap_or_else(|| fallback.to_string())
-        };
-
-        Self {
-            background_color: nested_or_root("backgroundColor", "background", "#fff"),
-            axis_color: nested("axisColor", "#000"),
-            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
-            grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
-            component_fill: nested("componentFill", "#fff"),
-            component_stroke: nested("componentStroke", "#000"),
-            component_label_color: nested_or_root(
-                "componentLabelColor",
-                "primaryTextColor",
-                "#222",
-            ),
-            link_stroke: nested("linkStroke", "#000"),
-            evolution_stroke: nested("evolutionStroke", "#dc3545"),
-        }
-    }
-}
-
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {
         WardleyTextAnchor::Start => "start",
@@ -203,7 +161,7 @@ fn write_accessibility(
 fn write_axes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-axes">"#);
@@ -249,7 +207,7 @@ fn write_axes(
 fn write_stages(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.stages.is_empty() {
@@ -280,7 +238,7 @@ fn write_stages(
 fn write_grid(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
 ) -> Result<()> {
     if layout.grid.is_empty() {
         return Ok(());
@@ -313,7 +271,7 @@ fn write_pipelines(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramRenderModel,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
 ) -> Result<()> {
     if model.pipelines.is_empty() {
         return Ok(());
@@ -358,7 +316,7 @@ fn write_pipelines(
 fn write_links(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     diagram_id: SvgDiagramId<'_>,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
     options: &SvgExecution<'_>,
@@ -417,7 +375,7 @@ fn write_links(
 fn write_trends(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     diagram_id: SvgDiagramId<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<()> {
@@ -445,7 +403,7 @@ fn write_trends(
 fn write_source_overlay(
     out: &mut impl SvgOutput,
     overlay: &WardleySourceOverlayLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
 ) -> Result<()> {
     match overlay {
         WardleySourceOverlayLayout::Build { circle } => write_circle(
@@ -513,7 +471,7 @@ fn write_source_overlay(
 fn write_nodes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-nodes">"#);
@@ -587,7 +545,7 @@ fn write_nodes(
 fn write_annotations_box(
     out: &mut impl SvgOutput,
     annotations_box: &WardleyAnnotationsBoxLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-annotations-box">"#);
@@ -624,7 +582,7 @@ fn write_annotations_box(
 fn write_annotations(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.annotations.is_empty() {
@@ -680,7 +638,7 @@ fn write_annotations(
 fn write_notes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.notes.is_empty() {
@@ -706,7 +664,7 @@ fn write_notes(
 fn write_arrow(
     out: &mut impl SvgOutput,
     arrow: &WardleyArrowLayout,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     role: crate::wardley::WardleyTextRole,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
@@ -740,7 +698,7 @@ fn write_arrows(
     out: &mut impl SvgOutput,
     class: &str,
     arrows: &[WardleyArrowLayout],
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
     role: crate::wardley::WardleyTextRole,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
@@ -759,7 +717,7 @@ fn write_arrows(
 fn write_defs(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
-    theme: &WardleyTheme,
+    theme: &crate::wardley::WardleyPaintBinding,
 ) -> Result<()> {
     let diagram_id = escape_attr_display(diagram_id);
     let _ = write!(
@@ -785,15 +743,17 @@ pub(crate) fn render_wardley_diagram_svg_model(
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let mut theme = WardleyTheme::from_config(effective_config.as_value());
-    if options.family.root_theme_plan().is_some_and(|plan| {
+    let theme = typography_theme.paint_binding();
+    let background_color = if options.family.root_theme_plan().is_some_and(|plan| {
         plan.replaces_default_family_background(
             effective_config,
             "themeVariables.wardley.backgroundColor",
         )
     }) {
-        theme.background_color = "none".to_owned();
-    }
+        "none"
+    } else {
+        theme.background_color.as_str()
+    };
     let mut surface_receipt = typography_theme.begin_terminal_receipt(layout);
 
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
@@ -827,7 +787,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
         r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,
         fmt(layout.width),
         fmt(layout.height),
-        escape_attr_display(&theme.background_color)
+        escape_attr_display(background_color)
     );
     out.checkpoint()?;
     if let Some(title) = &layout.title {
@@ -841,27 +801,27 @@ pub(crate) fn render_wardley_diagram_svg_model(
             &mut surface_receipt,
         )?;
     }
-    write_axes(&mut out, layout, &theme, &mut surface_receipt)?;
-    write_stages(&mut out, layout, &theme, &mut surface_receipt)?;
-    write_grid(&mut out, layout, &theme)?;
-    write_pipelines(&mut out, layout, model, &theme)?;
+    write_axes(&mut out, layout, theme, &mut surface_receipt)?;
+    write_stages(&mut out, layout, theme, &mut surface_receipt)?;
+    write_grid(&mut out, layout, theme)?;
+    write_pipelines(&mut out, layout, model, theme)?;
     write_links(
         &mut out,
         layout,
-        &theme,
+        theme,
         diagram_id,
         &mut surface_receipt,
         options,
     )?;
-    write_trends(&mut out, layout, &theme, diagram_id, options)?;
-    write_nodes(&mut out, layout, &theme, &mut surface_receipt)?;
-    write_annotations(&mut out, layout, &theme, &mut surface_receipt)?;
-    write_notes(&mut out, layout, &theme, &mut surface_receipt)?;
+    write_trends(&mut out, layout, theme, diagram_id, options)?;
+    write_nodes(&mut out, layout, theme, &mut surface_receipt)?;
+    write_annotations(&mut out, layout, theme, &mut surface_receipt)?;
+    write_notes(&mut out, layout, theme, &mut surface_receipt)?;
     write_arrows(
         &mut out,
         "wardley-accelerators",
         &layout.accelerators,
-        &theme,
+        theme,
         crate::wardley::WardleyTextRole::Accelerator,
         &mut surface_receipt,
     )?;
@@ -869,13 +829,13 @@ pub(crate) fn render_wardley_diagram_svg_model(
         &mut out,
         "wardley-deaccelerators",
         &layout.deaccelerators,
-        &theme,
+        theme,
         crate::wardley::WardleyTextRole::Deaccelerator,
         &mut surface_receipt,
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
-    write_defs(&mut out, diagram_id, &theme)?;
+    write_defs(&mut out, diagram_id, theme)?;
     out.push_str("</svg>");
     options.checkpoint_emit()?;
     let rooted_svg = root_document.complete(out.finish()?)?;

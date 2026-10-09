@@ -595,6 +595,15 @@ mod tests {
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         render_flowchart_svg_model(
             FlowchartSvgModelRequest {
+                prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
+                    None,
+                    &metadata.effective_config,
+                    super::render_config::flowchart_node_label_fill_config_override(
+                        &metadata.effective_config,
+                    ),
+                    execution.work_meter(),
+                )
+                .expect("prepared theme"),
                 layout: &layout,
                 swimlane_layout: None,
                 model: &model,

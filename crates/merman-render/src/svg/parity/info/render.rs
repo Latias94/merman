@@ -1,7 +1,6 @@
 use super::super::*;
 pub(crate) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
-    effective_config: &serde_json::Value,
     typography_theme: &crate::info::InfoTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -30,11 +29,10 @@ pub(crate) fn render_info_diagram_svg(
     )
     .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
-    let css_write = write_info_css_with_font_family(
+    let css_write = write_prepared_info_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
-        typography_theme.font_family_css(),
+        typography_theme.css_binding(),
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
@@ -121,12 +119,7 @@ mod tests {
             &typography_theme,
         )
         .expect("Info layout");
-        render_info_diagram_svg(
-            &layout,
-            effective_config.as_value(),
-            &typography_theme,
-            &execution,
-        )
+        render_info_diagram_svg(&layout, &typography_theme, &execution)
     }
 
     #[test]

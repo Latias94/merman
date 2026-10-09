@@ -38,23 +38,6 @@ fn mermaid_theme_adapter_node_diagram_uses_shared_fallbacks() {
 }
 
 #[test]
-fn mermaid_theme_adapter_sequence_neo_uses_drop_shadow_for_label_box_filter() {
-    let cfg = json!({
-        "look": "neo",
-        "themeVariables": {
-            "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
-        }
-    });
-    let theme = MermaidThemeAdapter::new(&cfg);
-
-    let sequence = theme.sequence_diagram();
-    assert_eq!(
-        sequence.label_box_filter,
-        "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
-    );
-}
-
-#[test]
 fn prepared_gantt_binding_resolves_gantt_roles() {
     let cfg = json!({
         "themeVariables": {

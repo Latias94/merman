@@ -155,7 +155,14 @@ pub(crate) fn layout_cynefin_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<CynefinDiagramLayout> {
     let font_family_css = crate::config::config_font_family_css(effective_config);
-    layout_cynefin_diagram_with_font_family(model, effective_config, &font_family_css, measurer)
+    let colors = cynefin_theme(effective_config);
+    layout_cynefin_diagram_with_font_family(
+        model,
+        effective_config,
+        &font_family_css,
+        &colors,
+        measurer,
+    )
 }
 
 pub(crate) fn layout_cynefin_diagram_typed_with_theme(
@@ -168,6 +175,7 @@ pub(crate) fn layout_cynefin_diagram_typed_with_theme(
         model,
         effective_config,
         typography_theme.font_family_css(),
+        typography_theme.colors(),
         measurer,
     )
 }
@@ -176,16 +184,16 @@ fn layout_cynefin_diagram_with_font_family(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     font_family_css: &str,
+    theme: &CynefinTheme,
     measurer: &dyn TextMeasurer,
 ) -> Result<CynefinDiagramLayout> {
     let settings = cynefin_layout_settings(effective_config);
-    let theme = cynefin_theme(effective_config);
     let domain_layouts = build_domain_layouts(settings.width, settings.height);
     let items = layout_items(
         model,
         &domain_layouts,
         &settings,
-        &theme,
+        theme,
         font_family_css,
         measurer,
     );

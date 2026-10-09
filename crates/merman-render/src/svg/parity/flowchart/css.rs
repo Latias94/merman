@@ -207,7 +207,7 @@ pub(in crate::svg::parity) fn write_flowchart_css<
     drop_shadow_id: DropShadowId,
     drop_shadow_small_id: DropShadowSmallId,
     gradient_id: GradientId,
-    effective_config: &serde_json::Value,
+    theme: &crate::flowchart::FlowchartCompatibilityBinding,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -220,15 +220,14 @@ where
     GradientId: std::fmt::Display,
 {
     let id = FlowchartCssSelectorDiagramId(diagram_id);
-    let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
-    let stroke = theme.common.line_color.as_str();
+    let stroke = theme.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
     let node_border = theme.node_border.as_str();
     let main_bkg = theme.main_bkg.as_str();
-    let text_color = text_surface_paint.map_or(theme.common.text_color.as_str(), |plan| {
+    let text_color = text_surface_paint.map_or(theme.text_color.as_str(), |plan| {
         plan.generic_text.color(
             crate::flowchart::FlowchartTextPaintChannel::DiagramTitle,
-            theme.common.text_color.as_str(),
+            theme.text_color.as_str(),
         )
     });
     let node_text_color = text_surface_paint.map_or(theme.node_text_color.as_str(), |plan| {
@@ -239,8 +238,8 @@ where
     });
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let error_bkg = theme.common.error_bkg.as_str();
-    let error_text = theme.common.error_text.as_str();
+    let error_bkg = theme.error_bkg.as_str();
+    let error_text = theme.error_text.as_str();
     let edge_label_background = text_surface_paint
         .map_or(theme.edge_label_background.as_str(), |plan| {
             plan.background.color(theme.edge_label_background.as_str())
@@ -248,8 +247,8 @@ where
     let tertiary = theme.tertiary.as_str();
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
-    let tooltip_border = theme_token(effective_config, "border2", cluster_border);
-    let drop_shadow = theme_token(effective_config, "dropShadow", "none");
+    let tooltip_border = &theme.border2;
+    let drop_shadow = &theme.drop_shadow;
 
     let typed_background =
         text_surface_paint.is_some_and(|plan| plan.background.supplies_background());
@@ -267,7 +266,7 @@ where
         css_rgba_fade(edge_label_background, 0.5)?
     };
     let scoped_drop_shadow = ScopedFlowchartDropShadow {
-        source: &drop_shadow,
+        source: drop_shadow,
         drop_shadow_id,
         drop_shadow_small_id,
     };
@@ -313,7 +312,7 @@ where
     );
     out.checkpoint()?;
     if diagram_type != "agentflow" {
-        super::agentflow::write_flowchart_container_css(out, id, effective_config)?;
+        super::agentflow::write_flowchart_container_css(out, id, theme)?;
     }
     let _ = write!(
         &mut *out,
@@ -400,24 +399,19 @@ where
         id,
         id,
     );
-    crate::svg::parity::css::write_mermaid_common_neo_css_with_ids(
-        out,
-        id,
-        gradient_id,
-        scoped_drop_shadow,
-        effective_config,
-    )?;
+    theme
+        .neo
+        .write_with_ids(out, id, gradient_id, scoped_drop_shadow)?;
     let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut *out,
         id,
-        &crate::config::config_root_font_family_css(effective_config),
+        &theme.root_font_family,
     );
 
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
     // - HTML labels: `.classDef > *` + `.classDef span`
     // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
-    let html_labels =
-        crate::flowchart::FlowchartConfigView::new(effective_config).effective_html_labels();
+    let html_labels = theme.html_labels;
     let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
 
     // Flush the fixed stylesheet prefix before processing attacker-controlled class catalogs.
@@ -502,7 +496,7 @@ fn flowchart_css(
         &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow"),
         &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
         &format!("{diagram_id}-merman-flowchart-document-gradient-root"),
-        effective_config,
+        &crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config),
         font_family,
         font_size,
         class_defs,
@@ -602,7 +596,7 @@ mod tests {
             "bounded-css-merman-flowchart-document-filter-drop-shadow",
             "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
             "bounded-css-merman-flowchart-document-gradient-root",
-            &json!({}),
+            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&json!({})),
             "sans-serif",
             16.0,
             &class_defs,

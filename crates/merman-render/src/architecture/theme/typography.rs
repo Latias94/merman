@@ -68,6 +68,7 @@ impl ArchitectureTypographyCssEmission {
 }
 #[derive(Debug)]
 pub(crate) struct ArchitectureTypographyThemePlan {
+    css_binding: super::super::ArchitectureCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_px: f64,
     font_size_css: Box<str>,
@@ -127,10 +128,16 @@ impl ArchitectureTypographyThemePlan {
                 .max(1.0),
         };
         let font_size_px = crate::number_format::canonicalize_number(font_size_px).max(1.0);
-        let font_size_css =
+        let font_size_css: Box<str> =
             format!("{}px", crate::number_format::canonical_number(font_size_px)).into_boxed_str();
 
+        let css_binding = super::super::ArchitectureCssBinding::resolve(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css(),
+            &font_size_css,
+        );
         Self {
+            css_binding,
             inherited_font_stack,
             font_size_px,
             font_size_css,
@@ -144,6 +151,10 @@ impl ArchitectureTypographyThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) const fn css_binding(&self) -> &super::super::ArchitectureCssBinding {
+        &self.css_binding
     }
 
     pub(crate) const fn font_size_px(&self) -> f64 {

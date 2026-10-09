@@ -93,6 +93,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
             edge_theme: artifact.edge_theme(),
+            prepared_theme: artifact.prepared_theme(),
         },
         options,
         edge_paint_geometry,

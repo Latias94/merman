@@ -293,18 +293,6 @@ fn block_render_edge_points(
     }
 }
 
-fn block_css_length_px(raw: &str) -> Option<f64> {
-    let raw = raw
-        .trim()
-        .trim_end_matches(';')
-        .trim()
-        .trim_end_matches("!important")
-        .trim();
-    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
-    let value = raw.parse::<f64>().ok()?;
-    value.is_finite().then_some(value)
-}
-
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
     let _ = write!(out, "{key}:{}!important;", escape_xml_display(value));
     out.checkpoint()
@@ -535,80 +523,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
     }
 
-    fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
-        if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
-            *value = raw.to_string();
-            return;
-        }
-        out.push((key.to_string(), raw.to_string()));
-    }
-
-    struct CompiledBlockInlineStyles {
-        box_style: String,
-        text_style: String,
-        svg_text_style: String,
-        div_style_prefix: String,
-    }
-
-    fn compile_block_inline_styles(styles: &[String]) -> CompiledBlockInlineStyles {
-        let mut box_decls: Vec<(String, String)> = Vec::new();
-        let mut text_decls: Vec<(String, String)> = Vec::new();
-
-        for raw in styles {
-            let trimmed = raw.trim().trim_end_matches(';').trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let Some((key, value)) = parse_style_decl(trimmed) else {
-                continue;
-            };
-            if is_rect_style_key(key) {
-                push_ordered_decl(&mut box_decls, key, trimmed);
-            }
-            if is_text_style_key(key) {
-                let _ = value;
-                push_ordered_decl(&mut text_decls, key, trimmed);
-            }
-        }
-
-        let style_attr = |decls: &[(String, String)]| -> String {
-            let mut out = String::new();
-            for (_, raw) in decls {
-                out.push_str(raw);
-                out.push(';');
-            }
-            out
-        };
-
-        let mut div_prefix = String::new();
-        let mut svg_text_style = String::new();
-        for (key, raw) in &text_decls {
-            if key == "color" {
-                let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
-                let _ = write!(&mut svg_text_style, "fill:{value};");
-                if !value.is_empty() {
-                    let _ = write!(
-                        &mut div_prefix,
-                        "color: {}; ",
-                        super::super::util::cssom_color_value(value)
-                    );
-                }
-            } else {
-                svg_text_style.push_str(raw);
-                svg_text_style.push(';');
-                div_prefix.push_str(raw);
-                div_prefix.push_str("; ");
-            }
-        }
-
-        CompiledBlockInlineStyles {
-            box_style: style_attr(&box_decls),
-            text_style: style_attr(&text_decls),
-            svg_text_style,
-            div_style_prefix: div_prefix,
-        }
-    }
-
     fn important_declarations(styles: &[String]) -> impl Iterator<Item = (&str, &str)> {
         styles.iter().filter_map(|style| parse_style_decl(style))
     }
@@ -666,7 +580,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     fn write_block_css<'a>(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
-        effective_config: &serde_json::Value,
         typography_theme: &'a BlockTypographyThemePlan,
         label_background_theme: &BlockLabelBackgroundPlan,
         class_defs: &indexmap::IndexMap<
@@ -675,24 +588,22 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         >,
         options: &SvgExecution<'_>,
     ) -> Result<BlockCssEmission<'a>> {
-        let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
+        let theme = typography_theme.css_binding();
         let font_family = typography_theme.font_family_css();
         let font_size = typography_theme.font_size_px();
         let font_size_css: Box<str> = fmt(font_size).to_string().into();
-        let text_color = theme.common.text_color.as_str();
+        let text_color = theme.text_color.as_str();
         let node_text_color = theme.node_text_color.as_str();
         let title_color = theme.title_color.as_str();
         let main_bkg = theme.main_bkg.as_str();
         let node_border = theme.node_border.as_str();
-        let line_color = theme.common.line_color.as_str();
+        let line_color = theme.line_color.as_str();
         let arrowhead_color = theme.arrowhead_color.as_str();
         let stroke_width = theme.stroke_width.as_str();
         let edge_label_background =
             label_background_theme.color(theme.edge_label_background.as_str());
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
-        let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
-        let cluster_border = css_rgba_fade(cluster_border, 0.2)?;
 
         let _ = write!(
             out,
@@ -706,7 +617,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
         out.checkpoint()?;
-        super::palette::write_palette_css(out, diagram_id, effective_config, options)?;
+        super::palette::write_palette_css(out, diagram_id, theme, options)?;
         let _ = write!(
             out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
@@ -785,7 +696,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
             out,
             diagram_id,
-            &crate::config::config_root_font_family_css(effective_config),
+            &theme.root_font_family,
         );
         out.checkpoint()?;
         write_block_class_css(out, diagram_id, class_defs, options)?;
@@ -796,17 +707,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     }
 
     let diagram_id = options.diagram_id_or("merman");
-    let palette_size = super::palette::palette_size(effective_config);
-    let look = crate::config::config_diagram_look(effective_config);
+    let palette_size = typography_theme.css_binding().palette.len();
+    let look = crate::config::DiagramLook::from_raw(Some(&typography_theme.css_binding().look));
     let hand_drawn_seed = options.rough_randomness(
-        effective_config
-            .get("handDrawnSeed")
-            .and_then(serde_json::Value::as_f64)
+        typography_theme
+            .css_binding()
+            .hand_drawn_seed
             .unwrap_or(options.seed() as f64),
         "render.block.roughjs",
     );
-    let node_theme = MermaidThemeAdapter::new(effective_config).node_diagram();
-    let html_labels = crate::config::config_effective_html_labels(effective_config);
+    let node_theme = typography_theme.css_binding();
+    let html_labels = node_theme.html_labels;
     let node_fill_color = node_theme.main_bkg.as_str();
     let node_stroke_color = node_theme.node_border.as_str();
     // RoughJS uses 1.3px as its default node stroke width in Mermaid's handDrawnShapeStyles.
@@ -861,7 +772,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let css_emission = write_block_css(
         &mut out,
         diagram_id,
-        effective_config,
         typography_theme,
         label_background_theme,
         &model.class_defs,
@@ -930,33 +840,21 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(node) = nodes_by_id.get(n.id.as_str()) else {
             continue;
         };
-        let compiled_styles = compile_block_inline_styles(node.styles);
-        let typed_fill = node_paint_theme.typed_fill(node_index);
-        let typed_stroke = node_paint_theme.typed_stroke(node_index);
-
+        let binding = node_paint_theme
+            .terminal_binding(node_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Block terminal binding for `{}`", n.id),
+            })?;
         let class_str = if node.classes.is_empty() {
-            "default flowchart-label".to_string()
+            "default flowchart-label".to_owned()
         } else {
             format!("{} flowchart-label", node.classes.join(" "))
         };
-        let mut node_box_style = compiled_styles.box_style;
-        let node_text_style = compiled_styles.text_style;
-        let mut node_svg_text_style = compiled_styles.svg_text_style;
-        let typed_label_color = node_label_paint_theme.color(node_index);
-        if let Some(color) = typed_label_color {
-            let _ = write!(&mut node_svg_text_style, "fill:{color};");
-        }
-        let node_div_style_prefix = compiled_styles.div_style_prefix;
-        if let Some(css) = typed_fill {
-            node_box_style.push_str("fill:");
-            node_box_style.push_str(css);
-            node_box_style.push(';');
-        }
-        if let Some(css) = typed_stroke {
-            node_box_style.push_str("stroke:");
-            node_box_style.push_str(css);
-            node_box_style.push(';');
-        }
+        let node_box_style = &binding.box_style;
+        let node_text_style = &binding.text_style;
+        let node_svg_text_style = &binding.svg_text_style;
+        let node_div_style_prefix = &binding.div_style_prefix;
+        let typed_label_color = binding.html_paragraph_color.as_deref();
 
         let geometry =
             shape_geometries_by_id
@@ -1001,7 +899,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     class,
                     fmt(*radius),
                     fmt(*radius),
-                    escape_attr(&node_box_style),
+                    escape_attr(node_box_style),
                     fmt(-width / 2.0),
                     fmt(-height / 2.0),
                     fmt(*width),
@@ -1013,7 +911,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 let _ = write!(
                     &mut out,
                     r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
-                    escape_attr(&node_box_style),
+                    escape_attr(node_box_style),
                     fmt(*radius),
                 );
                 shell_kinds = &[BlockNodeShellKind::Circle];
@@ -1026,10 +924,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 let _ = write!(
                     &mut out,
                     r#"<g class="basic label-container" style="{}"><circle class="outer-circle" style="{}" r="{}" cx="0" cy="0"/><circle class="inner-circle" style="{}" r="{}" cx="0" cy="0"/></g>"#,
-                    escape_attr(&node_box_style),
-                    escape_attr(&node_box_style),
+                    escape_attr(node_box_style),
+                    escape_attr(node_box_style),
                     fmt(*outer_radius),
-                    escape_attr(&node_box_style),
+                    escape_attr(node_box_style),
                     fmt(*inner_radius),
                 );
                 shell_kinds = &[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle];
@@ -1046,7 +944,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     &mut out,
                     &path_data,
                     RoughPathRenderOptions {
-                        style: &node_box_style,
+                        style: node_box_style,
                         fill: node_fill_color,
                         stroke: node_stroke_color,
                         stroke_width: node_stroke_width,
@@ -1061,7 +959,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     let _ = write!(
                         &mut out,
                         r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
-                        escape_attr(&node_box_style),
+                        escape_attr(node_box_style),
                         fmt(-width / 2.0),
                         fmt(-height / 2.0),
                         fmt(*width),
@@ -1094,7 +992,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     fmt_display(*radius_y),
                     fmt_display(*width),
                     fmt_display(-body_height),
-                    escape_attr(&node_box_style),
+                    escape_attr(node_box_style),
                     fmt_display(-width / 2.0),
                     fmt_display(-(body_height / 2.0 + radius_y))
                 );
@@ -1113,7 +1011,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         &mut out,
                         &path_data,
                         RoughPathRenderOptions {
-                            style: &node_box_style,
+                            style: node_box_style,
                             fill: node_fill_color,
                             stroke: node_stroke_color,
                             stroke_width: node_stroke_width,
@@ -1141,7 +1039,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     let _ = write!(
                         &mut out,
                         r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
-                        escape_attr(&node_box_style),
+                        escape_attr(node_box_style),
                         fmt_display(translation.x),
                         fmt_display(translation.y)
                     );
@@ -1197,7 +1095,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
             } else {
-                format!(r#" style="{}""#, escape_attr(&node_text_style))
+                format!(r#" style="{}""#, escape_attr(node_text_style))
             };
             let label_markup = if node.label.is_empty() {
                 String::new()
@@ -1214,12 +1112,12 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
-                escape_attr(&node_text_style),
+                escape_attr(node_text_style),
                 fmt(label_tx),
                 fmt(label_ty),
                 fmt(label_w),
                 fmt(label_h),
-                escape_attr(&node_div_style_prefix),
+                escape_attr(node_div_style_prefix),
                 span_style_attr,
                 label_markup
             );
@@ -1229,14 +1127,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
-                escape_attr(&node_text_style),
+                escape_attr(node_text_style),
                 fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
             crate::svg::parity::label::write_svg_text_centered_with_style(
                 &mut out,
                 &label_text,
-                &node_svg_text_style,
+                node_svg_text_style,
             );
             out.push_str("</g>");
         }
@@ -1451,10 +1349,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         0.0
     };
     let edge_stroke_outset = if has_rendered_edge {
-        block_css_length_px(node_theme.stroke_width.as_str())
-            .map(f64::abs)
-            .unwrap_or(1.0)
-            / 2.0
+        node_theme.edge_stroke_width_px.map(f64::abs).unwrap_or(1.0) / 2.0
     } else {
         0.0
     };

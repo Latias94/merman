@@ -193,7 +193,7 @@ pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> 
     Ok(faded)
 }
 
-pub(in crate::svg::parity) fn cssom_color_value(value: &str) -> String {
+pub(crate) fn cssom_color_value(value: &str) -> String {
     let value = value.trim();
     let Ok(color) = ThemeColor::parse(value) else {
         // Preserve CSS variables and browser-supported syntaxes outside Khroma's parser surface.

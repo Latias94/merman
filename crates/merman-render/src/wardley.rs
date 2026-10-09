@@ -1,6 +1,8 @@
 mod theme;
 
-pub(crate) use theme::{WardleySurfaceReceipt, WardleyTextRole, WardleyTypographyThemePlan};
+pub(crate) use theme::{
+    WardleyPaintBinding, WardleySurfaceReceipt, WardleyTextRole, WardleyTypographyThemePlan,
+};
 
 use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};

@@ -811,9 +811,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     paragraph.is_some() && effect.matches_translation((content.x, content.y))
                 });
             if let Some((effect, id)) = effect {
-                let configured = SvgTheme::new(ctx.config.as_value())
-                    .color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-                let fill = ctx.text_surface_paint.background.color(&configured);
+                let fill = ctx
+                    .text_surface_paint
+                    .background
+                    .color(&ctx.compatibility.edge_label_background);
                 let background = if ctx.text_surface_paint.background.supplies_background() {
                     fill.to_owned()
                 } else {

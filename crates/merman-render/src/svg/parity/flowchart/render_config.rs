@@ -1,6 +1,5 @@
 //! Flowchart render configuration preparation.
 
-use crate::config::config_f64;
 use crate::flowchart::FlowchartConfigView;
 use crate::text::{TextStyle, WrapMode};
 
@@ -44,6 +43,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
+    compatibility: &crate::flowchart::FlowchartCompatibilityBinding,
     is_elk_layout: bool,
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
     edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
@@ -99,12 +99,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .map(|d| d.style.clone())
         .unwrap_or_default();
 
-    let node_border_color = config.theme_token("nodeBorder", "#9370DB");
-    let node_fill_color = config.theme_token("mainBkg", "#ECECFF");
-    let node_stroke_width = config_f64(effective_config_value, &["themeVariables", "strokeWidth"])
-        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
-        .map(|value| value as f32)
-        .unwrap_or(1.3);
+    let node_border_color = compatibility.node_border.clone();
+    let node_fill_color = compatibility.main_bkg.clone();
+    let node_stroke_width = compatibility.node_stroke_width;
     let node_typography_config_ownership =
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
     let node_label_fill_config_override =
@@ -126,8 +123,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         effective_config,
         "themeVariables.lineColor",
     );
-    let cluster_fill_color = config.theme_token("clusterBkg", "#ffffde");
-    let cluster_stroke_color = config.theme_token("clusterBorder", "#aaaa33");
+    let cluster_fill_color = compatibility.cluster_bkg.clone();
+    let cluster_stroke_color = compatibility.cluster_border.clone();
     let cluster_fill_config_override = merman_core::__private::config_path_overrides_typed_default(
         effective_config,
         "themeVariables.clusterBkg",
@@ -137,9 +134,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
             effective_config,
             "themeVariables.clusterBorder",
         );
-    let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
-        .unwrap_or(5.0)
-        .max(0.0);
+    let node_corner_radius = compatibility.node_corner_radius;
     let node_corner_radius_config_override =
         merman_core::__private::config_path_overrides_typed_default(
             effective_config,
@@ -186,7 +181,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     }
 }
 
-fn flowchart_node_label_fill_config_override(
+pub(crate) fn flowchart_node_label_fill_config_override(
     effective_config: &merman_core::MermaidConfig,
 ) -> bool {
     const NODE_TEXT_COLOR: &str = "themeVariables.nodeTextColor";

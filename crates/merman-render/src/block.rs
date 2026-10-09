@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 mod config;
 mod edge_paint;
 mod marker_paint;
+mod node_binding;
 pub(crate) use edge_paint::BlockEdgePaintPlan;
 pub(crate) use marker_paint::BlockMarkerPaintPlan;
 mod source;
@@ -18,8 +19,8 @@ pub(crate) use source::resolve_block_node_sources;
 #[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::{
-    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan,
-    BlockTypographyThemePlan,
+    BlockCssThemeBinding, BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan,
+    BlockNodePaintThemePlan, BlockTypographyThemePlan,
 };
 
 mod geometry;

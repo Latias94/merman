@@ -23,7 +23,7 @@ impl SequenceActorShadowPlan {
         model: &SequenceSvgModel,
         mirror: bool,
         style: SequenceActorRectStyle,
-        config: &serde_json::Value,
+        compat: &crate::sequence::SequenceCompatBinding,
         receipt: &mut SequenceActorThemeReceipt,
         options: &SvgExecution<'_>,
     ) -> Result<Self> {
@@ -36,18 +36,10 @@ impl SequenceActorShadowPlan {
         };
         // Read the same generated CSS value as the actor writer. Relative lengths cannot supply
         // a reliable filter envelope; retain a residual instead of guessing a pixel width.
-        let width = style.stroke_width.map(f64::from).or_else(|| {
-            let value = MermaidThemeAdapter::new(config)
-                .sequence_diagram()
-                .stroke_width;
-            let value = value.trim();
-            value
-                .strip_suffix("px")
-                .unwrap_or(value)
-                .parse::<f64>()
-                .ok()
-                .filter(|width| width.is_finite() && *width >= 0.0)
-        });
+        let width = style
+            .stroke_width
+            .map(f64::from)
+            .or(compat.native_stroke_width);
         let Some(width) = width else {
             receipt.effect_unhandled = true;
             return Ok(plan);

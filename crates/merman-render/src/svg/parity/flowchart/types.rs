@@ -41,6 +41,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
+    pub(in crate::svg::parity::flowchart) compatibility:
+        &'a crate::flowchart::FlowchartCompatibilityBinding,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(in crate::svg::parity::flowchart) resolved_theme:

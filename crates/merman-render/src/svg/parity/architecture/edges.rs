@@ -864,8 +864,12 @@ mod tests {
         };
         with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
             let diagram_id = options.diagram_id_or("architecture");
-            let settings =
-                ArchitectureRenderSettings::from_config(diagram_id, &serde_json::json!({}));
+            let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
+                None,
+                &merman_core::MermaidConfig::empty_object(),
+                crate::architecture::ArchitectureTypographyTerminalInventory::new(0, 0).unwrap(),
+            );
+            let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();
             node_xy.insert("api", (0.0, 0.0));
             node_xy.insert("db", (80.0, 0.0));

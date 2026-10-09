@@ -6,7 +6,7 @@ use super::*;
 use crate::diagram_theme::{
     EffectOutsets, MaterializedShadowEffect, SvgShadowEffect, ThemeResourcePolicy, ThemeTarget,
 };
-use crate::flowchart::{FlowchartNodeThemeStyle, FlowchartShape, FlowchartSvgLabelOwner};
+use crate::flowchart::{FlowchartShape, FlowchartSvgLabelOwner};
 
 #[derive(Debug)]
 pub(super) struct PreparedLabelEffect {
@@ -147,22 +147,16 @@ impl FlowchartLabelEffects {
                 let Some(height) = node.label_height else {
                     continue;
                 };
-                let style = FlowchartNodeThemeStyle::resolve(
-                    Some(theme),
-                    ctx.node_theme_ordinals.get(id).copied(),
-                    ctx.work_meter,
-                )?;
+                let Some(prepared) = ctx.node_effects.get().and_then(|nodes| nodes.node(id)) else {
+                    continue;
+                };
+                let style = &prepared.style;
                 let effect = style.label_effect();
                 let cleared = ctx.node_html_labels && style.label_effect_is_cleared();
                 if effect.is_none() && !cleared {
                     continue;
                 }
-                let source = flowchart_compile_node_styles(
-                    ctx.class_defs,
-                    info.node_classes,
-                    info.node_styles,
-                    &[],
-                );
+                let source = &prepared.source;
                 if !source.label_shadow_source_is_bounded() {
                     continue;
                 }

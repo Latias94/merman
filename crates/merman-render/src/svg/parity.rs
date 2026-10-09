@@ -54,19 +54,20 @@ mod class;
     )
 )]
 mod css;
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-pie",
-    feature = "diagram-gantt",
-    feature = "diagram-quadrant-chart",
-    feature = "diagram-journey",
-    feature = "diagram-timeline",
-    feature = "diagram-kanban",
-    feature = "diagram-treemap",
-    feature = "diagram-requirement",
-    feature = "diagram-er"
-))]
 pub(crate) use css::PreparedCommonCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use css::PreparedFlowchartNeoCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use flowchart::flowchart_node_label_fill_config_override;
+pub(crate) use util::cssom_color_value;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -122,8 +123,6 @@ mod flowchart;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use flowchart::FlowchartEdgeStylePlan;
-#[cfg(all(test, feature = "diagram-flowchart"))]
-pub(crate) use flowchart::write_flowchart_svg_label_plan_for_test;
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
 #[cfg(feature = "diagram-git-graph")]
@@ -289,8 +288,6 @@ use css::gantt_css;
 use css::push_xychart_css;
 #[cfg(feature = "diagram-pie")]
 use css::write_pie_css;
-#[cfg(feature = "diagram-sankey")]
-use css::write_sankey_css_with_font_family;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -300,9 +297,9 @@ use css::write_sankey_css_with_font_family;
 )]
 use css::{
     MermaidBaseCss, info_css_parts_with_config, info_css_parts_with_font_family,
-    info_css_parts_with_resolved_typography, write_info_css_with_font_family,
-    write_mermaid_base_css_prefix_with_font_emission,
+    info_css_parts_with_resolved_typography, write_mermaid_base_css_prefix_with_font_emission,
     write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
+    write_prepared_info_css,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
@@ -337,7 +334,7 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
+use style::{is_text_style_key, parse_style_decl};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -354,7 +351,7 @@ use theme::MermaidThemeAdapter;
     )
 )]
 use util::{
-    SvgTheme, config_bool, config_diagram_look, config_f64, config_string, css_rgba_fade,
+    config_bool, config_diagram_look, config_f64, config_string, css_rgba_fade,
     decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_attr_into,
     escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path,
     fmt_path_into, fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
@@ -1286,7 +1283,6 @@ fn render_builtin_family_artifact_raw(
     match family {
         BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
             artifact.pair().layout(),
-            effective_config_value,
             artifact.typography_theme(),
             options,
         ),
@@ -1322,7 +1318,6 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Cynefin(artifact) => cynefin::render_cynefin_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            effective_config_value,
             title,
             artifact.typography_theme(),
             options,
@@ -1493,7 +1488,6 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-info")]
         BuiltinFamilyArtifact::Info(artifact) => info::render_info_diagram_svg(
             artifact.pair().layout(),
-            effective_config_value,
             artifact.typography_theme(),
             options,
         ),

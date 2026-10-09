@@ -36,6 +36,12 @@ fn prepare_flowchart_artifact<L>(
         &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
+    let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+        resolved_theme,
+        effective_config,
+        crate::svg::flowchart_node_label_fill_config_override(effective_config),
+        work_meter.as_ref(),
+    )?;
     let edge_theme =
         crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
     let base_typography =
@@ -47,7 +53,7 @@ fn prepare_flowchart_artifact<L>(
             work_meter,
         )
         .with_base_typography(base_typography)
-        .with_math_backend(math_backend, effective_config)
+        .with_prepared_math_backend(math_backend, &prepared_theme.compatibility)
         .with_typography_config_ownership(typography_config_ownership)
         .with_edge_label_padding(edge_theme.edge_label_padding())
     });
@@ -74,6 +80,7 @@ fn prepare_flowchart_artifact<L>(
         render_context,
         edge_style_plan,
         edge_theme,
+        prepared_theme,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
         effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
@@ -161,11 +168,11 @@ fn prepare_block_family(
     let typography_theme = crate::block::BlockTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+    )?;
     let layout = crate::block::layout_block_diagram_typed_with_text_style(
         &model,
         typography_theme.padding(),
-        crate::config::config_effective_html_labels(meta.effective_config.as_value()),
+        typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         execution.text_measurer(),
     )?;
@@ -195,6 +202,7 @@ fn prepare_block_family(
         &meta.effective_config,
         &model,
         &layout,
+        &node_label_paint_theme,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Block(Box::new(

@@ -1,7 +1,6 @@
 use super::super::*;
 use crate::diagram_theme::{
-    EffectOutsets, ResolvedThemeEffect, SvgFilterRegion, SvgShadowEffect,
-    SvgShadowEvidenceRecorder, ThemeResourcePolicy,
+    EffectOutsets, SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder, ThemeResourcePolicy,
 };
 use crate::sequence::{
     SequenceResolvedTypography, SequenceTextSurface, SequenceTypographyRole,
@@ -37,34 +36,16 @@ pub(super) enum TextShadowBaseline {
 }
 
 impl<'a> SequenceTextShadow<'a> {
-    pub(super) fn resolve(
+    pub(super) fn from_prepared(
         options: &'a SvgExecution<'_>,
         role: SequenceTypographyRole,
         typography: &SequenceResolvedTypography,
         receipt: &mut SequenceTypographyThemeReceipt,
     ) -> Self {
-        let mut effect = None;
-        let mut cleared = false;
-        if let Some(theme) = options.resolved_theme() {
-            let resolution = typography
-                .resolved_style()
-                .map(|s| s.effect_resolution().clone())
-                .unwrap_or_default();
-            if let Some(resolved) = theme.resolve_effect(role.target(), &resolution) {
-                let mut binding = false;
-                match resolved {
-                    ResolvedThemeEffect::ClearedByRule => cleared = true,
-                    ResolvedThemeEffect::Rule { graph } => {
-                        effect = graph.and_then(SvgShadowEffect::from_graph);
-                    }
-                    ResolvedThemeEffect::Binding { graph, .. } => {
-                        binding = true;
-                        effect = graph.and_then(SvgShadowEffect::from_graph);
-                    }
-                }
-                receipt.configure_text_effect(role, binding, !cleared && effect.is_none());
-            }
-        }
+        let prepared = typography.text_effect();
+        prepared.configure_receipt(role, receipt);
+        let effect = prepared.effect().cloned();
+        let cleared = prepared.cleared();
         Self {
             effect,
             role,
@@ -220,5 +201,50 @@ impl<'a> SequenceTextShadow<'a> {
         } else if self.cleared || (paintless && self.effect.is_some()) {
             receipt.record_text_effect(surface, false);
         }
+    }
+}
+
+#[cfg(test)]
+mod prepared_tests {
+    use super::*;
+
+    #[test]
+    fn text_shadow_instances_keep_application_counts_and_bounds_local() {
+        crate::svg::parity::with_test_svg_execution(
+            crate::DiagramFamilyId::SEQUENCE,
+            &crate::svg::SvgRenderOptions::default(),
+            |execution| {
+                let config = merman_core::MermaidConfig::default();
+                let typography = crate::sequence::SequenceTypographyPlan::resolve(
+                    &config,
+                    None,
+                    execution.work_meter(),
+                )
+                .unwrap();
+                let mut first_receipt = SequenceTypographyThemeReceipt::from_plan(&typography);
+                let mut second_receipt = SequenceTypographyThemeReceipt::from_plan(&typography);
+                let first = SequenceTextShadow::from_prepared(
+                    execution,
+                    SequenceTypographyRole::Note,
+                    typography.note(),
+                    &mut first_receipt,
+                );
+                let second = SequenceTextShadow::from_prepared(
+                    execution,
+                    SequenceTypographyRole::Note,
+                    typography.note(),
+                    &mut second_receipt,
+                );
+                first.applications.set(1);
+                *first.bounds.borrow_mut() = Some(Bounds {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    max_x: 1.0,
+                    max_y: 1.0,
+                });
+                assert_eq!(second.len(), 0);
+                assert!(second.bounds.borrow().is_none());
+            },
+        );
     }
 }

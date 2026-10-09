@@ -211,18 +211,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     let style_start = timing.start();
     let prepared_effect = ctx.node_effects.get().and_then(|plan| plan.node(node_id));
-    let mut fallback_source;
-    let (compiled_styles, mut style) = if let Some(prepared) = prepared_effect {
-        (
-            &prepared.source,
-            std::borrow::Cow::Borrowed(prepared.source.node_style.as_str()),
-        )
-    } else {
-        fallback_source =
-            flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
-        let style = std::mem::take(&mut fallback_source.node_style);
-        (&fallback_source, std::borrow::Cow::Owned(style))
-    };
+    let prepared = prepared_effect.ok_or_else(|| crate::Error::InvalidModel {
+        message: format!("Flowchart node `{node_id}` has no prepared terminal style"),
+    })?;
+    let compiled_styles = &prepared.source;
+    let mut style = std::borrow::Cow::Borrowed(prepared.source.node_style.as_str());
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
@@ -258,17 +251,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         compiled_styles.source_label_foreground_status(),
         ctx.node_label_fill_config_override,
     );
-    let fallback_theme;
-    let node_theme = if let Some(prepared) = prepared_effect {
-        &prepared.style
-    } else {
-        fallback_theme = crate::flowchart::FlowchartNodeThemeStyle::resolve(
-            ctx.resolved_theme,
-            ctx.node_theme_ordinals.get(node_id).copied(),
-            ctx.work_meter,
-        )?;
-        &fallback_theme
-    };
+    let node_theme = &prepared.style;
     let source_filter = compiled_styles.source_filter_status();
     let typed_fill_selected = node_theme.fill_value(fill_precedence, true).is_some();
     let typed_stroke_selected = node_theme.stroke_value(stroke_precedence, true).is_some();

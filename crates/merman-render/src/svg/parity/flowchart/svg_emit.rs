@@ -30,6 +30,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
             edge_theme: artifact.edge_theme(),
+            prepared_theme: artifact.prepared_theme(),
         },
         options,
         edge_paint_geometry,
@@ -37,6 +38,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
 }
 
 pub(super) struct FlowchartSvgModelRequest<'a> {
+    pub(super) prepared_theme: &'a crate::flowchart::FlowchartPreparedTheme,
     pub(super) layout: &'a FlowchartLayout,
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
@@ -58,6 +60,7 @@ pub(super) fn render_flowchart_svg_model(
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let FlowchartSvgModelRequest {
+        prepared_theme,
         layout,
         swimlane_layout,
         model,
@@ -154,6 +157,7 @@ pub(super) fn render_flowchart_svg_model(
     } = prepare_flowchart_render_config(
         model,
         effective_config,
+        &prepared_theme.compatibility,
         layout.uses_elk_adapter_dom,
         svg_label_sidecar.base_typography(),
         svg_label_sidecar.edge_label_padding(),
@@ -307,12 +311,7 @@ pub(super) fn render_flowchart_svg_model(
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
-    let text_surface_paint = crate::flowchart::FlowchartTextSurfacePaintPlan::resolve(
-        options.resolved_theme(),
-        effective_config,
-        node_label_fill_config_override,
-        options.work_meter(),
-    )?;
+    let text_surface_paint = &prepared_theme.text_surface;
     let ctx = FlowchartRenderCtx {
         edges_by_key: edge_order
             .iter()
@@ -322,7 +321,7 @@ pub(super) fn render_flowchart_svg_model(
         node_effects: std::cell::OnceCell::new(),
         edge_effects: std::cell::OnceCell::new(),
         effect_evidence,
-        text_surface_paint: &text_surface_paint,
+        text_surface_paint,
         model,
         diagram_id,
         diagram_type,
@@ -330,6 +329,7 @@ pub(super) fn render_flowchart_svg_model(
         ty,
         measurer,
         config: effective_config,
+        compatibility: &prepared_theme.compatibility,
         hand_drawn_seed,
         work_meter: options.work_meter(),
         resolved_theme: options.resolved_theme(),
@@ -547,14 +547,14 @@ pub(super) fn render_flowchart_svg_model(
         document_ids.drop_shadow(),
         document_ids.drop_shadow_small(),
         document_ids.root_gradient(),
-        effective_config_value,
+        &prepared_theme.compatibility,
         &font_family,
         font_size,
         &model.class_defs,
-        Some(&text_surface_paint),
+        Some(text_surface_paint),
     )?;
     if diagram_type == "agentflow" {
-        super::agentflow::write_css(&mut out, diagram_id, effective_config_value)?;
+        super::agentflow::write_css(&mut out, diagram_id, &prepared_theme.compatibility)?;
     }
     text_surface_paint.generic_text.record_stylesheet_emission();
     text_surface_paint.background.record_stylesheet();
@@ -934,6 +934,15 @@ mod integration_tests {
 
         let error = render_flowchart_svg_model(
             FlowchartSvgModelRequest {
+                prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
+                    None,
+                    &metadata.effective_config,
+                    super::render_config::flowchart_node_label_fill_config_override(
+                        &metadata.effective_config,
+                    ),
+                    execution.work_meter(),
+                )
+                .expect("prepared theme"),
                 layout: &layout,
                 swimlane_layout: None,
                 model: &model,
@@ -1055,6 +1064,15 @@ mod integration_tests {
             let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
             render_flowchart_svg_model(
                 FlowchartSvgModelRequest {
+                    prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
+                        None,
+                        &metadata.effective_config,
+                        super::render_config::flowchart_node_label_fill_config_override(
+                            &metadata.effective_config,
+                        ),
+                        execution.work_meter(),
+                    )
+                    .expect("prepared theme"),
                     layout: &layout,
                     swimlane_layout: None,
                     model: &model,

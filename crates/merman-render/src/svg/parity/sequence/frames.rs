@@ -34,13 +34,10 @@ pub(super) fn builtin_box_paint_bounds(
     boxes: &[crate::sequence::SequenceBoxLayout],
     height: f64,
     margin: f64,
-    config: &serde_json::Value,
+    theme: &crate::sequence::SequenceCompatBinding,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<Option<Bounds>> {
-    let theme = MermaidThemeAdapter::new(config).sequence_diagram();
-    if !crate::config::config_diagram_look(config).is_neo()
-        || theme.drop_shadow.as_str() != "url(#drop-shadow)"
-    {
+    if !theme.is_neo || theme.drop_shadow.as_str() != "url(#drop-shadow)" {
         return Ok(None);
     }
     let mut bounds: Option<Bounds> = None;

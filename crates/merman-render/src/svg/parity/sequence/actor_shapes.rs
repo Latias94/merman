@@ -13,7 +13,7 @@ pub(super) struct ActorLifelineIdentity<'a> {
 
 #[derive(Clone, Copy)]
 pub(super) struct ActorLabelContext<'a> {
-    pub(super) config: &'a merman_core::MermaidConfig,
+    pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) typed_fill: Option<&'a str>,
     pub(super) typed_stroke: Option<&'a str>,
@@ -112,7 +112,7 @@ impl<'a> ActorLabelContext<'a> {
     }
 
     pub(super) fn is_neo(&self) -> bool {
-        crate::config::config_diagram_look(self.config.as_value()).is_neo()
+        self.compat.is_neo
     }
 
     pub(super) fn bands(&self, node: &LayoutNode, footer: bool) -> Option<SequenceActorBands> {
@@ -152,7 +152,6 @@ impl<'a> ActorLabelContext<'a> {
         actor_index: usize,
         width: Option<f32>,
     ) {
-        let config = self.config.as_value();
         let mut style = String::new();
         let mut declaration = |property: &str, color: &str| {
             if (property == "fill" && self.typed_fill.is_some())
@@ -166,23 +165,15 @@ impl<'a> ActorLabelContext<'a> {
             let color = super::super::util::cssom_color_value(color);
             let _ = write!(style, "{property}: {color};");
         };
-        if matches!(
-            config.get("theme").and_then(serde_json::Value::as_str),
-            Some("redux-color" | "redux-dark-color")
-        ) {
-            for (property, key) in [("stroke", "borderColorArray"), ("fill", "bkgColorArray")] {
-                if let Some(palette) = config
-                    .get("themeVariables")
-                    .and_then(|theme| theme.get(key))
-                    .and_then(serde_json::Value::as_array)
-                    && !palette.is_empty()
-                    && let Some(color) = palette[actor_index % palette.len()].as_str()
-                {
+        if self.compat.actor_palette_mode() {
+            let (stroke, fill) = self.compat.actor_palette(actor_index);
+            for (property, color) in [("stroke", stroke), ("fill", fill)] {
+                if let Some(color) = color {
                     declaration(property, color);
                 }
             }
         } else {
-            let theme = MermaidThemeAdapter::new(config).sequence_diagram();
+            let theme = self.compat;
             if matches!(actor_type, "actor" | "boundary" | "control" | "database") {
                 declaration("stroke", theme.actor_border.as_str());
             }

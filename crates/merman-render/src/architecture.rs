@@ -21,7 +21,10 @@ use merman_core::diagrams::architecture::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
+mod css_binding;
 mod theme;
+
+pub(crate) use css_binding::ArchitectureCssBinding;
 
 pub(crate) use theme::{
     ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,

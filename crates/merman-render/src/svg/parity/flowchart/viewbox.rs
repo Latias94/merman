@@ -579,13 +579,7 @@ fn builtin_neo_paint_bounds(
             y + cluster.height / 2.0 + 0.5,
         );
     }
-    if ctx
-        .config
-        .as_value()
-        .pointer("/themeVariables/dropShadow")
-        .and_then(serde_json::Value::as_str)
-        != Some("url(#drop-shadow)")
-    {
+    if ctx.compatibility.drop_shadow != "url(#drop-shadow)" {
         return Ok(bounds);
     }
     for id in hierarchy.rendered_node_ids() {
@@ -611,8 +605,10 @@ fn builtin_neo_paint_bounds(
         {
             continue;
         }
-        let source =
-            flowchart_compile_node_styles(ctx.class_defs, info.node_classes, info.node_styles, &[]);
+        let Some(prepared) = ctx.node_effects.get().and_then(|nodes| nodes.node(id)) else {
+            continue;
+        };
+        let source = &prepared.source;
         if !source.source_filter_status().is_absent() {
             continue;
         }

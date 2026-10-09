@@ -1,7 +1,6 @@
 //! Flowchart container colors and Agentflow's separate kind-first palette.
 
 use super::*;
-use serde_json::Value;
 
 const KINDS: [&str; 7] = [
     "tool",
@@ -13,29 +12,12 @@ const KINDS: [&str; 7] = [
     "action",
 ];
 
-fn palette(config: &Value) -> &[Value] {
-    if !matches!(
-        config.get("theme").and_then(Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
-        return &[];
-    }
-    config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(Value::as_array)
-        .map_or(&[], Vec::as_slice)
-}
-
 fn container_slot(ordinal: usize, palette_len: usize) -> usize {
     (KINDS.len() + ordinal % palette_len.saturating_sub(KINDS.len()).max(1)) % palette_len
 }
 
-pub(super) fn flowchart_palette_len(config: &Value) -> usize {
-    palette(config).len()
-}
-
 pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
-    let colors = palette(ctx.config.as_value());
+    let colors = &ctx.compatibility.palette;
     let ordinal = ctx.model.subgraph_color_ordinal(id)?;
     (!colors.is_empty()).then(|| {
         if ctx.diagram_type == "agentflow" {
@@ -49,31 +31,20 @@ pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Op
 pub(super) fn write_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    config: &Value,
+    binding: &crate::flowchart::FlowchartCompatibilityBinding,
 ) -> Result<()> {
     let _ = write!(
         out,
         "#{diagram_id} .flow-cluster rect{{fill:none;stroke-width:0.75px;}}"
     );
     out.checkpoint()?;
-    let borders = palette(config);
+    let borders = &binding.palette;
     if borders.is_empty() {
         return Ok(());
     }
-    let look = config
-        .get("look")
-        .and_then(Value::as_str)
-        .filter(|look| {
-            !look.is_empty()
-                && look
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-        })
-        .unwrap_or("classic");
-    let backgrounds = config
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(Value::as_array)
-        .filter(|values| !values.is_empty());
+    let look = &binding.palette_look;
+    let backgrounds =
+        (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
     let declarations = |slot: usize| {
         let color = &borders[slot % borders.len()];
         let border = color
@@ -125,26 +96,15 @@ pub(super) fn write_css(
 pub(super) fn write_flowchart_container_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    config: &Value,
+    binding: &crate::flowchart::FlowchartCompatibilityBinding,
 ) -> Result<()> {
-    let borders = palette(config);
+    let borders = &binding.palette;
     if borders.is_empty() {
         return Ok(());
     }
-    let look = config
-        .get("look")
-        .and_then(Value::as_str)
-        .filter(|look| {
-            !look.is_empty()
-                && look
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-        })
-        .unwrap_or("classic");
-    let backgrounds = config
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(Value::as_array)
-        .filter(|values| !values.is_empty());
+    let look = &binding.palette_look;
+    let backgrounds =
+        (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
     for (slot, border) in borders.iter().enumerate() {
         out.checkpoint()?;
         let border = border

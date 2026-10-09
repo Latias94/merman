@@ -232,11 +232,6 @@ impl<'a> FlowchartConfigView<'a> {
         style
     }
 
-    pub(crate) fn theme_token(&self, key: &str, fallback: &str) -> String {
-        self.theme_string(key)
-            .unwrap_or_else(|| fallback.to_string())
-    }
-
     fn root_font_weight(&self) -> Option<String> {
         let raw = self.root_string("fontWeight")?;
         Some(
@@ -526,8 +521,6 @@ mod tests {
         assert_eq!(config.render_node_padding(), 0.0);
         assert_eq!(config.render_curve().as_deref(), Some("linear"));
         assert_eq!(config.render_subgraph_title_y_shift(), 4.0);
-        assert_eq!(config.theme_token("mainBkg", "#ECECFF"), "#112233");
-        assert_eq!(config.theme_token("nodeBorder", "#9370DB"), "#445566");
     }
 
     #[test]

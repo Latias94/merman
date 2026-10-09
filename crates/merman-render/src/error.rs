@@ -153,6 +153,7 @@ impl ErrorSurfaceReceipt {
 /// Final inherited Error font shared by terminal CSS emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct ErrorTypographyThemePlan {
+    css_binding: crate::svg::PreparedCommonCss,
     inherited_font_stack: InheritedFontStackPlan,
     terminal_geometry: InheritedTextViewportFacts,
     evidence: FamilyThemeEvidence,
@@ -190,6 +191,10 @@ impl ErrorTypographyThemePlan {
         };
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let css_binding = crate::svg::PreparedCommonCss::new(
+            effective_config.as_value(),
+            Some(inherited_font_stack.font_family_css()),
+        );
         let version = format!("mermaid version {UPSTREAM_MERMAID_VERSION}");
         let terminal_geometry = InheritedTextViewportFacts::prepare(
             ERROR_BASELINE_VIEWBOX_WIDTH,
@@ -217,6 +222,7 @@ impl ErrorTypographyThemePlan {
         );
         let unsupported_routes = error_unsupported_routes(theme);
         Self {
+            css_binding,
             inherited_font_stack,
             terminal_geometry,
             evidence: FamilyThemeEvidence::from_theme(theme),
@@ -227,6 +233,10 @@ impl ErrorTypographyThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn css_binding(&self) -> &crate::svg::PreparedCommonCss {
+        &self.css_binding
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> ErrorSurfaceReceipt {

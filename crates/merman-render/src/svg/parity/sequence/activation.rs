@@ -250,7 +250,7 @@ pub(super) fn render_sequence_activation_group(
     out: &mut impl SvgOutput,
     plan: &SequenceActivationPlan,
     message_id: &str,
-    config: &merman_core::MermaidConfig,
+    compat: &crate::sequence::SequenceCompatBinding,
     theme_receipt: &mut SequenceStaticRectThemeReceipt,
     evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
 ) -> Result<()> {
@@ -262,7 +262,7 @@ pub(super) fn render_sequence_activation_group(
     // `<rect class="activation{0..2}">` once ACTIVE_END is encountered.
     out.push_str("<g>");
     if let Some(Some(a)) = plan.groups.get(group_index) {
-        let is_neo = crate::config::config_diagram_look(config.as_value()).is_neo();
+        let is_neo = compat.is_neo;
         let shadow = plan
             .shadows
             .get(group_index)
@@ -283,12 +283,8 @@ pub(super) fn render_sequence_activation_group(
             stroke = escape_xml(&plan.stroke),
             look_attr = if is_neo { r#" data-look="neo""# } else { "" },
         );
-        let style = activation_palette_style(
-            config.as_value(),
-            a.actor_index,
-            plan.typed_fill,
-            plan.typed_stroke,
-        );
+        let style =
+            activation_palette_style(compat, a.actor_index, plan.typed_fill, plan.typed_stroke);
         if !style.is_empty() {
             let _ = write!(out, r#" style="{}""#, escape_attr(&style));
         }
@@ -316,38 +312,21 @@ pub(super) fn render_sequence_activation_group(
 }
 
 fn activation_palette_style(
-    config: &serde_json::Value,
+    compat: &crate::sequence::SequenceCompatBinding,
     actor_index: usize,
     typed_fill: bool,
     typed_stroke: bool,
 ) -> String {
-    if !matches!(
-        config.get("theme").and_then(serde_json::Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
+    if !compat.actor_palette_mode() {
         return String::new();
     }
-    let Some(theme) = config.get("themeVariables") else {
-        return String::new();
-    };
-    let palette_color = |key| {
-        theme
-            .get(key)
-            .and_then(serde_json::Value::as_array)
-            .filter(|palette| !palette.is_empty())
-            .map(|palette| &palette[actor_index % palette.len()])
-    };
-    let stroke = palette_color("borderColorArray");
-    // Unlike actors, activations need an opaque fallback to cover the lifeline.
-    let fill = palette_color("bkgColorArray")
-        .filter(|color| !color.is_null())
-        .or_else(|| theme.get("mainBkg"));
+    let (stroke, fill) = compat.activation_palette(actor_index);
     let mut style = String::new();
     for (property, value) in [("stroke", stroke), ("fill", fill)] {
         if (property == "fill" && typed_fill) || (property == "stroke" && typed_stroke) {
             continue;
         }
-        if let Some(color) = value.and_then(serde_json::Value::as_str) {
+        if let Some(color) = value {
             let color = super::super::util::cssom_color_value(color);
             if color.is_empty() {
                 continue;

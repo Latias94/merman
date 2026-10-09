@@ -37,19 +37,14 @@ mod fallback;
 mod icon_registry;
 mod parity;
 pub(crate) use parity::BaseEdgeMarkerKind;
-#[cfg(any(
-    feature = "diagram-class",
-    feature = "diagram-pie",
-    feature = "diagram-gantt",
-    feature = "diagram-quadrant-chart",
-    feature = "diagram-journey",
-    feature = "diagram-timeline",
-    feature = "diagram-kanban",
-    feature = "diagram-treemap",
-    feature = "diagram-requirement",
-    feature = "diagram-er"
-))]
 pub(crate) use parity::PreparedCommonCss;
+pub(crate) use parity::cssom_color_value;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use parity::{PreparedFlowchartNeoCss, flowchart_node_label_fill_config_override};
 mod pipeline;
 pub(crate) mod scanner;
 
@@ -68,8 +63,6 @@ pub(crate) use parity::FlowchartEdgeStylePlan;
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::theme as render_theme;
-#[cfg(all(test, feature = "diagram-flowchart"))]
-pub(crate) use parity::write_flowchart_svg_label_plan_for_test;
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
 pub(crate) use pipeline::SvgPostprocessExecution;
 pub(crate) use pipeline::partition_prepared_text_label_ids;

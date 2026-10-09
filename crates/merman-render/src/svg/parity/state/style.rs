@@ -1,59 +1,15 @@
 use super::*;
 
-pub(super) fn state_palette_size(config: &serde_json::Value) -> usize {
-    if !matches!(
-        config.get("theme").and_then(serde_json::Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
-        return 0;
-    }
-    config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-        .map_or(0, Vec::len)
-}
-
 fn write_state_palette_css<I: Copy + std::fmt::Display>(
     out: &mut impl SvgOutput,
     id: I,
-    config: &serde_json::Value,
+    compatibility: &crate::state::StateCompatibilityPlan,
 ) -> crate::Result<()> {
-    if state_palette_size(config) == 0 {
+    if compatibility.redux_palette.is_empty() {
         return out.checkpoint();
     }
-    let Some(borders) = config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return out.checkpoint();
-    };
-    let backgrounds = config
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(serde_json::Value::as_array)
-        .filter(|colors| !colors.is_empty());
-    let look = config
-        .get("look")
-        .and_then(|value| match value {
-            serde_json::Value::String(value) => Some(value.clone()),
-            serde_json::Value::Number(value) => Some(value.to_string()),
-            _ => None,
-        })
-        .filter(|look| {
-            !look.is_empty()
-                && look
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-        })
-        .unwrap_or_else(|| "classic".into());
-    let css_color = |value: &serde_json::Value| {
-        value
-            .as_str()
-            .map(|value| value.trim().to_owned())
-            .unwrap_or_else(|| value.to_string())
-    };
-    for (index, border) in borders.iter().enumerate() {
-        let border = css_color(border);
-        let tint = backgrounds.map(|colors| css_color(&colors[index % colors.len()]));
+    let look = &compatibility.palette_look;
+    for (index, (border, tint)) in compatibility.redux_palette.iter().enumerate() {
         for (selector, stroke, fill) in [
             ("rect.outer", true, true),
             ("rect.inner", true, false),
@@ -73,7 +29,7 @@ fn write_state_palette_css<I: Copy + std::fmt::Display>(
             if stroke {
                 let _ = write!(out, "stroke:{border};");
             }
-            if fill && let Some(tint) = &tint {
+            if fill && let Some(tint) = tint {
                 let _ = write!(out, "fill:{tint};");
             }
             out.push('}');
@@ -265,7 +221,6 @@ pub(super) fn write_state_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     style_plan: &crate::state::StateStylePlan,
-    effective_config: &serde_json::Value,
 ) -> crate::Result<()>
 where
     I: SvgDiagramIdValue,
@@ -427,7 +382,7 @@ where
         id, ff, font_size_s, font_weight_decl, font_style_decl
     );
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
-    write_state_palette_css(css, id, effective_config)?;
+    write_state_palette_css(css, id, theme)?;
     let _ = write!(
         &mut css,
         r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
@@ -647,11 +602,7 @@ where
         id
     );
     // State's dependency rule uses `strokeWidth || 1`; the shared edge rule uses `?? 1`.
-    let dependency_stroke_width = if effective_config
-        .pointer("/themeVariables/strokeWidth")
-        .and_then(serde_json::Value::as_f64)
-        == Some(0.0)
-    {
+    let dependency_stroke_width = if theme.dependency_numeric_zero_width {
         "1"
     } else {
         stroke_width.as_str()
@@ -759,7 +710,7 @@ where
     let root_font_family = if uses_structured_typography {
         ff.clone()
     } else {
-        crate::config::config_root_font_family_css(effective_config)
+        theme.root_font_family_css.clone()
     };
     crate::svg::parity::css::write_mermaid_base_css_root_rule_to(css, id, &root_font_family)?;
 
@@ -1228,10 +1179,10 @@ mod tests {
     fn rendered_state_css(
         diagram_id: &str,
         plan: &crate::state::StateStylePlan,
-        config: &serde_json::Value,
+        _config: &serde_json::Value,
     ) -> String {
         let mut css = String::new();
-        write_state_css(&mut css, diagram_id, plan, config).expect("write State CSS");
+        write_state_css(&mut css, diagram_id, plan).expect("write State CSS");
         css
     }
 
@@ -1378,7 +1329,7 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let mut out = BoundedSvgOutput::new(&meter);
 
-        let error = write_state_css(&mut out, "st", &plan, &config)
+        let error = write_state_css(&mut out, "st", &plan)
             .expect_err("the first class rule must cross the SVG byte ceiling");
 
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));

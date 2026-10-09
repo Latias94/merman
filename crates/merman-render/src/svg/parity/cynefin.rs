@@ -4,7 +4,6 @@ use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,
     model: &CynefinDiagramRenderModel,
-    effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     options: &SvgExecution<'_>,
@@ -17,7 +16,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let root_bounds =
         root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.total_width, layout.total_height);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
-    let theme = crate::cynefin::cynefin_theme(effective_config);
+    let theme = typography_theme.colors();
     let title = model
         .title
         .as_deref()
@@ -58,8 +57,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     write_cynefin_css(
         &mut out,
         diagram_id,
-        effective_config,
-        &theme,
+        theme,
         typography_theme,
         &mut surface_receipt,
     )?;
@@ -81,13 +79,13 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         fmt(layout.padding)
     );
     out.checkpoint()?;
-    push_backgrounds(&mut out, layout, &theme)?;
-    push_boundaries(&mut out, layout, seed, &theme)?;
+    push_backgrounds(&mut out, layout, theme)?;
+    push_boundaries(&mut out, layout, seed, theme)?;
     push_labels(&mut out, layout, &mut surface_receipt)?;
     if layout.show_domain_descriptions {
         push_subtitles(&mut out, layout, &mut surface_receipt)?;
     }
-    push_items(&mut out, layout, &theme, &mut surface_receipt)?;
+    push_items(&mut out, layout, theme, &mut surface_receipt)?;
     push_transitions(&mut out, layout, diagram_id, options, &mut surface_receipt)?;
     if let Some(title) = title {
         let _ = write!(
@@ -406,21 +404,14 @@ fn push_transitions(
 fn write_cynefin_css(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,
     typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     let id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
-    let text_color = typography_theme
-        .text_fill_css()
-        .unwrap_or(theme.text_color.as_str());
-    let parts = info_css_parts_with_font_family(
-        diagram_id,
-        effective_config,
-        typography_theme.font_family_css(),
-    );
-    out.push_str(&parts.css_prefix);
+    let text_color = &theme.text_color;
+    let common_css = typography_theme.common_css();
+    common_css.write_prefix_with_font_emission(out, util::css_selector_diagram_id(diagram_id))?;
     out.checkpoint()?;
     let _ = write!(
         out,
@@ -458,12 +449,16 @@ fn write_cynefin_css(
         fmt(theme.domain_font_size + 2.0),
         theme.label_color
     );
-    out.push_str(&parts.root_rule);
+    common_css.write_root_with_font_emission(
+        out,
+        util::css_selector_diagram_id(diagram_id),
+        diagram_id,
+    )?;
     out.checkpoint()?;
     surface_receipt.record_css_emission(
-        &parts.font_family,
-        &parts.font_family,
-        &parts.font_family,
+        common_css.font_family(),
+        common_css.font_family(),
+        common_css.font_family(),
         text_color,
     );
     Ok(())

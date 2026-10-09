@@ -81,9 +81,7 @@ fn render_state_diagram_svg_with_plan(
         .map(|s| s.to_string());
     let state_render_settings = crate::state::StateConfigView::new(effective_config)
         .render_settings(style_plan.compatibility());
-    let serialized_diagram_look = crate::config::config_diagram_look(effective_config)
-        .serialized()
-        .to_string();
+    let serialized_diagram_look = style_plan.compatibility().serialized_look.clone();
     let title_top_margin = state_render_settings.title_top_margin;
     let hand_drawn_seed = options.rough_randomness(
         state_render_settings.hand_drawn_seed,
@@ -144,7 +142,7 @@ fn render_state_diagram_svg_with_plan(
         elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
         serialized_diagram_look,
-        palette_size: state_palette_size(effective_config),
+        palette_size: style_plan.compatibility().redux_palette.len(),
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
@@ -367,7 +365,7 @@ fn render_state_diagram_svg_with_plan(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(&mut out, diagram_id, style_plan, effective_config)?;
+    write_state_css(&mut out, diagram_id, style_plan)?;
     out.push_str("</style>");
     out.checkpoint()?;
 

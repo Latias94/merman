@@ -284,8 +284,8 @@ pub(crate) fn render_sankey_diagram_svg(
     let show_values = render_settings.show_values;
     let prefix = render_settings.prefix;
     let suffix = render_settings.suffix;
-    let link_color = render_settings.link_color;
-    let outlined_labels = render_settings.outlined_labels;
+    let link_color = typography_theme.link_color();
+    let outlined_labels = typography_theme.outlined_labels();
     let text_fill_attr = typography_theme
         .text_fill_css()
         .map(|fill| format!(r#" fill="{}""#, escape_attr(fill)));
@@ -361,13 +361,8 @@ pub(crate) fn render_sankey_diagram_svg(
         )?;
     out.push_str("<style>");
     out.checkpoint()?;
-    let typography_css_emission = write_sankey_css_with_font_family(
-        &mut out,
-        diagram_id,
-        effective_config,
-        typography_theme.font_family_css(),
-        typography_theme.text_fill_css(),
-    )?;
+    let typography_css_emission =
+        super::css::write_sankey_css(&mut out, diagram_id, typography_theme)?;
     if let Some(receipt) = &mut typography_receipt {
         receipt.record_css_emission(typography_css_emission);
     }
@@ -500,7 +495,7 @@ pub(crate) fn render_sankey_diagram_svg(
         &layout.links,
         &terminal_node_index,
         node_palette,
-        &link_color,
+        link_color,
         &mut next_generated_id,
         scope_generated_ids.then_some(diagram_id),
     )?;

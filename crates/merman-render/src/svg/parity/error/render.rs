@@ -4,7 +4,6 @@ use super::super::*;
 
 pub(crate) fn render_error_diagram_svg_model(
     layout: &ErrorDiagramLayout,
-    effective_config: &serde_json::Value,
     typography_theme: &crate::error::ErrorTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -29,12 +28,7 @@ pub(crate) fn render_error_diagram_svg_model(
     )
     .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str(r#"<style>"#);
-    let css_write = write_info_css_with_font_family(
-        &mut out,
-        diagram_id,
-        effective_config,
-        typography_theme.font_family_css(),
-    )?;
+    let css_write = write_prepared_info_css(&mut out, diagram_id, typography_theme.css_binding())?;
     out.push_str("</style>");
     out.checkpoint()?;
     surface_receipt.record_css_emission(
@@ -151,7 +145,7 @@ mod tests {
         );
         let layout = crate::error::layout_error_diagram_typed(&model, &typography).unwrap();
         let viewport_height = typography.viewport_height_px();
-        let svg = render_error_diagram_svg_model(&layout, &config, &typography, &execution)
+        let svg = render_error_diagram_svg_model(&layout, &typography, &execution)
             .unwrap()
             .into_string_for(crate::DiagramFamilyId::ERROR)
             .unwrap();

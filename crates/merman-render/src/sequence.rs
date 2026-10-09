@@ -35,9 +35,17 @@ mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
+mod terminal_theme;
 mod text_artifact;
+mod text_effect;
+mod theme_binding;
 mod theme_evidence;
 mod typography;
+pub(crate) use terminal_theme::{
+    SequencePreparedNumberTheme, css_paint, typed_static_sequence_fill,
+};
+pub(crate) use text_effect::SequencePreparedTextEffect;
+pub(crate) use theme_binding::SequenceCompatBinding;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use block_collection::{
@@ -188,6 +196,7 @@ pub(crate) struct SequencePreparedArtifact {
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
     expected_effect_applications: std::cell::Cell<usize>,
     typography: Arc<SequenceTypographyPlan>,
+    number_theme: SequencePreparedNumberTheme,
     diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
@@ -231,6 +240,10 @@ impl SequencePreparedArtifact {
 
     pub(crate) fn typography(&self) -> &SequenceTypographyPlan {
         self.typography.as_ref()
+    }
+
+    pub(crate) const fn number_theme(&self) -> &SequencePreparedNumberTheme {
+        &self.number_theme
     }
 
     pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
@@ -555,6 +568,12 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         resolved_theme,
         work_meter.as_ref(),
     )?);
+    checkpoints.checkpoint()?;
+    let number_theme = SequencePreparedNumberTheme::resolve(
+        resolved_theme,
+        effective_config,
+        work_meter.as_ref(),
+    )?;
     let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
     let base_text_style = typography.base_measurement_style();
     let effective_config_value = effective_config.as_value();
@@ -741,6 +760,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         effect_evidence: Default::default(),
         expected_effect_applications: Default::default(),
         typography,
+        number_theme,
         diagram_title,
         block_label_box_metrics,
         box_layouts,

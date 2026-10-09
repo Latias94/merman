@@ -100,20 +100,38 @@ fn render_block_direct_with_edge_theme(
     let typography_theme = BlockTypographyThemePlan::resolve(
         None,
         &merman_core::MermaidConfig::from_value(effective_config.clone()),
-    );
+    )
+    .unwrap();
+
+    let labels = crate::block::BlockNodeLabelPaintPlan::resolve(
+        None,
+        &parsed.metadata().effective_config,
+        model,
+        &layout,
+        execution.work_meter(),
+    )
+    .unwrap();
+    let prepared;
+    let node_paint_theme = if node_paint_theme.has_terminal_bindings() {
+        node_paint_theme
+    } else {
+        prepared = BlockNodePaintThemePlan::resolve(
+            None,
+            &parsed.metadata().effective_config,
+            model,
+            &layout,
+            &labels,
+            execution.work_meter(),
+        )
+        .unwrap();
+        &prepared
+    };
 
     render_block_diagram_svg_model_with_theme(
         &layout,
         model,
         node_paint_theme,
-        &crate::block::BlockNodeLabelPaintPlan::resolve(
-            None,
-            &merman_core::MermaidConfig::from_value(effective_config.clone()),
-            model,
-            &layout,
-            execution.work_meter(),
-        )
-        .expect("node label paint theme"),
+        &labels,
         &crate::block::BlockEdgePaintPlan::resolve(
             resolved.as_ref(),
             &merman_core::MermaidConfig::from_value(effective_config.clone()),
@@ -201,7 +219,39 @@ fn block_duplicate_node_keeps_svg_limit_error_before_terminal_error() {
 
 #[test]
 fn block_unthemed_renderer_rejects_reusing_a_completed_paint_plan() {
-    let plan = BlockNodePaintThemePlan::baseline();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Block(model) = parsed.model() else {
+        panic!("Block model")
+    };
+    let layout = crate::block::layout_block_diagram_typed(
+        model,
+        parsed.metadata().effective_config.as_value(),
+        &DeterministicTextMeasurer::default(),
+    )
+    .unwrap();
+    let work = crate::resources::OperationWorkMeter::new(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
+    let labels = crate::block::BlockNodeLabelPaintPlan::resolve(
+        None,
+        &parsed.metadata().effective_config,
+        model,
+        &layout,
+        &work,
+    )
+    .unwrap();
+    let plan = BlockNodePaintThemePlan::resolve(
+        None,
+        &parsed.metadata().effective_config,
+        model,
+        &layout,
+        &labels,
+        &work,
+    )
+    .unwrap();
     render_block_direct_with_layout(
         RenderResourcePolicy::unbounded_for_trusted_input(),
         &plan,

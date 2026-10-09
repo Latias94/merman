@@ -220,6 +220,51 @@ struct MermaidCommonNeoCss {
     stroke_width: String,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+#[derive(Debug)]
+pub(crate) struct PreparedFlowchartNeoCss(MermaidCommonNeoCss);
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+impl PreparedFlowchartNeoCss {
+    pub(crate) fn new(config: &serde_json::Value) -> Self {
+        Self(MermaidCommonNeoCss::new(config))
+    }
+
+    pub(super) fn write_with_ids(
+        &self,
+        out: &mut impl SvgOutput,
+        selector_id: impl Copy + std::fmt::Display,
+        gradient_id: impl std::fmt::Display,
+        drop_shadow: impl std::fmt::Display,
+    ) -> Result<()> {
+        if self.0.use_gradient {
+            write_mermaid_common_neo_css_values(
+                out,
+                selector_id,
+                format_args!("url(#{gradient_id})"),
+                drop_shadow,
+                &self.0,
+            )
+        } else {
+            write_mermaid_common_neo_css_values(
+                out,
+                selector_id,
+                &self.0.node_border,
+                drop_shadow,
+                &self.0,
+            )
+        }
+    }
+}
+
 impl MermaidCommonNeoCss {
     fn new(effective_config: &serde_json::Value) -> Self {
         Self {
@@ -472,7 +517,9 @@ impl PreparedCommonCss {
         feature = "diagram-timeline",
         feature = "diagram-kanban",
         feature = "diagram-treemap",
-        feature = "diagram-requirement"
+        feature = "diagram-requirement",
+        feature = "diagram-sankey",
+        feature = "diagram-cynefin"
     ))]
     pub(crate) fn font_family(&self) -> &str {
         &self.font_family
@@ -483,6 +530,7 @@ impl PreparedCommonCss {
         feature = "diagram-timeline",
         feature = "diagram-kanban",
         feature = "diagram-gantt",
+        feature = "diagram-sankey",
         feature = "diagram-requirement"
     ))]
     pub(crate) fn text_color(&self) -> &str {
@@ -507,6 +555,7 @@ impl PreparedCommonCss {
         feature = "diagram-journey",
         feature = "diagram-timeline",
         feature = "diagram-kanban",
+        feature = "diagram-sankey",
         feature = "diagram-requirement"
     ))]
     pub(crate) fn with_text_color(mut self, text_color: &str) -> Self {
@@ -804,168 +853,6 @@ where
     })
 }
 
-#[cfg(feature = "layout-cytoscape")]
-#[cfg(feature = "diagram-architecture")]
-pub(super) struct ArchitectureCssParts {
-    pub(super) css: String,
-    pub(super) font_family: String,
-    pub(super) font_size: f64,
-    pub(super) typography_emission: crate::architecture::ArchitectureTypographyCssEmission,
-}
-
-#[cfg(feature = "layout-cytoscape")]
-#[cfg(feature = "diagram-architecture")]
-pub(super) fn architecture_css_parts_with_config<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-) -> ArchitectureCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    architecture_css_parts_with_typography(diagram_id, effective_config, None, None)
-}
-
-#[cfg(feature = "layout-cytoscape")]
-#[cfg(feature = "diagram-architecture")]
-pub(super) fn architecture_css_parts_with_typography<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    resolved_font_size: Option<(f64, &str)>,
-) -> ArchitectureCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    // Architecture uses the same "info-like" base stylesheet as Mermaid, but should honor
-    // user-configured `fontFamily` / `fontSize` and theme variable colors.
-    let id = diagram_id;
-    let fragment_id = diagram_id;
-
-    let font_family = resolved_font_family
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| SvgTheme::new(effective_config).font_family_css());
-    let (font_size, font_size_css) = resolved_font_size
-        .map(|(font_size, font_size_css)| (font_size, font_size_css.to_string()))
-        .unwrap_or_else(|| {
-            let font_size =
-                crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-                    .max(1.0);
-            (
-                font_size,
-                format!("{}px", crate::number_format::canonical_number(font_size)),
-            )
-        });
-    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
-
-    let text_color = theme_token(effective_config, "textColor", "#333");
-    let line_color = theme_token(effective_config, "lineColor", "#333333");
-    let error_bkg = theme_token(effective_config, "errorBkgColor", "#552222");
-    let error_text = theme_token(effective_config, "errorTextColor", "#552222");
-    let primary_border = theme_token(
-        effective_config,
-        "primaryBorderColor",
-        "hsl(240, 60%, 86.2745098039%)",
-    );
-    let arch_edge_color = theme_token(effective_config, "archEdgeColor", &line_color);
-    let arch_edge_arrow_color =
-        theme_token(effective_config, "archEdgeArrowColor", &arch_edge_color);
-    let arch_edge_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "archEdgeWidth"],
-    )
-    .unwrap_or_else(|| "3".to_string());
-    let arch_group_border_color =
-        theme_token(effective_config, "archGroupBorderColor", &primary_border);
-    let arch_group_border_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "archGroupBorderWidth"],
-    )
-    .unwrap_or_else(|| "2px".to_string());
-
-    let mut out = String::new();
-    let base_font_emission = write_mermaid_base_css_prefix_with_font_emission(
-        &mut out,
-        id,
-        MermaidBaseCss {
-            font_family: &font_family,
-            font_size_css: &font_size_css,
-            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
-            text_color: &text_color,
-            line_color: &line_color,
-            error_bkg: &error_bkg,
-            error_text: &error_text,
-        },
-    )
-    .expect("String-backed Mermaid base CSS emission cannot fail");
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}"#,
-        id, arch_edge_width, arch_edge_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .arrow{{fill:{};}}"#,
-        id, arch_edge_arrow_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-bkg{{fill:none;stroke:{};stroke-width:{};stroke-dasharray:8;}}"#,
-        id, arch_group_border_color, arch_group_border_width
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-icon-text{{display:flex;align-items:center;}}"#,
-        id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-icon-text>div{{color:#fff;margin:1px;height:fit-content;text-align:center;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;}}"#,
-        id
-    );
-
-    write_mermaid_common_neo_css(
-        &mut out,
-        id,
-        fragment_id,
-        &MermaidCommonNeoCss::new(effective_config),
-    )
-    .expect("String-backed Architecture neo CSS emission cannot fail");
-    // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    let root_font_family = resolved_font_family.map_or_else(
-        || crate::config::config_root_font_family_css(effective_config),
-        str::to_owned,
-    );
-    let root_font_emission =
-        write_mermaid_base_css_root_rule_with_font_emission(&mut out, id, &root_font_family)
-            .expect("String-backed Architecture root CSS emission cannot fail");
-    let typography_emission = crate::architecture::ArchitectureTypographyCssEmission::new(
-        base_font_emission.diagram_root_font_family_css(),
-        base_font_emission.nested_svg_font_family_css(),
-        base_font_emission.diagram_root_font_size_css(),
-        base_font_emission.nested_svg_font_size_css(),
-        root_font_emission.font_family_css(),
-    );
-    ArchitectureCssParts {
-        css: out,
-        font_family,
-        font_size,
-        typography_emission,
-    }
-}
-
-#[cfg(feature = "layout-cytoscape")]
-#[cfg_attr(not(test), allow(dead_code))]
-#[cfg(feature = "diagram-architecture")]
-pub(super) fn architecture_css_with_config<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-) -> String
-where
-    I: Copy + std::fmt::Display,
-{
-    architecture_css_parts_with_config(diagram_id, effective_config).css
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ErCssEmission {
     pub(super) css: String,
@@ -1168,97 +1055,6 @@ where
             .then(|| values.common.font_family().into()),
     };
     Ok(emission)
-}
-
-#[cfg(test)]
-#[cfg(feature = "diagram-sankey")]
-pub(super) fn sankey_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
-where
-    I: SvgDiagramIdValue,
-{
-    let mut out = String::new();
-    write_sankey_css_inner(&mut out, diagram_id, effective_config, None, None)
-        .expect("String-backed Sankey CSS emission cannot fail");
-    out
-}
-
-#[cfg(feature = "diagram-sankey")]
-pub(super) fn write_sankey_css_with_font_family<I>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_family_css: &str,
-    text_fill_css: Option<&str>,
-) -> Result<crate::sankey::SankeyTypographyCssEmission>
-where
-    I: SvgDiagramIdValue,
-{
-    write_sankey_css_inner(
-        out,
-        diagram_id,
-        effective_config,
-        Some(font_family_css),
-        text_fill_css,
-    )
-}
-
-#[cfg(feature = "diagram-sankey")]
-fn write_sankey_css_inner<I>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_family_css: Option<&str>,
-    text_fill_css: Option<&str>,
-) -> Result<crate::sankey::SankeyTypographyCssEmission>
-where
-    I: SvgDiagramIdValue,
-{
-    // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
-    // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
-    let id = CssSelectorDiagramId(diagram_id);
-    let mut values = PreparedCommonCss::new(effective_config, font_family_css);
-    if let Some(text_fill_css) = text_fill_css {
-        values.text_color = text_fill_css.to_owned();
-    }
-    let base_font_emission = values.write_prefix_with_font_emission(out, diagram_id)?;
-    let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
-        .unwrap_or_else(|| "#fff".to_string());
-    let label_font_family_css = values.font_family.as_str();
-    let node_labels_font_family_css = values.font_family.as_str();
-    let _ = write!(
-        out,
-        r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
-        id,
-        label_font_family_css,
-        id,
-        node_labels_font_family_css,
-        id,
-        label_background,
-        id,
-        values.text_color,
-        id,
-        id
-    );
-    out.checkpoint()?;
-    let root_font_emission = values.write_root_with_font_emission(out, diagram_id, diagram_id)?;
-    let all_font_surfaces_match = [
-        base_font_emission.diagram_root_font_family_css(),
-        base_font_emission.nested_svg_font_family_css(),
-        label_font_family_css,
-        node_labels_font_family_css,
-        root_font_emission.font_family_css(),
-    ]
-    .into_iter()
-    .all(|font_family_css| font_family_css == values.font_family);
-    Ok(
-        crate::sankey::SankeyTypographyCssEmission::from_successful_writes(
-            values.font_family,
-            all_font_surfaces_match,
-            values.text_color.clone(),
-            values.text_color,
-        ),
-    )
 }
 
 #[cfg(all(test, feature = "diagram-treemap"))]

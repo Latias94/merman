@@ -67,6 +67,7 @@ impl SequenceBaseTypography {
     fn resolve(
         effective_config: &MermaidConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
+        compat: &super::SequenceCompatBinding,
     ) -> Self {
         let mut config_overrides = BTreeSet::new();
         for (property, paths) in [
@@ -83,8 +84,7 @@ impl SequenceBaseTypography {
             }
         }
 
-        let configured_font_family =
-            crate::config::config_font_family_css(effective_config.as_value());
+        let configured_font_family = compat.font_family.clone();
         let config = super::config::SequenceConfigView::new(effective_config.as_value());
         let configured_font_size = config.font_size("messageFontSize").max(1.0);
         let mut font_family_css = configured_font_family.clone();
@@ -238,6 +238,7 @@ pub(crate) struct SequenceResolvedTypography {
     prepared_typography: ThemeTextStyle,
     font_stack: ParsedCssFontStack,
     resolved_style: Option<ResolvedThemeStyle>,
+    text_effect: super::SequencePreparedTextEffect,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
     base_typed_properties: BTreeSet<ThemeTypographyProperty>,
     config_overrides: BTreeSet<ThemeTypographyProperty>,
@@ -329,6 +330,15 @@ impl SequenceResolvedTypography {
         let (terminal_text_style, font_stack) =
             cssom_effective_text_style(&measurement_style, inherited_font_family);
         let prepared_typography = prepared_typography(&terminal_text_style, &font_stack);
+        let text_effect = if role == SequenceTypographyRole::Message {
+            super::SequencePreparedTextEffect::default()
+        } else {
+            super::SequencePreparedTextEffect::resolve(
+                resolved_theme,
+                role,
+                resolved_style.as_ref(),
+            )
+        };
         Ok(Self {
             role,
             measurement_style,
@@ -336,6 +346,7 @@ impl SequenceResolvedTypography {
             prepared_typography,
             font_stack,
             resolved_style,
+            text_effect,
             typed_properties,
             base_typed_properties,
             config_overrides,
@@ -362,6 +373,10 @@ impl SequenceResolvedTypography {
 
     pub(crate) const fn resolved_style(&self) -> Option<&ResolvedThemeStyle> {
         self.resolved_style.as_ref()
+    }
+
+    pub(crate) const fn text_effect(&self) -> &super::SequencePreparedTextEffect {
+        &self.text_effect
     }
 
     pub(crate) const fn config_overrides(&self) -> &BTreeSet<ThemeTypographyProperty> {
@@ -475,6 +490,7 @@ fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -
 
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
+    compat: super::SequenceCompatBinding,
     base_typography: SequenceBaseTypography,
     actor: SequenceResolvedTypography,
     message: SequenceResolvedTypography,
@@ -504,7 +520,9 @@ impl SequenceTypographyPlan {
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let base_typography = SequenceBaseTypography::resolve(effective_config, resolved_theme);
+        let compat = super::SequenceCompatBinding::resolve(effective_config.as_value());
+        let base_typography =
+            SequenceBaseTypography::resolve(effective_config, resolved_theme, &compat);
         let actor = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Actor,
             effective_config,
@@ -533,8 +551,7 @@ impl SequenceTypographyPlan {
             work_meter,
             &base_typography,
         )?;
-        let mut terminal_foregrounds =
-            crate::svg::render_theme::sequence_text_surface_fills(effective_config.as_value());
+        let mut terminal_foregrounds = compat.text_surface_fills();
         let mut terminal_foreground_provenance =
             [SequenceTerminalForegroundProvenance::MermaidConfig; SequenceTextSurface::COUNT];
         for surface in SequenceTextSurface::ALL {
@@ -551,6 +568,7 @@ impl SequenceTypographyPlan {
             }
         }
         Ok(Self {
+            compat,
             base_typography,
             actor,
             message,
@@ -559,6 +577,10 @@ impl SequenceTypographyPlan {
             terminal_foregrounds,
             terminal_foreground_provenance,
         })
+    }
+
+    pub(crate) fn compat_binding(&self) -> &super::SequenceCompatBinding {
+        &self.compat
     }
 
     pub(crate) const fn inherited_font_stack(&self) -> &ParsedCssFontStack {

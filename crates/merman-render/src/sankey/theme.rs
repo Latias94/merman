@@ -42,6 +42,10 @@ impl SankeyLabelSurface {
 /// Final inherited Sankey font stack shared by base CSS, label CSS, and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct SankeyTypographyThemePlan {
+    common_css: crate::svg::PreparedCommonCss,
+    label_background: String,
+    link_color: String,
+    outlined_labels: bool,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     text_fill: Option<DirectStaticPaint>,
@@ -141,11 +145,32 @@ impl SankeyTypographyThemePlan {
                 }
             }
         }
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let mut common_css = crate::svg::PreparedCommonCss::new(
+            effective_config.as_value(),
+            Some(inherited_font_stack.font_family_css()),
+        );
+        if !config_owns_text_fill && let Some(fill) = &text_fill {
+            common_css = common_css.with_text_color(fill.css());
+        }
+        let config_view = SankeyConfigView::new(effective_config.as_value());
         Ok(Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                theme,
-                effective_config,
-            ),
+            common_css,
+            label_background: crate::config::config_string(
+                effective_config.as_value(),
+                &["themeVariables", "mainBkg"],
+            )
+            .or_else(|| {
+                crate::config::config_string(
+                    effective_config.as_value(),
+                    &["themeVariables", "background"],
+                )
+            })
+            .unwrap_or_else(|| "#fff".to_owned()),
+            link_color: config_view.link_color(),
+            outlined_labels: config_view.outlined_labels(),
+            inherited_font_stack,
             evidence: FamilyThemeEvidence::from_theme(theme),
             text_fill,
             text_rules,
@@ -155,7 +180,20 @@ impl SankeyTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.common_css.font_family()
+    }
+
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
+    }
+    pub(crate) fn label_background(&self) -> &str {
+        &self.label_background
+    }
+    pub(crate) fn link_color(&self) -> &str {
+        &self.link_color
+    }
+    pub(crate) fn outlined_labels(&self) -> bool {
+        self.outlined_labels
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -604,6 +642,29 @@ mod tests {
     use crate::model::SankeyNodeLayout;
     use crate::resources::RenderResourcePolicy;
     use serde_json::json;
+
+    #[test]
+    fn unthemed_binding_keeps_label_background_and_link_paint_semantics() {
+        let config = MermaidConfig::from_value(json!({
+            "sankey": {"linkColor": "var(--link)", "labelStyle": "outlined"},
+            "themeVariables": {"background": "fallback", "mainBkg": "",
+                "textColor": "currentColor"}
+        }));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = SankeyTypographyThemePlan::resolve(None, &config, 1, &meter).unwrap();
+        assert_eq!(plan.label_background(), "");
+        assert_eq!(plan.link_color(), "var(--link)");
+        assert!(plan.outlined_labels());
+        assert_eq!(plan.common_css().text_color(), "currentColor");
+
+        let ignored = MermaidConfig::from_value(json!({"sankey": {
+            "$ref": "schema", "linkColor": "source", "labelStyle": "outlined"
+        }}));
+        let fallback = SankeyTypographyThemePlan::resolve(None, &ignored, 1, &meter).unwrap();
+        assert_eq!(fallback.link_color(), "gradient");
+        assert!(!fallback.outlined_labels());
+        assert_eq!(fallback.label_background(), "#fff");
+    }
 
     fn layout(ids: &[&str]) -> SankeyDiagramLayout {
         SankeyDiagramLayout {

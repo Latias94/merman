@@ -50,14 +50,7 @@ impl SequenceRenderSettings {
         let activation_width = config.sequence_json_number_min("activationWidth", 10.0, 1.0);
 
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
-        let rect_default_fill =
-            crate::config::config_string(effective_config, &["themeVariables", "rectBkgColor"])
-                .filter(|fill| !fill.is_empty())
-                .or_else(|| {
-                    crate::config::config_string(effective_config, &["themeVariables", "actorBkg"])
-                        .filter(|fill| !fill.is_empty())
-                })
-                .unwrap_or_else(|| "rgba(128, 128, 128, 0.5)".to_string());
+        let rect_default_fill = typography.compat_binding().rect_default_fill.clone();
 
         Self {
             force_menus,

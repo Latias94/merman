@@ -86,22 +86,6 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
     ));
 
-    #[cfg(feature = "layout-cytoscape")]
-    {
-        let architecture = architecture_css_with_config("diag", &cfg);
-        assert_fragments_in_order(
-            &architecture,
-            &[
-                &base_fragments[..],
-                &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
-            ]
-            .concat(),
-        );
-        assert!(architecture.ends_with(
-            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
-        ));
-    }
-
     let er = er_css_with_resolved_typography("diag", &er_binding(&cfg))
         .expect("valid ER theme colors")
         .css;
@@ -272,75 +256,6 @@ fn mermaid_base_css_exposes_the_complete_common_neo_contract() {
         "#diag [data-look=\"neo\"].icon-shape .icon-neo path",
         &[("stroke", gradient), ("filter", shadow)],
     );
-}
-
-#[cfg(feature = "layout-cytoscape")]
-#[test]
-fn architecture_css_with_config_honors_font_and_theme_colors() {
-    let cfg = serde_json::json!({
-        "fontFamily": "\"courier new\", courier, monospace;",
-        "fontSize": 18,
-        "themeVariables": {
-            "textColor": "#112233",
-            "lineColor": "#445566",
-            "primaryBorderColor": "#778899",
-            "archEdgeColor": "#010203",
-            "archEdgeArrowColor": "#040506",
-            "archEdgeWidth": 7,
-            "archGroupBorderColor": "#070809",
-            "archGroupBorderWidth": "6px",
-        }
-    });
-
-    let css = architecture_css_with_config("diag", &cfg);
-
-    assert!(css.contains(
-        r#"#diag{font-family:"courier new",courier,monospace;font-size:18px;fill:#112233;}"#
-    ));
-    assert!(css.contains(r#"#diag .edge{stroke-width:7;stroke:#010203;fill:none;}"#));
-    assert!(css.contains(r#"#diag .arrow{fill:#040506;}"#));
-    assert!(css.contains(
-        r#"#diag .node-bkg{fill:none;stroke:#070809;stroke-width:6px;stroke-dasharray:8;}"#
-    ));
-    assert!(css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#));
-}
-
-#[cfg(feature = "layout-cytoscape")]
-#[test]
-fn architecture_css_prefers_theme_font_family_over_legacy_root() {
-    let cfg = serde_json::json!({
-        "fontFamily": "Courier, monospace",
-        "themeVariables": {
-            "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
-        }
-    });
-
-    let css = architecture_css_with_config("diag", &cfg);
-
-    assert!(css.contains(
-        r#"#diag{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
-    ));
-    assert!(css.contains(r#"#diag :root{--mermaid-font-family:Courier,monospace;}"#));
-}
-
-#[test]
-fn sankey_css_honors_mermaid_11_15_theme_options() {
-    let cfg = serde_json::json!({
-        "fontFamily": "\"source sans\", arial, sans-serif",
-        "themeVariables": {
-            "fontFamily": "\"ibm plex sans\", arial, sans-serif",
-            "textColor": "#123456",
-            "mainBkg": "#abcdef",
-        }
-    });
-
-    let css = sankey_css("sk", &cfg);
-
-    assert!(css.contains(r#"#sk .label{font-family:"ibm plex sans",arial,sans-serif;}"#));
-    assert!(css.contains(r#"#sk .node-labels{font-family:"ibm plex sans",arial,sans-serif;}"#));
-    assert!(css.contains(r#"#sk .sankey-label-bg{stroke:#abcdef;"#));
-    assert!(css.contains(r#"#sk .sankey-label-fg{fill:#123456;}"#));
-    assert!(css.contains(r#"#sk :root{--mermaid-font-family:"source sans",arial,sans-serif;}"#));
 }
 
 #[test]

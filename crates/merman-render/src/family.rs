@@ -1555,6 +1555,7 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     render_context: diagrams::flowchart::FlowchartRenderContext,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
+    prepared_theme: crate::flowchart::FlowchartPreparedTheme,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
@@ -1567,6 +1568,10 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     feature = "diagram-agentflow"
 ))]
 impl<L> FlowchartFamilyArtifact<L> {
+    pub(crate) fn prepared_theme(&self) -> &crate::flowchart::FlowchartPreparedTheme {
+        &self.prepared_theme
+    }
+
     pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
         &self.effect_evidence
     }

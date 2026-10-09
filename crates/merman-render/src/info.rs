@@ -127,6 +127,7 @@ struct InfoThemeRoutes {
 /// Final inherited Info font shared by terminal CSS emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct InfoTypographyThemePlan {
+    css_binding: crate::svg::PreparedCommonCss,
     inherited_font_stack: InheritedFontStackPlan,
     terminal_geometry: InheritedTextViewportFacts,
     evidence: FamilyThemeEvidence,
@@ -152,6 +153,10 @@ impl InfoTypographyThemePlan {
     ) -> std::result::Result<Self, OperationWorkError> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let css_binding = crate::svg::PreparedCommonCss::new(
+            effective_config.as_value(),
+            Some(inherited_font_stack.font_family_css()),
+        );
         let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
         let terminal_geometry = InheritedTextViewportFacts::prepare(
             INFO_BASELINE_WIDTH_PX,
@@ -208,6 +213,7 @@ impl InfoTypographyThemePlan {
             }
         }
         Ok(Self {
+            css_binding,
             inherited_font_stack,
             terminal_geometry,
             evidence,
@@ -221,6 +227,10 @@ impl InfoTypographyThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn css_binding(&self) -> &crate::svg::PreparedCommonCss {
+        &self.css_binding
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> InfoSurfaceReceipt {

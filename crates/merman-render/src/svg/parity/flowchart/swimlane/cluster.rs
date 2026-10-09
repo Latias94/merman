@@ -251,11 +251,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         escape_xml_display(&lane.id),
     );
     let data_look = flowchart_config_look(ctx.config);
-    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
-        (subgraph.is_none()
-            && super::super::agentflow::flowchart_palette_len(ctx.config.as_value()) > 0)
-            .then_some(0)
-    });
+    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id)
+        .or_else(|| (subgraph.is_none() && !ctx.compatibility.palette.is_empty()).then_some(0));
     let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
     if let Some(color_slot) = color_slot {
         let _ = write!(out, r#" data-color-id="color-{color_slot}""#);

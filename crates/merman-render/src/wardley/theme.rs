@@ -1,5 +1,7 @@
 use std::sync::OnceLock;
 
+use crate::config::config_string;
+
 use merman_core::MermaidConfig;
 
 use super::WardleyDiagramLayout;
@@ -11,6 +13,49 @@ use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan, unsupported_residual_for_facet,
 };
+
+#[derive(Debug)]
+pub(crate) struct WardleyPaintBinding {
+    pub(crate) background_color: String,
+    pub(crate) axis_color: String,
+    pub(crate) axis_text_color: String,
+    pub(crate) grid_color: String,
+    pub(crate) component_fill: String,
+    pub(crate) component_stroke: String,
+    pub(crate) component_label_color: String,
+    pub(crate) link_stroke: String,
+    pub(crate) evolution_stroke: String,
+}
+
+impl WardleyPaintBinding {
+    fn from_config(config: &serde_json::Value) -> Self {
+        let nested = |key, fallback: &str| {
+            config_string(config, &["themeVariables", "wardley", key])
+                .unwrap_or_else(|| fallback.to_string())
+        };
+        let nested_or_root = |key, root_key, fallback: &str| {
+            config_string(config, &["themeVariables", "wardley", key])
+                .or_else(|| config_string(config, &["themeVariables", root_key]))
+                .unwrap_or_else(|| fallback.to_string())
+        };
+
+        Self {
+            background_color: nested_or_root("backgroundColor", "background", "#fff"),
+            axis_color: nested("axisColor", "#000"),
+            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
+            grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
+            component_fill: nested("componentFill", "#fff"),
+            component_stroke: nested("componentStroke", "#000"),
+            component_label_color: nested_or_root(
+                "componentLabelColor",
+                "primaryTextColor",
+                "#222",
+            ),
+            link_stroke: nested("linkStroke", "#000"),
+            evolution_stroke: nested("evolutionStroke", "#dc3545"),
+        }
+    }
+}
 
 const WARDLEY_TEXT_ROLE_COUNT: usize = 10;
 
@@ -140,6 +185,7 @@ impl WardleySurfaceReceipt {
 /// Final inherited Wardley font shared by annotation measurement, SVG inheritance, and evidence.
 #[derive(Debug)]
 pub(crate) struct WardleyTypographyThemePlan {
+    paint_binding: WardleyPaintBinding,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[WardleyUnsupportedRoute]>,
@@ -158,6 +204,7 @@ impl WardleyTypographyThemePlan {
         effective_config: &MermaidConfig,
     ) -> Self {
         Self {
+            paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
@@ -166,6 +213,10 @@ impl WardleyTypographyThemePlan {
             unsupported_routes: wardley_unsupported_routes(theme),
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    pub(crate) const fn paint_binding(&self) -> &WardleyPaintBinding {
+        &self.paint_binding
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -322,6 +373,50 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
+
+    #[test]
+    fn prepared_paint_preserves_defaults_and_raw_nested_root_fallbacks() {
+        let defaults = WardleyTypographyThemePlan::resolve(None, &MermaidConfig::empty_object());
+        let paint = defaults.paint_binding();
+        assert_eq!(paint.background_color, "#fff");
+        assert_eq!(paint.axis_color, "#000");
+        assert_eq!(paint.axis_text_color, "#222");
+        assert_eq!(paint.grid_color, "rgba(100, 100, 100, 0.2)");
+        assert_eq!(paint.component_fill, "#fff");
+        assert_eq!(paint.component_stroke, "#000");
+        assert_eq!(paint.component_label_color, "#222");
+        assert_eq!(paint.link_stroke, "#000");
+        assert_eq!(paint.evolution_stroke, "#dc3545");
+
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "background": "var(--background)",
+                "primaryTextColor": "currentColor",
+                "wardley": {
+                    "backgroundColor": null,
+                    "axisColor": "var(--axis)",
+                    "axisTextColor": "",
+                    "gridColor": "transparent",
+                    "componentFill": "none",
+                    "componentStroke": "invalid-color",
+                    "componentLabelColor": 7,
+                    "linkStroke": "var(--link)",
+                    "evolutionStroke": "currentColor"
+                }
+            }
+        }));
+        let prepared = WardleyTypographyThemePlan::resolve(None, &config);
+        let paint = prepared.paint_binding();
+        assert_eq!(paint.background_color, "var(--background)");
+        assert_eq!(paint.axis_color, "var(--axis)");
+        assert_eq!(paint.axis_text_color, "");
+        assert_eq!(paint.grid_color, "transparent");
+        assert_eq!(paint.component_fill, "none");
+        assert_eq!(paint.component_stroke, "invalid-color");
+        assert_eq!(paint.component_label_color, "currentColor");
+        assert_eq!(paint.link_stroke, "var(--link)");
+        assert_eq!(paint.evolution_stroke, "currentColor");
+    }
 
     fn typed_plan() -> WardleyTypographyThemePlan {
         let typography = ThemeTextStyle::default().with_font_stack(

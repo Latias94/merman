@@ -89,17 +89,7 @@ fn write_flowchart_cluster_shape(
     rect_h: f64,
 ) -> FlowchartShapeFacetEmissionReceipt {
     if ctx.diagram_type == "agentflow" {
-        let stroke = crate::svg::parity::util::theme_token(
-            ctx.config.as_value(),
-            "flowContainerStroke",
-            &crate::svg::parity::util::theme_token(
-                ctx.config.as_value(),
-                "secondaryBorderColor",
-                &MermaidThemeAdapter::new(ctx.config.as_value())
-                    .node_diagram()
-                    .cluster_border,
-            ),
-        );
+        let stroke = &ctx.compatibility.agentflow_container_stroke;
         if flowchart_config_look(ctx.config) == "handDrawn" {
             let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
             if let Some(stroke_d) =
@@ -114,7 +104,7 @@ fn write_flowchart_cluster_shape(
                     out,
                     r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
                     escape_xml_display(&stroke_d),
-                    escape_xml_display(&stroke),
+                    escape_xml_display(stroke),
                     escape_xml_display(stroke_dasharray),
                 );
                 return FlowchartShapeFacetEmissionReceipt {
@@ -130,7 +120,7 @@ fn write_flowchart_cluster_shape(
             fmt_display(top),
             fmt_display(rect_w),
             fmt_display(rect_h),
-            escape_xml_display(&stroke),
+            escape_xml_display(stroke),
         );
         return FlowchartShapeFacetEmissionReceipt::none();
     }

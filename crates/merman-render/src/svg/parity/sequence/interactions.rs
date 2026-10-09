@@ -27,6 +27,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
     pub(super) settings: &'a SequenceRenderSettings,
     pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,
     pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
@@ -117,7 +118,7 @@ pub(super) fn render_sequence_interaction_overlays(
             out,
             activation_plan,
             &msg.id,
-            ctx.sanitize_config,
+            ctx.compat,
             activation_theme_receipt,
             ctx.shadow_evidence,
         )?;

@@ -1,4 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[path = "css_binding.rs"]
+mod css_binding;
+pub(crate) use css_binding::BlockCssThemeBinding;
 use std::sync::{Arc, OnceLock};
 
 use indexmap::IndexMap;
@@ -426,6 +429,7 @@ enum BlockTypographyOutcome {
 /// Final Block typography shared by layout measurement, SVG CSS, and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct BlockTypographyThemePlan {
+    css_binding: BlockCssThemeBinding,
     padding: f64,
     text_style: crate::text::TextStyle,
     evidence: FamilyThemeEvidence,
@@ -445,18 +449,23 @@ pub(crate) struct BlockTypographyReceipt {
 }
 
 impl BlockTypographyThemePlan {
+    pub(crate) fn css_binding(&self) -> &BlockCssThemeBinding {
+        &self.css_binding
+    }
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
-    ) -> Self {
+    ) -> crate::Result<Self> {
         let settings =
             super::config::BlockConfigView::new(effective_config.as_value()).layout_settings();
         let padding = settings.padding;
         let mut text_style = settings.text_style;
+        let css_binding = BlockCssThemeBinding::resolve(effective_config.as_value())?;
         let Some(theme) = theme else {
-            return Self {
+            return Ok(Self {
                 padding,
                 text_style,
+                css_binding,
                 evidence: FamilyThemeEvidence::default(),
                 outcome: BlockTypographyOutcome::Inactive,
                 unsupported_properties: BTreeSet::new(),
@@ -465,7 +474,7 @@ impl BlockTypographyThemePlan {
                 config_owns_font_stack: false,
                 config_owns_font_size: false,
                 terminal_receipt: OnceLock::new(),
-            };
+            });
         };
 
         let mut typed_font_stack = false;
@@ -531,9 +540,10 @@ impl BlockTypographyThemePlan {
         } else {
             BlockTypographyOutcome::Inactive
         };
-        Self {
+        Ok(Self {
             padding,
             text_style,
+            css_binding,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             outcome,
             unsupported_properties,
@@ -542,7 +552,7 @@ impl BlockTypographyThemePlan {
             config_owns_font_stack,
             config_owns_font_size,
             terminal_receipt: OnceLock::new(),
-        }
+        })
     }
 
     pub(crate) const fn text_style(&self) -> &crate::text::TextStyle {
@@ -670,6 +680,7 @@ struct NodeExpectation {
 /// Block node shell paint resolved once and shared by the SVG writer and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct BlockNodePaintThemePlan {
+    bindings: Box<[Option<super::node_binding::BlockNodeTerminalBinding>]>,
     expectations: Option<Arc<[NodeExpectation]>>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
@@ -682,10 +693,13 @@ impl BlockNodePaintThemePlan {
         effective_config: &merman_core::MermaidConfig,
         model: &merman_core::diagrams::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
+        labels: &BlockNodeLabelPaintPlan,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
-            return Ok(Self::baseline());
+            let mut plan = Self::unthemed();
+            plan.bindings = plan.bind_terminals(model, layout, labels, work_meter)?;
+            return Ok(plan);
         };
         let mut expectations = terminal_domain(layout);
         let sources = super::resolve_block_node_sources(model);
@@ -887,16 +901,20 @@ impl BlockNodePaintThemePlan {
                 pending.insert(key, observation.capabilities);
             }
         }
-        Ok(Self {
+        let mut plan = Self {
+            bindings: Box::new([]),
             expectations: Some(expectations.into()),
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
-        })
+        };
+        plan.bindings = plan.bind_terminals(model, layout, labels, work_meter)?;
+        Ok(plan)
     }
 
-    pub(crate) fn baseline() -> Self {
+    fn unthemed() -> Self {
         Self {
+            bindings: Box::new([]),
             expectations: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
@@ -904,11 +922,56 @@ impl BlockNodePaintThemePlan {
         }
     }
 
-    pub(crate) fn typed_stroke(&self, node_index: usize) -> Option<&str> {
+    #[cfg(test)]
+    pub(crate) fn baseline() -> Self {
+        Self::unthemed()
+    }
+
+    fn bind_terminals(
+        &self,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        labels: &BlockNodeLabelPaintPlan,
+        work: &OperationWorkMeter,
+    ) -> Result<Box<[Option<super::node_binding::BlockNodeTerminalBinding>]>, OperationWorkError>
+    {
+        work.charge(layout.nodes.len())?;
+        let sources = super::resolve_block_node_sources(model);
+        layout
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, node)| {
+                work.charge(1)?;
+                Ok(sources.get(node.id.as_str()).map(|source| {
+                    super::node_binding::lower(
+                        source.styles,
+                        self.typed_fill(i),
+                        self.typed_stroke(i),
+                        labels.color(i),
+                    )
+                }))
+            })
+            .collect()
+    }
+
+    pub(crate) fn terminal_binding(
+        &self,
+        index: usize,
+    ) -> Option<&super::node_binding::BlockNodeTerminalBinding> {
+        self.bindings.get(index)?.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_terminal_bindings(&self) -> bool {
+        !self.bindings.is_empty()
+    }
+
+    fn typed_stroke(&self, node_index: usize) -> Option<&str> {
         self.typed_paint(node_index, ResolvedStyleProperty::Stroke)
     }
 
-    pub(crate) fn typed_fill(&self, node_index: usize) -> Option<&str> {
+    fn typed_fill(&self, node_index: usize) -> Option<&str> {
         self.typed_paint(node_index, ResolvedStyleProperty::Fill)
     }
 
@@ -1374,6 +1437,17 @@ fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
 
 #[cfg(test)]
 mod tests {
+    fn resolve_node_paint(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        work: &OperationWorkMeter,
+    ) -> Result<BlockNodePaintThemePlan, OperationWorkError> {
+        let labels = BlockNodeLabelPaintPlan::resolve(theme, config, model, layout, work)?;
+        BlockNodePaintThemePlan::resolve(theme, config, model, layout, &labels, work)
+    }
+
     use super::*;
 
     fn node_label_receipt_plan(html_labels: bool) -> BlockNodeLabelPaintPlan {
@@ -1456,7 +1530,8 @@ mod tests {
     #[test]
     fn typography_css_checks_reject_mismatches_and_duplicate_emissions() {
         let plan =
-            BlockTypographyThemePlan::resolve(None, &merman_core::MermaidConfig::empty_object());
+            BlockTypographyThemePlan::resolve(None, &merman_core::MermaidConfig::empty_object())
+                .unwrap();
         for (family, size, expected) in [
             (plan.font_family_css(), "16", true),
             ("wrong-font", "16", false),
@@ -1491,7 +1566,8 @@ mod tests {
         let plan = BlockTypographyThemePlan::resolve(
             Some(&resolved),
             &merman_core::MermaidConfig::empty_object(),
-        );
+        )
+        .unwrap();
         assert!(plan.typed_font_size_requested);
         assert_eq!(plan.font_size_px(), 16.0);
     }
@@ -1503,7 +1579,7 @@ mod tests {
             "themeVariables": {"fontSize": "24px"},
             "block": {"padding": 12}
         }));
-        let plan = BlockTypographyThemePlan::resolve(None, &config);
+        let plan = BlockTypographyThemePlan::resolve(None, &config).unwrap();
         assert_eq!(plan.font_family_css(), "Config Sans,Arial");
         assert_eq!(plan.font_size_px(), 24.0);
         assert_eq!(plan.padding(), 12.0);
@@ -1531,7 +1607,8 @@ mod tests {
             let plan = BlockTypographyThemePlan::resolve(
                 Some(&resolved),
                 &merman_core::MermaidConfig::empty_object(),
-            );
+            )
+            .unwrap();
             let mut receipt = plan
                 .begin_terminal_receipt()
                 .expect("unsupported obligation");
@@ -1595,14 +1672,8 @@ mod tests {
             )
             .unwrap();
             assert_eq!(layout.nodes.len(), 1);
-            let plan = BlockNodePaintThemePlan::resolve(
-                Some(&theme),
-                &config,
-                &model,
-                &layout,
-                &work_meter,
-            )
-            .unwrap();
+            let plan =
+                resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = plan.finish_evidence();
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
@@ -1614,14 +1685,8 @@ mod tests {
                 }))
                 .unwrap(),
             );
-            let plan = BlockNodePaintThemePlan::resolve(
-                Some(&theme),
-                &config,
-                &model,
-                &layout,
-                &work_meter,
-            )
-            .unwrap();
+            let plan =
+                resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = plan.finish_evidence();
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
@@ -1634,14 +1699,8 @@ mod tests {
                 }))
                 .unwrap(),
             );
-            let plan = BlockNodePaintThemePlan::resolve(
-                Some(&theme),
-                &config,
-                &model,
-                &layout,
-                &work_meter,
-            )
-            .unwrap();
+            let plan =
+                resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = plan.finish_evidence();
             assert!(!evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(!evidence.residuals().is_empty());
@@ -1671,7 +1730,7 @@ mod tests {
         let work_meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let plan = BlockNodePaintThemePlan::resolve(None, config, model, &layout, &work_meter)
+        let plan = resolve_node_paint(None, config, model, &layout, &work_meter)
             .expect("resolve unthemed Block paint");
         assert!(plan.expectations.is_none());
         assert!(plan.pending.is_empty());

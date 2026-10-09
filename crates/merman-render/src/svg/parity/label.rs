@@ -1,7 +1,6 @@
 //! Shared Mermaid `createText` SVG label emission.
 
 use super::*;
-use crate::svg::parity::util::escape_xml_raw_into;
 use crate::svg::parity::util::escape_xml_serialized_text_into;
 use crate::text::PreparedTextLabelId;
 

@@ -32,16 +32,8 @@ pub(in crate::svg::parity::flowchart) use edge_geom::{
 pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
+pub(crate) use render_config::flowchart_node_label_fill_config_override;
 pub(super) use style::*;
-
-#[cfg(test)]
-pub(crate) fn write_flowchart_svg_label_plan_for_test(
-    out: &mut String,
-    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
-    include_style: bool,
-) {
-    label::write_flowchart_svg_label_plan(out, plan, include_style);
-}
 
 pub(in crate::svg::parity) use render::node::roughjs::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,

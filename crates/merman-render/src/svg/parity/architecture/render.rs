@@ -45,7 +45,6 @@ fn architecture_cached_service_child_bounds<'a>(
 struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
-    effective_config: &'a serde_json::Value,
     sanitize_config: &'a merman_core::MermaidConfig,
     group_theme: &'a crate::architecture::ArchitectureGroupThemePlan,
     options: &'a SvgExecution<'a>,
@@ -72,7 +71,6 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         ArchitectureRenderRequest {
             layout,
             model,
-            effective_config: effective_config.as_value(),
             sanitize_config: effective_config,
             group_theme,
             options,
@@ -92,7 +90,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let ArchitectureRenderRequest {
         layout,
         model,
-        effective_config,
         sanitize_config,
         group_theme,
         options,
@@ -108,11 +105,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let diagram_id = options.diagram_id_or("architecture");
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
     checkpoints.checkpoint()?;
-    let settings = ArchitectureRenderSettings::from_config_with_typography(
-        diagram_id,
-        effective_config,
-        group_theme.typography_theme(),
-    );
+    let settings =
+        ArchitectureRenderSettings::from_prepared(diagram_id, group_theme.typography_theme());
     checkpoints.checkpoint()?;
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;

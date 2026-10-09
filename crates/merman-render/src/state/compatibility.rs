@@ -370,6 +370,11 @@ fn state_js_truthy(value: &Value) -> bool {
 /// while its selected path and surviving config provenance decide whether typed paint must yield.
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityPlan {
+    pub(crate) redux_palette: Vec<(String, Option<String>)>,
+    pub(crate) palette_look: String,
+    pub(crate) serialized_look: String,
+    pub(crate) root_font_family_css: String,
+    pub(crate) dependency_numeric_zero_width: bool,
     pub(crate) dark_mode: bool,
     look: StateCompatibilityLook,
     html_labels: bool,
@@ -1024,7 +1029,71 @@ impl StateCompatibilityPlan {
             &text_color
         );
 
+        let redux_palette = if matches!(
+            resolver
+                .value
+                .get("theme")
+                .and_then(serde_json::Value::as_str),
+            Some("redux-color" | "redux-dark-color")
+        ) {
+            let css_color = |value: &serde_json::Value| {
+                value
+                    .as_str()
+                    .map(|value| value.trim().to_owned())
+                    .unwrap_or_else(|| value.to_string())
+            };
+            let backgrounds = resolver
+                .value
+                .pointer("/themeVariables/bkgColorArray")
+                .and_then(serde_json::Value::as_array)
+                .filter(|values| !values.is_empty());
+            resolver
+                .value
+                .pointer("/themeVariables/borderColorArray")
+                .and_then(serde_json::Value::as_array)
+                .map(|borders| {
+                    borders
+                        .iter()
+                        .enumerate()
+                        .map(|(index, border)| {
+                            (
+                                css_color(border),
+                                backgrounds.map(|colors| css_color(&colors[index % colors.len()])),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let palette_look = resolver
+            .value
+            .get("look")
+            .and_then(|value| match value {
+                serde_json::Value::String(value) => Some(value.clone()),
+                serde_json::Value::Number(value) => Some(value.to_string()),
+                _ => None,
+            })
+            .filter(|look| {
+                !look.is_empty()
+                    && look
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            })
+            .unwrap_or_else(|| "classic".to_owned());
         Self {
+            redux_palette,
+            palette_look,
+            serialized_look: crate::config::config_diagram_look(resolver.value)
+                .serialized()
+                .to_owned(),
+            root_font_family_css: crate::config::config_root_font_family_css(resolver.value),
+            dependency_numeric_zero_width: resolver
+                .value
+                .pointer("/themeVariables/strokeWidth")
+                .and_then(serde_json::Value::as_f64)
+                == Some(0.0),
             dark_mode,
             look,
             html_labels,
@@ -1272,6 +1341,39 @@ mod tests {
     use super::*;
     use merman_core::diagrams::state::StateDiagramRenderNode;
     use serde_json::json;
+
+    #[test]
+    fn redux_palette_binding_keeps_gate_coercion_and_cyclic_backgrounds() {
+        let config = json!({
+            "theme": "redux-color", "look": "neo", "fontFamily": "Root Sans",
+            "themeVariables": {
+                "borderColorArray": [" red ", 12, null],
+                "bkgColorArray": [" var(--tint) "], "strokeWidth": 0
+            }
+        });
+        let plan = StateCompatibilityPlan::from_value(&config);
+        assert_eq!(
+            plan.redux_palette,
+            vec![
+                ("red".to_owned(), Some("var(--tint)".to_owned())),
+                ("12".to_owned(), Some("var(--tint)".to_owned())),
+                ("null".to_owned(), Some("var(--tint)".to_owned())),
+            ]
+        );
+        assert_eq!(plan.palette_look, "neo");
+        assert_eq!(plan.root_font_family_css, "Root Sans");
+        assert!(plan.dependency_numeric_zero_width);
+        let mut string_zero = config.clone();
+        string_zero["themeVariables"]["strokeWidth"] = json!("0");
+        assert!(!StateCompatibilityPlan::from_value(&string_zero).dependency_numeric_zero_width);
+        let mut ungated = config;
+        ungated["theme"] = json!("redux");
+        assert!(
+            StateCompatibilityPlan::from_value(&ungated)
+                .redux_palette
+                .is_empty()
+        );
+    }
 
     fn ordinary_state_node() -> StateDiagramRenderNode {
         StateDiagramRenderNode {

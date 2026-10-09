@@ -342,7 +342,7 @@ mod tests {
                         .unwrap();
                 let mut receipt =
                     crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
-                let text_shadow = super::super::text_effect::SequenceTextShadow::resolve(
+                let text_shadow = super::super::text_effect::SequenceTextShadow::from_prepared(
                     execution,
                     crate::sequence::SequenceTypographyRole::Note,
                     typography.note(),
@@ -413,7 +413,7 @@ mod tests {
                         .unwrap();
                 let mut receipt =
                     crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
-                let text_shadow = super::super::text_effect::SequenceTextShadow::resolve(
+                let text_shadow = super::super::text_effect::SequenceTextShadow::from_prepared(
                     execution,
                     crate::sequence::SequenceTypographyRole::Note,
                     typography.note(),

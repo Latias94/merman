@@ -114,12 +114,13 @@ pub(super) fn sequence_css_with_theme_adapter(
     typed: SequenceThemeCssAdapter<'_>,
 ) -> String {
     let diagram_id = crate::svg::escape_css_identifier(diagram_id);
+    let compat = crate::sequence::SequenceCompatBinding::resolve(effective_config);
     let mut out = String::new();
     write_sequence_css_with_theme_adapter(
         &mut out,
         diagram_id.as_str(),
         font_size_px,
-        effective_config,
+        &compat,
         typed,
     )
     .expect("write Sequence CSS into an unbounded string");
@@ -130,31 +131,22 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
     _font_size_px: f64,
-    effective_config: &serde_json::Value,
+    theme: &crate::sequence::SequenceCompatBinding,
     typed: SequenceThemeCssAdapter<'_>,
 ) -> Result<SequenceThemeCssEmission> {
     out.checkpoint()?;
     // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = diagram_id;
-    let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
-    let font = typed
-        .base_font_family
-        .unwrap_or(theme.common.font_family_css.as_str());
+    let font = typed.base_font_family.unwrap_or(theme.font_family.as_str());
     let font_size_css = typed
         .base_font_size_px
         .map(|size| format!("{}px", fmt(size)))
-        .or_else(|| {
-            crate::config::config_css_number_or_string(
-                effective_config,
-                &["themeVariables", "fontSize"],
-            )
-        })
-        .unwrap_or_else(|| "16px".to_string());
-    let text_color = theme.common.text_color.as_str();
-    let error_bkg = theme.common.error_bkg.as_str();
-    let error_text = theme.common.error_text.as_str();
-    let line_color = theme.common.line_color.as_str();
+        .unwrap_or_else(|| theme.font_size_css.clone());
+    let text_color = theme.text_color.as_str();
+    let error_bkg = theme.error_bkg.as_str();
+    let error_text = theme.error_text.as_str();
+    let line_color = theme.line_color.as_str();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
@@ -485,11 +477,10 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
-    let root_font = crate::config::config_root_font_family_css(effective_config);
     crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         out,
         id,
-        typed.base_font_family.unwrap_or(&root_font),
+        typed.base_font_family.unwrap_or(&theme.root_font_family),
     )?;
     out.checkpoint()?;
     Ok(emission)
@@ -553,6 +544,7 @@ mod tests {
     #[test]
     fn sequence_css_streams_with_exact_svg_budget_and_rejects_one_byte_short() {
         let config = json!({});
+        let compat = crate::sequence::SequenceCompatBinding::resolve(&config);
         let expected = sequence_css("sequence-budget", 16.0, &config);
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -564,7 +556,7 @@ mod tests {
             &mut exact,
             "sequence-budget",
             16.0,
-            &config,
+            &compat,
             SequenceThemeCssAdapter::default(),
         )
         .expect("write exact Sequence CSS budget");
@@ -580,7 +572,7 @@ mod tests {
             &mut short,
             "sequence-budget",
             16.0,
-            &config,
+            &compat,
             SequenceThemeCssAdapter::default(),
         );
         assert!(matches!(
@@ -603,7 +595,7 @@ mod tests {
             &mut out,
             TrackedDiagramId { writes: &writes },
             16.0,
-            &json!({}),
+            &crate::sequence::SequenceCompatBinding::resolve(&json!({})),
             SequenceThemeCssAdapter::default(),
         );
 
@@ -847,7 +839,9 @@ mod tests {
             &mut css,
             crate::svg::escape_css_identifier("seq:prod").as_str(),
             16.0,
-            &json!({"themeVariables": {"sequenceNumberColor": "#fedcba"}}),
+            &crate::sequence::SequenceCompatBinding::resolve(&json!({
+                "themeVariables": {"sequenceNumberColor": "#fedcba"}
+            })),
             SequenceThemeCssAdapter {
                 sequence_number_fill: Some("#123456"),
                 ..SequenceThemeCssAdapter::default()
