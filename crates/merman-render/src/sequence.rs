@@ -731,6 +731,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         bounds,
         diagram_title,
     } = prepare_sequence_root_geometry(SequenceRootBoundsContext {
+        is_neo: settings.is_neo,
         model,
         diagram_title: effective_title,
         nodes: &nodes,

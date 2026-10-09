@@ -115,6 +115,7 @@ impl SequenceNotePaintPlan {
 }
 
 pub(super) struct SequenceNoteRenderContext<'a> {
+    pub(super) is_neo: bool,
     pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) paint: &'a SequenceNotePaintPlan,
     pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
@@ -169,9 +170,7 @@ pub(super) fn render_sequence_note(
         y = fmt(y),
         w = fmt(n.width),
         h = fmt(n.height),
-        look_attr = if crate::config::config_diagram_look(ctx.sanitize_config.as_value()).as_str()
-            == "neo"
-        {
+        look_attr = if ctx.is_neo {
             r#" data-look="neo""#
         } else {
             ""
@@ -354,6 +353,7 @@ mod tests {
                     50.0,
                     10.0,
                     &super::SequenceNoteRenderContext {
+                        is_neo: typography.compat_binding().is_neo,
                         text_shadow: &text_shadow,
                         paint: &Default::default(),
                         shadow_evidence: &Default::default(),
@@ -432,6 +432,7 @@ mod tests {
                         50.0,
                         crate::sequence::sequence_drawn_text_first_y(10.25, margin),
                         &super::SequenceNoteRenderContext {
+                            is_neo: typography.compat_binding().is_neo,
                             text_shadow: &text_shadow,
                             paint: &Default::default(),
                             shadow_evidence: &Default::default(),

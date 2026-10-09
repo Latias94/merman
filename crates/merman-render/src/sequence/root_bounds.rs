@@ -13,6 +13,7 @@ use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
+    pub(super) is_neo: bool,
     pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
@@ -339,7 +340,6 @@ fn include_actor_popup_bottoms(
     // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
     // present, even when they are emitted hidden by default. Account for the menu panel bottom so
     // root height stays aligned with upstream for link-only fixtures.
-    let is_neo = crate::config::config_diagram_look(ctx.math_config.as_value()).is_neo();
     let node_prefix = if ctx.mirror_actors {
         "actor-bottom-"
     } else {
@@ -360,7 +360,7 @@ fn include_actor_popup_bottoms(
             &actor.actor_type,
             node.height,
             ctx.actor_height,
-            is_neo,
+            ctx.is_neo,
             ctx.mirror_actors,
         ) + sequence_actor_popup_panel_height(actor.links.len());
         let popup_content_bottom = if ctx.mirror_actors {

@@ -9,6 +9,7 @@ use crate::text::TextStyle;
 
 #[derive(Clone, Copy)]
 pub(super) struct SequenceActorPopupOptions<'a> {
+    pub(super) is_neo: bool,
     pub(super) force_menus: bool,
     pub(super) mirror_actors: bool,
     pub(super) actor_height: f64,
@@ -79,7 +80,7 @@ pub(super) fn render_sequence_actor_popup_menus(
         let (x, _y) = node_left_top(n);
         let panel_width = actor_popup_widths.get(actor_id).copied().unwrap_or(n.width);
 
-        let is_neo = crate::config::config_diagram_look(sanitize_config.as_value()).is_neo();
+        let is_neo = options.is_neo;
         let rect_height = crate::sequence::sequence_actor_popup_rect_height(
             &actor.actor_type,
             n.height,

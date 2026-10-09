@@ -71,6 +71,7 @@ pub(super) fn render_sequence_interaction_overlays(
     ctx.checkpoints.checkpoint()?;
 
     let block_ctx = SequenceBlockRenderContext {
+        is_neo: ctx.compat.is_neo,
         text_shadow: ctx.loop_text_shadow,
         shadow_evidence: ctx.shadow_evidence,
         default_frame_x1: frame_x1,
@@ -97,6 +98,7 @@ pub(super) fn render_sequence_interaction_overlays(
         checkpoints: ctx.checkpoints,
     };
     let note_ctx = SequenceNoteRenderContext {
+        is_neo: ctx.compat.is_neo,
         text_shadow: ctx.note_text_shadow,
         paint: ctx.note_paint,
         shadow_evidence: ctx.shadow_evidence,

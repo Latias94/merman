@@ -5,6 +5,8 @@ pub(crate) struct IshikawaCssBinding {
     pub(crate) line_color: String,
     pub(crate) main_bkg: String,
     pub(crate) text_color: String,
+    pub(crate) look: String,
+    pub(crate) hand_drawn_seed: Option<f64>,
 }
 
 #[cfg(test)]
@@ -33,6 +35,12 @@ impl IshikawaCssBinding {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         Self {
+            look: crate::config::config_diagram_look(config)
+                .as_str()
+                .to_owned(),
+            hand_drawn_seed: config
+                .get("handDrawnSeed")
+                .and_then(serde_json::Value::as_f64),
             line_color: color("lineColor", "#333"),
             main_bkg: color("mainBkg", "#fff"),
             text_color: color("textColor", "#333"),

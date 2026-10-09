@@ -568,6 +568,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         &nodes_by_id,
         sanitize_config,
         SequenceActorPopupOptions {
+            is_neo: compat.is_neo,
             force_menus: settings.force_menus,
             mirror_actors: settings.mirror_actors,
             actor_height: settings.actor_height,

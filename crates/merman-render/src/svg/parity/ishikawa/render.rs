@@ -25,7 +25,6 @@ struct RoughPaint<'a> {
 pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     layout: &IshikawaDiagramLayout,
     text_theme: &IshikawaTextThemePlan,
-    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("ishikawa");
@@ -55,13 +54,10 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     );
     out.push_str(r#"</style><g/><g class="ishikawa">"#);
     out.checkpoint()?;
-    if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
+    if theme.look == "handDrawn" {
         let rough = RoughContext {
             randomness: options.rough_randomness(
-                effective_config
-                    .get("handDrawnSeed")
-                    .and_then(serde_json::Value::as_f64)
-                    .unwrap_or(options.seed() as f64),
+                theme.hand_drawn_seed.unwrap_or(options.seed() as f64),
                 "render.ishikawa.roughjs",
             ),
             line_color: theme.line_color.clone(),

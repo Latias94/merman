@@ -1241,7 +1241,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         }
     }
 
-    push_requirement_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config);
+    push_requirement_shadow_defs(
+        &mut out,
+        diagram_id.semantic_str(),
+        binding.shadow_flood_color,
+    );
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
@@ -1267,17 +1271,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     Ok(rooted_svg)
 }
 
-fn push_requirement_shadow_defs(
-    out: &mut impl SvgOutput,
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-) {
-    let flood_color = effective_config
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
+fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, flood_color: &str) {
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,

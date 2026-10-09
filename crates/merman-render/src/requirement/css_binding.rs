@@ -31,6 +31,7 @@ pub(crate) struct RequirementCssBinding {
     pub(crate) node_border: String,
     pub(crate) relationship_line_stroke_width: String,
     pub(crate) marker_stroke_width: String,
+    pub(crate) shadow_flood_color: &'static str,
 }
 
 impl RequirementCssBinding {
@@ -119,6 +120,37 @@ impl RequirementCssBinding {
                         .unwrap_or_else(|| value.to_string())
                 })
                 .unwrap_or_else(|| "undefined".to_owned()),
+            shadow_flood_color: config
+                .get("theme")
+                .and_then(Value::as_str)
+                .filter(|theme| theme.contains("dark"))
+                .map(|_| "#FFFFFF")
+                .unwrap_or("#000000"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shadow_color_retains_literal_case_sensitive_theme_name_semantics() {
+        for (config, expected) in [
+            (serde_json::json!({}), "#000000"),
+            (serde_json::json!({"theme": "dark"}), "#FFFFFF"),
+            (serde_json::json!({"theme": "redux-dark-color"}), "#FFFFFF"),
+            (
+                serde_json::json!({"theme": "Dark", "darkMode": true}),
+                "#000000",
+            ),
+            (
+                serde_json::json!({"theme": 7, "themeVariables": {"darkMode": true}}),
+                "#000000",
+            ),
+        ] {
+            let binding = RequirementCssBinding::resolve(&config, None, None, None, None);
+            assert_eq!(binding.shadow_flood_color, expected);
         }
     }
 }
