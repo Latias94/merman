@@ -1022,20 +1022,6 @@ enum PreparedMathMeasurement {
 }
 
 impl FlowchartSvgLabelSidecarBuilder {
-    #[cfg(test)]
-    pub(crate) fn new(
-        prepared_text_layout: Option<&PreparedTextLayout>,
-        resolved_theme: Option<&ResolvedDiagramTheme>,
-    ) -> Self {
-        Self {
-            label_weights: super::FlowchartLabelWeights::resolve(resolved_theme, None)
-                .expect("unmetered static label weights cannot exceed work limits"),
-            prepared_text_layout: prepared_text_layout.cloned(),
-            resolved_theme: resolved_theme.cloned(),
-            ..Self::default()
-        }
-    }
-
     pub(crate) fn new_with_work_meter(
         prepared_text_layout: Option<&PreparedTextLayout>,
         resolved_theme: Option<&ResolvedDiagramTheme>,

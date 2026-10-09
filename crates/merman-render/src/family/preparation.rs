@@ -568,6 +568,7 @@ fn prepare_c4_family(
         execution.resolved_theme(),
         &meta.effective_config,
         meta.title.as_deref().or(model.title.as_deref()),
+        &model,
     );
     let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
         execution.resolved_theme(),
@@ -577,6 +578,7 @@ fn prepare_c4_family(
     let layout = crate::c4::layout_c4_diagram_typed(
         &model,
         meta.effective_config.as_value(),
+        &typography_theme,
         execution.text_measurer(),
         execution.container_width,
         execution.container_height,

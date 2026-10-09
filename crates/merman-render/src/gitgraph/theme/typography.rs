@@ -79,6 +79,7 @@ impl GitGraphRoleFontSize {
 /// Final GitGraph typography shared by preparation, layout, stylesheet emission, and text probes.
 #[derive(Debug)]
 pub(crate) struct GitGraphTypographyThemePlan {
+    css_binding: crate::gitgraph::GitGraphCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     font_size_px: f64,
@@ -116,7 +117,7 @@ impl GitGraphTypographyThemePlan {
                 .unwrap_or(DEFAULT_FONT_SIZE_PX),
         }
         .max(1.0);
-        let font_size_css = format!("{font_size_px}px").into_boxed_str();
+        let font_size_css: Box<str> = format!("{font_size_px}px").into_boxed_str();
         let commit_label_font_size = GitGraphRoleFontSize::resolve(
             config_string(
                 effective_config.as_value(),
@@ -134,7 +135,13 @@ impl GitGraphTypographyThemePlan {
             font_size_px,
         );
 
+        let css_binding = crate::gitgraph::GitGraphCssBinding::resolve(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css(),
+            &font_size_css,
+        );
         Self {
+            css_binding,
             inherited_font_stack,
             font_size_css,
             font_size_px,
@@ -149,6 +156,10 @@ impl GitGraphTypographyThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) const fn css_binding(&self) -> &crate::gitgraph::GitGraphCssBinding {
+        &self.css_binding
     }
 
     pub(crate) fn font_size_css(&self) -> &str {

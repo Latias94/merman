@@ -66,6 +66,7 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) source: Option<&'a UsecaseNode>,
     pub(super) note: bool,
     pub(super) style: &'a str,
+    pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
     pub(super) config: &'a merman_core::MermaidConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) diagram_id: SvgDiagramId<'a>,
@@ -301,20 +302,11 @@ pub(super) fn write_node(
         } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
-            let randomness = context.options.rough_randomness(
-                config_f64(context.config.as_value(), &["handDrawnSeed"]).unwrap_or(0.0),
-                "usecase-note",
-            );
-            let note_fill = config_string(
-                context.config.as_value(),
-                &["themeVariables", "noteBkgColor"],
-            )
-            .unwrap_or_else(|| "#fff5ad".to_owned());
-            let note_stroke = config_string(
-                context.config.as_value(),
-                &["themeVariables", "noteBorderColor"],
-            )
-            .unwrap_or_else(|| "#aaaa33".to_owned());
+            let randomness = context
+                .options
+                .rough_randomness(context.css_binding.hand_drawn_seed, "usecase-note");
+            let note_fill = &context.css_binding.note;
+            let note_stroke = &context.css_binding.note_border;
             let (fill, stroke) =
                 roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
                     x: -node.width / 2.0,
@@ -330,9 +322,9 @@ pub(super) fn write_node(
             let _ = write!(
                 out,
                 r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
-                escape_attr(&note_fill),
+                escape_attr(note_fill),
                 escape_attr(context.style),
-                escape_attr(&note_stroke),
+                escape_attr(note_stroke),
                 escape_attr(context.style)
             );
         } else {

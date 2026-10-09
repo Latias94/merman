@@ -22,7 +22,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) drop_shadow: String,
     pub(crate) root_font_family: String,
     pub(crate) agentflow_container_stroke: String,
-    pub(crate) neo: crate::svg::PreparedFlowchartNeoCss,
+    pub(crate) neo: crate::svg::PreparedCommonNeoCss,
     pub(crate) palette: Vec<Value>,
     pub(crate) palette_backgrounds: Vec<Value>,
     pub(crate) palette_look: String,
@@ -65,7 +65,7 @@ impl FlowchartCompatibilityBinding {
             cluster_border,
             drop_shadow: theme("dropShadow", "none"),
             root_font_family: crate::config::config_root_font_family_css(config),
-            neo: crate::svg::PreparedFlowchartNeoCss::new(config),
+            neo: crate::svg::PreparedCommonNeoCss::new(config),
             palette: if matches!(
                 config.get("theme").and_then(Value::as_str),
                 Some("redux-color" | "redux-dark-color")

@@ -124,7 +124,7 @@ struct Rect {
 
 struct C4LayoutContext<'a> {
     model: &'a C4Model,
-    cfg: &'a C4ConfigView<'a>,
+    typography: &'a super::C4TypographyThemePlan,
     conf: &'a C4Conf,
     c4_shape_in_row: usize,
     c4_boundary_in_row: usize,
@@ -480,7 +480,12 @@ fn layout_c4_shape_array(
             }
             _ => (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0),
         };
-        let text_conf = ctx.cfg.shape_font(&type_c4_shape);
+        let text_conf = ctx
+            .typography
+            .element_style(&type_c4_shape)
+            .expect("C4 preparation binds every model shape type before layout")
+            .font
+            .clone();
 
         // Unified C4 labels are measured as stacked name/stereotype/description sections.
         // Their CSS font sizes are part of the geometry contract, so measure each section with
@@ -991,13 +996,15 @@ fn layout_inside_boundary(
 pub(crate) fn layout_c4_diagram_typed(
     model: &C4DiagramRenderModel,
     effective_config: &Value,
+    typography: &super::C4TypographyThemePlan,
     measurer: &dyn TextMeasurer,
     container_width: f64,
     container_height: f64,
     screen_available_width: Option<f64>,
 ) -> Result<C4DiagramLayout> {
     let c4_cfg = C4ConfigView::new(effective_config);
-    let conf = c4_cfg.layout_settings();
+    let conf = c4_cfg
+        .layout_settings_with_prepared_fonts(typography.boundary_font(), typography.message_font());
 
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
     let c4_boundary_in_row = (model.layout.c4_boundary_in_row.max(1)) as usize;
@@ -1042,7 +1049,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let ctx = C4LayoutContext {
         model,
-        cfg: &c4_cfg,
+        typography,
         conf: &conf,
         c4_shape_in_row,
         c4_boundary_in_row,

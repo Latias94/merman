@@ -17,7 +17,7 @@ pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
         .unwrap_or(fallback)
 }
 
-pub(crate) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
+pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
     let Some(actor) = actor else {
         return TextStyle {
             font_family: config
@@ -307,6 +307,7 @@ fn escaped_markdown(text: &str) -> String {
 pub(super) fn measure(
     model: &UsecaseDiagramRenderModel,
     config: &Value,
+    css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
@@ -324,7 +325,12 @@ pub(super) fn measure(
         {
             work.charge_adapter(1)?;
             let css = styles(model, &node.classes, &node.styles);
-            let style = styled(text_style(config, Some(actor)), &css);
+            let base = if actor {
+                &css_binding.actor_font
+            } else {
+                &css_binding.usecase_font
+            };
+            let style = styled(base.clone(), &css);
             let label_context = LabelContext {
                 config: &sanitize_config,
                 measurer,
@@ -420,7 +426,7 @@ pub(super) fn measure(
             });
         }
     }
-    let generic = text_style(config, None);
+    let generic = &css_binding.generic_font;
     for note in &model.notes {
         work.charge_adapter(1)?;
         let css = styles(model, &[], &[]);
@@ -764,6 +770,7 @@ mod tests {
         let (small, _) = measure(
             &model,
             &json!({"usecase": {"minNodeWidth": 900}}),
+            &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
             &measurer,
             None,
             &mut work(),
@@ -772,6 +779,7 @@ mod tests {
         let (large, _) = measure(
             &model,
             &json!({"usecase": {"actorFontSize": 40}}),
+            &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
             &measurer,
             None,
             &mut work(),
@@ -799,6 +807,7 @@ mod tests {
         let (nodes, _) = measure(
             &model,
             &json!({}),
+            &UsecaseCssBinding::new(&json!({})),
             &DeterministicTextMeasurer::default(),
             None,
             &mut work(),

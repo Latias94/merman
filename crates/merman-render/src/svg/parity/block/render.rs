@@ -321,7 +321,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
-    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     fn decode_block_label_html(raw: &str) -> String {
@@ -788,8 +787,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
-    super::super::look_defs::push_look_shadow_defs(&mut out, diagram_id, effective_config)?;
-    super::super::look_defs::push_look_gradient(&mut out, diagram_id, effective_config)?;
+    node_theme
+        .look_defs
+        .write_shadow_defs(&mut out, diagram_id)?;
+    node_theme.look_defs.write_gradient(&mut out, diagram_id)?;
     let mut marker_paint_receipt = marker_paint_theme.begin_terminal_receipt();
     if let Some(receipt) = marker_paint_receipt.as_mut() {
         for (index, definition) in marker_paint_theme.definitions().iter().enumerate() {

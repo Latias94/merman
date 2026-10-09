@@ -797,15 +797,62 @@ fn usecase_note_renders_theme_colors_in_every_builtin_theme_and_look() {
         for look in ["classic", "neo", "handDrawn"] {
             let (_, svg) = render_config(
                 "usecase-beta\nA(Login)\nnote for A \"Remember\"",
-                json!({"layout":"dagre", "theme":theme, "look":look}),
+                json!({"layout":"dagre", "theme":theme, "look":look,
+                    "themeVariables":{"noteBkgColor":"var(--note-fill)","noteBorderColor":"currentColor"}}),
             );
             let document = roxmltree::Document::parse(&svg).unwrap();
             let note = document
                 .descendants()
                 .find(|node| node.attribute("data-usecase-kind") == Some("note"))
                 .unwrap_or_else(|| panic!("missing note for {theme}/{look}"));
-            assert!(note.descendants().any(|node| node.has_tag_name("path")));
+            assert!(
+                note.descendants().any(|node| {
+                    node.has_tag_name("path") && node.attribute("fill") == Some("var(--note-fill)")
+                }),
+                "note fill for {theme}/{look}"
+            );
+            assert!(
+                note.descendants().any(|node| {
+                    node.has_tag_name("path") && node.attribute("stroke") == Some("currentColor")
+                }),
+                "note stroke for {theme}/{look}"
+            );
         }
+    }
+}
+
+#[test]
+fn usecase_raw_palette_preserves_public_appearance_normalization() {
+    for (look, node_look, edge_look) in [
+        (json!(7), "neo", "neo"),
+        (json!("not a token"), "neo", "neo"),
+        (json!("classic"), "classic", "classic"),
+    ] {
+        let (_, svg) = render_config(
+            "usecase-beta\nactor A\nB(Login)\nA --> B",
+            json!({"layout":"dagre","theme":"redux-color","look":look,
+                "usecase":{"colorScheme":"rotate"},
+                "themeVariables":{"borderColorArray":[17,false],"bkgColorArray":["var(--surface)"]}}),
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("valid raw Usecase appearance SVG");
+        let actor = doc
+            .descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some("A"))
+            .unwrap();
+        assert_eq!(actor.attribute("data-look"), Some(node_look));
+        assert_eq!(actor.attribute("data-color-id"), Some("color-0"));
+        let edge = doc
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert_eq!(edge.attribute("data-look"), Some(edge_look));
+        let css: String = doc
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(css.contains("stroke:17;fill:var(--surface);"));
+        assert!(css.contains("stroke:false;fill:var(--surface);"));
     }
 }
 

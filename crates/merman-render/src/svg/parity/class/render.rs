@@ -358,8 +358,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     // Mermaid 12 renderers append shared resources after the graph wrapper. ELK changes
     // only the layout geometry and edge z-order; it does not create a second top-level painter.
-    push_look_shadow_defs(&mut out, diagram_id, effective_config)?;
-    push_look_gradient(&mut out, diagram_id, effective_config)?;
+    typography_theme
+        .css_binding()
+        .look_defs
+        .write_shadow_defs(&mut out, diagram_id)?;
+    typography_theme
+        .css_binding()
+        .look_defs
+        .write_gradient(&mut out, diagram_id)?;
     emit.checkpoint()?;
 
     drop(render_guard);

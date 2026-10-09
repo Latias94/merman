@@ -38,13 +38,21 @@ mod icon_registry;
 mod parity;
 pub(crate) use parity::BaseEdgeMarkerKind;
 pub(crate) use parity::PreparedCommonCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(crate) use parity::PreparedCommonNeoCss;
+pub(crate) use parity::PreparedLookDefs;
 pub(crate) use parity::cssom_color_value;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use parity::{PreparedFlowchartNeoCss, flowchart_node_label_fill_config_override};
+pub(crate) use parity::flowchart_node_label_fill_config_override;
 mod pipeline;
 pub(crate) mod scanner;
 

@@ -215,100 +215,30 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         message: format!("Flowchart node `{node_id}` has no prepared terminal style"),
     })?;
     let compiled_styles = &prepared.source;
-    let mut style = std::borrow::Cow::Borrowed(prepared.source.node_style.as_str());
+    let selection = &prepared.selection;
+    let style = selection
+        .inline_style
+        .as_deref()
+        .unwrap_or(&prepared.source.node_style);
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
-    let fill_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_fill_status(),
-        ctx.node_fill_config_override,
-    );
-    let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_stroke_status(),
-        ctx.node_border_config_override,
-    );
-    let stroke_width_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_stroke_width_status(),
-        ctx.node_stroke_width_config_override,
-    );
-    let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_stroke_dasharray_status(),
-        false,
-    );
-    let radius_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_radius_status(),
-        ctx.node_corner_radius_config_override,
-    );
-    let font_stack_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_font_stack_status(),
-        ctx.node_typography_config_ownership.font_stack,
-    );
-    let font_size_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_font_size_status(),
-        ctx.node_typography_config_ownership.font_size,
-    );
-    let label_fill_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        compiled_styles.source_label_foreground_status(),
-        ctx.node_label_fill_config_override,
-    );
     let node_theme = &prepared.style;
     let source_filter = compiled_styles.source_filter_status();
-    let typed_fill_selected = node_theme.fill_value(fill_precedence, true).is_some();
-    let typed_stroke_selected = node_theme.stroke_value(stroke_precedence, true).is_some();
-    let typed_stroke_width_selected = node_theme
-        .stroke_width_value(stroke_width_precedence, true)
-        .is_some();
-    let typed_stroke_dasharray_selected = node_theme
-        .stroke_dasharray_value(stroke_dasharray_precedence, true)
-        .is_some();
-    let typed_radius = node_theme.radius_value(radius_precedence, true);
+    let typed_fill_selected = selection.typed_fill_selected;
+    let typed_stroke_selected = selection.typed_stroke_selected;
+    let typed_stroke_width_selected = selection.typed_stroke_width_selected;
+    let typed_stroke_dasharray_selected = selection.typed_stroke_dasharray_selected;
+    let typed_radius = selection.typed_radius;
     let typed_radius_selected = typed_radius.is_some();
-    let typed_font_stack_selected = node_theme.font_stack_selected(font_stack_precedence);
-    let typed_font_size_selected = node_theme.font_size_selected(font_size_precedence);
-    let typed_label_fill = node_theme.label_fill_value(label_fill_precedence, true);
-    let mut theme_style = String::new();
-    node_theme.append_inline_style(
-        &mut theme_style,
-        fill_precedence,
-        stroke_precedence,
-        stroke_width_precedence,
-        stroke_dasharray_precedence,
-        true,
-        true,
-        true,
-        true,
-    );
-    if !theme_style.is_empty() {
-        if !style.is_empty() {
-            style.to_mut().push(';');
-        }
-        style.to_mut().push_str(&theme_style);
-    }
+    let typed_font_stack_selected = selection.typed_font_stack_selected;
+    let typed_font_size_selected = selection.typed_font_size_selected;
+    let typed_label_fill = selection.typed_label_fill.as_deref();
     let rough_group_style = flowchart_hand_drawn_shape_group_style(node_styles);
-    let fill_color = compiled_styles
-        .fill
-        .as_deref()
-        .or_else(|| node_theme.fill_value(fill_precedence, true))
-        .unwrap_or(ctx.node_fill_color.as_str());
-    let stroke_color = compiled_styles
-        .stroke
-        .as_deref()
-        .or_else(|| node_theme.stroke_value(stroke_precedence, true))
-        .unwrap_or(ctx.node_border_color.as_str());
-    let stroke_width = compiled_styles
-        .admitted_stroke_width_value()
-        .or_else(|| {
-            ctx.node_stroke_width_config_override
-                .then_some(ctx.node_stroke_width)
-        })
-        .or_else(|| node_theme.stroke_width_value(stroke_width_precedence, true))
-        .unwrap_or(1.3);
-    let stroke_dasharray = compiled_styles
-        .stroke_dasharray
-        .as_deref()
-        .or_else(|| node_theme.stroke_dasharray_value(stroke_dasharray_precedence, true))
-        .unwrap_or("0 0")
-        .trim();
+    let fill_color = selection.fill.as_str();
+    let stroke_color = selection.stroke.as_str();
+    let stroke_width = selection.stroke_width;
+    let stroke_dasharray = selection.stroke_dasharray.as_str();
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         node_classes,
         node_styles,
@@ -343,20 +273,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_asset_width,
         node_asset_height,
         label_emission: &label_emission,
-        style: &style,
+        style,
         effect_filter_attr: effect_application
             .as_ref()
             .map_or("", |(_, _, _, attr)| attr.as_str()),
-        theme_style: &theme_style,
+        theme_style: &selection.theme_style,
         rough_group_style: &rough_group_style,
         fill_color,
         stroke_color,
         stroke_width,
         stroke_dasharray,
         typed_corner_radius: typed_radius.map(f64::from),
-        source_corner_radii: compiled_styles.rectangle_source_radii(),
-        configured_corner_radius: (look == "neo" && ctx.node_corner_radius_config_override)
-            .then_some(ctx.node_corner_radius),
+        source_corner_radii: selection.source_radii,
+        configured_corner_radius: selection.configured_radius,
         hand_drawn_seed: &ctx.hand_drawn_seed,
         work_meter: ctx.work_meter,
         wrapped_in_a,

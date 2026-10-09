@@ -1,41 +1,4 @@
-use super::*;
 use serde_json::json;
-
-#[test]
-fn mermaid_theme_adapter_prefers_explicit_dark_mode_over_theme_name() {
-    let typed_dark = json!({
-        "theme": "base",
-        "themeVariables": { "darkMode": true }
-    });
-    assert!(MermaidThemeAdapter::new(&typed_dark).common.is_dark_theme());
-
-    let explicitly_light = json!({
-        "theme": "dark",
-        "darkMode": false,
-        "themeVariables": { "darkMode": true }
-    });
-    assert!(
-        !MermaidThemeAdapter::new(&explicitly_light)
-            .common
-            .is_dark_theme()
-    );
-}
-
-#[test]
-fn mermaid_theme_adapter_node_diagram_uses_shared_fallbacks() {
-    let cfg = json!({});
-    let theme = MermaidThemeAdapter::new(&cfg);
-    let node = theme.node_diagram();
-
-    assert_eq!(node.common.text_color, "#333");
-    assert_eq!(node.common.line_color, "#333333");
-    assert_eq!(node.node_text_color, "#333");
-    assert_eq!(node.title_color, "#333");
-    assert_eq!(node.main_bkg, "#ECECFF");
-    assert_eq!(node.node_border, "#9370DB");
-    assert_eq!(node.arrowhead_color, "#333333");
-    assert_eq!(node.stroke_width, "1");
-}
 
 #[test]
 fn prepared_gantt_binding_resolves_gantt_roles() {

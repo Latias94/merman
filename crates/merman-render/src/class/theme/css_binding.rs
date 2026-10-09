@@ -4,6 +4,7 @@ use serde_json::Value;
 /// Values stay as CSS tokens; binding does not imply native color support.
 #[derive(Debug, Clone)]
 pub(crate) struct ClassCssThemeBinding {
+    pub(crate) look_defs: crate::svg::PreparedLookDefs,
     pub(crate) class_text: String,
     pub(crate) note_text: String,
     pub(crate) class_group_text: String,
@@ -17,7 +18,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) note_stroke: String,
     pub(crate) palette: Vec<(String, Option<String>)>,
     pub(crate) palette_look: String,
-    pub(crate) use_gradient: bool,
 }
 
 #[cfg(test)]
@@ -40,7 +40,7 @@ mod tests {
             let binding = ClassCssThemeBinding::resolve(&serde_json::json!({
                 "themeVariables": {"useGradient": value}
             }));
-            assert_eq!(binding.use_gradient, expected);
+            assert_eq!(binding.look_defs.uses_gradient(), expected);
         }
     }
 
@@ -159,6 +159,7 @@ impl ClassCssThemeBinding {
             Vec::new()
         };
         Self {
+            look_defs: crate::svg::PreparedLookDefs::new(config),
             class_text: class_text.clone(),
             note_text: token("noteTextColor", "#333"),
             class_group_text,
@@ -172,9 +173,6 @@ impl ClassCssThemeBinding {
             note_stroke: token("noteBorderColor", "#aaaa33"),
             palette,
             palette_look,
-            use_gradient: crate::config::value_at(config, &["themeVariables", "useGradient"])
-                .and_then(crate::config::json_bool)
-                .unwrap_or(false),
         }
     }
 }

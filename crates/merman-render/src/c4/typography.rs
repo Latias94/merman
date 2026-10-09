@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
@@ -15,6 +16,12 @@ use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFon
 /// plan intentionally proves only the inherited title surface and makes no layout claim.
 #[derive(Debug)]
 pub(crate) struct C4TypographyThemePlan {
+    common_css: crate::svg::PreparedCommonCss,
+    person_border: String,
+    person_background: String,
+    element_styles: BTreeMap<String, C4ElementStyle>,
+    boundary_font: crate::text::TextStyle,
+    message_font: crate::text::TextStyle,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
@@ -22,6 +29,14 @@ pub(crate) struct C4TypographyThemePlan {
     title: Option<Box<str>>,
     evidence: FamilyThemeEvidence,
     terminal_seal: OnceLock<C4TypographyTerminalSeal>,
+}
+
+#[derive(Debug)]
+pub(crate) struct C4ElementStyle {
+    pub(crate) font: crate::text::TextStyle,
+    pub(crate) css_font_family: String,
+    pub(crate) background: String,
+    pub(crate) border: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,6 +61,7 @@ impl C4TypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         title: Option<&str>,
+        model: &merman_core::diagrams::c4::C4DiagramRenderModel,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -78,7 +94,62 @@ impl C4TypographyThemePlan {
             }
         };
 
+        let config = effective_config.as_value();
+        let view = super::C4ConfigView::new(config);
+        let element_styles = super::C4_ELEMENT_TYPES
+            .iter()
+            .copied()
+            .chain(
+                model
+                    .shapes
+                    .iter()
+                    .map(|shape| shape.type_c4_shape.as_str()),
+            )
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|name| {
+                let font = view.shape_font(name);
+                let css_font_family = crate::config::normalize_css_font_family(
+                    font.font_family
+                        .as_deref()
+                        .unwrap_or(super::C4_DEFAULT_FONT_FAMILY),
+                );
+                let (background, border) = if name.starts_with("external_") {
+                    ("#999999", "#8A8A8A")
+                } else {
+                    ("#08427B", "#073B6F")
+                };
+                (
+                    name.to_owned(),
+                    C4ElementStyle {
+                        font,
+                        css_font_family,
+                        background: view.color(&format!("{name}_bg_color"), background),
+                        border: view.color(&format!("{name}_border_color"), border),
+                    },
+                )
+            })
+            .collect();
+        let common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
+            config,
+            inherited_font_stack.font_family_css().to_owned(),
+            font_size_css.to_string(),
+        );
         Self {
+            common_css,
+            person_border: crate::config::config_string(
+                config,
+                &["themeVariables", "personBorder"],
+            )
+            .unwrap_or_else(|| "hsl(240, 60%, 86.2745098039%)".to_owned()),
+            person_background: crate::config::config_string(
+                config,
+                &["themeVariables", "personBkg"],
+            )
+            .unwrap_or_else(|| "#ECECFF".to_owned()),
+            element_styles,
+            boundary_font: view.boundary_font(),
+            message_font: view.message_font(),
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
@@ -87,6 +158,30 @@ impl C4TypographyThemePlan {
             evidence: FamilyThemeEvidence::from_theme(theme),
             terminal_seal: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
+    }
+    pub(crate) fn person_border(&self) -> &str {
+        &self.person_border
+    }
+    pub(crate) fn person_background(&self) -> &str {
+        &self.person_background
+    }
+    pub(crate) fn element_style(&self, name: &str) -> Option<&C4ElementStyle> {
+        self.element_styles.get(name)
+    }
+    pub(crate) fn boundary_font(&self) -> &crate::text::TextStyle {
+        &self.boundary_font
+    }
+    pub(crate) fn message_font(&self) -> &crate::text::TextStyle {
+        &self.message_font
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_config_root_css_for_test(&mut self, config: &serde_json::Value) {
+        self.common_css = crate::svg::PreparedCommonCss::new(config, None);
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -279,10 +374,47 @@ mod tests {
             Some(&theme),
             &MermaidConfig::empty_object(),
             Some("Context"),
+            &serde_json::from_value(serde_json::json!({})).expect("empty C4 fixture"),
         );
 
         assert_eq!(plan.font_family_css(), "Inter");
         assert_eq!(plan.font_size_css(), "18px");
         assert!(plan.begin_terminal_receipt().is_some());
+    }
+
+    #[test]
+    fn prepared_element_fonts_keep_actual_types_and_independent_owners() {
+        let model = serde_json::from_value(serde_json::json!({
+            "shapes": [
+                {"alias": "custom", "typeC4Shape": "custom_type"},
+                {"alias": "empty"}
+            ]
+        }))
+        .expect("C4 actual-type fixture");
+        let config = MermaidConfig::from_value(serde_json::json!({"c4": {
+            "custom_typeFontFamily": "  Custom Sans ;  ", "custom_typeFontSize": "19",
+            "custom_typeFontWeight": 600, "custom_type_bg_color": "var(--card)",
+            "boundaryFontFamily": "", "boundaryFontSize": 21,
+            "messageFontFamily": "Message Sans", "messageFontSize": 17
+        }}));
+        let plan = C4TypographyThemePlan::resolve(None, &config, None, &model);
+        let actual = plan
+            .element_style("custom_type")
+            .expect("actual type bound");
+        assert_eq!(actual.font.font_family.as_deref(), Some("Custom Sans"));
+        assert_eq!(actual.font.font_size, 19.0);
+        assert_eq!(actual.font.font_weight.as_deref(), Some("600"));
+        assert_eq!(actual.background, "var(--card)");
+        assert!(
+            plan.element_style("").is_some(),
+            "default model type is bound"
+        );
+        assert_eq!(plan.boundary_font().font_family.as_deref(), Some(""));
+        assert_eq!(plan.boundary_font().font_size, 21.0);
+        assert_eq!(plan.message_font().font_size, 17.0);
+        assert_eq!(
+            plan.element_style("external_person").unwrap().background,
+            "#999999"
+        );
     }
 }

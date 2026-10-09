@@ -9,7 +9,10 @@ use merman_core::diagrams::git_graph::{
 };
 use std::collections::HashMap;
 
+mod css_binding;
 mod theme;
+
+pub(crate) use css_binding::GitGraphCssBinding;
 
 pub(crate) use theme::{
     GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,

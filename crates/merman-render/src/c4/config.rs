@@ -95,7 +95,22 @@ impl<'a> C4ConfigView<'a> {
         C4Look::from_diagram_look(config_diagram_look(self.effective_config))
     }
 
+    #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> C4LayoutSettings {
+        self.layout_settings_with_prepared_fonts(&self.boundary_font(), &self.message_font())
+    }
+
+    pub(crate) fn shape_padding(&self) -> f64 {
+        self.c4_f64("c4ShapePadding")
+            .unwrap_or(DEFAULT_C4_SHAPE_PADDING)
+            .max(0.0)
+    }
+
+    pub(crate) fn layout_settings_with_prepared_fonts(
+        &self,
+        boundary: &TextStyle,
+        message: &TextStyle,
+    ) -> C4LayoutSettings {
         C4LayoutSettings {
             look: self.look(),
             diagram_margin_x: self
@@ -120,16 +135,12 @@ impl<'a> C4ConfigView<'a> {
             next_line_padding_x: self
                 .c4_f64("nextLinePaddingX")
                 .unwrap_or(DEFAULT_NEXT_LINE_PADDING_X),
-            boundary_font_family: Some(self.font_family("boundaryFontFamily")),
-            boundary_font_size: self
-                .c4_f64("boundaryFontSize")
-                .unwrap_or(DEFAULT_BOUNDARY_FONT_SIZE),
-            boundary_font_weight: self.font_weight("boundaryFontWeight"),
-            message_font_family: Some(self.font_family("messageFontFamily")),
-            message_font_size: self
-                .c4_f64("messageFontSize")
-                .unwrap_or(DEFAULT_MESSAGE_FONT_SIZE),
-            message_font_weight: self.font_weight("messageFontWeight"),
+            boundary_font_family: boundary.font_family.clone(),
+            boundary_font_size: boundary.font_size,
+            boundary_font_weight: boundary.font_weight.clone(),
+            message_font_family: message.font_family.clone(),
+            message_font_size: message.font_size,
+            message_font_weight: message.font_weight.clone(),
             use_max_width: self.use_max_width(),
         }
     }

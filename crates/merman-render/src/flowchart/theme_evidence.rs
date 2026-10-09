@@ -1035,40 +1035,6 @@ impl FlowchartNodeThemeStyle {
     pub(crate) fn has_label_fill_route(&self) -> bool {
         self.label.fill.is_some()
     }
-
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Emits independent node paint facets with source precedence and terminal evidence."
-    )]
-    pub(crate) fn append_inline_style(
-        &self,
-        out: &mut String,
-        fill_precedence: FlowchartFacetPrecedence,
-        stroke_precedence: FlowchartFacetPrecedence,
-        stroke_width_precedence: FlowchartFacetPrecedence,
-        stroke_dasharray_precedence: FlowchartFacetPrecedence,
-        fill_emitted: bool,
-        stroke_emitted: bool,
-        stroke_width_emitted: bool,
-        stroke_dasharray_emitted: bool,
-    ) {
-        if let Some(fill) = self.fill_value(fill_precedence, fill_emitted) {
-            push_inline_declaration(out, "fill", fill);
-        }
-        if let Some(stroke) = self.stroke_value(stroke_precedence, stroke_emitted) {
-            push_inline_declaration(out, "stroke", stroke);
-        }
-        if let Some(stroke_width) =
-            self.stroke_width_value(stroke_width_precedence, stroke_width_emitted)
-        {
-            push_inline_declaration(out, "stroke-width", &format!("{stroke_width}px"));
-        }
-        if let Some(stroke_dasharray) =
-            self.stroke_dasharray_value(stroke_dasharray_precedence, stroke_dasharray_emitted)
-        {
-            push_inline_declaration(out, "stroke-dasharray", stroke_dasharray);
-        }
-    }
 }
 
 fn resolve_label_theme_style(
@@ -3593,53 +3559,6 @@ mod tests {
         assert_eq!(
             complete_evidence.applied_capabilities(),
             BTreeSet::from([ThemeCapability::SolidPaint])
-        );
-    }
-
-    #[test]
-    fn inline_style_preserves_existing_declarations_and_emitted_facets() {
-        let style = FlowchartNodeThemeStyle {
-            fill: Some(FlowchartPaintOutcome::Candidate {
-                rule_index: 0,
-                value: "#ef4444".to_string(),
-            }),
-            ordinal_palette_fill: None,
-            stroke: Some(FlowchartPaintOutcome::Candidate {
-                rule_index: 0,
-                value: "#2563eb".to_string(),
-            }),
-            stroke_width: Some(FlowchartScalarOutcome::Candidate {
-                rule_index: 0,
-                value: 2.5,
-            }),
-            stroke_dasharray: Some(FlowchartDasharrayOutcome::Candidate {
-                rule_index: 0,
-                value: "4 2".to_string(),
-            }),
-            radius: None,
-            effect: None,
-            matched_rules: MatchedThemeRules::from_indices([0]),
-            residual_rules: BTreeMap::new(),
-            incomplete_rules: BTreeSet::new(),
-            label: FlowchartLabelThemeStyle::default(),
-        };
-        let mut inline = "opacity:0.5".to_string();
-
-        style.append_inline_style(
-            &mut inline,
-            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
-            no_override(),
-            no_override(),
-            no_override(),
-            true,
-            true,
-            true,
-            true,
-        );
-
-        assert_eq!(
-            inline,
-            "opacity:0.5;stroke:#2563eb !important;stroke-width:2.5px !important;stroke-dasharray:4 2 !important"
         );
     }
 

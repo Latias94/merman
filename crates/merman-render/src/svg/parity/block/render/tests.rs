@@ -155,7 +155,6 @@ fn render_block_direct_with_edge_theme(
         )
         .expect("background theme"),
         &typography_theme,
-        effective_config,
         &execution,
     )
 }

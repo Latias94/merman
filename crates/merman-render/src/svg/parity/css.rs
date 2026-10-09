@@ -212,7 +212,7 @@ fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct MermaidCommonNeoCss {
     node_border: String,
     use_gradient: bool,
@@ -223,21 +223,42 @@ struct MermaidCommonNeoCss {
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
 ))]
 #[derive(Debug)]
-pub(crate) struct PreparedFlowchartNeoCss(MermaidCommonNeoCss);
+pub(crate) struct PreparedCommonNeoCss(MermaidCommonNeoCss);
 
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
 ))]
-impl PreparedFlowchartNeoCss {
+impl PreparedCommonNeoCss {
     pub(crate) fn new(config: &serde_json::Value) -> Self {
         Self(MermaidCommonNeoCss::new(config))
     }
 
+    #[cfg(feature = "diagram-usecase")]
+    pub(super) fn write(
+        &self,
+        out: &mut impl SvgOutput,
+        diagram_id: impl SvgDiagramIdValue,
+    ) -> Result<()> {
+        write_mermaid_common_neo_css(
+            out,
+            CssSelectorDiagramId(diagram_id),
+            FragmentDiagramId(diagram_id),
+            &self.0,
+        )
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     pub(super) fn write_with_ids(
         &self,
         out: &mut impl SvgOutput,
@@ -299,19 +320,6 @@ where
     }
 }
 
-pub(super) fn write_mermaid_common_neo_css_for_config<I: SvgDiagramIdValue>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-) -> Result<()> {
-    write_mermaid_common_neo_css(
-        out,
-        CssSelectorDiagramId(diagram_id),
-        FragmentDiagramId(diagram_id),
-        &MermaidCommonNeoCss::new(effective_config),
-    )
-}
-
 fn write_mermaid_common_neo_css<SelectorId, FragmentId>(
     out: &mut impl SvgOutput,
     selector_id: SelectorId,
@@ -325,27 +333,6 @@ where
     let neo_stroke = NeoStroke { fragment_id, css };
     let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
     write_mermaid_common_neo_css_values(out, selector_id, neo_stroke, drop_shadow, css)
-}
-
-pub(super) fn write_mermaid_common_neo_css_with_ids(
-    out: &mut impl SvgOutput,
-    selector_id: impl Copy + std::fmt::Display,
-    gradient_id: impl std::fmt::Display,
-    drop_shadow: impl std::fmt::Display,
-    effective_config: &serde_json::Value,
-) -> Result<()> {
-    let css = MermaidCommonNeoCss::new(effective_config);
-    if css.use_gradient {
-        write_mermaid_common_neo_css_values(
-            out,
-            selector_id,
-            format_args!("url(#{gradient_id})"),
-            drop_shadow,
-            &css,
-        )
-    } else {
-        write_mermaid_common_neo_css_values(out, selector_id, &css.node_border, drop_shadow, &css)
-    }
 }
 
 fn write_mermaid_common_neo_css_values(
@@ -476,7 +463,7 @@ pub(super) struct InfoCssParts {
     pub(super) line_color: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct PreparedCommonCss {
     font_family: String,
     root_font_family: String,
@@ -510,6 +497,7 @@ impl PreparedCommonCss {
 
     #[cfg(any(
         feature = "diagram-class",
+        feature = "diagram-c4",
         feature = "diagram-pie",
         feature = "diagram-gantt",
         feature = "diagram-quadrant-chart",
@@ -540,6 +528,7 @@ impl PreparedCommonCss {
     #[cfg(any(
         feature = "diagram-journey",
         feature = "diagram-kanban",
+        feature = "diagram-c4",
         feature = "diagram-requirement"
     ))]
     pub(crate) fn font_size_css(&self) -> &str {
@@ -686,23 +675,9 @@ pub(super) struct InfoCssWriter {
 }
 
 impl InfoCssWriter {
-    pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
+    pub(super) fn from_prepared(values: &PreparedCommonCss) -> Self {
         Self {
-            values: PreparedCommonCss::new(effective_config, None),
-        }
-    }
-
-    pub(super) fn with_resolved_typography(
-        effective_config: &serde_json::Value,
-        font_family: &str,
-        font_size_css: &str,
-    ) -> Self {
-        Self {
-            values: PreparedCommonCss::with_resolved_typography(
-                effective_config,
-                font_family.to_string(),
-                font_size_css.to_string(),
-            ),
+            values: values.clone(),
         }
     }
 
@@ -724,17 +699,6 @@ impl InfoCssWriter {
     }
 }
 
-pub(super) fn info_css_parts_with_config<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-) -> InfoCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    let values = PreparedCommonCss::new(effective_config, None);
-    info_css_parts_from_values(diagram_id, values)
-}
-
 pub(super) fn info_css_parts_with_font_family<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
@@ -744,23 +708,6 @@ where
     I: Copy + std::fmt::Display,
 {
     let values = PreparedCommonCss::new(effective_config, Some(font_family));
-    info_css_parts_from_values(diagram_id, values)
-}
-
-pub(super) fn info_css_parts_with_resolved_typography<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_family: &str,
-    font_size_css: &str,
-) -> InfoCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    let values = PreparedCommonCss::with_resolved_typography(
-        effective_config,
-        font_family.to_string(),
-        font_size_css.to_string(),
-    );
     info_css_parts_from_values(diagram_id, values)
 }
 
@@ -816,19 +763,6 @@ impl InheritedFontStackCssWrite {
 ///
 /// The receipt values come from successful output writes. They deliberately do not inspect or
 /// reparse the emitted stylesheet.
-pub(super) fn write_info_css_with_font_family<I>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_family: &str,
-) -> Result<InheritedFontStackCssWrite>
-where
-    I: SvgDiagramIdValue,
-{
-    let values = PreparedCommonCss::new(effective_config, Some(font_family));
-    write_prepared_info_css(out, diagram_id, &values)
-}
-
 pub(super) fn write_prepared_info_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,

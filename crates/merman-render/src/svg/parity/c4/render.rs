@@ -130,28 +130,13 @@ struct C4CssEmission {
 fn write_c4_css_with_typography(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    effective_config: &serde_json::Value,
-    typography: Option<&crate::c4::C4TypographyThemePlan>,
+    typography: &crate::c4::C4TypographyThemePlan,
 ) -> Result<C4CssEmission> {
-    let parts = typography.map_or_else(
-        || info_css_parts_with_config(diagram_id, effective_config),
-        |typography| {
-            info_css_parts_with_resolved_typography(
-                diagram_id,
-                effective_config,
-                typography.font_family_css(),
-                typography.font_size_css(),
-            )
-        },
-    );
-    out.push_str(&parts.css_prefix);
+    let common = typography.common_css();
+    common.write_prefix_with_font_emission(out, diagram_id)?;
     out.checkpoint()?;
-    let person_border = theme_token(
-        effective_config,
-        "personBorder",
-        "hsl(240, 60%, 86.2745098039%)",
-    );
-    let person_bkg = theme_token(effective_config, "personBkg", "#ECECFF");
+    let person_border = typography.person_border();
+    let person_bkg = typography.person_background();
     let _ = write!(
         out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,
@@ -161,14 +146,12 @@ fn write_c4_css_with_typography(
     // Mermaid's C4 stylesheet emits one type-specific label rule before the shared label rules.
     // The unified label renderer below relies on these selectors for the configured per-element
     // font family, size and weight; the inherited theme typography remains the root fallback.
-    let c4_cfg = C4ConfigView::new(effective_config);
     for type_name in C4_ELEMENT_TYPES {
-        let font = c4_cfg.shape_font(type_name);
-        let family = crate::config::normalize_css_font_family(
-            font.font_family
-                .as_deref()
-                .unwrap_or(C4_DEFAULT_FONT_FAMILY),
-        );
+        let style = typography
+            .element_style(type_name)
+            .expect("known prepared C4 type");
+        let font = &style.font;
+        let family = &style.css_font_family;
         let weight = font.font_weight.as_deref().unwrap_or("normal");
         let _ = write!(
             out,
@@ -197,12 +180,12 @@ fn write_c4_css_with_typography(
         diagram_id,
     );
     out.checkpoint()?;
-    let root_typography_emitted = !parts.root_rule.is_empty();
-    out.push_str(&parts.root_rule);
+    common.write_root_with_font_emission(out, diagram_id, diagram_id)?;
+    let root_typography_emitted = true;
     out.checkpoint().map(|()| C4CssEmission {
-        font_family: parts.font_family,
-        font_size_css: parts.font_size_css,
-        base_typography_emitted: parts.base_typography_emitted,
+        font_family: common.font_family().to_owned(),
+        font_size_css: common.font_size_css().to_owned(),
+        base_typography_emitted: true,
         root_typography_emitted,
     })
 }
@@ -890,12 +873,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css_emission = write_c4_css_with_typography(
-        &mut out,
-        diagram_id,
-        effective_config,
-        Some(typography_theme),
-    )?;
+    let css_emission = write_c4_css_with_typography(&mut out, diagram_id, typography_theme)?;
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_css_emission(
             &css_emission.font_family,
@@ -949,23 +927,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
                 let meta = shape_meta.get(s.alias.as_str()).copied();
-                let (default_bg_color, default_border_color) =
-                    if s.type_c4_shape.starts_with("external_") {
-                        ("#999999", "#8A8A8A")
-                    } else {
-                        ("#08427B", "#073B6F")
-                    };
-                let bg_color = meta.and_then(|m| m.bg_color.clone()).unwrap_or_else(|| {
-                    c4_cfg.color(&format!("{}_bg_color", s.type_c4_shape), default_bg_color)
-                });
+                let element_style = typography_theme
+                    .element_style(&s.type_c4_shape)
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!("c4: missing prepared element style {}", s.type_c4_shape),
+                    })?;
+                let bg_color = meta
+                    .and_then(|m| m.bg_color.as_deref())
+                    .unwrap_or(&element_style.background);
                 let border_color = meta
-                    .and_then(|m| m.border_color.clone())
-                    .unwrap_or_else(|| {
-                        c4_cfg.color(
-                            &format!("{}_border_color", s.type_c4_shape),
-                            default_border_color,
-                        )
-                    });
+                    .and_then(|m| m.border_color.as_deref())
+                    .unwrap_or(&element_style.border);
                 let font_color = meta
                     .and_then(|m| m.font_color.clone())
                     .unwrap_or_else(|| "#FFFFFF".to_string());
@@ -994,8 +966,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     &mut out,
                     s,
                     node_shape,
-                    &bg_color,
-                    &border_color,
+                    bg_color,
+                    border_color,
                     look,
                     options.work_meter(),
                     &hand_drawn_randomness,
@@ -1025,7 +997,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             .filter(|(_, block)| block.is_some())
                             .count()
                             .saturating_sub(1) as f64;
-                let padding = c4_cfg.layout_settings().c4_shape_padding;
+                let padding = c4_cfg.shape_padding();
                 let label_transform = match node_shape {
                     crate::c4::C4NodeShape::Person => {
                         let head_radius = (s.width * 0.23).clamp(16.0, 56.0);
@@ -1133,7 +1105,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 }
                 boundary_emission_ordinal = boundary_emission_ordinal.saturating_add(1);
 
-                let boundary_font = c4_cfg.boundary_font();
+                let boundary_font = typography_theme.boundary_font();
                 let boundary_family = boundary_font
                     .font_family
                     .as_deref()
@@ -1295,7 +1267,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             + (rel.end_point.y - rel.start_point.y).abs() / 2.0
             + offset_y;
 
-        let message_font = c4_cfg.message_font();
+        let message_font = typography_theme.message_font();
         let message_family = message_font
             .font_family
             .as_deref()
@@ -1487,7 +1459,7 @@ mod tests {
         write_c4_css_with_typography(
             &mut css,
             "c4",
-            &json!({
+            &prepared_css_for_test(&json!({
                 "themeVariables": {
                     "personBorder": "#112233",
                     "personBkg": "#445566",
@@ -1495,8 +1467,7 @@ mod tests {
                     "nodeBorder": "#aabbcc",
                     "strokeWidth": 2
                 }
-            }),
-            None,
+            })),
         )
         .expect("write C4 CSS");
 
@@ -1522,13 +1493,24 @@ mod tests {
         write_c4_css_with_typography(
             &mut css,
             "c4",
-            &json!({
+            &prepared_css_for_test(&json!({
                 "fontFamily": authored_font_family,
-            }),
-            None,
+            })),
         )
         .expect("write C4 CSS");
 
         assert!(css.contains(authored_font_family));
+    }
+
+    fn prepared_css_for_test(config: &serde_json::Value) -> crate::c4::C4TypographyThemePlan {
+        let model = serde_json::from_value(json!({})).expect("empty C4 model");
+        let mut plan = crate::c4::C4TypographyThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::from_value(config.clone()),
+            None,
+            &model,
+        );
+        plan.use_config_root_css_for_test(config);
+        plan
     }
 }

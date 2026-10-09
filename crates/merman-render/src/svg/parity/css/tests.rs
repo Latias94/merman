@@ -124,14 +124,14 @@ fn shared_css_keeps_selectors_and_url_fragments_in_their_own_escaping_domains() 
 #[test]
 fn neo_css_accepts_renderer_owned_resource_ids() {
     let mut css = String::new();
-    write_mermaid_common_neo_css_with_ids(
-        &mut css,
-        "diag",
-        "document-gradient-7",
-        "url(#document-shadow-9)",
-        &serde_json::json!({ "themeVariables": { "useGradient": true } }),
-    )
-    .unwrap();
+    PreparedCommonNeoCss::new(&serde_json::json!({ "themeVariables": { "useGradient": true } }))
+        .write_with_ids(
+            &mut css,
+            "diag",
+            "document-gradient-7",
+            "url(#document-shadow-9)",
+        )
+        .unwrap();
     assert!(css.contains("stroke:url(#document-gradient-7)"));
     assert!(css.contains("filter:url(#document-shadow-9)"));
     assert!(!css.contains("url(#diag-gradient)"));
@@ -145,7 +145,8 @@ fn resolved_typography_owns_the_root_variable_and_receipt() {
         "themeVariables": { "fontFamily": "Arial, sans-serif" }
     });
     let mut css = String::new();
-    let receipt = write_info_css_with_font_family(&mut css, "diag", &config, "serif").unwrap();
+    let values = PreparedCommonCss::new(&config, Some("serif"));
+    let receipt = write_prepared_info_css(&mut css, "diag", &values).unwrap();
     assert!(css.ends_with("#diag :root{--mermaid-font-family:serif;}"));
     assert_eq!(receipt.root_variable_font_family_css(), "serif");
     assert_eq!(receipt.inherited_font_family_css(), "serif");

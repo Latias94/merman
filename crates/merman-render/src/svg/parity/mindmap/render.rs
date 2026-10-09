@@ -927,7 +927,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out.push_str(r#"<g class="subgraphs"/>"#);
     } else {
         out.push_str(r#"<g class="subgraphs">"#);
-        let theme = MermaidThemeAdapter::new(config.as_value()).node_diagram();
         for lane in &layout.swimlane_lanes {
             let x = lane.x - lane.width / 2.0;
             let y = lane.y - lane.height / 2.0;
@@ -941,8 +940,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 width = fmt(lane.width),
                 height = fmt(lane.height),
                 center = fmt(lane.x),
-                fill = escape_attr(&theme.cluster_bkg),
-                stroke = escape_attr(&theme.cluster_border)
+                fill = escape_attr(node_palette.cluster_background_css()),
+                stroke = escape_attr(node_palette.cluster_border_css())
             );
         }
         out.push_str("</g>");

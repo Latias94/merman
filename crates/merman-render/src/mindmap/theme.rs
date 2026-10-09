@@ -205,6 +205,8 @@ pub(crate) struct MindmapNodePalettePlan {
     node_terminal_receipt: OnceLock<MindmapNodePaletteReceipt>,
     edge_terminal_receipt: OnceLock<MindmapEdgeStrokeReceipt>,
     inherited_font_stack: InheritedFontStackPlan,
+    cluster_background_css: Box<str>,
+    cluster_border_css: Box<str>,
 }
 
 #[derive(Debug)]
@@ -741,11 +743,27 @@ impl MindmapNodePalettePlan {
             node_terminal_receipt: OnceLock::new(),
             edge_terminal_receipt: OnceLock::new(),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
+            cluster_background_css: config
+                .get_str("themeVariables.clusterBkg")
+                .unwrap_or("#ffffde")
+                .into(),
+            cluster_border_css: config
+                .get_str("themeVariables.clusterBorder")
+                .unwrap_or("#aaaa33")
+                .into(),
         })
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn cluster_background_css(&self) -> &str {
+        &self.cluster_background_css
+    }
+
+    pub(crate) fn cluster_border_css(&self) -> &str {
+        &self.cluster_border_css
     }
 
     pub(crate) fn terminal_decision_for_node(
@@ -1286,6 +1304,37 @@ mod tests {
             .collect::<Vec<_>>();
         serde_json::from_value(json!({ "nodes": nodes, "edges": [] }))
             .expect("Mindmap theme-plan fixture")
+    }
+
+    #[test]
+    fn swimlane_paints_preserve_defaults_and_opaque_config_without_a_theme() {
+        let model = MindmapDiagramRenderModel::default();
+        for (config, background, border) in [
+            (json!({}), "#ffffde", "#aaaa33"),
+            (
+                json!({"themeVariables": {
+                    "clusterBkg": "var(--lane-background)",
+                    "clusterBorder": "currentColor"
+                }}),
+                "var(--lane-background)",
+                "currentColor",
+            ),
+            (
+                json!({"themeVariables": {"clusterBkg": 17, "clusterBorder": false}}),
+                "#ffffde",
+                "#aaaa33",
+            ),
+        ] {
+            let plan = MindmapNodePalettePlan::resolve(
+                None,
+                &MermaidConfig::from_value(config),
+                &model,
+                &work_meter(),
+            )
+            .expect("prepare Mindmap swimlane paint");
+            assert_eq!(plan.cluster_background_css(), background);
+            assert_eq!(plan.cluster_border_css(), border);
+        }
     }
 
     fn resolved_node_palette(colors: &[&str], static_fill: Option<&str>) -> ResolvedDiagramTheme {

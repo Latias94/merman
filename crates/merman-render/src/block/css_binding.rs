@@ -2,6 +2,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub(crate) struct BlockCssThemeBinding {
+    pub(crate) look_defs: crate::svg::PreparedLookDefs,
     pub(crate) text_color: String,
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
@@ -111,6 +112,7 @@ impl BlockCssThemeBinding {
             Vec::new()
         };
         Ok(Self {
+            look_defs: crate::svg::PreparedLookDefs::new(config),
             text_color,
             node_text_color,
             title_color,

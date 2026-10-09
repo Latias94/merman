@@ -13,9 +13,10 @@ use std::sync::Arc;
 mod dagre;
 mod layout;
 mod measure;
+mod theme;
 
 pub(crate) use measure::styles as compiled_styles;
-pub(crate) use measure::text_style;
+pub(crate) use theme::UsecaseCssBinding;
 
 /// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
 /// Keep the source label intact for accessibility while sharing its rendered text with measurement.
@@ -97,6 +98,7 @@ pub(crate) struct UsecaseEdgePlan {
 
 #[derive(Debug)]
 pub(crate) struct UsecasePreparedArtifact {
+    pub(crate) css_binding: UsecaseCssBinding,
     pub(crate) layout: UsecaseDiagramLayout,
     pub(crate) nodes: Vec<UsecaseNodePlan>,
     pub(crate) edges: Vec<UsecaseEdgePlan>,
@@ -236,13 +238,21 @@ pub(crate) fn prepare_usecase_diagram(
     work_meter: Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
+    work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+    let css_binding = UsecaseCssBinding::new(effective_config);
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (mut nodes, mut edges) =
-        measure::measure(model, effective_config, measurer, math_renderer, &mut work)?;
+    let (mut nodes, mut edges) = measure::measure(
+        model,
+        effective_config,
+        &css_binding,
+        measurer,
+        math_renderer,
+        &mut work,
+    )?;
     if crate::layout_backend::resolve_graph_layout(effective_config).backend
         == crate::layout_backend::GraphLayoutBackend::Dagre
     {
-        dagre::expand_self_loops(&mut nodes, &mut edges, effective_config, &mut work)?;
+        dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
     }
     let mut layout = layout::layout(
         model,
@@ -256,6 +266,7 @@ pub(crate) fn prepare_usecase_diagram(
     let edge_paths =
         layout::prepare_edge_paths(&mut layout, &nodes, &edges, effective_config, &mut work)?;
     Ok(UsecasePreparedArtifact {
+        css_binding,
         layout,
         nodes,
         edges,

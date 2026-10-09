@@ -56,42 +56,9 @@ impl std::fmt::Display for GitGraphBranchLabelStyle<'_> {
 
 const GITGRAPH_NAMED_COLOR_COUNT: usize = 8;
 
-fn gitgraph_theme_name(effective_config: &serde_json::Value) -> String {
-    config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
-}
-
-fn gitgraph_theme_is_color(theme: &str) -> bool {
-    matches!(theme, "redux-color" | "redux-dark-color")
-}
-
-fn gitgraph_theme_is_neo(theme: &str) -> bool {
-    matches!(theme, "neo" | "neo-dark")
-}
-
-fn gitgraph_theme_is_dark(theme: &str) -> bool {
-    matches!(
-        theme,
-        "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
-    )
-}
-
-fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<String> {
-    effective_config
-        .get("themeVariables")
-        .and_then(|v| v.get(key))
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn gitgraph_defs<I>(
     diagram_id: I,
-    effective_config: &serde_json::Value,
+    binding: &crate::gitgraph::GitGraphCssBinding,
     primary_border: Option<&str>,
 ) -> String
 where
@@ -99,39 +66,34 @@ where
 {
     let mut out = String::new();
 
-    if config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
-            .or_else(|| primary_border.map(str::to_owned))
-            .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
-            .unwrap_or_else(|| "#9370DB".to_string());
-        let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
-            .or_else(|| {
-                config_string(
-                    effective_config,
-                    &["themeVariables", "secondaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| gradient_start.clone());
+    if binding.sources.use_gradient {
+        let gradient_start = binding
+            .gradient_start
+            .as_deref()
+            .or(primary_border)
+            .unwrap_or(&binding.primary_border);
+        let gradient_stop = binding
+            .gradient_stop
+            .as_deref()
+            .or(binding.secondary_border.as_deref())
+            .unwrap_or(gradient_start);
 
         let _ = write!(
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
             diagram_id,
-            escape_xml(&gradient_start),
-            escape_xml(&gradient_stop)
+            escape_xml(gradient_start),
+            escape_xml(gradient_stop)
         );
     }
 
-    let theme_name = gitgraph_theme_name(effective_config);
-    if config_diagram_look(effective_config).is_neo()
-        && crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name)
-    {
-        let filter_color = theme_token(effective_config, "filterColor", "#000000");
+    if binding.look_is_neo && binding.use_redux_geometry {
+        let filter_color = &binding.filter_color;
         let _ = write!(
             &mut out,
             r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
             diagram_id,
-            escape_xml(&filter_color)
+            escape_xml(filter_color)
         );
     }
 
@@ -140,7 +102,7 @@ where
 
 fn gitgraph_css(
     diagram_id: &str,
-    effective_config: &serde_json::Value,
+    binding: &crate::gitgraph::GitGraphCssBinding,
     static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
     text_colors: Option<[Option<&str>; 3]>,
@@ -152,11 +114,7 @@ fn gitgraph_css(
         .node_paint()
         .map(|plan| plan.css_values())
         .unwrap_or([None; 6]);
-    let css = super::super::css::InfoCssWriter::with_resolved_typography(
-        effective_config,
-        typography_theme.font_family_css(),
-        typography_theme.font_size_css(),
-    );
+    let css = super::super::css::InfoCssWriter::from_prepared(&binding.common);
     let css = match text_colors.and_then(|colors| colors[0]) {
         Some(color) => css.with_text_color(color),
         None => css,
@@ -166,128 +124,54 @@ fn gitgraph_css(
         None => css,
     };
     let parts = css.into_parts(diagram_id);
-    let theme_name = gitgraph_theme_name(effective_config);
-    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
-    let use_color_theme = gitgraph_theme_is_color(&theme_name);
-    let use_neo_theme = gitgraph_theme_is_neo(&theme_name);
-    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
-    let use_color_gen = crate::gitgraph::gitgraph_theme_uses_color_gen(&theme_name);
-
-    fn default_git_color(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 46.2745098039%)",
-            1 => "hsl(60, 100%, 43.5294117647%)",
-            2 => "hsl(80, 100%, 46.2745098039%)",
-            3 => "hsl(210, 100%, 46.2745098039%)",
-            4 => "hsl(180, 100%, 46.2745098039%)",
-            5 => "hsl(150, 100%, 46.2745098039%)",
-            6 => "hsl(300, 100%, 46.2745098039%)",
-            _ => "hsl(0, 100%, 46.2745098039%)",
-        }
-    }
-
-    fn default_git_branch_label(i: usize) -> &'static str {
-        match i {
-            0 | 3 => "#ffffff",
-            _ => "black",
-        }
-    }
-
-    fn default_git_inv(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(60, 100%, 3.7254901961%)",
-            1 => "rgb(0, 0, 160.5)",
-            2 => "rgb(48.8333333334, 0, 146.5000000001)",
-            3 => "rgb(146.5000000001, 73.2500000001, 0)",
-            4 => "rgb(146.5000000001, 0, 0)",
-            5 => "rgb(146.5000000001, 0, 73.2500000001)",
-            6 => "rgb(0, 146.5000000001, 0)",
-            _ => "rgb(0, 146.5000000001, 146.5000000001)",
-        }
-    }
+    let use_redux_geometry = binding.use_redux_geometry;
+    let use_color_theme = binding.sources.use_color_theme;
+    let use_neo_theme = binding.sources.use_neo_theme;
+    let use_dark_theme = binding.sources.use_dark_theme;
+    let use_color_gen = binding.sources.use_color_gen;
 
     let commit_label_font_size = typography_theme.commit_label_font_size_css();
     let tag_label_font_size = typography_theme.tag_label_font_size_css();
     let commit_label_color = text_colors
         .and_then(|colors| colors[2])
-        .map(str::to_owned)
-        .unwrap_or_else(|| theme_token(effective_config, "commitLabelColor", "#000021"));
+        .unwrap_or(&binding.commit_label_color)
+        .to_owned();
     let commit_label_background = static_paint
         .commit_label_background_css()
-        .map(str::to_owned)
-        .unwrap_or_else(|| theme_token(effective_config, "commitLabelBackground", "#ffffde"));
+        .unwrap_or(&binding.commit_label_background)
+        .to_owned();
     let tag_label_color = text_colors
         .and_then(|colors| colors[1])
-        .map(str::to_owned)
-        .unwrap_or_else(|| theme_token(effective_config, "tagLabelColor", "#131300"));
-    let tag_label_background = node_paint_values[2].map_or_else(
-        || {
-            Cow::Owned(theme_token(
-                effective_config,
-                "tagLabelBackground",
-                "#ECECFF",
-            ))
-        },
-        Cow::Borrowed,
-    );
-    let tag_label_border = node_paint_values[5].map(str::to_owned).unwrap_or_else(|| {
-        theme_token(
-            effective_config,
-            "tagLabelBorder",
-            "hsl(240, 60%, 86.2745098039%)",
-        )
-    });
-    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| {
-            let value = if value.is_nan() {
-                1.0
-            } else {
-                value.clamp(1.0, 64.0)
-            };
-            value as usize
-        })
-        .unwrap_or(12);
-    let stroke_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "strokeWidth"],
-    )
-    .unwrap_or_else(|| "1".to_string());
+        .unwrap_or(&binding.tag_label_color)
+        .to_owned();
+    let tag_label_background =
+        Cow::Borrowed(node_paint_values[2].unwrap_or(&binding.tag_label_background));
+    let tag_label_border = node_paint_values[5]
+        .unwrap_or(&binding.tag_label_border)
+        .to_owned();
+    let theme_color_limit = binding.theme_color_limit;
+    let stroke_width = &binding.stroke_width;
     let commit_line_color = branch_stroke
-        .map(str::to_owned)
-        .or_else(|| config_string(effective_config, &["themeVariables", "commitLineColor"]))
-        .unwrap_or_else(|| parts.line_color.clone());
-    let primary_color = node_paint_values[0].map_or_else(
-        || Cow::Owned(theme_token(effective_config, "primaryColor", "#ECECFF")),
-        Cow::Borrowed,
-    );
+        .or(binding.commit_line_color.as_deref())
+        .unwrap_or(&parts.line_color)
+        .to_owned();
+    let primary_color = Cow::Borrowed(node_paint_values[0].unwrap_or(&binding.primary_color));
     let node_border = node_paint_values[4]
-        .map(str::to_owned)
-        .unwrap_or_else(|| theme_token(effective_config, "nodeBorder", "#9370DB"));
-    let main_bkg = node_paint_values[1].map_or_else(
-        || Cow::Owned(theme_token(effective_config, "mainBkg", "#ECECFF")),
-        Cow::Borrowed,
-    );
-    let note_font_weight = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "noteFontWeight"],
-    )
-    .unwrap_or_else(|| "normal".to_string());
+        .unwrap_or(&binding.node_border)
+        .to_owned();
+    let main_bkg = Cow::Borrowed(node_paint_values[1].unwrap_or(&binding.main_bkg));
+    let note_font_weight = &binding.note_font_weight;
     let note_font_weight_decl = if use_redux_geometry {
         format!("font-weight:{};", note_font_weight)
     } else {
         String::new()
     };
-    let drop_shadow = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "dropShadow"],
-    )
-    .unwrap_or_else(|| "none".to_string());
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-    let border_color_array = gitgraph_theme_array(effective_config, "borderColorArray");
+    let drop_shadow = &binding.drop_shadow;
+    let use_gradient = binding.sources.use_gradient;
+    let border_color_array = &binding.border_color_array;
     // gitGraph owns its draw path instead of using rendering-util/render.ts, so it must append the
     // configured root gradient itself for every theme. Several classic themes enable gradients.
-    let defs = gitgraph_defs(diagram_id, effective_config, node_paint_values[3]);
+    let defs = gitgraph_defs(diagram_id, binding, node_paint_values[3]);
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
@@ -347,20 +231,14 @@ fn gitgraph_css(
                         facts.arrows[0] = border;
                     }
                     if use_gradient {
-                        let primary_border = if node_paint.is_some()
-                            && config_string(effective_config, &["themeVariables", "gradientStart"])
-                                .is_none()
-                        {
-                            Some(node_paint_values[3].map(Cow::Borrowed).unwrap_or_else(|| {
-                                Cow::Owned(theme_token(
-                                    effective_config,
-                                    "primaryBorderColor",
-                                    "#9370DB",
-                                ))
-                            }))
-                        } else {
-                            None
-                        };
+                        let primary_border =
+                            if node_paint.is_some() && binding.gradient_start.is_none() {
+                                Some(node_paint_values[3].map(Cow::Borrowed).unwrap_or_else(|| {
+                                    Cow::Borrowed(binding.primary_border.as_str())
+                                }))
+                            } else {
+                                None
+                            };
                         for label_i in 0..theme_color_limit {
                             let _ = write!(
                                 &mut out,
@@ -378,18 +256,9 @@ fn gitgraph_css(
                         }
                     }
                 } else {
-                    let git =
-                        theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
-                    let branch_label = theme_token(
-                        effective_config,
-                        &format!("gitBranchLabel{ci}"),
-                        default_git_branch_label(ci),
-                    );
-                    let git_inv = theme_token(
-                        effective_config,
-                        &format!("gitInv{ci}"),
-                        default_git_inv(ci),
-                    );
+                    let git = binding.named[ci].git.clone();
+                    let branch_label = binding.named[ci].branch_label.clone();
+                    let git_inv = binding.named[ci].inverse.clone();
                     let _ = write!(
                         &mut out,
                         r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
@@ -550,17 +419,9 @@ fn gitgraph_css(
                     surface[i] = false;
                 }
             }
-            let git = theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
-            let branch_label = theme_token(
-                effective_config,
-                &format!("gitBranchLabel{ci}"),
-                default_git_branch_label(ci),
-            );
-            let git_inv = theme_token(
-                effective_config,
-                &format!("gitInv{ci}"),
-                default_git_inv(ci),
-            );
+            let git = binding.named[ci].git.clone();
+            let branch_label = binding.named[ci].branch_label.clone();
+            let git_inv = binding.named[ci].inverse.clone();
             let _ = write!(
                 &mut out,
                 r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
@@ -705,81 +566,15 @@ fn gitgraph_css(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct GitGraphTerminalPaletteSources {
-    use_color_theme: bool,
-    use_neo_theme: bool,
-    use_dark_theme: bool,
-    use_color_gen: bool,
-    use_gradient: bool,
-    has_border_color_array: bool,
-}
-
-impl GitGraphTerminalPaletteSources {
-    fn from_config(effective_config: &serde_json::Value) -> Self {
-        let theme_name = gitgraph_theme_name(effective_config);
-        Self {
-            use_color_theme: gitgraph_theme_is_color(&theme_name),
-            use_neo_theme: gitgraph_theme_is_neo(&theme_name),
-            use_dark_theme: gitgraph_theme_is_dark(&theme_name),
-            use_color_gen: crate::gitgraph::gitgraph_theme_uses_color_gen(&theme_name),
-            use_gradient: config_bool(effective_config, &["themeVariables", "useGradient"])
-                .unwrap_or(false),
-            has_border_color_array: !gitgraph_theme_array(effective_config, "borderColorArray")
-                .is_empty(),
-        }
-    }
-
-    fn branch_slot(self, slot: usize) -> crate::gitgraph::GitGraphPaletteSource {
-        if !self.use_color_gen {
-            crate::gitgraph::GitGraphPaletteSource::Git(slot)
-        } else if self.use_neo_theme {
-            if slot == 0 {
-                crate::gitgraph::GitGraphPaletteSource::NodeBorder
-            } else {
-                crate::gitgraph::GitGraphPaletteSource::Git(slot)
-            }
-        } else if !self.use_color_theme || slot == 0 || !self.has_border_color_array {
-            crate::gitgraph::GitGraphPaletteSource::NodeBorder
-        } else {
-            crate::gitgraph::GitGraphPaletteSource::BorderColorArray
-        }
-    }
-
-    fn state(self) -> crate::gitgraph::GitGraphPaletteSource {
-        if self.use_color_gen {
-            crate::gitgraph::GitGraphPaletteSource::MainBackground
-        } else {
-            crate::gitgraph::GitGraphPaletteSource::PrimaryColor
-        }
-    }
-
-    fn branch_label_background(
-        self,
-        slot: usize,
-    ) -> Option<crate::gitgraph::GitGraphPaletteSource> {
-        if !self.use_color_gen {
-            Some(crate::gitgraph::GitGraphPaletteSource::Git(slot))
-        } else if self.use_neo_theme {
-            self.use_gradient
-                .then_some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
-        } else if !self.use_color_theme || slot == 0 || self.use_dark_theme {
-            Some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
-        } else {
-            Some(self.branch_slot(slot))
-        }
-    }
-}
-
 fn gitgraph_node_palette_surface_ownership(
-    effective_config: &serde_json::Value,
+    binding: &crate::gitgraph::GitGraphCssBinding,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
 ) -> crate::gitgraph::GitGraphPaletteSurfaceOwnership {
     let mut ownership = crate::gitgraph::GitGraphPaletteSurfaceOwnership::default();
     if !node_palette.has_palette_assignment() {
         return ownership;
     }
-    let sources = GitGraphTerminalPaletteSources::from_config(effective_config);
+    let sources = binding.sources;
 
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
         if node_palette.surface_is_visible(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot)
@@ -1039,16 +834,15 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
     out.checkpoint()?;
 
-    let theme_name = gitgraph_theme_name(effective_config);
-    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
-    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
-    let look = config_diagram_look(effective_config);
+    let binding = typography_theme.css_binding();
+    let use_redux_geometry = binding.use_redux_geometry;
+    let use_dark_theme = binding.sources.use_dark_theme;
     let title = diagram_title
         .map(str::trim)
         .filter(|title| !title.is_empty());
     let css = gitgraph_css(
         diagram_id.semantic_str(),
-        effective_config,
+        binding,
         static_paint,
         typography_theme,
         node_palette
@@ -1057,8 +851,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             .then(|| node_palette.text_paint().css_colors()),
         node_palette.branch_stylesheet_stroke(),
     );
-    let node_palette_ownership =
-        gitgraph_node_palette_surface_ownership(effective_config, node_palette);
+    let node_palette_ownership = gitgraph_node_palette_surface_ownership(binding, node_palette);
     let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
     let mut branch_stroke_receipt: Option<crate::gitgraph::GitGraphBranchStrokeReceipt> =
         node_palette.begin_branch_stroke_receipt();
@@ -1180,22 +973,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     } else {
         0.0
     };
-    let branch_label_style = if look.is_neo() {
+    let branch_label_style = if binding.look_is_neo {
         if use_redux_geometry {
             GitGraphBranchLabelStyle::ScopedDropShadow(diagram_id)
         } else {
-            GitGraphBranchLabelStyle::Configured(
-                crate::config::config_css_number_or_string(
-                    effective_config,
-                    &["themeVariables", "dropShadow"],
-                )
-                .unwrap_or_else(|| "none".to_string()),
-            )
+            GitGraphBranchLabelStyle::Configured(binding.drop_shadow.clone())
         }
     } else {
         GitGraphBranchLabelStyle::None
     };
-    let branch_data_look = if look.is_neo() {
+    let branch_data_look = if binding.look_is_neo {
         r#" data-look="neo""#
     } else {
         ""
@@ -2244,7 +2031,7 @@ mod tests {
         let static_paint = static_paint_plan();
         let css = gitgraph_css(
             "git-measure",
-            &config,
+            typography_theme.css_binding(),
             &static_paint,
             &typography_theme,
             None,
@@ -2296,7 +2083,15 @@ mod tests {
         let config = json!({});
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None).css;
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        )
+        .css;
 
         assert!(css.contains(
             "#git .commit-id,#git .commit-msg,#git .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:\"trebuchet ms\",verdana,arial,sans-serif;}"
@@ -2326,7 +2121,14 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None);
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        );
 
         assert!(css.defs.is_empty());
         assert!(
@@ -2366,6 +2168,116 @@ mod tests {
     }
 
     #[test]
+    fn prepared_palette_preserves_selector_range_and_filtered_array_order() {
+        let config = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 64.8,
+                "borderColorArray": [null, "red", 7, "blue"],
+                "nodeBorder": "black"
+            }
+        });
+        let typography = typography_plan(&config);
+        let paint = static_paint_plan();
+        let css = gitgraph_css(
+            "git",
+            typography.css_binding(),
+            &paint,
+            &typography,
+            None,
+            None,
+        );
+        assert!(css.css.contains("#git .commit1{stroke:blue;fill:blue;}"));
+        assert!(css.css.contains("#git .commit63{stroke:blue;fill:blue;}"));
+        assert!(!css.css.contains("#git .commit64{"));
+        assert_eq!(crate::gitgraph::palette_slot(-1), 7);
+        assert_eq!(crate::gitgraph::palette_slot(63), 7);
+
+        let config = json!({"themeVariables": {"THEME_COLOR_LIMIT": 8.9, "git0": "var(--slot0)"}});
+        let typography = typography_plan(&config);
+        let css = gitgraph_css(
+            "git",
+            typography.css_binding(),
+            &paint,
+            &typography,
+            None,
+            None,
+        );
+        assert!(
+            css.css
+                .contains("#git .commit0{stroke:var(--slot0);fill:var(--slot0);}")
+        );
+        assert!(css.css.contains("#git .commit7{"));
+        assert!(!css.css.contains("#git .commit8{"));
+    }
+
+    #[test]
+    fn prepared_gradient_preserves_missing_and_authored_empty_start() {
+        let config = json!({
+            "look": "neo", "theme": "redux",
+            "themeVariables": {"useGradient": true, "filterColor": "var(--shadow)"}
+        });
+        let typography = typography_plan(&config);
+        let defs = gitgraph_defs("git", typography.css_binding(), Some("var(--typed-border)"));
+        assert!(defs.contains("stop-color=\"var(--typed-border)\""));
+        assert!(defs.contains("flood-color=\"var(--shadow)\""));
+
+        let config = json!({
+            "theme": "neo",
+            "themeVariables": {"useGradient": true, "gradientStart": "", "gradientStop": "currentColor"}
+        });
+        let typography = typography_plan(&config);
+        let defs = gitgraph_defs("git", typography.css_binding(), Some("var(--typed-border)"));
+        assert!(defs.contains("stop-color=\"\""));
+        assert!(defs.contains("stop-color=\"currentColor\""));
+        assert!(!defs.contains("var(--typed-border)"));
+        assert!(!defs.contains("<filter"));
+    }
+
+    #[test]
+    fn prepared_gradient_preserves_coerced_boolean_defs_and_css() {
+        for (value, enabled) in [
+            (json!(true), true),
+            (json!("true"), true),
+            (json!(" YES "), true),
+            (json!("on"), true),
+            (json!("1"), true),
+            (json!(2), true),
+            (json!(-1), true),
+            (json!(false), false),
+            (json!("false"), false),
+            (json!(" OFF "), false),
+            (json!("no"), false),
+            (json!("0"), false),
+            (json!(0), false),
+            (json!("unknown"), false),
+            (json!(1.5), false),
+            (json!(null), false),
+        ] {
+            let config = json!({
+                "theme": "neo",
+                "themeVariables": {"useGradient": value, "mainBkg": "var(--background)"}
+            });
+            let typography = typography_plan(&config);
+            let paint = static_paint_plan();
+            let css = gitgraph_css(
+                "git",
+                typography.css_binding(),
+                &paint,
+                &typography,
+                None,
+                None,
+            );
+            assert_eq!(css.defs.contains("<linearGradient"), enabled, "{value}");
+            assert_eq!(
+                css.css.contains("#git .label11{fill:var(--background);stroke:url(#git-gradient);stroke-width:1;}"),
+                enabled,
+                "{value}",
+            );
+        }
+    }
+
+    #[test]
     fn gitgraph_css_uses_redux_color_theme_rules() {
         let config = json!({
             "theme": "redux-color",
@@ -2379,7 +2291,15 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None).css;
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        )
+        .css;
 
         assert!(css.contains("#git .commit0{stroke:#101010;}"));
         assert!(css.contains("#git .commit-highlight0{stroke:#101010;fill:#ffffff;}"));
@@ -2411,7 +2331,14 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None);
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        );
 
         assert!(
             css.defs

@@ -869,7 +869,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
-                use_gradient: ctx.typography_theme.css_binding().use_gradient,
+                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },
@@ -897,7 +897,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                use_gradient: ctx.typography_theme.css_binding().use_gradient,
+                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
                 timing: ctx.timing,
             },
         );

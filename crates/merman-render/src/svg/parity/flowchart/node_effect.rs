@@ -1,6 +1,7 @@
-//! Node-owned shadow geometry shared by viewport preparation and terminal emission.
+//! Prepared node facet selections and shadow geometry shared by bounds and terminal emission.
 
 use rustc_hash::FxHashMap;
+use std::fmt::Write as _;
 
 use super::render::node::helpers::resolve_node_render_info;
 use super::*;
@@ -13,8 +14,158 @@ use crate::flowchart::{
 pub(super) struct PreparedNodeEffect {
     pub(super) style: FlowchartNodeThemeStyle,
     pub(super) source: FlowchartCompiledStyles,
+    pub(super) selection: PreparedNodeSelection,
     pub(super) shadow: Option<MaterializedShadowEffect>,
     bounds: Option<(f64, f64, f64, f64)>,
+}
+
+#[derive(Debug)]
+pub(super) struct PreparedNodeSelection {
+    pub(super) inline_style: Option<String>,
+    pub(super) theme_style: String,
+    pub(super) fill: String,
+    pub(super) stroke: String,
+    pub(super) stroke_width: f32,
+    effect_stroke_width: f32,
+    pub(super) stroke_dasharray: String,
+    pub(super) typed_radius: Option<f32>,
+    pub(super) source_radii: [Option<f64>; 2],
+    pub(super) configured_radius: Option<f64>,
+    pub(super) typed_label_fill: Option<String>,
+    pub(super) typed_fill_selected: bool,
+    pub(super) typed_stroke_selected: bool,
+    pub(super) typed_stroke_width_selected: bool,
+    pub(super) typed_stroke_dasharray_selected: bool,
+    pub(super) typed_font_stack_selected: bool,
+    pub(super) typed_font_size_selected: bool,
+}
+
+impl PreparedNodeSelection {
+    fn prepare(
+        ctx: &FlowchartRenderCtx<'_>,
+        source: &FlowchartCompiledStyles,
+        style: &FlowchartNodeThemeStyle,
+    ) -> Self {
+        let fill = style.fill_value(
+            FlowchartFacetPrecedence::new(
+                source.source_fill_status(),
+                ctx.node_fill_config_override,
+            ),
+            true,
+        );
+        let stroke = style.stroke_value(
+            FlowchartFacetPrecedence::new(
+                source.source_stroke_status(),
+                ctx.node_border_config_override,
+            ),
+            true,
+        );
+        let stroke_width = style.stroke_width_value(
+            FlowchartFacetPrecedence::new(
+                source.source_stroke_width_status(),
+                ctx.node_stroke_width_config_override,
+            ),
+            true,
+        );
+        let stroke_dasharray = style.stroke_dasharray_value(
+            FlowchartFacetPrecedence::new(source.source_stroke_dasharray_status(), false),
+            true,
+        );
+        let typed_radius = style.radius_value(
+            FlowchartFacetPrecedence::new(
+                source.source_radius_status(),
+                ctx.node_corner_radius_config_override,
+            ),
+            true,
+        );
+        let typed_label_fill = style.label_fill_value(
+            FlowchartFacetPrecedence::new(
+                source.source_label_foreground_status(),
+                ctx.node_label_fill_config_override,
+            ),
+            true,
+        );
+        let mut theme_style = String::new();
+        for (property, value) in [("fill", fill), ("stroke", stroke)] {
+            if let Some(value) = value {
+                if !theme_style.is_empty() {
+                    theme_style.push(';');
+                }
+                let _ = write!(theme_style, "{property}:{value} !important");
+            }
+        }
+        if let Some(value) = stroke_width {
+            if !theme_style.is_empty() {
+                theme_style.push(';');
+            }
+            let _ = write!(theme_style, "stroke-width:{value}px !important");
+        }
+        if let Some(value) = stroke_dasharray {
+            if !theme_style.is_empty() {
+                theme_style.push(';');
+            }
+            let _ = write!(theme_style, "stroke-dasharray:{value} !important");
+        }
+        let inline_style = (!theme_style.is_empty()).then(|| {
+            let mut inline_style = source.node_style.clone();
+            if !inline_style.is_empty() {
+                inline_style.push(';');
+            }
+            inline_style.push_str(&theme_style);
+            inline_style
+        });
+        let selected_width = source
+            .admitted_stroke_width_value()
+            .or_else(|| {
+                ctx.node_stroke_width_config_override
+                    .then_some(ctx.node_stroke_width)
+            })
+            .or(stroke_width);
+        Self {
+            inline_style,
+            theme_style,
+            fill: source
+                .fill
+                .as_deref()
+                .or(fill)
+                .unwrap_or(&ctx.node_fill_color)
+                .to_owned(),
+            stroke: source
+                .stroke
+                .as_deref()
+                .or(stroke)
+                .unwrap_or(&ctx.node_border_color)
+                .to_owned(),
+            stroke_width: selected_width.unwrap_or(1.3),
+            // Effect outsets retain their configured fallback; shape writers use 1.3px.
+            effect_stroke_width: selected_width.unwrap_or(ctx.node_stroke_width),
+            stroke_dasharray: source
+                .stroke_dasharray
+                .as_deref()
+                .or(stroke_dasharray)
+                .unwrap_or("0 0")
+                .trim()
+                .to_owned(),
+            typed_radius,
+            source_radii: source.rectangle_source_radii(),
+            configured_radius: (flowchart_config_look(ctx.config) == "neo"
+                && ctx.node_corner_radius_config_override)
+                .then_some(ctx.node_corner_radius),
+            typed_label_fill: typed_label_fill.map(str::to_owned),
+            typed_fill_selected: fill.is_some(),
+            typed_stroke_selected: stroke.is_some(),
+            typed_stroke_width_selected: stroke_width.is_some(),
+            typed_stroke_dasharray_selected: stroke_dasharray.is_some(),
+            typed_font_stack_selected: style.font_stack_selected(FlowchartFacetPrecedence::new(
+                source.source_font_stack_status(),
+                ctx.node_typography_config_ownership.font_stack,
+            )),
+            typed_font_size_selected: style.font_size_selected(FlowchartFacetPrecedence::new(
+                source.source_font_size_status(),
+                ctx.node_typography_config_ownership.font_size,
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -49,18 +200,7 @@ impl FlowchartNodeEffects {
             );
             let source_filter = source.source_filter_status();
             let source_stroke_width = source.source_stroke_width_status();
-            let stroke_precedence = FlowchartFacetPrecedence::new(
-                source_stroke_width,
-                ctx.node_stroke_width_config_override,
-            );
-            let stroke = source
-                .admitted_stroke_width_value()
-                .or_else(|| {
-                    ctx.node_stroke_width_config_override
-                        .then_some(ctx.node_stroke_width)
-                })
-                .or_else(|| style.stroke_width_value(stroke_precedence, true))
-                .unwrap_or(ctx.node_stroke_width);
+            let selection = PreparedNodeSelection::prepare(ctx, &source, &style);
             let geometry = if style.effect().is_some() {
                 node_shadow_geometry(info.shape, node.width, node.height)?
             } else {
@@ -73,7 +213,7 @@ impl FlowchartNodeEffects {
                 && flowchart_config_look(ctx.config) == "classic"
             {
                 if let (Some(effect), Some((_, _, width, height))) = (style.effect(), geometry) {
-                    let half_stroke = f64::from(stroke) / 2.0;
+                    let half_stroke = f64::from(selection.effect_stroke_width) / 2.0;
                     let (horizontal, vertical) =
                         if FlowchartShape::resolve(info.shape)? == FlowchartShape::Diamond {
                             // Use the full miter envelope. A smaller source miter limit or a round/
@@ -119,6 +259,7 @@ impl FlowchartNodeEffects {
                     PreparedNodeEffect {
                         style,
                         source,
+                        selection,
                         shadow,
                         bounds,
                     },

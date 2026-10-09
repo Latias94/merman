@@ -217,8 +217,6 @@ pub(crate) struct StateNodeStylePlan {
 #[derive(Debug, Clone, Copy)]
 struct StateNodeThemeBinding {
     target: ThemeTarget,
-    label_target: ThemeTarget,
-    variant: ThemeVariant,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
     composite_header_ordinal: Option<usize>,
@@ -332,16 +330,6 @@ impl StateNodeStylePlan {
     #[cfg(test)]
     pub(crate) const fn target(&self) -> ThemeTarget {
         self.binding.target
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn label_target(&self) -> ThemeTarget {
-        self.binding.label_target
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn variant(&self) -> ThemeVariant {
-        self.binding.variant
     }
 
     #[cfg(test)]
@@ -2992,8 +2980,6 @@ fn prepare_node(
         #[cfg(test)]
         binding: StateNodeThemeBinding {
             target,
-            label_target,
-            variant,
             ordinal,
             label_ordinal,
             composite_header_ordinal,

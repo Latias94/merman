@@ -58,15 +58,17 @@ pub(crate) use css::PreparedCommonCss;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
 ))]
-pub(crate) use css::PreparedFlowchartNeoCss;
+pub(crate) use css::PreparedCommonNeoCss;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
 pub(crate) use flowchart::flowchart_node_label_fill_config_override;
+pub(crate) use look_defs::PreparedLookDefs;
 pub(crate) use util::cssom_color_value;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -296,8 +298,8 @@ use css::write_pie_css;
     )
 )]
 use css::{
-    MermaidBaseCss, info_css_parts_with_config, info_css_parts_with_font_family,
-    info_css_parts_with_resolved_typography, write_mermaid_base_css_prefix_with_font_emission,
+    MermaidBaseCss, info_css_parts_with_font_family,
+    write_mermaid_base_css_prefix_with_font_emission,
     write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
     write_prepared_info_css,
 };
@@ -335,14 +337,6 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
     )
 )]
 use style::{is_text_style_key, parse_style_decl};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use theme::MermaidThemeAdapter;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -743,23 +737,6 @@ impl SvgDiagramIdValue for &str {
     }
 }
 
-#[derive(Default)]
-struct SvgComponentByteCounter {
-    bytes: usize,
-    overflowed: bool,
-}
-
-impl std::fmt::Write for SvgComponentByteCounter {
-    fn write_str(&mut self, value: &str) -> std::fmt::Result {
-        let Some(bytes) = self.bytes.checked_add(value.len()) else {
-            self.overflowed = true;
-            return Err(std::fmt::Error);
-        };
-        self.bytes = bytes;
-        Ok(())
-    }
-}
-
 /// A point captured while diagnosing one flowchart edge route.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct FlowchartEdgeTracePoint {
@@ -1097,75 +1074,6 @@ impl<'a> SvgExecution<'a> {
         self.work_meter()
             .checkpoint(OperationPhase::Emit)
             .map_err(Into::into)
-    }
-
-    /// Counts a retained SVG component through its production writer, admits the exact byte count,
-    /// and only then allocates and materializes it.
-    ///
-    /// The counting pass owns no output buffer, so authored/config-sized content is not cloned just
-    /// to establish the bound. The final whole-document check remains the authoritative
-    /// `MaxSvgBytes` admission; this earlier absolute preflight prevents one amplified component
-    /// from allocating beyond the same ceiling and is not accumulated a second time.
-    fn materialize_counted_svg_component(
-        &self,
-        component_name: &'static str,
-        count_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
-        write_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
-    ) -> Result<String> {
-        if self
-            .work_meter()
-            .policy()
-            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
-            .is_none()
-        {
-            let mut output = String::new();
-            write_component(&mut output).map_err(|_| Error::InvalidModel {
-                message: format!("failed to materialize {component_name}"),
-            })?;
-            return Ok(output);
-        }
-
-        let mut counter = SvgComponentByteCounter::default();
-        let projection = count_component(&mut counter);
-        if counter.overflowed {
-            return Err(self
-                .work_meter()
-                .terminate_svg_byte_count_overflow(
-                    crate::resources::ResourceLimitPhase::SvgOutput,
-                    OperationPhase::Emit,
-                )
-                .into());
-        }
-        projection.map_err(|_| Error::InvalidModel {
-            message: format!("failed to count {component_name}"),
-        })?;
-        let projected_bytes = counter.bytes;
-        self.work_meter()
-            .preflight_svg_byte_count(
-                projected_bytes,
-                crate::resources::ResourceLimitPhase::SvgOutput,
-                OperationPhase::Emit,
-            )
-            .map_err(Error::from)?;
-
-        let mut output = String::new();
-        output
-            .try_reserve_exact(projected_bytes)
-            .map_err(|error| Error::InvalidModel {
-                message: format!("failed to allocate {component_name}: {error}"),
-            })?;
-        write_component(&mut output).map_err(|_| Error::InvalidModel {
-            message: format!("failed to materialize {component_name}"),
-        })?;
-        if output.len() != projected_bytes {
-            return Err(Error::InvalidModel {
-                message: format!(
-                    "{component_name} byte projection drifted: projected {projected_bytes} bytes but materialized {}",
-                    output.len()
-                ),
-            });
-        }
-        Ok(output)
     }
 }
 
@@ -1520,7 +1428,6 @@ fn render_builtin_family_artifact_raw(
             artifact.marker_paint_theme(),
             artifact.label_background_theme(),
             artifact.typography_theme(),
-            effective_config_value,
             options,
         ),
         #[cfg(feature = "diagram-er")]
