@@ -13,6 +13,19 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
+The implementation is frozen at `3a11f46ba` for final acceptance. Edge typography
+is occurrence-owned in the existing edge plan; matching bases share the layout
+projection and distinct HTML terminal bases remain explicit. Unlabelled edges do
+not retain font payloads. Block class declarations and hand-drawn node wrapper
+styles are also prepared before emission, and the unused parser wrapper is removed.
+All 4,864 renderer tests passed (six skipped), strict all-feature CLI Clippy and
+format/diff checks passed, and independent review reported no confirmed findings.
+Public façade tests passed (303, two skipped) and the private theme acceptance
+library passed all 25 tests with the explicit full diagram feature set. These are
+incremental receipts. The curated feature matrix also passed all 45 builds and
+its isolated-consumer checks at the frozen implementation. Final runtime, browser,
+documentation and measurement lanes remain required before completion.
+
 `5e5f5cd0a` prepares the actual Dagre/ELK/Swimlane cluster candidates, source
 styles, final paint and title typography in the existing family artifact. Hierarchy
 consumes that candidate inventory; the obsolete cluster theme plan is removed.
@@ -60,10 +73,10 @@ resource-limit rejection was fixed by charging actual folded retained fields;
 retained bytes do not measure temporary allocation peak.
 
 - U1: Inventory complete; all 35 supported families remain in scope.
-- U2-U4: Most family terminal bindings are committed. Flowchart node source
-  typography and cluster bindings are committed. Edge source interpretation and
-  final shared ownership audit remain active work. Removing the adapter alone
-  does not close these units.
+- U2-U4: Family terminal bindings and the final Flowchart node/cluster/edge source
+  cutovers are committed. The frozen-tree source audit found no remaining production terminal
+  interpretation outside the prepared family artifacts. Feature/platform
+  verification remains open.
 - U5: Historical authorization gates, orphaned raster acceptance machinery and
   callers are removed. The final executable-call audit found no surviving invocation.
 - U6: Unused compatibility providers, fallback evidence and private conveniences
