@@ -151,7 +151,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
     let tooltip_enabled = !tooltip.trim().is_empty();
 
-    let look = flowchart_config_look(ctx.config);
+    let look = ctx.compatibility.look.as_str();
     let node_dom_id = ctx
         .document_ids
         .node(node_id)
