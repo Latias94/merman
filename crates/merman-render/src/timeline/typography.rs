@@ -13,9 +13,11 @@ use crate::model::TimelineDiagramLayout;
 /// Resolves Timeline's base typography once for layout, CSS emission, and evidence.
 #[derive(Debug)]
 pub(crate) struct TimelineTypographyThemePlan {
+    css_binding: super::TimelineCssBinding,
+    common_css: crate::svg::PreparedCommonCss,
+    layout_settings: super::config::TimelineLayoutSettings,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
-    font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     evidence: FamilyThemeEvidence,
@@ -41,9 +43,18 @@ pub(crate) struct TimelineTypographyThemeReceipt<'a> {
 }
 
 impl TimelineTypographyThemePlan {
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+    ) -> Self {
+        Self::resolve_with_text(theme, effective_config, None)
+    }
+
+    pub(crate) fn resolve_with_text(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        text_fill: Option<&str>,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -77,10 +88,25 @@ impl TimelineTypographyThemePlan {
             }
         };
 
+        let mut common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css().to_owned(),
+            font_size_css.to_string(),
+        );
+        if let Some(fill) = text_fill {
+            common_css = common_css.with_text_color(fill);
+        }
+        let layout_settings = super::TimelineConfigView::new(effective_config.as_value())
+            .layout_settings_with_resolved_typography(
+                Some(inherited_font_stack.font_family_css()),
+                Some(font_size_px),
+            );
         Self {
+            css_binding: super::TimelineCssBinding::resolve(effective_config.as_value()),
+            common_css,
+            layout_settings,
             inherited_font_stack,
             font_size_css,
-            font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
             evidence: FamilyThemeEvidence::from_theme(theme),
@@ -92,12 +118,20 @@ impl TimelineTypographyThemePlan {
         self.inherited_font_stack.font_family_css()
     }
 
-    pub(crate) fn font_size_css(&self) -> &str {
-        &self.font_size_css
+    pub(crate) fn css_binding(&self) -> &super::TimelineCssBinding {
+        &self.css_binding
     }
 
-    pub(crate) const fn font_size_px(&self) -> f64 {
-        self.font_size_px
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
+    }
+
+    pub(crate) fn layout_settings(&self) -> &super::config::TimelineLayoutSettings {
+        &self.layout_settings
+    }
+
+    pub(crate) fn font_size_css(&self) -> &str {
+        &self.font_size_css
     }
 
     pub(crate) fn typography_requested(&self) -> bool {
@@ -279,6 +313,23 @@ fn timeline_text_runs(layout: &TimelineDiagramLayout) -> Vec<&str> {
 mod tests {
     use super::*;
     use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
+
+    #[test]
+    fn prepared_layout_preserves_independent_root_font_offset() {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "fontSize": "18px", "themeVariables": {"fontSize": "24px"}
+        }));
+        let plan =
+            TimelineTypographyThemePlan::resolve_with_text(None, &config, Some("var(--text)"));
+        assert_eq!(plan.layout_settings().text_style.font_size, 24.0);
+        assert_eq!(plan.layout_settings().layout_font_size, 18.0);
+        assert_eq!(plan.font_size_css(), "24px");
+        assert_eq!(plan.common_css().text_color(), "var(--text)");
+        assert_eq!(
+            plan.layout_settings().text_style.font_family.as_deref(),
+            Some(plan.font_family_css())
+        );
+    }
 
     fn empty_layout() -> TimelineDiagramLayout {
         TimelineDiagramLayout {

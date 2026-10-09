@@ -1,6 +1,4 @@
 use std::cell::{Cell, RefCell};
-#[cfg(merman_internal_theme_acceptance)]
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::diagram_theme::{
@@ -156,9 +154,6 @@ impl SequenceActorThemeReceipt {
 #[derive(Debug, Clone, Default)]
 struct SequenceLineThemeReceipt {
     static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    #[cfg(merman_internal_theme_acceptance)]
-    static_selectors:
-        BTreeMap<ResolvedStyleProperty, crate::theme_route_cutover::ThemeRouteCutoverSelector>,
     line_candidates: usize,
     emitted_lines: usize,
 }
@@ -166,36 +161,6 @@ struct SequenceLineThemeReceipt {
 impl SequenceLineThemeReceipt {
     fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            for (property, origin) in [
-                (
-                    ResolvedStyleProperty::Fill,
-                    style.fill_resolution().winner(),
-                ),
-                (
-                    ResolvedStyleProperty::Stroke,
-                    style.stroke_resolution().winner(),
-                ),
-                (
-                    ResolvedStyleProperty::StrokeWidth,
-                    style.stroke_width_resolution().winner(),
-                ),
-            ] {
-                if let Some(origin) = origin {
-                    self.static_selectors.insert(
-                        property,
-                        match origin.variant() {
-                            None => crate::theme_route_cutover::ThemeRouteCutoverSelector::
-                                StaticUnqualified,
-                            Some(variant) =>
-                                crate::theme_route_cutover::ThemeRouteCutoverSelector::
-                                    StaticVariant(variant),
-                        },
-                    );
-                }
-            }
-        }
     }
 
     fn record_line_candidate(&mut self) {
@@ -208,8 +173,6 @@ impl SequenceLineThemeReceipt {
 
     fn merge(&mut self, other: Self) {
         self.static_winners.extend(other.static_winners);
-        #[cfg(merman_internal_theme_acceptance)]
-        self.static_selectors.extend(other.static_selectors);
         self.line_candidates = self.line_candidates.max(other.line_candidates);
         self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
     }
@@ -226,14 +189,6 @@ impl SequenceLineThemeReceipt {
     fn has_complete_emission(&self) -> bool {
         self.line_candidates != 0 && self.emitted_lines == self.line_candidates
     }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    fn selector_for(
-        &self,
-        property: ResolvedStyleProperty,
-    ) -> Option<crate::theme_route_cutover::ThemeRouteCutoverSelector> {
-        self.static_selectors.get(&property).copied()
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -244,10 +199,6 @@ pub(crate) struct SequenceLifelineThemeReceipt {
     pub(crate) effect_cleared: bool,
     pub(crate) effect_unhandled: bool,
     emitted_effects: usize,
-    #[cfg(merman_internal_theme_acceptance)]
-    raster_terminals: BTreeMap<String, crate::theme_raster_paint::ThemeRasterPaintTerminal>,
-    #[cfg(merman_internal_theme_acceptance)]
-    raster_terminals_invalid: bool,
 }
 
 impl SequenceLifelineThemeReceipt {
@@ -303,7 +254,6 @@ impl SequenceLifelineThemeReceipt {
         effective_stroke_width: f64,
     ) {
         self.line.record_line_emission();
-        #[cfg(not(merman_internal_theme_acceptance))]
         let _ = (
             actor_index,
             x1,
@@ -313,32 +263,6 @@ impl SequenceLifelineThemeReceipt {
             authored_stroke_width,
             effective_stroke_width,
         );
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            let terminal_id = format!("actor{actor_index}");
-            let Some(terminal) =
-                crate::theme_raster_paint::ThemeRasterPaintTerminal::sequence_lifeline_with_effective_width(
-                    terminal_id.clone(),
-                    crate::theme_raster_paint::ThemeRasterPaintBinding::FillAndStrokeFromStroke,
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    authored_stroke_width,
-                    effective_stroke_width,
-                )
-            else {
-                self.raster_terminals_invalid = true;
-                return;
-            };
-            if self
-                .raster_terminals
-                .insert(terminal_id, terminal)
-                .is_some()
-            {
-                self.raster_terminals_invalid = true;
-            }
-        }
     }
 
     pub(super) fn merge(&mut self, other: Self) {
@@ -348,15 +272,6 @@ impl SequenceLifelineThemeReceipt {
         self.effect_cleared |= other.effect_cleared;
         self.effect_unhandled |= other.effect_unhandled;
         self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            self.raster_terminals_invalid |= other.raster_terminals_invalid
-                || other
-                    .raster_terminals
-                    .keys()
-                    .any(|terminal_id| self.raster_terminals.contains_key(terminal_id));
-            self.raster_terminals.extend(other.raster_terminals);
-        }
     }
 
     pub(super) fn route_won(
@@ -374,24 +289,6 @@ impl SequenceLifelineThemeReceipt {
 
     fn has_complete_emission(&self) -> bool {
         self.line.has_complete_emission()
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn raster_paint_terminals(
-        &self,
-    ) -> Option<Vec<crate::theme_raster_paint::ThemeRasterPaintTerminal>> {
-        (self.has_complete_emission()
-            && !self.raster_terminals_invalid
-            && self.raster_terminals.len() == self.line.emitted_lines)
-            .then(|| self.raster_terminals.values().cloned().collect())
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn raster_paint_selector(
-        &self,
-        property: ResolvedStyleProperty,
-    ) -> Option<crate::theme_route_cutover::ThemeRouteCutoverSelector> {
-        self.line.selector_for(property)
     }
 }
 

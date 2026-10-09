@@ -4,7 +4,6 @@ use crate::model::{
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::text::TextMeasurer;
-use crate::theme::MermaidThemeAdapter;
 use merman_core::diagrams::quadrant_chart::{
     QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
 };
@@ -17,10 +16,6 @@ mod theme;
 pub(crate) use config::QuadrantChartConfigView;
 pub(crate) use text_paint::QuadrantChartPaintPlan;
 pub(crate) use theme::QuadrantChartPointThemePlan;
-
-fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
-    MermaidThemeAdapter::new(effective_config).quadrantchart()
-}
 
 fn point_class_styles<'a>(
     model: &'a QuadrantChartRenderModel,
@@ -67,7 +62,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
         });
     }
     let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
-    let theme = default_quadrant_theme(effective_config);
+    let theme = point_theme.css();
 
     let title_text = model
         .title
@@ -376,35 +371,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
     for (point_index, p) in model.points.iter().enumerate() {
-        let class_styles = point_class_styles(model, p);
-
-        let radius = p
-            .styles
-            .radius
-            .map(|v| v as f64)
-            .or_else(|| class_styles.and_then(|c| c.radius.map(|v| v as f64)))
-            .or_else(|| point_theme.radius_override_px(point_index))
-            .unwrap_or(cfg.point_radius);
-        let fill = point_source_fill(p, class_styles)
-            .map(str::to_owned)
-            .or_else(|| {
-                point_theme
-                    .fill_override_css(point_index)
-                    .map(str::to_owned)
-            })
-            .unwrap_or_else(|| theme.quadrant_point_fill.clone());
-        let stroke_color = p
-            .styles
-            .stroke_color
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.stroke_color.clone()))
-            .unwrap_or_else(|| theme.quadrant_point_fill.clone());
-        let stroke_width = p
-            .styles
-            .stroke_width
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.stroke_width.clone()))
-            .unwrap_or_else(|| "0px".to_string());
+        let binding = point_theme.point_binding(point_index);
 
         let x = scale_linear(
             (0.0, 1.0),
@@ -419,10 +386,10 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
         points.push(QuadrantChartPointData {
             x,
             y,
-            fill: fill.clone(),
-            radius,
-            stroke_color,
-            stroke_width,
+            fill: binding.fill.clone(),
+            radius: binding.radius,
+            stroke_color: binding.stroke_color.clone(),
+            stroke_width: binding.stroke_width.clone(),
             text: QuadrantChartTextData {
                 text: p.text.clone(),
                 fill: theme.quadrant_point_text_fill.clone(),
@@ -439,7 +406,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     let title = if show_title {
         Some(QuadrantChartTextData {
             text: title_text.to_string(),
-            fill: theme.quadrant_title_fill,
+            fill: theme.quadrant_title_fill.clone(),
             font_size: cfg.title_font_size,
             horizontal_pos: "top".to_string(),
             vertical_pos: "center".to_string(),

@@ -17,17 +17,6 @@ fn data_sets_attr(sets: &[String]) -> String {
     sets.join("_")
 }
 
-fn build_style_by_key(model: &VennDiagramRenderModel) -> HashMap<String, BTreeMap<String, String>> {
-    let mut out = HashMap::new();
-    for entry in &model.style_entries {
-        let key = stable_sets_key(&entry.targets);
-        out.entry(key)
-            .or_insert_with(BTreeMap::new)
-            .extend(entry.styles.clone());
-    }
-    out
-}
-
 fn style_value<'a>(styles: Option<&'a BTreeMap<String, String>>, key: &str) -> Option<&'a str> {
     styles
         .and_then(|styles| styles.get(key))
@@ -253,11 +242,9 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         out.checkpoint()?;
     }
 
-    let theme = MermaidThemeAdapter::new(effective_config).venn()?;
-    let title_fill = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
-    let text_fill = typography_theme
-        .text_fill_css()
-        .unwrap_or(theme.set_text_color.as_str());
+    let theme = typography_theme.css_binding();
+    let title_fill = theme.title_color.as_str();
+    let text_fill = theme.set_text_color.as_str();
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt();
     let css = typography_theme_receipt.stylesheet(diagram_id.semantic_str(), title_fill, text_fill);
@@ -294,7 +281,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     );
     out.checkpoint()?;
 
-    let style_by_key = build_style_by_key(model);
+    let style_by_key = &theme.source_styles;
     let is_hand_drawn = config_diagram_look(effective_config).as_str() == "handDrawn";
     let hand_drawn_seed = options.rough_randomness(
         effective_config
@@ -309,24 +296,14 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         let sets_key = stable_sets_key(&area.sets);
         let styles = style_by_key.get(&sets_key);
         if area.sets.len() == 1 {
-            let base_color = style_value(styles, "fill")
-                .map(str::to_string)
-                .unwrap_or_else(|| {
-                    theme
-                        .circle_colors
-                        .get(circle_index % theme.circle_colors.len().max(1))
-                        .cloned()
-                        .unwrap_or_else(|| theme.primary_color.clone())
-                });
+            let paint = &theme.circles[circle_index];
+            let base_color = &paint.fill;
             let fill_opacity = style_value(styles, "fill-opacity").unwrap_or("0.1");
             let stroke_color = style_value(styles, "stroke").unwrap_or(base_color.as_str());
             let stroke_width = style_value(styles, "stroke-width")
                 .map(str::to_string)
                 .unwrap_or_else(|| fmt_string(5.0 * layout.scale));
-            let text_color = match style_value(styles, "color") {
-                Some(color) => color.to_string(),
-                None => theme.circle_text_color(&base_color)?,
-            };
+            let text_color = &paint.text;
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}">"#,
@@ -348,13 +325,13 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     })?;
                 let (fill_path, stroke_path) = rough_circle_paths(
                     circle,
-                    &base_color,
+                    base_color,
                     stroke_color,
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
                     &hand_drawn_seed,
                 )?;
-                let fill_stroke = transparentize(&base_color, 0.7)?;
+                let fill_stroke = transparentize(base_color, 0.7)?;
                 let _ = write!(
                     &mut out,
                     r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/><path d="{stroke_path}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/></g>"#,
@@ -370,7 +347,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     &mut out,
                     r#"<path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/>"#,
                     path = escape_attr(&area.path),
-                    fill = escape_css_attr(&base_color),
+                    fill = escape_css_attr(base_color),
                     fill_opacity = escape_css_attr(fill_opacity),
                     stroke = escape_css_attr(stroke_color),
                     stroke_width = escape_css_attr(&stroke_width),

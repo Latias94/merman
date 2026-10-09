@@ -37,7 +37,15 @@ mod fallback;
 mod icon_registry;
 mod parity;
 pub(crate) use parity::BaseEdgeMarkerKind;
-#[cfg(any(feature = "diagram-class", feature = "diagram-pie"))]
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-pie",
+    feature = "diagram-gantt",
+    feature = "diagram-quadrant-chart",
+    feature = "diagram-journey",
+    feature = "diagram-timeline",
+    feature = "diagram-kanban"
+))]
 pub(crate) use parity::PreparedCommonCss;
 mod pipeline;
 pub(crate) mod scanner;

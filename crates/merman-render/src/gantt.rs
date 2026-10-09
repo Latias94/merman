@@ -974,8 +974,8 @@ pub(crate) fn layout_gantt_diagram_typed(
     let right_padding = cfg_f64(gantt_cfg, &["rightPadding"]).unwrap_or(75.0);
     let grid_line_start_padding = cfg_f64(gantt_cfg, &["gridLineStartPadding"]).unwrap_or(35.0);
     let title_top_margin = cfg_f64(gantt_cfg, &["titleTopMargin"]).unwrap_or(25.0);
-    let font_size = cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0);
-    let section_font_size = cfg_f64(gantt_cfg, &["sectionFontSize"]).unwrap_or(11.0);
+    let font_size = task_theme.css_binding().task_font_size;
+    let section_font_size = task_theme.css_binding().section_font_size;
     let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
 
     let cfg_display_mode = gantt_cfg

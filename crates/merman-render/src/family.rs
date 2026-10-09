@@ -2,7 +2,6 @@ mod capability;
 mod direct_static_paint;
 mod evidence_support;
 mod inherited_font_stack;
-mod parse_defaults;
 mod preparation;
 mod theme_diagnostics;
 
@@ -22,7 +21,6 @@ pub(crate) use inherited_font_stack::{
     InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
     InheritedTextViewportFacts,
 };
-pub(crate) use parse_defaults::{FamilyPaintDefaultPaths, bind_theme_parse_defaults};
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,
@@ -467,8 +465,6 @@ pub(crate) struct FamilyStyleReport {
     theme_applied: Vec<FamilyThemeMechanismKey>,
     #[cfg(merman_internal_theme_acceptance)]
     theme_route_cutover_facts: Vec<crate::theme_route_cutover::ThemeRouteCutoverFact>,
-    #[cfg(merman_internal_theme_acceptance)]
-    theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
@@ -510,8 +506,6 @@ impl FamilyStyleReport {
             theme_applied: plan.theme_evidence.applied.clone(),
             #[cfg(merman_internal_theme_acceptance)]
             theme_route_cutover_facts: plan.theme_route_cutover_facts(),
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_raster_paint_binding_facts: plan.theme_raster_paint_binding_facts.clone(),
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
@@ -539,8 +533,6 @@ impl FamilyStyleReport {
         self.native_filter_receipt = None;
         #[cfg(merman_internal_theme_acceptance)]
         self.theme_route_cutover_facts.clear();
-        #[cfg(merman_internal_theme_acceptance)]
-        self.theme_raster_paint_binding_facts.clear();
         #[cfg(all(
             merman_internal_theme_acceptance,
             feature = "layout-cytoscape",
@@ -803,13 +795,6 @@ impl FamilyRenderReport {
         &self.style.theme_route_cutover_facts
     }
 
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn theme_raster_paint_binding_facts(
-        &self,
-    ) -> &[crate::theme_raster_paint::ThemeRasterPaintBindingFact] {
-        &self.style.theme_raster_paint_binding_facts
-    }
-
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
@@ -1052,8 +1037,6 @@ pub(crate) struct ResolvedFamilyStylePlan {
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    #[cfg(merman_internal_theme_acceptance)]
-    theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     output_mutated: bool,
@@ -1078,8 +1061,6 @@ impl ResolvedFamilyStylePlan {
             theme_evidence,
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_raster_paint_binding_facts: Vec::new(),
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: None,
             output_mutated: false,
@@ -1182,15 +1163,6 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
-    #[cfg(merman_internal_theme_acceptance)]
-    fn record_theme_raster_paint_binding_fact(
-        &mut self,
-        fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
-    ) {
-        debug_assert_eq!(fact.family_id(), self.family_id);
-        self.theme_raster_paint_binding_facts.push(fact);
-    }
-
     fn merge_accounted_terminal_evidence(
         &mut self,
         expected_family: DiagramFamilyId,
@@ -1267,8 +1239,6 @@ impl ResolvedFamilyStylePlan {
     fn invalidate_for_output_mutation(&mut self) {
         self.output_mutated = true;
         self.native_filter_receipt = None;
-        #[cfg(merman_internal_theme_acceptance)]
-        self.theme_raster_paint_binding_facts.clear();
         #[cfg(all(
             merman_internal_theme_acceptance,
             feature = "layout-cytoscape",
@@ -1503,14 +1473,6 @@ impl FamilyRenderContext {
 
     fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
         self.style_plan.merge_sequence_evidence(evidence);
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    fn record_theme_raster_paint_binding_fact(
-        &mut self,
-        fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
-    ) {
-        self.style_plan.record_theme_raster_paint_binding_fact(fact);
     }
 
     fn merge_accounted_terminal_evidence(
@@ -2841,10 +2803,6 @@ impl BuiltinFamilyArtifact {
                     .theme_evidence()
                     .finish(context.resolved_theme());
                 context.merge_sequence_evidence(evidence);
-                #[cfg(merman_internal_theme_acceptance)]
-                if let Some(fact) = pair.layout().theme_evidence().raster_paint_binding_fact() {
-                    context.record_theme_raster_paint_binding_fact(fact);
-                }
                 return Ok(());
             }
             // State reconciles its terminal and filter receipts in the output finalizer.
@@ -3378,22 +3336,6 @@ impl FamilyRenderCompletion<ResvgCompatibleSvg> {
         crate::theme_route_cutover::seal_theme_route_cutover_receipts(
             self.report.theme_route_cutover_facts(),
             Sha256::digest(self.output.as_str().as_bytes()).into(),
-            Sha256::digest(self.output.native_export_svg().as_bytes()).into(),
-        )
-    }
-
-    /// Returns paint bindings sealed against this completion's finalized native SVG.
-    #[doc(hidden)]
-    pub fn theme_raster_paint_binding_receipts(
-        &self,
-    ) -> Vec<crate::__private::ThemeRasterPaintBindingReceipt> {
-        use sha2::{Digest as _, Sha256};
-
-        if !self.report.style_report().is_verified() {
-            return Vec::new();
-        }
-        crate::theme_raster_paint::seal_theme_raster_paint_binding_receipts(
-            self.report.theme_raster_paint_binding_facts(),
             Sha256::digest(self.output.native_export_svg().as_bytes()).into(),
         )
     }

@@ -251,7 +251,7 @@ impl OperationConfigBuilder {
                 control,
             )?;
         }
-        effective_config.capture_post_detection_default_decisions(
+        effective_config.freeze_family_paint_inputs(
             family,
             &engine.fallback_overlay_explicit_config,
             effective_source_config,

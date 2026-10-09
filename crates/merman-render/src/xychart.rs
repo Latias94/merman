@@ -3,7 +3,6 @@ use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::MermaidThemeAdapter;
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -11,6 +10,7 @@ use merman_core::diagrams::xychart::{
 use serde_json::Value;
 use std::fmt::Write as _;
 
+mod css_binding;
 mod paint;
 mod series;
 mod theme;
@@ -1179,7 +1179,6 @@ fn line_path(points: &[(f64, f64)]) -> Option<String> {
 pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     diagram_title: Option<&str>,
-    effective_config: &Value,
     series_paint: &XyChartSeriesPaintPlan,
     typography_theme: &theme::XyChartTypographyThemePlan,
     text_measurer: &dyn TextMeasurer,
@@ -1201,7 +1200,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         });
     }
 
-    let mut chart_cfg = parse_chart_config(effective_config, model);
+    let mut chart_cfg = series_paint.chart_config().clone();
     typography_theme.apply_font(
         XyChartTextRole::Title,
         &mut chart_cfg.title_font_size,
@@ -1232,7 +1231,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         &mut chart_cfg.y_axis.label_font_size,
         &mut chart_cfg.y_axis.label_font_weight,
     );
-    let theme_cfg = MermaidThemeAdapter::new(effective_config).xychart();
+    let theme_cfg = series_paint.css_binding();
 
     let title = model
         .title
@@ -1672,7 +1671,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         chart_orientation: chart_cfg.chart_orientation,
         show_data_label: chart_cfg.show_data_label,
         show_data_label_outside_bar: chart_cfg.show_data_label_outside_bar,
-        background_color: theme_cfg.background_color,
+        background_color: theme_cfg.background_color.clone(),
         label_data,
         drawables,
     })
@@ -1899,15 +1898,8 @@ mod tests {
         let series_paint =
             XyChartSeriesPaintPlan::resolve(None, &config, &model, &work_meter).unwrap();
         let typography = XyChartTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
-        layout_xychart_diagram_typed(
-            &model,
-            None,
-            config.as_value(),
-            &series_paint,
-            &typography,
-            &UserUnitMeasurer,
-        )
-        .unwrap()
+        layout_xychart_diagram_typed(&model, None, &series_paint, &typography, &UserUnitMeasurer)
+            .unwrap()
     }
 
     fn title(layout: &XyChartDiagramLayout) -> Option<&XyChartTextData> {

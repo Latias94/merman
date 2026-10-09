@@ -647,26 +647,26 @@ fn prepare_timeline_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let typography_theme = crate::timeline::TimelineTypographyThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-    );
-    let layout = crate::timeline::layout_timeline_diagram_typed_with_resolved_typography(
-        &model,
-        meta.effective_config.as_value(),
-        Some(typography_theme.font_family_css()),
-        Some(typography_theme.font_size_px()),
-        execution.text_measurer(),
-    )?;
-    let event_theme = crate::timeline::TimelineEventTheme::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        &layout,
-        execution.work_meter_ref(),
-    )?;
     let text_paint = crate::timeline::TimelineTextPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        execution.work_meter_ref(),
+    )?;
+    let typography_theme = crate::timeline::TimelineTypographyThemePlan::resolve_with_text(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        text_paint.fill_css(),
+    );
+    let layout = crate::timeline::layout_timeline_diagram_typed_with_binding(
+        &model,
+        typography_theme.layout_settings(),
+        execution.text_measurer(),
+    )?;
+    let event_theme = crate::timeline::TimelineEventTheme::resolve_with_binding(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        typography_theme.css_binding(),
+        &layout,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Timeline(Box::new(
@@ -696,15 +696,14 @@ fn prepare_journey_family(
             .or(meta.title.as_deref()),
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve_with_text_paint(
         execution.resolved_theme(),
         &meta.effective_config,
+        text_paint.fill_css(),
     );
     let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
         &model,
-        meta.effective_config.as_value(),
-        Some(typography_theme.font_family_css()),
-        Some(typography_theme.font_size_px()),
+        &typography_theme,
         execution.text_measurer(),
     )?;
     let task_theme = crate::journey::JourneyTaskTheme::resolve(
@@ -731,9 +730,14 @@ fn prepare_radar_family(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
     let effective_title = crate::radar::effective_title(&model, meta.title.as_deref());
-    let series_paint = crate::radar::RadarSeriesPaintPlan::resolve(
+    let typography_theme = crate::radar::RadarTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+    );
+    let series_paint = crate::radar::RadarSeriesPaintPlan::resolve_with_binding(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        typography_theme.css_binding(),
         &model,
         execution.work_meter_ref(),
     )?;
@@ -743,25 +747,23 @@ fn prepare_radar_family(
         execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::radar::RadarTypographyThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-    );
     let title_theme = crate::radar::RadarTitleThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         effective_title,
         execution.work_meter_ref(),
     )?;
-    let axis_paint = crate::radar::RadarAxisPaintPlan::resolve(
+    let axis_paint = crate::radar::RadarAxisPaintPlan::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
+        typography_theme.css_binding(),
         layout.axes.len(),
         execution.work_meter_ref(),
     )?;
-    let text_paint = crate::radar::RadarTextPaintPlan::resolve(
+    let text_paint = crate::radar::RadarTextPaintPlan::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
+        typography_theme.css_binding(),
         &layout,
         &model,
         effective_title,
@@ -921,7 +923,6 @@ fn prepare_xy_chart_family(
     let mut layout = crate::xychart::layout_xychart_diagram_typed(
         &model,
         meta.title.as_deref(),
-        meta.effective_config.as_value(),
         &series_paint,
         &typography_theme,
         execution.text_measurer(),
@@ -1216,7 +1217,10 @@ fn prepare_venn_family(
         &meta.effective_config,
         effective_title,
         &layout,
-    );
+        &model,
+        &title_theme,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Venn(Box::new(VennFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         title_theme,

@@ -470,7 +470,13 @@ fn gantt_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = gantt_css_with_overrides("g", &cfg, None, None, None, None, None, None);
+    let config = merman_core::MermaidConfig::from_value(cfg);
+    let meter = crate::resources::OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
+    let task_theme = crate::gantt::GanttTaskTheme::resolve(None, &config, &[], &meter)
+        .expect("resolve Gantt CSS binding");
+    let css = gantt_css("g", &task_theme);
 
     assert!(css.contains(r#"#g .exclude-range{fill:#101010;}"#));
     assert!(css.contains(r#"#g .section0{fill:#202020;}"#));

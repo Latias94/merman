@@ -719,17 +719,26 @@ impl KanbanTaskTheme {
             .is_some_and(|item| item.label_foreground.is_some())
     }
 
+    #[cfg(test)]
     pub(crate) fn terminal_decisions(
         &self,
         config: &MermaidConfig,
     ) -> crate::Result<Option<Vec<KanbanTaskTerminalDecision>>> {
+        self.bind_terminal_decisions(
+            config
+                .get_bool("darkMode")
+                .or_else(|| config.get_bool("themeVariables.darkMode"))
+                .unwrap_or(false),
+        )
+    }
+
+    pub(super) fn bind_terminal_decisions(
+        &self,
+        dark_mode: bool,
+    ) -> crate::Result<Option<Vec<KanbanTaskTerminalDecision>>> {
         let Some(items) = self.items.as_deref() else {
             return Ok(None);
         };
-        let dark_mode = config
-            .get_bool("darkMode")
-            .or_else(|| config.get_bool("themeVariables.darkMode"))
-            .unwrap_or(false);
         items
             .iter()
             .map(|item| Self::terminal_decision(item, dark_mode))

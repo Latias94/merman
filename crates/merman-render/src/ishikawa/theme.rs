@@ -17,6 +17,9 @@ use crate::family::{
 use crate::model::{IshikawaBranchLayout, IshikawaDiagramLayout, IshikawaTextLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod css_binding;
+pub(crate) use css_binding::IshikawaCssBinding;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IshikawaTypographyTerminal {
     Head,
@@ -43,6 +46,7 @@ struct TextExpectation {
 /// back into layout.
 #[derive(Debug)]
 pub(crate) struct IshikawaTextThemePlan {
+    css_binding: IshikawaCssBinding,
     expectations: Box<[TextExpectation]>,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
@@ -61,6 +65,7 @@ impl IshikawaTextThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut expectations = terminal_domain(layout);
+        let css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let typed_font_size_requested = theme.is_some_and(|theme| {
@@ -90,6 +95,7 @@ impl IshikawaTextThemePlan {
                 expectations,
                 inherited_font_stack,
                 font_size_css,
+                css_binding,
             ));
         };
 
@@ -239,6 +245,7 @@ impl IshikawaTextThemePlan {
         }
 
         Ok(Self {
+            css_binding,
             expectations: expectations.into_boxed_slice(),
             inherited_font_stack,
             font_size_css,
@@ -254,8 +261,10 @@ impl IshikawaTextThemePlan {
         expectations: Vec<TextExpectation>,
         inherited_font_stack: InheritedFontStackPlan,
         font_size_css: Box<str>,
+        css_binding: IshikawaCssBinding,
     ) -> Self {
         Self {
+            css_binding,
             expectations: expectations.into_boxed_slice(),
             inherited_font_stack,
             font_size_css,
@@ -273,6 +282,10 @@ impl IshikawaTextThemePlan {
             .fill
             .as_ref()
             .map(|fill| (fill.rule_index, fill.css.as_ref()))
+    }
+
+    pub(crate) fn css_binding(&self) -> &IshikawaCssBinding {
+        &self.css_binding
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> IshikawaTextThemeReceipt {

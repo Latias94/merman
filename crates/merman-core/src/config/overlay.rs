@@ -7,9 +7,13 @@ use serde_json::Value;
 
 use crate::{OperationControl, OperationControlResult};
 
-use super::{MermaidConfig, PostDetectionDefaultPaths, ThemeCompatibilityState};
+use super::{
+    ErPaintInputs, FamilyPaintInputs, GitGraphPaintInputs, MermaidConfig, ThemeCompatibilityState,
+};
 
+#[cfg(test)]
 const MAX_OVERLAY_FAMILIES: usize = 64;
+#[cfg(test)]
 const MAX_FAMILY_NAME_BYTES: usize = 64;
 #[cfg(test)]
 const MAX_CONTRIBUTIONS_PER_FAMILY: usize = 128;
@@ -17,9 +21,13 @@ const MAX_CONTRIBUTIONS_PER_FAMILY: usize = 128;
 const MAX_CONTRIBUTION_ID_BYTES: usize = 128;
 #[cfg(test)]
 const MAX_ASSIGNMENTS_PER_CONTRIBUTION: usize = 512;
+#[cfg(test)]
 const MAX_ASSIGNMENTS_PER_FAMILY: usize = 1024;
+#[cfg(test)]
 const MAX_ASSIGNMENTS_PER_OVERLAY: usize = 4096;
+#[cfg(test)]
 const MAX_ASSIGNMENT_DEPTH: usize = 16;
+#[cfg(test)]
 const MAX_ASSIGNMENT_KEY_BYTES: usize = 128;
 #[cfg(test)]
 const MAX_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
@@ -27,62 +35,6 @@ const MAX_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 const MAX_RETAINED_BYTES_PER_FAMILY: usize = 3 * 1024 * 1024;
 #[cfg(test)]
 const MAX_RETAINED_BYTES_PER_OVERLAY: usize = 4 * 1024 * 1024;
-
-pub(super) fn normalize_post_detection_default_paths(
-    existing: &PostDetectionDefaultPaths,
-    family: &str,
-    paths: &[&str],
-) -> Result<PostDetectionDefaultPaths, ConfigOverlayError> {
-    validate_name(family, MAX_FAMILY_NAME_BYTES, ConfigOverlayField::Family)?;
-    if paths.len() > MAX_ASSIGNMENTS_PER_FAMILY {
-        return Err(ConfigOverlayError::LimitExceeded {
-            field: ConfigOverlayField::Assignments,
-        });
-    }
-    let mut normalized = existing
-        .get(family)
-        .into_iter()
-        .flat_map(|paths| paths.iter().cloned())
-        .collect::<BTreeSet<_>>();
-    for path in paths {
-        for (depth, key) in path.split('.').enumerate() {
-            if depth >= MAX_ASSIGNMENT_DEPTH {
-                return Err(ConfigOverlayError::LimitExceeded {
-                    field: ConfigOverlayField::AssignmentPath,
-                });
-            }
-            validate_assignment_key(key)?;
-        }
-        normalized.insert(Arc::from(*path));
-        if normalized.len() > MAX_ASSIGNMENTS_PER_FAMILY {
-            return Err(ConfigOverlayError::LimitExceeded {
-                field: ConfigOverlayField::Assignments,
-            });
-        }
-    }
-    if normalized.is_empty() {
-        return Ok(existing.clone());
-    }
-    if !existing.contains_key(family) && existing.len() >= MAX_OVERLAY_FAMILIES {
-        return Err(ConfigOverlayError::LimitExceeded {
-            field: ConfigOverlayField::Families,
-        });
-    }
-    let total_paths = existing.values().map(|paths| paths.len()).sum::<usize>()
-        - existing.get(family).map_or(0, |paths| paths.len())
-        + normalized.len();
-    if total_paths > MAX_ASSIGNMENTS_PER_OVERLAY {
-        return Err(ConfigOverlayError::LimitExceeded {
-            field: ConfigOverlayField::Assignments,
-        });
-    }
-    let mut requests = existing.clone();
-    requests.insert(
-        Arc::from(family),
-        normalized.into_iter().collect::<Vec<_>>().into(),
-    );
-    Ok(requests)
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ConfigOverlayProvenance {
@@ -471,7 +423,7 @@ impl PostDetectionConfigDefaults<'_> {
 
 impl MermaidConfig {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn capture_post_detection_default_decisions(
+    pub(crate) fn freeze_family_paint_inputs(
         &mut self,
         family: &str,
         explicit_site_config: &MermaidConfig,
@@ -480,30 +432,51 @@ impl MermaidConfig {
         application: &ConfigOverlayApplication,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.as_ref()
-        else {
+        if !matches!(
+            &self.theme_compatibility,
+            Some(ThemeCompatibilityState::Tracking(_))
+        ) {
             return Ok(());
-        };
-        let Some(paths) = ownership.binding.post_detection_default_paths.get(family) else {
-            return Ok(());
+        }
+        let paths: &[&str] = match family {
+            "gitGraph" => &[
+                "themeVariables.primaryColor",
+                "themeVariables.mainBkg",
+                "themeVariables.tagLabelBackground",
+                "themeVariables.primaryBorderColor",
+                "themeVariables.nodeBorder",
+                "themeVariables.tagLabelBorder",
+            ],
+            "er" => &[
+                "themeVariables.textColor",
+                "themeVariables.nodeTextColor",
+                "themeVariables.lineColor",
+                "themeVariables.rowOdd",
+                "themeVariables.rowEven",
+            ],
+            _ => return Ok(()),
         };
         let defaults = PostDetectionConfigDefaults {
             explicit_site_config,
             explicit_source_config,
             config_before_overlay,
         };
-        let mut decisions = Vec::with_capacity(paths.len());
-        for path in paths.iter() {
+        let mut owned = 0;
+        for (index, path) in paths.iter().enumerate() {
             control.checkpoint()?;
-            decisions.push((
-                Arc::clone(path),
-                defaults.blocks_path(self, application, path),
-            ));
+            if defaults.blocks_path(self, application, path) {
+                owned |= 1 << index;
+            }
         }
+        let inputs = match family {
+            "gitGraph" => FamilyPaintInputs::GitGraph(GitGraphPaintInputs(owned)),
+            "er" => FamilyPaintInputs::Er(ErPaintInputs(owned)),
+            _ => unreachable!("selected paint family checked above"),
+        };
         if let Some(ThemeCompatibilityState::Tracking(ownership)) =
             self.theme_compatibility.as_mut()
         {
-            Arc::make_mut(ownership).post_detection_defaults = Some(decisions.into());
+            Arc::make_mut(ownership).family_paint_inputs = Some(inputs);
         }
         Ok(())
     }
@@ -633,6 +606,7 @@ impl ConfigOverlayAssignment {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigOverlayField {
     Family,
@@ -651,6 +625,7 @@ pub(crate) enum ConfigOverlayField {
     AssignmentValue,
 }
 
+#[cfg(test)]
 impl ConfigOverlayField {
     const fn as_str(self) -> &'static str {
         match self {
@@ -672,12 +647,14 @@ impl ConfigOverlayField {
     }
 }
 
+#[cfg(test)]
 impl std::fmt::Display for ConfigOverlayField {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ConfigOverlayError {
     #[error("config overlay field `{field}` is invalid")]
@@ -695,6 +672,7 @@ pub(crate) enum ConfigOverlayError {
     DuplicateAssignment { family: String, path: String },
 }
 
+#[cfg(test)]
 fn validate_name(
     value: &str,
     max_bytes: usize,
@@ -724,6 +702,7 @@ fn flatten_patch(value: &Value) -> Result<Vec<ConfigOverlayAssignment>, ConfigOv
     Ok(assignments)
 }
 
+#[cfg(test)]
 fn validate_assignment_key(key: &str) -> Result<(), ConfigOverlayError> {
     if key.is_empty()
         || key.len() > MAX_ASSIGNMENT_KEY_BYTES
@@ -1510,8 +1489,6 @@ mod tests {
     fn capturing_default_decisions_is_selected_family_only_and_cancellable() {
         let binding =
             super::super::ThemeParseBinding::try_new([0x5a; 32], MermaidConfig::empty_object())
-                .unwrap()
-                .try_with_post_detection_default_paths("flowchart", &["a", "b", "c"])
                 .unwrap();
         let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
         let empty = MermaidConfig::empty_object();
@@ -1520,7 +1497,7 @@ mod tests {
         cancelled.cancel();
         assert!(
             config
-                .capture_post_detection_default_decisions(
+                .freeze_family_paint_inputs(
                     "sequence",
                     &empty,
                     &empty,
@@ -1534,8 +1511,8 @@ mod tests {
         control.cancel_after_checkpoints(2);
         assert!(
             config
-                .capture_post_detection_default_decisions(
-                    "flowchart",
+                .freeze_family_paint_inputs(
+                    "gitGraph",
                     &empty,
                     &empty,
                     &empty,
@@ -1545,12 +1522,17 @@ mod tests {
                 .is_err()
         );
         config.freeze_theme_compatibility();
-        assert_eq!(config.post_detection_default_blocked("a"), None);
+        assert_eq!(
+            config
+                .gitgraph_paint_inputs()
+                .map(|inputs| inputs.is_owned(super::super::GitGraphPaintInput::PrimaryColor)),
+            None
+        );
 
         let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
         config
-            .capture_post_detection_default_decisions(
-                "flowchart",
+            .freeze_family_paint_inputs(
+                "gitGraph",
                 &empty,
                 &empty,
                 &empty,
@@ -1558,9 +1540,19 @@ mod tests {
                 &OperationControl::new(),
             )
             .unwrap();
-        assert_eq!(config.post_detection_default_blocked("a"), None);
+        assert_eq!(
+            config
+                .gitgraph_paint_inputs()
+                .map(|inputs| inputs.is_owned(super::super::GitGraphPaintInput::PrimaryColor)),
+            None
+        );
         config.freeze_theme_compatibility();
-        assert_eq!(config.post_detection_default_blocked("a"), Some(false));
+        assert_eq!(
+            config
+                .gitgraph_paint_inputs()
+                .map(|inputs| inputs.is_owned(super::super::GitGraphPaintInput::PrimaryColor)),
+            Some(false)
+        );
         let fields = config.mermaid_compatibility_fields().unwrap();
         config.freeze_theme_compatibility();
         assert_eq!(config.theme_parse_binding(), Some(&binding));
@@ -1568,7 +1560,12 @@ mod tests {
             config.mermaid_compatibility_fields().as_ref(),
             Some(&fields)
         );
-        assert_eq!(config.post_detection_default_blocked("a"), Some(false));
+        assert_eq!(
+            config
+                .gitgraph_paint_inputs()
+                .map(|inputs| inputs.is_owned(super::super::GitGraphPaintInput::PrimaryColor)),
+            Some(false)
+        );
     }
 
     #[test]

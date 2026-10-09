@@ -1,30 +1,24 @@
-use super::super::css::InfoCssWriter;
-use super::super::theme::TimelineTheme;
 use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
+use crate::timeline::TimelineCssBinding;
 
 fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
-    effective_config: &serde_json::Value,
-    theme: &TimelineTheme,
-    resolved_font_family_css: &str,
-    resolved_font_size_css: &str,
-    text_fill: Option<&str>,
+    theme: &TimelineCssBinding,
+    typography: &crate::timeline::TimelineTypographyThemePlan,
     event_emission: &mut TimelineEventEmissionState<'_>,
 ) -> TimelineCss {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let mut writer = InfoCssWriter::with_resolved_typography(
-        effective_config,
-        resolved_font_family_css,
-        resolved_font_size_css,
-    );
-    if let Some(fill) = text_fill {
-        writer = writer.with_text_color(fill);
-    }
-    let parts = writer.into_parts(diagram_id);
-    let root_rule = parts.root_rule;
+    let common = typography.common_css();
+    let mut out = String::new();
+    let base_emission = common
+        .write_prefix_with_font_emission(&mut out, diagram_id)
+        .expect("String-backed Timeline base CSS writer");
+    let mut root_rule = String::new();
+    common
+        .write_root_with_font_emission(&mut root_rule, diagram_id, diagram_id)
+        .expect("String-backed Timeline root CSS writer");
     let root_typography_emitted = !root_rule.is_empty();
-    let mut out = parts.css_prefix;
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
     for (i, section_theme) in theme.sections.iter().enumerate() {
@@ -118,7 +112,7 @@ fn timeline_css(
         }
     }
 
-    if crate::timeline::TimelineConfigView::new(effective_config).uses_neo_gradient() {
+    if theme.use_neo_gradient {
         let gradient = scoped_svg_url(diagram_id, "gradient");
         for (i, _) in theme.sections.iter().enumerate() {
             let section = i as i64 - 1;
@@ -157,11 +151,11 @@ fn timeline_css(
     out.push_str(&root_rule);
     TimelineCss {
         css: out,
-        font_family_css: parts.font_family,
-        font_size_css: parts.font_size_css,
-        base_typography_emitted: parts.base_typography_emitted,
+        font_family_css: base_emission.diagram_root_font_family_css().to_owned(),
+        font_size_css: base_emission.diagram_root_font_size_css().to_owned(),
+        base_typography_emitted: true,
         root_typography_emitted,
-        text_color: parts.text_color,
+        text_color: common.text_color().to_owned(),
     }
 }
 
@@ -174,7 +168,11 @@ struct TimelineCss {
     text_color: String,
 }
 
-fn timeline_section_fill(theme: &TimelineTheme, slot: usize, neo_gradient: bool) -> Option<&str> {
+fn timeline_section_fill(
+    theme: &TimelineCssBinding,
+    slot: usize,
+    neo_gradient: bool,
+) -> Option<&str> {
     let section = theme.sections.get(slot)?;
     Some(if neo_gradient {
         &theme.main_bkg
@@ -190,7 +188,7 @@ fn timeline_section_fill(theme: &TimelineTheme, slot: usize, neo_gradient: bool)
 }
 
 fn timeline_section_label_fill<'a>(
-    theme: &'a TimelineTheme,
+    theme: &'a TimelineCssBinding,
     slot: usize,
     event_stroke: Option<&'a str>,
 ) -> Option<&'a str> {
@@ -204,7 +202,7 @@ fn timeline_section_label_fill<'a>(
 
 struct TimelineTextPaintEmissionState<'a> {
     plan: &'a crate::timeline::TimelineTextPaintPlan,
-    theme: &'a TimelineTheme,
+    theme: &'a TimelineCssBinding,
     neo_gradient: bool,
     event_stroke: Option<&'a str>,
     receipt: Option<crate::timeline::TimelineTextPaintReceipt<'a>>,
@@ -584,15 +582,13 @@ pub(crate) fn render_timeline_diagram_svg_model(
     event_theme: &crate::timeline::TimelineEventTheme,
     typography_theme: &crate::timeline::TimelineTypographyThemePlan,
     text_paint: &crate::timeline::TimelineTextPaintPlan,
-    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
-    let theme = MermaidThemeAdapter::new(effective_config).timeline();
+    let theme = typography_theme.css_binding();
     let is_redux_theme = theme.is_redux_theme;
-    let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let use_neo_gradient =
-        crate::timeline::TimelineConfigView::new(effective_config).uses_neo_gradient();
+    let is_neo = theme.is_neo;
+    let use_neo_gradient = theme.use_neo_gradient;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -1021,20 +1017,12 @@ pub(crate) fn render_timeline_diagram_svg_model(
     let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme, layout);
     let mut text_emission = TimelineTextPaintEmissionState {
         plan: text_paint,
-        theme: &theme,
+        theme,
         neo_gradient: use_neo_gradient,
         event_stroke: event_theme.stroke_for_redux(),
         receipt: text_paint.begin_terminal_receipt(layout, options.work_meter())?,
     };
-    let css = timeline_css(
-        diagram_id,
-        effective_config,
-        &theme,
-        typography_theme.font_family_css(),
-        typography_theme.font_size_css(),
-        text_paint.fill_css(),
-        &mut event_emission,
-    );
+    let css = timeline_css(diagram_id, theme, typography_theme, &mut event_emission);
     options.checkpoint_emit()?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
     out.checkpoint()?;
@@ -1084,12 +1072,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         );
         // Mermaid sets each stop independently. A missing/null variable removes the
         // attribute; neither stop inherits nodeBorder or the other gradient stop.
-        for (offset, variable) in [("0%", "gradientStart"), ("100%", "gradientStop")] {
+        for (offset, color) in ["0%", "100%"].into_iter().zip(&theme.gradient_stops) {
             let _ = write!(&mut out, r#"<stop offset="{offset}""#);
-            if let Some(color) =
-                crate::config::config_string(effective_config, &["themeVariables", variable])
-            {
-                let _ = write!(&mut out, r#" stop-color="{}""#, escape_attr(&color));
+            if let Some(color) = color {
+                let _ = write!(&mut out, r#" stop-color="{}""#, escape_attr(color));
             }
             out.push_str(r#" stop-opacity="1"/>"#);
         }
@@ -1388,7 +1374,6 @@ mod tests {
                 execution.work_meter(),
             )
             .expect("text paint"),
-            &serde_json::json!({}),
             &execution,
         )
         .unwrap();
@@ -1455,7 +1440,6 @@ mod tests {
                     execution.work_meter(),
                 )
                 .expect("text paint"),
-                &effective_config,
                 &execution,
             )
             .expect("raw effective-config Timeline SVG");

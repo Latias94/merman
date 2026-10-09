@@ -18,6 +18,9 @@ use crate::family::{
 use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
 
+mod css_binding;
+pub(crate) use css_binding::VennCssBinding;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct VennTypographyOccurrences {
     titles: usize,
@@ -67,6 +70,7 @@ impl VennTypographyOccurrences {
 /// Final Venn inherited font stack shared by its four local stylesheet selectors and evidence.
 #[derive(Debug)]
 pub(crate) struct VennTypographyThemePlan {
+    css_binding: VennCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     occurrences: VennTypographyOccurrences,
     evidence: FamilyThemeEvidence,
@@ -82,7 +86,10 @@ impl VennTypographyThemePlan {
         effective_config: &MermaidConfig,
         title: Option<&str>,
         layout: &VennDiagramLayout,
-    ) -> Self {
+        model: &merman_core::diagrams::venn::VennDiagramRenderModel,
+        title_theme: &VennTitleThemePlan,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<Self> {
         let text_fill = theme.and_then(|theme| {
             let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
             resolve_direct_static_fill(
@@ -125,7 +132,19 @@ impl VennTypographyThemePlan {
                 effective_config,
                 "themeVariables.vennSetTextColor",
             );
-        Self {
+        let css_binding = VennCssBinding::resolve(
+            effective_config.as_value(),
+            model,
+            layout,
+            title_theme.fill_css(),
+            (!config_owns_text_fill)
+                .then_some(text_fill.as_ref())
+                .flatten()
+                .map(crate::family::DirectStaticPaint::css),
+            work_meter,
+        )?;
+        Ok(Self {
+            css_binding,
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
@@ -138,7 +157,11 @@ impl VennTypographyThemePlan {
             text_fill_routes,
             config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
-        }
+        })
+    }
+
+    pub(crate) fn css_binding(&self) -> &VennCssBinding {
+        &self.css_binding
     }
 
     pub(crate) fn font_family_css(&self) -> &str {

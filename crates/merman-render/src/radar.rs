@@ -13,11 +13,13 @@ use serde_json::Value;
 
 mod axis_paint;
 mod config;
+mod css_binding;
 mod text_paint;
 mod theme;
 
 pub(crate) use axis_paint::{RadarAxisPaintPlan, RadarAxisPaintReceipt};
 pub(crate) use config::RadarConfigView;
+pub(crate) use css_binding::RadarCssBinding;
 pub(crate) use text_paint::{RadarTextPaintPlan, RadarTextPaintReceipt};
 pub(crate) use theme::{
     RadarSeriesPaintPlan, RadarTitleThemePlan, RadarTypographyCssEmission, RadarTypographyThemePlan,

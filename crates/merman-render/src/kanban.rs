@@ -55,12 +55,14 @@ impl<'a> KanbanMarkdown<'a> {
 }
 
 mod config;
+mod css_binding;
 mod text_paint;
 mod theme;
 
 pub(crate) use text_paint::{KanbanTextPaintPlan, KanbanTextPaintReceipt, KanbanTextPaintRole};
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
+pub(crate) use css_binding::KanbanCssBinding;
 pub(crate) use theme::{
     KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme,
     KanbanTaskThemeReceipt, KanbanTypographyFacts, KanbanTypographyPlan,
@@ -74,9 +76,18 @@ pub(crate) struct KanbanPreparedArtifact {
     typography_layout: KanbanTypographyLayoutReceipt,
     task_theme: KanbanTaskTheme,
     text_paint: KanbanTextPaintPlan,
+    css: KanbanCssBinding,
+    task_terminal_decisions: Option<Box<[KanbanTaskTerminalDecision]>>,
 }
 
 impl KanbanPreparedArtifact {
+    pub(crate) fn css(&self) -> &KanbanCssBinding {
+        &self.css
+    }
+
+    pub(crate) fn task_terminal_decisions(&self) -> Option<&[KanbanTaskTerminalDecision]> {
+        self.task_terminal_decisions.as_deref()
+    }
     pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
         &self.layout
     }
@@ -681,6 +692,19 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         &task_theme,
         work_meter,
     )?;
+    let css = KanbanCssBinding::resolve(
+        effective_config.as_value(),
+        &task_theme,
+        text_paint.fill_css(),
+    )?;
+    let task_terminal_decisions = task_theme
+        .bind_terminal_decisions(
+            effective_config
+                .get_bool("darkMode")
+                .or_else(|| effective_config.get_bool("themeVariables.darkMode"))
+                .unwrap_or(false),
+        )?
+        .map(Vec::into_boxed_slice);
     Ok(KanbanPreparedArtifact {
         layout,
         sections: prepared_sections,
@@ -688,6 +712,8 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         typography_layout,
         task_theme,
         text_paint,
+        css,
+        task_terminal_decisions,
     })
 }
 
@@ -696,7 +722,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     layout: &KanbanDiagramLayout,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-) -> KanbanPreparedArtifact {
+) -> Result<KanbanPreparedArtifact> {
     let config_view = KanbanConfigView::new(effective_config.as_value());
     let typography = KanbanTypographyPlan::resolve(None, effective_config);
     let settings = config_view.layout_settings_with_resolved_typography(
@@ -760,14 +786,18 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         items.len().saturating_mul(2),
     );
 
-    KanbanPreparedArtifact {
+    let task_theme = KanbanTaskTheme::baseline(layout.items.len(), typography);
+    let css = KanbanCssBinding::resolve(effective_config.as_value(), &task_theme, None)?;
+    Ok(KanbanPreparedArtifact {
         layout: layout.clone(),
         sections,
         items,
         typography_layout,
-        task_theme: KanbanTaskTheme::baseline(layout.items.len(), typography),
+        task_theme,
         text_paint: KanbanTextPaintPlan::baseline(),
-    }
+        css,
+        task_terminal_decisions: None,
+    })
 }
 
 #[cfg(test)]

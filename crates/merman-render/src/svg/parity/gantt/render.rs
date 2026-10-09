@@ -197,16 +197,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut task_theme_receipt = task_theme.begin_terminal_receipt();
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = gantt_css_with_overrides(
-        diagram_id,
-        effective_config,
-        Some(task_theme.font_family_css()),
-        task_theme.title_fill_css(),
-        task_theme.grid_text_fill_css(),
-        task_theme.task_text_fill_css(),
-        task_theme.warning_today_line_css(),
-        task_theme.warning_vert_line_css(),
-    );
+    let css = gantt_css(diagram_id, task_theme);
     if let Some(receipt) = task_theme_receipt.as_mut() {
         receipt.record_global_css(
             diagram_id.semantic_str(),

@@ -1,9 +1,7 @@
-use super::super::css::InfoCssParts;
-use super::super::theme::JourneyTheme;
 use super::super::*;
 use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
-    JourneyConfigView,
+    JourneyCssBinding,
 };
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 
@@ -266,44 +264,19 @@ struct JourneyCss {
 
 fn journey_css_with_resolved_typography(
     diagram_id: impl SvgDiagramIdValue,
-    effective_config: &serde_json::Value,
-    theme: &JourneyTheme,
-    font_family_css: &str,
-    font_size_css: &str,
+    theme: &JourneyCssBinding,
     emit_palette_css: bool,
-    text_receipt: Option<&mut crate::journey::JourneyTextPaintReceipt<'_>>,
-) -> JourneyCss {
-    let parts = super::super::css::InfoCssWriter::with_resolved_typography(
-        effective_config,
-        font_family_css,
-        font_size_css,
-    )
-    .with_text_color(&theme.text_color)
-    .into_parts(diagram_id);
-    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts, text_receipt)
-}
-
-fn journey_css_from_parts(
-    diagram_id: impl SvgDiagramIdValue,
-    theme: &JourneyTheme,
-    emit_palette_css: bool,
-    parts: InfoCssParts,
     mut text_receipt: Option<&mut crate::journey::JourneyTextPaintReceipt<'_>>,
 ) -> JourneyCss {
-    let InfoCssParts {
-        css_prefix,
-        root_rule,
-        font_family,
-        font_size_css,
-        base_typography_emitted,
-        text_color,
-        line_color,
-    } = parts;
-    let mut out = css_prefix;
-    let font = font_family.as_str();
-    let text_color = text_color.as_str();
-    let line_color = line_color.as_str();
-    // InfoCssParts records the value used by the successful root-prefix writer.
+    let mut out = String::new();
+    let base_typography_emitted = theme
+        .common
+        .write_prefix_with_font_emission(&mut out, diagram_id)
+        .map(|_| true)
+        .expect("String-backed Journey base CSS emission cannot fail");
+    let font = theme.common.font_family();
+    let text_color = theme.text_color.as_str();
+    let line_color = theme.common.line_color();
     if let Some(receipt) = text_receipt.as_deref_mut() {
         receipt.record_css(text_color);
     }
@@ -441,12 +414,15 @@ fn journey_css_from_parts(
         diagram_id
     );
 
-    let root_typography_emitted = !root_rule.is_empty();
-    out.push_str(&root_rule);
+    let root_typography_emitted = theme
+        .common
+        .write_root_with_font_emission(&mut out, diagram_id, diagram_id)
+        .map(|_| true)
+        .expect("String-backed Journey root CSS emission cannot fail");
     JourneyCss {
         css: out,
-        font_family,
-        font_size_css,
+        font_family: font.to_owned(),
+        font_size_css: theme.common.font_size_css().to_owned(),
         base_typography_emitted,
         root_typography_emitted,
     }
@@ -462,7 +438,6 @@ pub(crate) fn render_journey_diagram_svg_model(
     task_theme: &crate::journey::JourneyTaskTheme,
     typography_theme: &crate::journey::JourneyTypographyThemePlan,
     text_paint: &crate::journey::JourneyTextPaintPlan,
-    effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
@@ -500,7 +475,8 @@ pub(crate) fn render_journey_diagram_svg_model(
         vb_h += JOURNEY_TITLE_EXTRA_HEIGHT_PX;
     }
 
-    let render_settings = JourneyConfigView::new(effective_config).render_settings();
+    let theme = typography_theme.css_binding();
+    let render_settings = &theme.render;
     let task_font_size = render_settings.task_text_style.font_size;
     let task_font_family = render_settings
         .task_text_style
@@ -571,18 +547,11 @@ pub(crate) fn render_journey_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let mut theme = MermaidThemeAdapter::new(effective_config).journey();
-    if let Some(fill) = text_paint.fill_css() {
-        theme.text_color = fill.to_owned();
-    }
     let mut text_receipt =
         text_paint.begin_terminal_receipt(layout, diagram_title.is_some(), options.work_meter())?;
     let css = journey_css_with_resolved_typography(
         diagram_id,
-        effective_config,
-        &theme,
-        typography_theme.font_family_css(),
-        typography_theme.font_size_css(),
+        theme,
         !task_theme.palette_surface_owned(),
         text_receipt.as_mut(),
     );
@@ -986,7 +955,6 @@ mod tests {
                 None,
                 execution.work_meter(),
             )?,
-            &serde_json::json!({}),
             None,
             &DeterministicTextMeasurer::default(),
             &execution,
@@ -1048,9 +1016,13 @@ mod tests {
             }
         });
 
-        let theme = MermaidThemeAdapter::new(&cfg).journey();
-        let parts = info_css_parts_with_config("journey", &cfg);
-        let css = journey_css_from_parts("journey", &theme, true, parts, None).css;
+        let typography = crate::journey::JourneyTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(cfg),
+        );
+        let css =
+            journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
+                .css;
 
         assert!(css.contains(
             r#"#journey .label{font-family:"ibm plex sans",arial,sans-serif;color:#101010;}"#
@@ -1069,21 +1041,43 @@ mod tests {
         assert!(css.contains(r#"#journey .task-type-1,#journey .section-type-1{fill:#c0c0c0;}"#));
         assert!(css.contains(r#"#journey .actor-0{fill:#d0d0d0;}"#));
         assert!(css.contains(r#"#journey .actor-1{fill:#e0e0e0;}"#));
+        assert!(css.contains(r#"#journey .task-type-7,#journey .section-type-7{fill:hsl(188, 100%, 93.5294117647%);}"#));
+        assert!(!css.contains("#journey .actor-5{"));
         assert!(css.contains(r#"#journey .flowchart-link{stroke:#202020;fill:none;}"#));
     }
 
     #[test]
     fn journey_css_uses_default_font_and_edge_color() {
         let cfg = serde_json::json!({});
-        let theme = MermaidThemeAdapter::new(&cfg).journey();
-        let parts = info_css_parts_with_config("journey", &cfg);
-        let css = journey_css_from_parts("journey", &theme, true, parts, None).css;
+        let typography = crate::journey::JourneyTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(cfg),
+        );
+        let css =
+            journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
+                .css;
 
         assert!(css.contains(
             r#"#journey .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}"#
         ));
         assert!(css.contains(r#"#journey .edgePaths .path{stroke:#333333;stroke-width:1.5px;}"#));
         assert!(css.contains(r#"#journey .flowchart-link{stroke:#333333;fill:none;}"#));
+        assert!(css.contains(r#"#journey .face{fill:#FFF8DC;stroke:#999;}"#));
+        assert!(css.contains(r#"fill:#ECECFF;stroke:#9370DB;stroke-width:1px;"#));
+        assert!(css.contains(r#"#journey .arrowheadPath{fill:#333333;}"#));
+        assert!(css.contains(
+            r#"#journey .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}"#
+        ));
+        assert!(css.contains(r#"#journey .cluster text{fill:#333;}"#));
+        assert!(
+            css.contains(r#"background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;"#)
+        );
+        assert!(css.contains(r#"#journey .task-type-0,#journey .section-type-0{fill:#ECECFF;}"#));
+        assert!(css.contains(r#"#journey .task-type-1,#journey .section-type-1{fill:#ffffde;}"#));
+        assert!(css.contains(r#"#journey .task-type-2,#journey .section-type-2{fill:hsl(304, 100%, 96.2745098039%);}"#));
+        assert!(css.contains(r#"#journey .task-type-7,#journey .section-type-7{fill:hsl(188, 100%, 93.5294117647%);}"#));
+        assert_eq!(typography.css_binding().fill_types.len(), 8);
+        assert!(!css.contains("#journey .actor-"));
     }
 
     #[test]
@@ -1171,7 +1165,6 @@ mod tests {
                     None,
                     options.work_meter(),
                 )?,
-                &cfg,
                 None,
                 &DeterministicTextMeasurer::default(),
                 options,
@@ -1236,7 +1229,6 @@ mod tests {
                     None,
                     options.work_meter(),
                 )?,
-                &serde_json::json!({}),
                 None,
                 &DeterministicTextMeasurer::default(),
                 options,

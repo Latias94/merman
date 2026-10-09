@@ -167,6 +167,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         &mut out,
         diagram_id.semantic_str(),
         typography_theme,
+        relation_theme,
         typography_receipt.is_some(),
     )?;
     if let (Some(receipt), Some(emission)) = (typography_receipt.as_mut(), typography_css_emission)

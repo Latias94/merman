@@ -1,4 +1,3 @@
-use super::super::theme::RadarTheme;
 use super::super::*;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
@@ -11,7 +10,7 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 fn write_radar_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    theme: &'a RadarTheme,
+    theme: &'a crate::radar::RadarCssBinding,
     axis_paint: &'a crate::radar::RadarAxisPaintPlan,
     text_paint: &'a crate::radar::RadarTextPaintPlan,
     mut text_receipt: Option<&mut crate::radar::RadarTextPaintReceipt>,
@@ -181,13 +180,20 @@ pub(crate) fn render_radar_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    let series_paint = crate::radar::RadarSeriesPaintPlan::baseline(&effective_config, model);
     let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+    let series_paint =
+        crate::radar::RadarSeriesPaintPlan::baseline_with_binding(typography.css_binding(), model);
     let title_theme = crate::radar::RadarTitleThemePlan::baseline();
-    let axis_paint =
-        crate::radar::RadarAxisPaintPlan::baseline(&effective_config, layout.axes.len());
-    let text_paint =
-        crate::radar::RadarTextPaintPlan::baseline(&effective_config, layout, model, diagram_title);
+    let axis_paint = crate::radar::RadarAxisPaintPlan::baseline_with_binding(
+        typography.css_binding(),
+        layout.axes.len(),
+    );
+    let text_paint = crate::radar::RadarTextPaintPlan::baseline_with_binding(
+        typography.css_binding(),
+        layout,
+        model,
+        diagram_title,
+    );
     render_radar_diagram_svg_model_with_theme_plans(
         layout,
         model,
@@ -279,7 +285,6 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         out.checkpoint()?;
     }
 
-    let theme = MermaidThemeAdapter::new(effective_config).radar();
     out.push_str("<style>");
     out.checkpoint()?;
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
@@ -291,7 +296,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let typography_css_emission = write_radar_css(
         &mut out,
         diagram_id,
-        &theme,
+        typography.css_binding(),
         axis_paint,
         text_paint,
         text_paint_receipt.as_mut(),
@@ -515,18 +520,16 @@ mod tests {
 
     fn radar_css_for_test(config: &serde_json::Value) -> String {
         let effective_config = merman_core::MermaidConfig::from_value(config.clone());
-        let adapter = MermaidThemeAdapter::new(effective_config.as_value());
-        let theme = adapter.radar();
-        let series_colors = adapter.radar_series_colors();
         let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+        let theme = typography.css_binding();
         let mut css = String::new();
         write_radar_css(
             &mut css,
             "radar",
-            &theme,
-            &crate::radar::RadarAxisPaintPlan::baseline(&effective_config, 0),
-            &crate::radar::RadarTextPaintPlan::baseline(
-                &effective_config,
+            theme,
+            &crate::radar::RadarAxisPaintPlan::baseline_with_binding(theme, 0),
+            &crate::radar::RadarTextPaintPlan::baseline_with_binding(
+                theme,
                 &crate::model::RadarDiagramLayout {
                     bounds: None,
                     svg_width: 0.0,
@@ -547,7 +550,7 @@ mod tests {
             None,
             None,
             &typography,
-            &series_colors,
+            &theme.series_colors,
             |_, _| {},
         )
         .expect("String-backed Radar CSS writer");

@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_core::OperationControl;
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-use sha2::{Digest as _, Sha256};
 
 use super::RenderError;
 use super::evidence::RenderEvidence;
@@ -19,91 +17,6 @@ use super::target_admission::{
     DocumentPortabilityReport, TargetAdmissionReceipt, artifact_digest, document_digest,
     document_portability_report, enforce_portability_requirement, standalone_svg_admission,
 };
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-#[derive(Debug, Clone)]
-pub struct ThemeRoutePngCutoverPair {
-    solid: RasterOutput,
-    transparent: RasterOutput,
-    receipt: ThemeRoutePngCutoverReceipt,
-}
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-impl ThemeRoutePngCutoverPair {
-    pub(crate) const fn solid(&self) -> &RasterOutput {
-        &self.solid
-    }
-
-    pub(crate) const fn transparent(&self) -> &RasterOutput {
-        &self.transparent
-    }
-
-    pub(crate) const fn receipt_digest(&self) -> [u8; 32] {
-        self.receipt.digest()
-    }
-}
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ThemeRoutePngCutoverReceipt {
-    solid_route_receipt_digest: [u8; 32],
-    transparent_route_receipt_digest: [u8; 32],
-    solid_svg_artifact_digest: [u8; 32],
-    transparent_svg_artifact_digest: [u8; 32],
-    solid_png_receipt_digest: [u8; 32],
-    transparent_png_receipt_digest: [u8; 32],
-    raster_receipt_digest: [u8; 32],
-    digest: [u8; 32],
-}
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-impl ThemeRoutePngCutoverReceipt {
-    fn seal(
-        solid_route_receipt_digest: [u8; 32],
-        transparent_route_receipt_digest: [u8; 32],
-        solid_svg_artifact_digest: [u8; 32],
-        transparent_svg_artifact_digest: [u8; 32],
-        solid_png_receipt_digest: [u8; 32],
-        transparent_png_receipt_digest: [u8; 32],
-        raster_receipt_digest: [u8; 32],
-        control_css: &str,
-    ) -> Option<Self> {
-        let facts = [
-            solid_route_receipt_digest,
-            transparent_route_receipt_digest,
-            solid_svg_artifact_digest,
-            transparent_svg_artifact_digest,
-            solid_png_receipt_digest,
-            transparent_png_receipt_digest,
-            raster_receipt_digest,
-        ];
-        if facts.iter().any(|digest| *digest == [0; 32]) || control_css.is_empty() {
-            return None;
-        }
-        let mut hasher = Sha256::new();
-        hasher.update(b"merman.theme-route-png-cutover-receipt.v1\0");
-        for digest in facts {
-            hasher.update(digest);
-        }
-        hasher.update((control_css.len() as u64).to_be_bytes());
-        hasher.update(control_css.as_bytes());
-        let digest = hasher.finalize().into();
-        Some(Self {
-            solid_route_receipt_digest,
-            transparent_route_receipt_digest,
-            solid_svg_artifact_digest,
-            transparent_svg_artifact_digest,
-            solid_png_receipt_digest,
-            transparent_png_receipt_digest,
-            raster_receipt_digest,
-            digest,
-        })
-    }
-
-    const fn digest(self) -> [u8; 32] {
-        self.digest
-    }
-}
 
 /// Successful SVG output and the evidence for the operation that produced it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,11 +39,6 @@ pub struct RenderedDocument {
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     standalone_svg_admission: TargetAdmissionReceipt,
-    #[cfg(merman_internal_theme_acceptance)]
-    theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
-    #[cfg(merman_internal_theme_acceptance)]
-    theme_raster_paint_binding_receipts:
-        Box<[merman_render::__private::ThemeRasterPaintBindingReceipt]>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -233,13 +141,6 @@ impl RenderedDocument {
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
-        #[cfg(merman_internal_theme_acceptance)]
-        let theme_route_cutover_receipts =
-            completion.theme_route_cutover_receipts().into_boxed_slice();
-        #[cfg(merman_internal_theme_acceptance)]
-        let theme_raster_paint_binding_receipts = completion
-            .theme_raster_paint_binding_receipts()
-            .into_boxed_slice();
         let (svg, family) = completion.into_output_and_report();
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
@@ -270,10 +171,6 @@ impl RenderedDocument {
             evidence,
             portability,
             standalone_svg_admission,
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_route_cutover_receipts,
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_raster_paint_binding_receipts,
         }
     }
 
@@ -316,20 +213,6 @@ impl RenderedDocument {
     /// their own target-owned receipts.
     pub const fn standalone_svg_admission(&self) -> &TargetAdmissionReceipt {
         &self.standalone_svg_admission
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn theme_route_cutover_receipts(
-        &self,
-    ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
-        &self.theme_route_cutover_receipts
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn theme_raster_paint_binding_receipts(
-        &self,
-    ) -> &[merman_render::__private::ThemeRasterPaintBindingReceipt] {
-        &self.theme_raster_paint_binding_receipts
     }
 
     #[cfg(merman_internal_theme_acceptance)]
@@ -419,218 +302,6 @@ impl RenderedDocument {
             evidence: Arc::clone(&self.evidence),
             export_report,
             admission,
-        })
-    }
-
-    #[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-    pub(crate) fn export_theme_route_cutover_png_pair(
-        solid_document: &RenderedDocument,
-        transparent_document: &RenderedDocument,
-        solid_route: merman_render::__private::ThemeRouteCutoverDescriptor,
-        transparent_route: merman_render::__private::ThemeRouteCutoverDescriptor,
-        options: &merman_export::RasterOptions,
-        control: OperationControl,
-    ) -> Result<ThemeRoutePngCutoverPair, RenderError> {
-        use merman_render::__private::{ThemeRouteCutoverFacet, ThemeRouteCutoverValue};
-
-        let same_route_except_value = solid_route.family_id() == transparent_route.family_id()
-            && solid_route.target() == transparent_route.target()
-            && solid_route.selector() == transparent_route.selector()
-            && solid_route.facet() == transparent_route.facet()
-            && solid_route.projections() == transparent_route.projections();
-        if !same_route_except_value
-            || solid_route.value() != ThemeRouteCutoverValue::Solid
-            || transparent_route.value() != ThemeRouteCutoverValue::Transparent
-        {
-            return Err(map_export_error(
-                merman_export::ExportError::RasterPaintCutover(
-                    "solid and transparent route descriptors are not one value pair",
-                ),
-            ));
-        }
-
-        let solid_svg_artifact_digest = solid_document.standalone_svg_admission.artifact_digest();
-        let transparent_svg_artifact_digest = transparent_document
-            .standalone_svg_admission
-            .artifact_digest();
-        let solid_route_receipt = solid_document
-            .theme_route_cutover_receipts()
-            .iter()
-            .find(|receipt| receipt.descriptor() == solid_route)
-            .copied();
-        let transparent_route_receipt = transparent_document
-            .theme_route_cutover_receipts()
-            .iter()
-            .find(|receipt| receipt.descriptor() == transparent_route)
-            .copied();
-        let (Some(solid_route_receipt), Some(transparent_route_receipt)) =
-            (solid_route_receipt, transparent_route_receipt)
-        else {
-            return Err(map_export_error(
-                merman_export::ExportError::RasterPaintCutover(
-                    "renderer did not seal both route receipts",
-                ),
-            ));
-        };
-        let solid_native_svg_digest = artifact_digest(
-            merman_render::__private::native_export_svg(solid_document.sealed_svg()).as_bytes(),
-        );
-        let transparent_native_svg_digest = artifact_digest(
-            merman_render::__private::native_export_svg(transparent_document.sealed_svg())
-                .as_bytes(),
-        );
-        if !solid_route_receipt.proves_artifacts(solid_svg_artifact_digest, solid_native_svg_digest)
-            || !transparent_route_receipt.proves_artifacts(
-                transparent_svg_artifact_digest,
-                transparent_native_svg_digest,
-            )
-        {
-            return Err(map_export_error(
-                merman_export::ExportError::RasterPaintCutover(
-                    "route receipt is not bound to its finalized SVG artifact",
-                ),
-            ));
-        }
-
-        let renderer_bindings = |document: &RenderedDocument,
-                                 route: merman_render::__private::ThemeRouteCutoverDescriptor,
-                                 native_digest: [u8; 32]| {
-            let matching = document
-                .theme_raster_paint_binding_receipts()
-                .iter()
-                .filter(|receipt| receipt.matches_route_identity(route))
-                .collect::<Vec<_>>();
-            if matching.len() > 1 {
-                return Err(map_export_error(
-                    merman_export::ExportError::RasterPaintCutover(
-                        "renderer sealed duplicate raster terminal routes",
-                    ),
-                ));
-            }
-            let Some(receipt) = matching.into_iter().next() else {
-                if route.requires_renderer_raster_binding_receipt() {
-                    return Err(map_export_error(
-                        merman_export::ExportError::RasterPaintCutover(
-                            "renderer did not seal the required raster terminal route",
-                        ),
-                    ));
-                }
-                return Ok(Vec::new());
-            };
-            if !receipt.proves_route(route, native_digest) {
-                return Err(map_export_error(
-                    merman_export::ExportError::RasterPaintCutover(
-                        "renderer raster terminal receipt is not bound to its finalized SVG",
-                    ),
-                ));
-            }
-            receipt
-                .terminals()
-                .iter()
-                .map(|terminal| {
-                    let binding = match terminal.binding() {
-                        merman_render::__private::ThemeRasterPaintBinding::Native => {
-                            merman_export::RasterPaintSemanticBinding::Native
-                        }
-                        merman_render::__private::ThemeRasterPaintBinding::FillFromStroke => {
-                            merman_export::RasterPaintSemanticBinding::FillFromStroke
-                        }
-                        merman_render::__private::ThemeRasterPaintBinding::FillAndStrokeFromStroke => {
-                            merman_export::RasterPaintSemanticBinding::FillAndStrokeFromStroke
-                        }
-                    };
-                    let (x1, y1, x2, y2, authored_stroke_width, effective_stroke_width) =
-                        match terminal.semantic() {
-                        merman_render::__private::ThemeRasterPaintTerminalSemantic::SequenceLifeline {
-                            geometry,
-                        } => (
-                            geometry.x1(),
-                            geometry.y1(),
-                            geometry.x2(),
-                            geometry.y2(),
-                            geometry.authored_stroke_width(),
-                            geometry.effective_stroke_width(),
-                        ),
-                    };
-                    merman_export::RasterPaintTerminalBinding::line_lifeline_with_effective_width(
-                        terminal.terminal_id(),
-                        binding,
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        authored_stroke_width,
-                        effective_stroke_width,
-                    )
-                    .ok_or_else(|| {
-                        map_export_error(merman_export::ExportError::RasterPaintCutover(
-                            "renderer emitted an empty raster terminal id",
-                        ))
-                    })
-                })
-                .collect::<Result<Vec<_>, RenderError>>()
-        };
-        let solid_bindings =
-            renderer_bindings(solid_document, solid_route, solid_native_svg_digest)?;
-        let transparent_bindings = renderer_bindings(
-            transparent_document,
-            transparent_route,
-            transparent_native_svg_digest,
-        )?;
-        if solid_bindings != transparent_bindings {
-            return Err(map_export_error(
-                merman_export::ExportError::RasterPaintCutover(
-                    "solid and transparent renderer terminal bindings differ",
-                ),
-            ));
-        }
-
-        let facet = match solid_route.raster_paint_facet() {
-            ThemeRouteCutoverFacet::Fill => merman_export::RasterPaintCutoverFacet::Fill,
-            ThemeRouteCutoverFacet::Stroke => merman_export::RasterPaintCutoverFacet::Stroke,
-        };
-        let channels = if solid_route.raster_paint_allows_fill_or_stroke() {
-            merman_export::RasterPaintCutoverChannels::FillOrStroke
-        } else {
-            merman_export::RasterPaintCutoverChannels::Only(facet)
-        };
-        let control_css = solid_route.raster_control_css();
-        let pair = merman_export::encode_png_paint_cutover_pair_controlled(
-            solid_document.sealed_svg(),
-            transparent_document.sealed_svg(),
-            options,
-            control,
-            channels,
-            &control_css,
-            &solid_bindings,
-        )
-        .map_err(map_export_error)?;
-        let ((solid_bytes, solid_report), (transparent_bytes, transparent_report), raster_receipt) =
-            pair.into_parts();
-        let raster_receipt_digest = raster_receipt.digest();
-        let solid = solid_document.finish_raster_export(solid_bytes, solid_report)?;
-        let transparent =
-            transparent_document.finish_raster_export(transparent_bytes, transparent_report)?;
-        let receipt = ThemeRoutePngCutoverReceipt::seal(
-            solid_route_receipt.digest(),
-            transparent_route_receipt.digest(),
-            solid_svg_artifact_digest,
-            transparent_svg_artifact_digest,
-            solid.admission().receipt_digest(),
-            transparent.admission().receipt_digest(),
-            raster_receipt_digest,
-            &control_css,
-        )
-        .ok_or_else(|| {
-            map_export_error(merman_export::ExportError::RasterPaintCutover(
-                "route-local PNG receipt facts are incomplete",
-            ))
-        })?;
-
-        Ok(ThemeRoutePngCutoverPair {
-            solid,
-            transparent,
-            receipt,
         })
     }
 

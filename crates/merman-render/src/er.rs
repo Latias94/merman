@@ -24,9 +24,8 @@ pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
-    ER_PAINT_DEFAULTS, ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan,
-    ErEntityThemeReceipt, ErRelationTerminalExpectation, compile_er_subgraph_source_style,
-    subgraph_svg_text_facts,
+    ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan, ErEntityThemeReceipt,
+    ErRelationTerminalExpectation, compile_er_subgraph_source_style, subgraph_svg_text_facts,
 };
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;

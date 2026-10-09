@@ -9,6 +9,19 @@ execution: code
 
 # Fearless Refactor of Unified Theme Lowering and Historical Path Retirement
 
+## Execution Status
+
+The goal is active. Partial family migrations do not satisfy the final definition of done.
+
+- U1: Inventory recorded; all 35 supported families remain in scope.
+- U2-U4: In progress. Class and Pie changes are committed. Gantt, Radar, Quadrant, and Tree View bindings passed the renderer owner suite; XYChart, Timeline, Journey, Venn, Ishikawa, and Kanban are the next integration batch. Remaining families still require migration.
+- U5: Historical authorization gates removed in `c72f605e9`; orphaned raster acceptance machinery is staged for verification with its callers removed.
+- U6: Unused lazy compatibility providers removed in `1bdc3b1a2`; orphaned fallback evidence removed in `8bc12ee5b`. Compact GitGraph/ER default input capture replaces the old requested path inventory in the current batch.
+- U7: Current guide and example corrections committed in `0224a679d`; final stale-reference audit remains pending.
+- U8: Incremental owner checks are running. The current completed binding batch passed 2,873 renderer unit tests (two manual tests skipped), 397 affected family integration tests, and 98 exporter unit tests. These are incremental receipts, not final feature, browser, or performance acceptance. Adjacent-revision measurements remain pending.
+
+Source security remains unchanged: source-authored `var(...)` is filtered by the existing policy, while trusted host configuration can preserve it. Tree View tests exercise both accepted source `currentColor` and trusted host CSS, including explicit property ownership.
+
 ## Goal Capsule
 
 **Objective:** Make every render operation consume one operation-scoped, family-specific terminal theme binding while preserving Mermaid-compatible input behavior, then remove obsolete runtime adapters, migration gates, stale documentation, and test-only compatibility machinery that no longer owns a current contract.

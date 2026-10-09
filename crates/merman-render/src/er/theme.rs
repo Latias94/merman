@@ -339,19 +339,6 @@ pub(crate) struct ErEntityThemePlan {
     terminal_receipt: OnceLock<ErEntityThemeReceipt>,
 }
 
-pub(crate) const ER_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
-    crate::family::FamilyPaintDefaultPaths::new(
-        crate::DiagramFamilyId::ER,
-        &[ThemeTarget::Text, ThemeTarget::Relation, ThemeTarget::Table],
-        &[
-            "themeVariables.textColor",
-            "themeVariables.nodeTextColor",
-            "themeVariables.lineColor",
-            "themeVariables.rowOdd",
-            "themeVariables.rowEven",
-        ],
-    );
-
 impl ErEntityThemePlan {
     #[allow(
         clippy::too_many_arguments,
@@ -610,9 +597,10 @@ impl ErEntityThemePlan {
                 continue;
             }
             let mermaid_owns_text = match terminal_id {
-                ErTextTerminalId::DiagramTitle => {
-                    mermaid_owns_default_path(effective_config, "themeVariables.textColor")
-                }
+                ErTextTerminalId::DiagramTitle => mermaid_owns_paint_input(
+                    effective_config,
+                    merman_core::__private::ErPaintInput::Text,
+                ),
                 ErTextTerminalId::SubgraphLabel(id) => {
                     visible_subgraph_styles
                         .get(id.as_ref())
@@ -620,7 +608,10 @@ impl ErEntityThemePlan {
                         || effective_config
                             .get_str("themeVariables.titleColor")
                             .is_some()
-                        || mermaid_owns_default_path(effective_config, "themeVariables.textColor")
+                        || mermaid_owns_paint_input(
+                            effective_config,
+                            merman_core::__private::ErPaintInput::Text,
+                        )
                 }
                 ErTextTerminalId::RelationLabel(_) => mermaid_owns_relation_text,
                 ErTextTerminalId::EntityName(_) | ErTextTerminalId::Attribute { .. } => {
@@ -1328,32 +1319,35 @@ fn entity_palette_has_colors(config: &merman_core::MermaidConfig, key: &str) -> 
         .is_some_and(|colors| colors.iter().any(serde_json::Value::is_string))
 }
 
-fn mermaid_owns_default_path(config: &merman_core::MermaidConfig, path: &str) -> bool {
-    // Preserve the pre-projection ownership decision; calculated theme colors are not raw owners.
-    merman_core::__private::config_post_detection_default_blocked(config, path) != Some(false)
+fn mermaid_owns_paint_input(
+    config: &merman_core::MermaidConfig,
+    input: merman_core::__private::ErPaintInput,
+) -> bool {
+    merman_core::__private::er_paint_inputs(config).is_none_or(|inputs| inputs.is_owned(input))
 }
 
 fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
-    mermaid_owns_default_path(config, "themeVariables.lineColor")
+    mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Line)
 }
 
 fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool) -> bool {
-    let node_text_owned = mermaid_owns_default_path(config, "themeVariables.nodeTextColor");
+    let node_text_owned =
+        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::NodeText);
     if html_labels && (!node_text_owned || config.get_str("themeVariables.nodeTextColor").is_some())
     {
         node_text_owned
     } else {
-        mermaid_owns_default_path(config, "themeVariables.textColor")
+        mermaid_owns_paint_input(config, merman_core::__private::ErPaintInput::Text)
     }
 }
 
 fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVariant) -> bool {
-    let path = match variant {
-        ThemeVariant::Odd => "themeVariables.rowOdd",
-        ThemeVariant::Even => "themeVariables.rowEven",
+    let input = match variant {
+        ThemeVariant::Odd => merman_core::__private::ErPaintInput::OddRow,
+        ThemeVariant::Even => merman_core::__private::ErPaintInput::EvenRow,
         _ => return false,
     };
-    mermaid_owns_default_path(config, path)
+    mermaid_owns_paint_input(config, input)
 }
 
 #[derive(Debug, Default)]

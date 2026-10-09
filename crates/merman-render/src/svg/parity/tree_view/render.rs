@@ -26,7 +26,6 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let effective_config_value = effective_config.as_value();
     let diagram_id = options.diagram_id_or("treeView");
     let acc_title = model
         .acc_title
@@ -101,7 +100,6 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     push_tree_view_css(
         &mut out,
         super::super::util::css_selector_diagram_id(diagram_id),
-        effective_config_value,
         theme,
         &mut tree_view_receipt,
     )?;
@@ -172,7 +170,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             );
         }
         out.checkpoint()?;
-        tree_view_receipt.record_line(theme.line_color_css(""), emitted_stroke_width_token);
+        tree_view_receipt.record_line(theme.line_color_css(), emitted_stroke_width_token);
     }
     for node in layout.nodes.iter().skip(next_node) {
         push_tree_view_node(
@@ -243,7 +241,7 @@ fn push_tree_view_node(
             fmt(node.y + context.layout.padding_y),
             icon_svg
         );
-        tree_view_receipt.record_icon(theme.icon_color_css(""), current_color_use);
+        tree_view_receipt.record_icon(theme.icon_color_css(), current_color_use);
     }
     let _ = write!(
         out,
@@ -253,7 +251,7 @@ fn push_tree_view_node(
         fmt(node.label_y),
         escape_xml_display(&node.name)
     );
-    tree_view_receipt.record_label(theme.label_color_css(""));
+    tree_view_receipt.record_label(theme.label_color_css());
     if let (Some(description), Some(description_x)) =
         (node.description.as_deref(), node.description_x)
     {
@@ -272,16 +270,14 @@ fn push_tree_view_node(
 fn push_tree_view_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    effective_config: &serde_json::Value,
     theme_plan: &TreeViewThemePlan,
     receipt: &mut TreeViewThemeReceipt,
 ) -> Result<()> {
-    let theme = MermaidThemeAdapter::new(effective_config).tree_view();
-    let baseline_font_family = crate::config::config_font_family_css(effective_config);
-    let font_family = theme_plan.font_family_css(&baseline_font_family);
-    let label_color = theme_plan.label_color_css(&theme.label_color);
-    let line_color = theme_plan.line_color_css(&theme.line_color);
-    let icon_color = theme_plan.icon_color_css(&theme.icon_color);
+    let theme = theme_plan.css();
+    let font_family = &theme.font_family;
+    let label_color = &theme.label_color;
+    let line_color = &theme.line_color;
+    let icon_color = &theme.icon_color;
 
     let _ = write!(
         out,

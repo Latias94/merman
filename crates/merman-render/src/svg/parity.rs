@@ -54,7 +54,15 @@ mod class;
     )
 )]
 mod css;
-#[cfg(any(feature = "diagram-class", feature = "diagram-pie"))]
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-pie",
+    feature = "diagram-gantt",
+    feature = "diagram-quadrant-chart",
+    feature = "diagram-journey",
+    feature = "diagram-timeline",
+    feature = "diagram-kanban"
+))]
 pub(crate) use css::PreparedCommonCss;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -273,7 +281,7 @@ mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
 #[cfg(feature = "diagram-gantt")]
-use css::gantt_css_with_overrides;
+use css::gantt_css;
 #[cfg(feature = "diagram-xychart")]
 use css::push_xychart_css;
 #[cfg(feature = "diagram-pie")]
@@ -1423,7 +1431,6 @@ fn render_builtin_family_artifact_raw(
             artifact.event_theme(),
             artifact.typography_theme(),
             artifact.text_paint(),
-            effective_config_value,
             options,
         ),
         #[cfg(feature = "diagram-journey")]
@@ -1433,7 +1440,6 @@ fn render_builtin_family_artifact_raw(
             artifact.task_theme(),
             artifact.typography_theme(),
             artifact.text_paint(),
-            effective_config_value,
             title,
             measurer,
             options,

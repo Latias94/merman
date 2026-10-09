@@ -58,19 +58,6 @@ pub(super) fn default_c_scale_label(index: usize) -> &'static str {
     }
 }
 
-pub(super) fn journey_default_fill_type(index: usize) -> &'static str {
-    match index {
-        0 => "#ECECFF",
-        1 => "#ffffde",
-        2 => "hsl(304, 100%, 96.2745098039%)",
-        3 => "hsl(124, 100%, 93.5294117647%)",
-        4 => "hsl(176, 100%, 96.2745098039%)",
-        5 => "hsl(-4, 100%, 93.5294117647%)",
-        6 => "hsl(8, 100%, 96.2745098039%)",
-        _ => "hsl(188, 100%, 93.5294117647%)",
-    }
-}
-
 pub(super) fn css_color_is_transparent(color: &str) -> bool {
     ThemeColor::parse(color.trim()).is_ok_and(|color| color.channel(ColorChannel::Alpha) == 0.0)
 }

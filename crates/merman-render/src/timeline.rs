@@ -10,6 +10,7 @@ use merman_core::diagrams::timeline::{
 use std::borrow::Cow;
 
 mod config;
+mod css_binding;
 mod task_index;
 mod text_paint;
 mod theme;
@@ -18,6 +19,7 @@ mod typography;
 use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
+pub(crate) use css_binding::TimelineCssBinding;
 pub(crate) use text_paint::{TimelineTextPaintPlan, TimelineTextPaintReceipt};
 pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
 pub(crate) use typography::{TimelineTypographyThemePlan, TimelineTypographyThemeReceipt};
@@ -357,6 +359,7 @@ fn expand_bounds_for_node_text(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
@@ -364,39 +367,36 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
     resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
+    let settings = TimelineConfigView::new(effective_config)
+        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
+    layout_timeline_diagram_typed_with_binding(model, &settings, measurer)
+}
+
+pub(crate) fn layout_timeline_diagram_typed_with_binding(
+    model: &TimelineDiagramRenderModel,
+    settings: &config::TimelineLayoutSettings,
+    measurer: &dyn TextMeasurer,
+) -> Result<TimelineDiagramLayout> {
     let task_index = TimelineTaskIndex::new(model)?;
     match model.direction {
-        TimelineDirection::LeftToRight => layout_timeline_horizontal(
-            model,
-            &task_index,
-            effective_config,
-            resolved_font_family_css,
-            resolved_font_size_px,
-            measurer,
-        ),
-        TimelineDirection::TopDown => layout_timeline_vertical(
-            model,
-            &task_index,
-            effective_config,
-            resolved_font_family_css,
-            resolved_font_size_px,
-            measurer,
-        ),
+        TimelineDirection::LeftToRight => {
+            layout_timeline_horizontal(model, &task_index, settings, measurer)
+        }
+        TimelineDirection::TopDown => {
+            layout_timeline_vertical(model, &task_index, settings, measurer)
+        }
     }
 }
 
 fn layout_timeline_horizontal(
     model: &TimelineDiagramRenderModel,
     task_index: &TimelineTaskIndex<'_>,
-    effective_config: &serde_json::Value,
-    resolved_font_family_css: Option<&str>,
-    resolved_font_size_px: Option<f64>,
+    settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
-    let cfg = TimelineConfigView::new(effective_config)
-        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
+    let cfg = settings.clone();
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
@@ -852,15 +852,12 @@ fn layout_vertical_tasks<'a>(
 fn layout_timeline_vertical(
     model: &TimelineDiagramRenderModel,
     task_index: &TimelineTaskIndex<'_>,
-    effective_config: &serde_json::Value,
-    resolved_font_family_css: Option<&str>,
-    resolved_font_size_px: Option<f64>,
+    settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
-    let cfg = TimelineConfigView::new(effective_config)
-        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
+    let cfg = settings.clone();
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;

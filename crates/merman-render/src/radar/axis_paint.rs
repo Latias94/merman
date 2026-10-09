@@ -16,7 +16,6 @@ use crate::family::{
     unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
-use crate::theme::MermaidThemeAdapter;
 
 /// Radar historically projects one stroke-or-fill Axis value into three CSS properties.
 /// Keep that precedence while independently respecting source ownership of both config channels.
@@ -39,11 +38,21 @@ struct RuleObservation {
 }
 
 impl RadarAxisPaintPlan {
+    #[cfg(test)]
     pub(crate) fn baseline(config: &MermaidConfig, axis_count: usize) -> Self {
-        let theme = MermaidThemeAdapter::new(config.as_value()).radar();
+        Self::baseline_with_binding(
+            &super::RadarCssBinding::resolve(config.as_value()),
+            axis_count,
+        )
+    }
+
+    pub(crate) fn baseline_with_binding(
+        binding: &super::RadarCssBinding,
+        axis_count: usize,
+    ) -> Self {
         Self {
-            line_color: theme.line_color.into_boxed_str(),
-            axis_color: theme.axis_color.into_boxed_str(),
+            line_color: binding.line_color.clone().into_boxed_str(),
+            axis_color: binding.axis_color.clone().into_boxed_str(),
             axis_count,
             paint: None,
             pending_rule: None,
@@ -52,13 +61,25 @@ impl RadarAxisPaintPlan {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
         axis_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let mut plan = Self::baseline(config, axis_count);
+        let binding = super::RadarCssBinding::resolve(config.as_value());
+        Self::resolve_with_binding(theme, config, &binding, axis_count, work_meter)
+    }
+
+    pub(crate) fn resolve_with_binding(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &MermaidConfig,
+        binding: &super::RadarCssBinding,
+        axis_count: usize,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let mut plan = Self::baseline_with_binding(binding, axis_count);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let owns_line = merman_core::__private::config_path_overrides_typed_default(

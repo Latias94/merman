@@ -15,7 +15,6 @@ use crate::family::{
     unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
-use crate::theme::MermaidThemeAdapter;
 
 #[derive(Debug, Default)]
 struct RuleObservation {
@@ -41,9 +40,75 @@ struct SeriesPaint {
     expected_labels: usize,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
+    };
+
+    #[test]
+    fn authored_palette_owns_color_even_when_it_matches_the_fallback() {
+        let model: XyChartDiagramRenderModel = serde_json::from_value(serde_json::json!({
+            "xAxis": { "type": "band", "categories": ["A"] },
+            "yAxis": { "type": "linear", "min": 0, "max": 10 },
+            "plots": [{ "type": "bar", "values": [4], "data": [["A", 4]] }]
+        }))
+        .unwrap();
+        let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::ChartSeries, palette),
+            ))
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::XY_CHART);
+        let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let source = "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n";
+        let baseline_config = merman_core::Engine::new()
+            .parse_metadata_sync(source)
+            .unwrap()
+            .effective_config;
+        let fallback =
+            super::super::css_binding::XyChartCssBinding::resolve(baseline_config.as_value())
+                .plot_color_palette[0]
+                .clone();
+        let baseline =
+            XyChartSeriesPaintPlan::resolve(Some(&theme), &baseline_config, &model, &meter)
+                .unwrap();
+        assert_eq!(baseline.fill_css(0), Some("#123456"));
+        for token in [fallback.as_str(), "var(--series)", " , "] {
+            let config = merman_core::Engine::new()
+                .with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "themeVariables": { "xyChart": { "plotColorPalette": token } }
+                })))
+                .parse_metadata_sync(source)
+                .unwrap()
+                .effective_config;
+            assert!(merman_core::__private::config_path_overrides_typed_default(
+                &config,
+                "themeVariables.xyChart.plotColorPalette",
+            ));
+            let bound_css =
+                super::super::css_binding::XyChartCssBinding::resolve(config.as_value());
+            let plan =
+                XyChartSeriesPaintPlan::resolve(Some(&theme), &config, &model, &meter).unwrap();
+            let expected = bound_css.plot_color_palette[0].as_str();
+            if token == fallback {
+                assert_eq!(expected, fallback);
+            } else if token == "var(--series)" {
+                assert_eq!(expected, token);
+            }
+            assert_eq!(plan.fill_css(0), Some(expected));
+            assert_eq!(plan.stroke_css(0), Some(expected));
+        }
+    }
+}
+
 /// Resolves geometry paint without allowing mark alpha or fill rules to recolor point labels.
 #[derive(Debug)]
 pub(crate) struct XyChartSeriesPaintPlan {
+    css: super::css_binding::XyChartCssBinding,
+    chart_config: super::ChartConfig,
     paints: Vec<SeriesPaint>,
     evidence: FamilyThemeEvidence,
     rules: BTreeSet<usize>,
@@ -54,22 +119,29 @@ pub(crate) struct XyChartSeriesPaintPlan {
 }
 
 impl XyChartSeriesPaintPlan {
+    pub(super) fn css_binding(&self) -> &super::css_binding::XyChartCssBinding {
+        &self.css
+    }
+
+    pub(super) fn chart_config(&self) -> &super::ChartConfig {
+        &self.chart_config
+    }
+
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
         model: &XyChartDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let palette = MermaidThemeAdapter::new(config.as_value())
-            .xychart()
-            .plot_color_palette;
+        let css = super::css_binding::XyChartCssBinding::resolve(config.as_value());
+        let palette = &css.plot_color_palette;
         let mut plan = Self {
             paints: model
                 .plots
                 .iter()
                 .enumerate()
                 .map(|(index, plot)| {
-                    let color = plot_color_from_palette(&palette, index);
+                    let color = plot_color_from_palette(palette, index);
                     SeriesPaint {
                         plot_type: plot.plot_type,
                         fill: if plot.plot_type == XyChartPlotType::Bar {
@@ -114,6 +186,8 @@ impl XyChartSeriesPaintPlan {
             effect_binding: None,
             legend_plots: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
+            chart_config: super::parse_chart_config(config.as_value(), model),
+            css,
         };
         let Some(theme) = theme else {
             return Ok(plan);

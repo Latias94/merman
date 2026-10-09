@@ -31,7 +31,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
-    let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
+    let theme = text_theme.css_binding();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -50,7 +50,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     write_ishikawa_css(
         &mut out,
         super::super::util::css_selector_diagram_id(diagram_id),
-        &theme,
+        theme,
         &mut text_terminals.receipt,
     );
     out.push_str(r#"</style><g/><g class="ishikawa">"#);
@@ -64,8 +64,8 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
                     .unwrap_or(options.seed() as f64),
                 "render.ishikawa.roughjs",
             ),
-            line_color: theme.line_color,
-            fill_color: theme.main_bkg,
+            line_color: theme.line_color.clone(),
+            fill_color: theme.main_bkg.clone(),
         };
         push_hand_drawn_diagram(&mut out, layout, &rough, &mut text_terminals)?;
     } else {
@@ -610,7 +610,7 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
 fn write_ishikawa_css(
     css: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
-    theme: &super::super::theme::IshikawaTheme,
+    theme: &crate::ishikawa::IshikawaCssBinding,
     text_receipt: &mut IshikawaTextThemeReceipt,
 ) {
     let _ = write!(

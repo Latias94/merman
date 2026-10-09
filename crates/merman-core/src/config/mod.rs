@@ -4,9 +4,11 @@ pub(crate) use overlay::ConfigOverlayApplication;
 #[cfg(test)]
 pub(crate) use overlay::ConfigOverlayContribution;
 #[cfg(test)]
+pub(crate) use overlay::ConfigOverlayError;
+#[cfg(test)]
 pub(crate) use overlay::ConfigOverlayField;
 pub(crate) use overlay::ConfigOverlayLane;
-pub(crate) use overlay::{ConfigOverlayError, ConfigOverlayProvenance, PostDetectionConfigOverlay};
+pub(crate) use overlay::{ConfigOverlayProvenance, PostDetectionConfigOverlay};
 
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
@@ -383,11 +385,58 @@ pub(crate) enum ThemeParseBindingError {
 pub(crate) struct ThemeParseBinding {
     recipe_identity: [u8; 32],
     compatibility_config: Arc<Value>,
-    post_detection_default_paths: Arc<PostDetectionDefaultPaths>,
 }
 
-type PostDetectionDefaultPaths = BTreeMap<Arc<str>, Arc<[Arc<str>]>>;
-type PostDetectionDefaultDecisions = Arc<[(Arc<str>, bool)]>;
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum GitGraphPaintInput {
+    PrimaryColor,
+    MainBackground,
+    TagBackground,
+    PrimaryBorder,
+    NodeBorder,
+    TagBorder,
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct GitGraphPaintInputs(pub(crate) u8);
+
+impl GitGraphPaintInputs {
+    pub const fn is_owned(self, input: GitGraphPaintInput) -> bool {
+        self.0 & (1 << input as u8) != 0
+    }
+
+    pub const fn available_sources(self) -> u8 {
+        !self.0 & 0b11_1111
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum ErPaintInput {
+    Text,
+    NodeText,
+    Line,
+    OddRow,
+    EvenRow,
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct ErPaintInputs(pub(crate) u8);
+
+impl ErPaintInputs {
+    pub const fn is_owned(self, input: ErPaintInput) -> bool {
+        self.0 & (1 << input as u8) != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FamilyPaintInputs {
+    GitGraph(GitGraphPaintInputs),
+    Er(ErPaintInputs),
+}
 
 impl ThemeParseBinding {
     /// Validates and canonicalizes the restricted Mermaid compatibility input for one recipe.
@@ -400,35 +449,11 @@ impl ThemeParseBinding {
             compatibility_config: Arc::new(normalize_theme_compatibility_config(
                 compatibility_config.as_value(),
             )?),
-            post_detection_default_paths: Arc::new(BTreeMap::new()),
         })
     }
 
     pub(crate) const fn recipe_identity(&self) -> &[u8; 32] {
         &self.recipe_identity
-    }
-
-    pub(crate) fn try_with_post_detection_default_paths(
-        mut self,
-        family: &str,
-        paths: &[&str],
-    ) -> Result<Self, ThemeParseBindingError> {
-        self.post_detection_default_paths = Arc::new(
-            overlay::normalize_post_detection_default_paths(
-                &self.post_detection_default_paths,
-                family,
-                paths,
-            )
-            .map_err(|error| match error {
-                ConfigOverlayError::LimitExceeded { .. } => ThemeParseBindingError::LimitExceeded {
-                    field: "postDetectionDefaultPaths",
-                },
-                _ => ThemeParseBindingError::InvalidValue {
-                    field: "postDetectionDefaultPaths",
-                },
-            })?,
-        );
-        Ok(self)
     }
 
     fn into_tracking_config(self) -> MermaidConfig {
@@ -587,7 +612,7 @@ enum ThemeCompatibilityState {
     Frozen {
         binding: ThemeParseBinding,
         fields: Arc<[FrozenThemeCompatibilityField]>,
-        post_detection_defaults: Option<PostDetectionDefaultDecisions>,
+        family_paint_inputs: Option<FamilyPaintInputs>,
     },
 }
 
@@ -616,7 +641,7 @@ impl FrozenThemeCompatibilityField {
 struct ThemeCompatibilityOwnership {
     binding: ThemeParseBinding,
     fields: Vec<ThemeCompatibilityFieldOwnership>,
-    post_detection_defaults: Option<PostDetectionDefaultDecisions>,
+    family_paint_inputs: Option<FamilyPaintInputs>,
 }
 
 #[derive(Debug, Clone)]
@@ -646,7 +671,7 @@ impl ThemeCompatibilityOwnership {
             return Self {
                 binding,
                 fields,
-                post_detection_defaults: None,
+                family_paint_inputs: None,
             };
         };
 
@@ -684,7 +709,7 @@ impl ThemeCompatibilityOwnership {
         Self {
             binding,
             fields,
-            post_detection_defaults: None,
+            family_paint_inputs: None,
         }
     }
 
@@ -855,18 +880,24 @@ impl MermaidConfig {
         binding.into_tracking_config()
     }
 
-    pub(crate) fn post_detection_default_blocked(&self, path: &str) -> Option<bool> {
-        let Some(ThemeCompatibilityState::Frozen {
-            post_detection_defaults: Some(decisions),
-            ..
-        }) = self.theme_compatibility.as_ref()
-        else {
-            return None;
-        };
-        decisions
-            .binary_search_by(|(candidate, _)| candidate.as_ref().cmp(path))
-            .ok()
-            .map(|index| decisions[index].1)
+    pub(crate) fn gitgraph_paint_inputs(&self) -> Option<GitGraphPaintInputs> {
+        match &self.theme_compatibility {
+            Some(ThemeCompatibilityState::Frozen {
+                family_paint_inputs: Some(FamilyPaintInputs::GitGraph(inputs)),
+                ..
+            }) => Some(*inputs),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn er_paint_inputs(&self) -> Option<ErPaintInputs> {
+        match &self.theme_compatibility {
+            Some(ThemeCompatibilityState::Frozen {
+                family_paint_inputs: Some(FamilyPaintInputs::Er(inputs)),
+                ..
+            }) => Some(*inputs),
+            _ => None,
+        }
     }
 
     pub(crate) fn adopt_tracking_theme_compatibility_from(&mut self, source: &mut Self) {
@@ -923,7 +954,7 @@ impl MermaidConfig {
         self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
             binding: ownership.binding.clone(),
             fields: ownership.freeze_fields(),
-            post_detection_defaults: ownership.post_detection_defaults.clone(),
+            family_paint_inputs: ownership.family_paint_inputs,
         });
     }
 

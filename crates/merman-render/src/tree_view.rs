@@ -35,9 +35,7 @@ pub(crate) fn layout_tree_view_diagram_typed(
     theme: &TreeViewThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
-    let mut cfg = TreeViewConfigView::new(effective_config).layout_settings();
-    cfg.font_family = theme.font_family_css(&cfg.font_family).to_string();
-    cfg.line_thickness = theme.line_thickness_px(cfg.line_thickness);
+    let cfg = TreeViewConfigView::new(effective_config).layout_settings(theme.css());
     validate_tree_view_render_depth(&model.root)?;
     let label_style = TextStyle {
         font_family: Some(cfg.font_family.clone()),

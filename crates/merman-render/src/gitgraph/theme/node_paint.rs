@@ -18,22 +18,6 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::{GITGRAPH_PALETTE_SLOT_COUNT, GitGraphCommitKind, palette_slot};
 
-const GITGRAPH_NODE_PAINT_PATHS: [&str; 6] = [
-    "themeVariables.primaryColor",
-    "themeVariables.mainBkg",
-    "themeVariables.tagLabelBackground",
-    "themeVariables.primaryBorderColor",
-    "themeVariables.nodeBorder",
-    "themeVariables.tagLabelBorder",
-];
-
-pub(crate) const GITGRAPH_NODE_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
-    crate::family::FamilyPaintDefaultPaths::new(
-        crate::DiagramFamilyId::GIT_GRAPH,
-        &[ThemeTarget::Node],
-        &GITGRAPH_NODE_PAINT_PATHS,
-    );
-
 #[derive(Debug, Default)]
 struct Observation {
     direct: u8,
@@ -72,16 +56,8 @@ impl GitGraphNodePaintPlan {
         }
         let style =
             theme.style_with_work_meter(ThemeTarget::Node, ThemeVariant::Default, None, work)?;
-        // Capture is mandatory: a materialized/derived value cannot establish raw ownership.
-        let blocked: [Option<bool>; 6] = std::array::from_fn(|i| {
-            merman_core::__private::config_post_detection_default_blocked(
-                config,
-                GITGRAPH_NODE_PAINT_PATHS[i],
-            )
-        });
-        let available_sources = blocked.iter().enumerate().fold(0, |mask, (i, ownership)| {
-            mask | if *ownership == Some(false) { 1 << i } else { 0 }
-        });
+        let paint_inputs = merman_core::__private::gitgraph_paint_inputs(config);
+        let available_sources = paint_inputs.map_or(0, |inputs| inputs.available_sources());
         let fill = (available_sources & 0b111 != 0)
             .then(|| {
                 resolve_direct_static_fill(
@@ -158,8 +134,7 @@ impl GitGraphNodePaintPlan {
                 (3..6, plan.stroke.as_ref())
             };
             for i in sources {
-                let ownership = blocked[i];
-                if ownership == Some(true) {
+                if paint_inputs.is_some() && available_sources & (1 << i) == 0 {
                     continue;
                 }
                 if route.disposition() == FamilyThemeDisposition::TypedAdapter

@@ -12,7 +12,6 @@ documentation = "https://docs.rs/merman-export"
 readme = "README.md"
 keywords = ["mermaid", "svg", "png", "jpeg", "pdf"]
 categories = ["encoding", "graphics"]
-exclude = ["src/raster_paint_cutover.rs"]
 
 [package.metadata.merman]
 artifact-profile-required = true
@@ -20,7 +19,6 @@ artifact-profile-required = true
 [features]
 default = []
 png = [
-    "dep:sha2",
     "dep:cssparser",
     "dep:data-url",
     "dep:merman-core",
@@ -73,7 +71,6 @@ merman-core = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }
-sha2 = { workspace = true, optional = true }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
@@ -84,6 +81,3 @@ usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] 
 [dev-dependencies]
 base64.workspace = true
 png.workspace = true
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

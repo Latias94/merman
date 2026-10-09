@@ -565,101 +565,59 @@ fn theme_binding() -> ThemeParseBinding {
     theme_binding_for(theme_compatibility_config())
 }
 
-const NODE_DEFAULT_PATHS: &[&str] = &[
-    "themeVariables.primaryColor",
-    "themeVariables.mainBkg",
-    "themeVariables.tagLabelBackground",
-    "themeVariables.primaryBorderColor",
-    "themeVariables.nodeBorder",
-    "themeVariables.tagLabelBorder",
-];
-
 fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {
     crate::__private::ThemeCompatibilityPlan::try_without_family_overlays(
         [0x5a; 32],
         MermaidConfig::from_value(config),
     )
     .unwrap()
-    .try_with_post_detection_default_paths("gitGraph", NODE_DEFAULT_PATHS)
-    .unwrap()
 }
 
-#[test]
-fn post_detection_default_requests_are_normalized_and_part_of_the_parse_contract() {
-    let make_plan = || {
-        crate::__private::ThemeCompatibilityPlan::try_without_family_overlays(
-            [0x5a; 32],
-            MermaidConfig::empty_object(),
-        )
-        .unwrap()
-    };
-    let one = make_plan()
-        .try_with_post_detection_default_paths("gitGraph", &["a.b", "c", "a.b"])
-        .unwrap();
-    let two = make_plan()
-        .try_with_post_detection_default_paths("gitGraph", &["c"])
-        .unwrap()
-        .try_with_post_detection_default_paths("gitGraph", &["a.b"])
-        .unwrap();
-    assert_eq!(one.recipe(), two.recipe());
-    assert_ne!(one.recipe(), make_plan().recipe());
-    assert_ne!(
-        one.recipe(),
-        make_plan()
-            .try_with_post_detection_default_paths("flowchart", &["a.b", "c"])
-            .unwrap()
-            .recipe()
-    );
-    assert_eq!(
-        make_plan().recipe(),
-        make_plan()
-            .try_with_post_detection_default_paths("gitGraph", &[])
-            .unwrap()
-            .recipe()
-    );
-    for path in [
-        "",
-        ".a",
-        "a.",
-        "a..b",
-        "a.\n",
-        &"x".repeat(129),
-        &vec!["a"; 17].join("."),
-    ] {
-        assert!(
-            make_plan()
-                .try_with_post_detection_default_paths("gitGraph", &[path])
-                .is_err()
-        );
-    }
-    assert!(
-        make_plan()
-            .try_with_post_detection_default_paths(" gitGraph", &["a"])
-            .is_err()
-    );
-    assert!(
-        make_plan()
-            .try_with_post_detection_default_paths("gitGraph", &vec!["a"; 1025])
-            .is_err()
-    );
+const NODE_PAINT_INPUTS: &[(crate::__private::GitGraphPaintInput, &str)] = &[
+    (
+        crate::__private::GitGraphPaintInput::PrimaryColor,
+        "themeVariables.primaryColor",
+    ),
+    (
+        crate::__private::GitGraphPaintInput::MainBackground,
+        "themeVariables.mainBkg",
+    ),
+    (
+        crate::__private::GitGraphPaintInput::TagBackground,
+        "themeVariables.tagLabelBackground",
+    ),
+    (
+        crate::__private::GitGraphPaintInput::PrimaryBorder,
+        "themeVariables.primaryBorderColor",
+    ),
+    (
+        crate::__private::GitGraphPaintInput::NodeBorder,
+        "themeVariables.nodeBorder",
+    ),
+    (
+        crate::__private::GitGraphPaintInput::TagBorder,
+        "themeVariables.tagLabelBorder",
+    ),
+];
+
+fn blocked(config: &MermaidConfig, input: crate::__private::GitGraphPaintInput) -> Option<bool> {
+    crate::__private::gitgraph_paint_inputs(config).map(|inputs| inputs.is_owned(input))
 }
 
 #[test]
 fn post_detection_defaults_capture_six_raw_paths_without_a_fallback_overlay() {
-    use crate::__private::{
-        config_post_detection_default_blocked as blocked, install_theme_compatibility,
-    };
-    for explicit_path in NODE_DEFAULT_PATHS {
+    use crate::__private::install_theme_compatibility;
+    for &(explicit_input, explicit_path) in NODE_PAINT_INPUTS {
         let mut compatibility = MermaidConfig::from_value(json!({"theme": "base"}));
         compatibility.set_value(explicit_path, json!("#123456"));
         let plan = node_default_plan(compatibility.as_value().clone());
         let parsed = install_theme_compatibility(Engine::new(), &plan)
             .parse_metadata_sync("gitGraph\ncommit")
             .unwrap();
-        for path in NODE_DEFAULT_PATHS {
+        for &(input, path) in NODE_PAINT_INPUTS {
             assert_eq!(
-                blocked(&parsed.effective_config, path),
-                Some(path == explicit_path),
+                blocked(&parsed.effective_config, input),
+                Some(input as u8 == explicit_input as u8),
                 "{explicit_path} -> {path}"
             );
         }
@@ -677,16 +635,17 @@ fn post_detection_defaults_capture_six_raw_paths_without_a_fallback_overlay() {
         "themeVariables.mainBkg"
     ));
     assert_eq!(
-        blocked(&parsed.effective_config, "themeVariables.mainBkg"),
+        blocked(
+            &parsed.effective_config,
+            crate::__private::GitGraphPaintInput::MainBackground
+        ),
         Some(false)
     );
 }
 
 #[test]
 fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection() {
-    use crate::__private::{
-        config_post_detection_default_blocked as blocked, install_theme_compatibility,
-    };
+    use crate::__private::install_theme_compatibility;
     let plan = node_default_plan(json!({"theme": "default"}));
     let source = "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
     for (site, expected) in [
@@ -700,11 +659,17 @@ fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection(
         .parse_metadata_sync(source)
         .unwrap();
         assert_eq!(
-            blocked(&parsed.effective_config, "themeVariables.primaryColor"),
+            blocked(
+                &parsed.effective_config,
+                crate::__private::GitGraphPaintInput::PrimaryColor
+            ),
             Some(expected)
         );
         assert_eq!(
-            blocked(&parsed.effective_config, "themeVariables.mainBkg"),
+            blocked(
+                &parsed.effective_config,
+                crate::__private::GitGraphPaintInput::MainBackground
+            ),
             Some(false)
         );
         assert!(
@@ -715,35 +680,28 @@ fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection(
 
 #[test]
 fn post_detection_defaults_distinguish_missing_decisions_and_frozen_mutation() {
-    use crate::__private::{
-        config_post_detection_default_blocked as blocked, install_theme_compatibility,
-    };
-    let path = NODE_DEFAULT_PATHS[0];
+    use crate::__private::install_theme_compatibility;
+    let input = crate::__private::GitGraphPaintInput::PrimaryColor;
     let plan = node_default_plan(json!({}));
-    assert_eq!(blocked(&MermaidConfig::empty_object(), path), None);
+    assert_eq!(blocked(&MermaidConfig::empty_object(), input), None);
     let other_family = install_theme_compatibility(Engine::new(), &plan)
         .parse_metadata_sync("flowchart TD\nA-->B")
         .unwrap();
-    assert_eq!(blocked(&other_family.effective_config, path), None);
+    assert_eq!(blocked(&other_family.effective_config, input), None);
     let parsed = install_theme_compatibility(Engine::new(), &plan)
         .parse_metadata_sync("gitGraph\ncommit")
         .unwrap();
-    assert_eq!(blocked(&parsed.effective_config, path), Some(false));
-    assert_eq!(
-        blocked(&parsed.effective_config, "themeVariables.unrequested"),
-        None
-    );
+    assert_eq!(blocked(&parsed.effective_config, input), Some(false));
+    assert!(crate::__private::er_paint_inputs(&parsed.effective_config).is_none());
     let mut changed = parsed.effective_config.clone();
     changed.set_value("unrelated", json!(true));
-    assert_eq!(blocked(&changed, path), None);
-    assert_eq!(blocked(&parsed.effective_config, path), Some(false));
+    assert_eq!(blocked(&changed, input), None);
+    assert_eq!(blocked(&parsed.effective_config, input), Some(false));
 }
 
 #[test]
 fn post_detection_defaults_capture_same_value_host_claims_before_fallback_writes() {
-    use crate::__private::{
-        config_post_detection_default_blocked as blocked, install_theme_compatibility,
-    };
+    use crate::__private::install_theme_compatibility;
     let plan = node_default_plan(json!({"theme": "base"}));
     let baseline = install_theme_compatibility(Engine::new(), &plan)
         .parse_metadata_sync("gitGraph\ncommit")
@@ -762,14 +720,73 @@ fn post_detection_defaults_capture_same_value_host_claims_before_fallback_writes
         .with_fallback_post_detection_config_overlay(fallback)
         .parse_metadata_sync("gitGraph\ncommit")
         .unwrap();
-    assert_eq!(blocked(&parsed.effective_config, host_path), Some(true));
     assert_eq!(
-        blocked(&parsed.effective_config, fallback_path),
+        blocked(
+            &parsed.effective_config,
+            crate::__private::GitGraphPaintInput::MainBackground
+        ),
+        Some(true)
+    );
+    assert_eq!(
+        blocked(
+            &parsed.effective_config,
+            crate::__private::GitGraphPaintInput::TagBackground
+        ),
         Some(false)
     );
     assert_eq!(
         parsed.effective_config.get_str(fallback_path),
         Some("#123456")
+    );
+}
+
+#[test]
+fn er_paint_inputs_preserve_raw_authority_and_frozen_invalidation() {
+    use crate::__private::{ErPaintInput, er_paint_inputs, install_theme_compatibility};
+    let slots = [
+        (ErPaintInput::Text, "themeVariables.textColor"),
+        (ErPaintInput::NodeText, "themeVariables.nodeTextColor"),
+        (ErPaintInput::Line, "themeVariables.lineColor"),
+        (ErPaintInput::OddRow, "themeVariables.rowOdd"),
+        (ErPaintInput::EvenRow, "themeVariables.rowEven"),
+    ];
+    let plan = node_default_plan(json!({"theme": "base"}));
+    for (selected, path) in slots {
+        let mut site = MermaidConfig::empty_object();
+        site.set_value(path, json!("#123456"));
+        let parsed = install_theme_compatibility(Engine::new().with_site_config(site), &plan)
+            .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
+            .unwrap();
+        let inputs = er_paint_inputs(&parsed.effective_config).unwrap();
+        for (input, _) in slots {
+            assert_eq!(
+                inputs.is_owned(input),
+                input as u8 == selected as u8,
+                "{path}"
+            );
+        }
+        assert!(crate::__private::gitgraph_paint_inputs(&parsed.effective_config).is_none());
+        let mut changed = parsed.effective_config.clone();
+        changed.set_value("unrelated", json!(true));
+        assert!(er_paint_inputs(&changed).is_none());
+    }
+    let normalized = install_theme_compatibility(
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "themeVariables": {"lineColor": null, "primaryColor": "#123456"}
+        }))),
+        &plan,
+    )
+    .parse_metadata_sync("erDiagram\nA ||--|| B : owns")
+    .unwrap();
+    assert!(
+        !er_paint_inputs(&normalized.effective_config)
+            .unwrap()
+            .is_owned(ErPaintInput::Line)
+    );
+    assert!(
+        !normalized
+            .effective_config
+            .explicit_config_owns_path("themeVariables.lineColor")
     );
 }
 

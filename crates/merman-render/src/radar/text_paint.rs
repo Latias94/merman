@@ -16,7 +16,6 @@ use crate::family::{
 };
 use crate::model::RadarDiagramLayout;
 use crate::resources::OperationWorkMeter;
-use crate::theme::MermaidThemeAdapter;
 
 /// Generic text paint owns inherited axis/legend fill and the unclaimed title fallback.
 #[derive(Debug)]
@@ -41,16 +40,15 @@ struct RuleObservation {
 }
 
 impl RadarTextPaintPlan {
-    pub(crate) fn baseline(
-        config: &MermaidConfig,
+    pub(crate) fn baseline_with_binding(
+        binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
         model: &RadarDiagramRenderModel,
         title: Option<&str>,
     ) -> Self {
-        let theme = MermaidThemeAdapter::new(config.as_value()).radar();
         Self {
-            text_color: theme.text_color.into_boxed_str(),
-            title_color: theme.title_color.into_boxed_str(),
+            text_color: binding.text_color.clone().into_boxed_str(),
+            title_color: binding.title_color.clone().into_boxed_str(),
             axis_visible: layout
                 .axes
                 .iter()
@@ -75,9 +73,14 @@ impl RadarTextPaintPlan {
         }
     }
 
-    pub(crate) fn resolve(
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Prepared paint and its evidence retain separate owners."
+    )]
+    pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
+        binding: &super::RadarCssBinding,
         layout: &RadarDiagramLayout,
         model: &RadarDiagramRenderModel,
         title: Option<&str>,
@@ -85,7 +88,7 @@ impl RadarTextPaintPlan {
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         work_meter.charge(layout.axes.len().saturating_add(layout.legend_items.len()))?;
-        let mut plan = Self::baseline(config, layout, model, title);
+        let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let owns_text = merman_core::__private::config_path_overrides_typed_default(

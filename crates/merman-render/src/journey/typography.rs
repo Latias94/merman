@@ -17,8 +17,8 @@ use crate::model::JourneyDiagramLayout;
 /// explicitly.
 #[derive(Debug)]
 pub(crate) struct JourneyTypographyThemePlan {
+    css: super::JourneyCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
-    font_size_css: Box<str>,
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
@@ -45,9 +45,18 @@ pub(crate) struct JourneyTypographyThemeReceipt<'a> {
 }
 
 impl JourneyTypographyThemePlan {
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+    ) -> Self {
+        Self::resolve_with_text_paint(theme, effective_config, None)
+    }
+
+    pub(crate) fn resolve_with_text_paint(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        text_fill: Option<&str>,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -80,9 +89,15 @@ impl JourneyTypographyThemePlan {
             }
         };
 
+        let css = super::JourneyCssBinding::new(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css(),
+            &font_size_css,
+            text_fill,
+        );
         Self {
+            css,
             inherited_font_stack,
-            font_size_css,
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
@@ -92,11 +107,15 @@ impl JourneyTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.css.common.font_family()
+    }
+
+    pub(crate) fn css_binding(&self) -> &super::JourneyCssBinding {
+        &self.css
     }
 
     pub(crate) fn font_size_css(&self) -> &str {
-        &self.font_size_css
+        self.css.common.font_size_css()
     }
 
     pub(crate) const fn font_size_px(&self) -> f64 {

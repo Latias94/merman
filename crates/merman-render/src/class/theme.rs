@@ -15,6 +15,7 @@ mod css_binding;
 mod evidence;
 mod namespace_title;
 mod node;
+mod paint;
 mod terminal;
 mod text;
 
@@ -57,7 +58,7 @@ enum ClassRelationStrokeWidth {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassRelationThemePlan {
     stroke: Option<ExpectedStroke>,
-    mermaid_owns_stroke: bool,
+    stroke_binding: paint::ClassPaintBinding,
     note_attachment_indices: Vec<usize>,
     stroke_width: ClassRelationStrokeWidth,
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
@@ -88,14 +89,20 @@ impl ClassRelationThemePlan {
         } else {
             None
         };
-        let mermaid_owns_stroke = merman_core::__private::config_path_overrides_typed_default(
+        let mut stroke_binding = paint::ClassPaintBinding::compatibility(
             effective_config,
-            "themeVariables.lineColor",
+            &["themeVariables.lineColor"],
+            crate::config::config_string(
+                effective_config.as_value(),
+                &["themeVariables", "lineColor"],
+            )
+            .unwrap_or_else(|| "#333333".into()),
         );
+        let mermaid_owns_stroke = stroke_binding.config_owned();
         let mut node_plan = ClassNodeThemePlan::from_config(effective_config);
         let Some(theme) = theme else {
             return Ok(Self {
-                mermaid_owns_stroke,
+                stroke_binding,
                 stroke_width: if mermaid_owns_stroke_width {
                     ClassRelationStrokeWidth::MermaidOwned {
                         paint_width: mermaid_stroke_width,
@@ -163,11 +170,17 @@ impl ClassRelationThemePlan {
         let static_winner_rules = style
             .winner_rule_properties()
             .filter(|(property, _)| {
-                *property != ResolvedStyleProperty::Fill
-                    || matches!(
-                        style.stroke_resolution().specified(),
-                        Specified::Unspecified
-                    )
+                (!matches!(
+                    property,
+                    ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+                ) || !mermaid_owns_stroke)
+                    && (*property != ResolvedStyleProperty::StrokeWidth
+                        || !mermaid_owns_stroke_width)
+                    && (*property != ResolvedStyleProperty::Fill
+                        || matches!(
+                            style.stroke_resolution().specified(),
+                            Specified::Unspecified
+                        ))
             })
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
@@ -186,6 +199,15 @@ impl ClassRelationThemePlan {
                     work_meter,
                 )?;
                 for (property, origin) in ordinal_style.winner_rule_properties() {
+                    if (matches!(
+                        property,
+                        ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+                    ) && mermaid_owns_stroke)
+                        || (property == ResolvedStyleProperty::StrokeWidth
+                            && mermaid_owns_stroke_width)
+                    {
+                        continue;
+                    }
                     if property != ResolvedStyleProperty::Fill
                         || matches!(
                             ordinal_style.stroke_resolution().specified(),
@@ -206,6 +228,19 @@ impl ClassRelationThemePlan {
             work_meter,
         )?;
         let stroke = typed_stroke_expectation(theme, &style, mermaid_owns_stroke);
+        let stroke_is_specified = !matches!(
+            style.stroke_resolution().specified(),
+            Specified::Unspecified
+        );
+        stroke_binding.lower(
+            &style,
+            stroke_is_specified,
+            stroke.as_ref().map(|stroke| terminal::ExpectedPaint {
+                target: ThemeTarget::Edge,
+                rule_index: stroke.rule_index,
+                css: stroke.css.clone(),
+            }),
+        );
         let typed_stroke_width = style
             .stroke_width_resolution()
             .winner()
@@ -235,7 +270,7 @@ impl ClassRelationThemePlan {
         };
         Ok(Self {
             stroke,
-            mermaid_owns_stroke,
+            stroke_binding,
             note_attachment_indices: Vec::new(),
             stroke_width,
             static_winner_rules,
@@ -272,14 +307,14 @@ impl ClassRelationThemePlan {
     pub(crate) fn namespace_title_fill(&self) -> Option<(usize, &str)> {
         self.namespace_title_plan
             .fill
-            .as_ref()
+            .typed()
             .map(|paint| (paint.rule_index, paint.css.as_str()))
     }
 
     pub(crate) fn namespace_title_terminal(&self) -> Option<(usize, &str)> {
         self.namespace_title_plan
             .fill
-            .as_ref()
+            .typed()
             .map(|paint| (paint.rule_index, self.namespace_title_plan.terminal_style()))
     }
 
@@ -287,15 +322,27 @@ impl ClassRelationThemePlan {
         self.cluster_plan.terminal_style()
     }
 
+    pub(crate) fn cluster_css_defaults(&self) -> (&str, &str) {
+        (
+            self.cluster_plan.fill.compatibility_css(),
+            self.cluster_plan.stroke.compatibility_css(),
+        )
+    }
+
+    pub(crate) fn relation_css_default(&self) -> &str {
+        self.stroke_binding.compatibility_css()
+    }
+
+    pub(crate) fn namespace_title_css_default(&self) -> &str {
+        self.namespace_title_plan.fill.compatibility_css()
+    }
+
     pub(crate) fn cluster_paint_rule_indices(&self) -> (Option<usize>, Option<usize>) {
         (
-            self.cluster_plan
-                .fill
-                .as_ref()
-                .map(|paint| paint.rule_index),
+            self.cluster_plan.fill.typed().map(|paint| paint.rule_index),
             self.cluster_plan
                 .stroke
-                .as_ref()
+                .typed()
                 .map(|paint| paint.rule_index),
         )
     }
@@ -371,9 +418,9 @@ impl ClassRelationThemePlan {
             hand_drawn,
             ClassClusterTerminalExpectation {
                 ids: cluster_ids,
-                fill: self.cluster_plan.fill.clone(),
-                stroke: self.cluster_plan.stroke.clone(),
-                namespace_title: self.namespace_title_plan.fill.clone(),
+                fill: self.cluster_plan.fill.typed().cloned(),
+                stroke: self.cluster_plan.stroke.typed().cloned(),
+                namespace_title: self.namespace_title_plan.fill.typed().cloned(),
             },
         )
         .with_note_attachments(self.note_attachment_indices.clone())
@@ -415,18 +462,6 @@ impl ClassRelationThemePlan {
         facet: FamilyThemeRuleFacet,
     ) -> bool {
         if target != ThemeTarget::Edge {
-            return false;
-        }
-        if (facet == FamilyThemeRuleFacet::StrokeWidth
-            && matches!(
-                self.stroke_width,
-                ClassRelationStrokeWidth::MermaidOwned { .. }
-            ))
-            || (matches!(
-                facet,
-                FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
-            ) && self.mermaid_owns_stroke)
-        {
             return false;
         }
         let property = crate::family::resolved_style_property_for_facet(facet);

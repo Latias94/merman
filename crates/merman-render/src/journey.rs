@@ -6,15 +6,16 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
-use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
+mod css_binding;
 mod text_paint;
 mod theme;
 mod typography;
 
-pub(crate) use config::{JourneyConfigView, default_use_max_width};
+pub(crate) use config::default_use_max_width;
+pub(crate) use css_binding::JourneyCssBinding;
 pub(crate) use text_paint::{JourneyTextPaintPlan, JourneyTextPaintReceipt, JourneyTextPaintRole};
 pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
 pub(crate) use typography::JourneyTypographyThemePlan;
@@ -105,19 +106,6 @@ fn wrap_actor_label_lines(
     }
 }
 
-fn journey_actor_legend_text_style(effective_config: &Value) -> TextStyle {
-    TextStyle {
-        font_family: Some(crate::config::config_font_family_css(effective_config)),
-        font_size: crate::config::config_theme_font_size_css_or_root_number_px(
-            effective_config,
-            16.0,
-        )
-        .max(1.0),
-        font_weight: None,
-        font_style: None,
-    }
-}
-
 fn journey_actor_legend_text_bounding_client_rect_width_px(
     line: &str,
     measurer: &dyn TextMeasurer,
@@ -147,20 +135,16 @@ pub(crate) fn layout_journey_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
-    layout_journey_diagram_typed_with_resolved_typography(
-        model,
-        effective_config,
+    let typography = JourneyTypographyThemePlan::resolve(
         None,
-        None,
-        measurer,
-    )
+        &merman_core::MermaidConfig::from_value(effective_config.clone()),
+    );
+    layout_journey_diagram_typed_with_resolved_typography(model, &typography, measurer)
 }
 
 pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     model: &JourneyDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    resolved_font_family_css: Option<&str>,
-    resolved_font_size_px: Option<f64>,
+    typography: &JourneyTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
     let _ = (
@@ -169,7 +153,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         model.sections.as_slice(),
     );
 
-    let cfg = JourneyConfigView::new(effective_config).layout_settings();
+    let cfg = &typography.css_binding().layout;
 
     let actors = if model.actors.is_empty() {
         actors_from_tasks(&model.tasks)
@@ -188,13 +172,9 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let mut legend_style = journey_actor_legend_text_style(effective_config);
-    if let Some(font_family_css) = resolved_font_family_css {
-        legend_style.font_family = Some(font_family_css.to_owned());
-    }
-    if let Some(font_size_px) = resolved_font_size_px {
-        legend_style.font_size = font_size_px.max(1.0);
-    }
+    let legend_style = typography
+        .css_binding()
+        .legend_text_style(typography.font_size_px());
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
@@ -445,7 +425,13 @@ mod tests {
     #[test]
     fn journey_actor_legend_width_preserves_profile_bounding_client_rect_result() {
         let measurer = DeterministicTextMeasurer::default();
-        let style = super::journey_actor_legend_text_style(&json!({}));
+        let typography = super::JourneyTypographyThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::empty_object(),
+        );
+        let style = typography
+            .css_binding()
+            .legend_text_style(typography.font_size_px());
 
         for line in [
             "Giancarlo Esposito and is a",
@@ -480,7 +466,13 @@ mod tests {
 
     #[test]
     fn journey_actor_legend_width_uses_exact_bounding_client_rect_result() {
-        let style = super::journey_actor_legend_text_style(&json!({}));
+        let typography = super::JourneyTypographyThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::empty_object(),
+        );
+        let style = typography
+            .css_binding()
+            .legend_text_style(typography.font_size_px());
 
         assert_eq!(
             super::journey_actor_legend_line_width_px("actor", &BoundingClientRectMeasurer, &style,),
@@ -491,7 +483,13 @@ mod tests {
     #[test]
     fn journey_actor_legend_wraps_with_the_configured_width() {
         let measurer = DeterministicTextMeasurer::default();
-        let style = super::journey_actor_legend_text_style(&json!({}));
+        let typography = super::JourneyTypographyThemePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::empty_object(),
+        );
+        let style = typography
+            .css_binding()
+            .legend_text_style(typography.font_size_px());
 
         let lines = super::wrap_actor_label_lines(
             "This is a long label that will be split into multiple lines to test the wrapping functionality",

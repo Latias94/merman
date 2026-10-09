@@ -13,37 +13,18 @@ struct KanbanCssEmission {
 fn write_kanban_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
-    resolved_typography: Option<(&str, &str)>,
-    resolved_text_color: Option<&str>,
+    theme: &crate::kanban::KanbanCssBinding,
     mut text_receipt: Option<&mut crate::kanban::KanbanTextPaintReceipt<'_>>,
 ) -> Result<KanbanCssEmission> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let css = match resolved_typography {
-        Some((font_family, font_size_css)) => {
-            super::super::css::InfoCssWriter::with_resolved_typography(
-                effective_config,
-                font_family,
-                font_size_css,
-            )
-        }
-        None => super::super::css::InfoCssWriter::from_config(effective_config),
-    };
-    let css = match resolved_text_color {
-        Some(text_color) => css.with_text_color(text_color),
-        None => css,
-    };
-    let parts = css.into_parts(diagram_id);
-    let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
-    let label_text_color = resolved_text_color.unwrap_or(theme.text_color.as_str());
+    let common = &theme.common;
+    common.write_prefix_with_font_emission(out, diagram_id)?;
+    let label_text_color = common.text_color();
     let emission = KanbanCssEmission {
-        font_family: parts.font_family.clone().into_boxed_str(),
-        font_size_css: parts.font_size_css.clone().into_boxed_str(),
-        base_typography_emitted: parts.base_typography_emitted,
+        font_family: common.font_family().into(),
+        font_size_css: common.font_size_css().into(),
+        base_typography_emitted: true,
     };
-    let root_rule = parts.root_rule;
-
-    out.push_str(&parts.css_prefix);
     let _ = write!(out, r#"#{} .edge{{stroke-width:3;}}"#, id);
     out.checkpoint()?;
     for (i, section_theme) in theme.sections.iter().enumerate() {
@@ -117,10 +98,10 @@ fn write_kanban_css(
         diagram_id,
         diagram_id
     );
-    out.push_str(&root_rule);
+    common.write_root_with_font_emission(out, diagram_id, diagram_id)?;
     out.checkpoint()?;
     if let Some(receipt) = text_receipt.as_mut() {
-        receipt.record_css(&parts.text_color);
+        receipt.record_css(common.text_color());
         receipt.record_css(label_text_color);
         receipt.record_css(label_text_color);
     }
@@ -130,7 +111,8 @@ fn write_kanban_css(
 #[cfg(test)]
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let mut out = String::new();
-    write_kanban_css(&mut out, diagram_id, effective_config, None, None, None)?;
+    let binding = crate::kanban::KanbanCssBinding::for_test(effective_config, None)?;
+    write_kanban_css(&mut out, diagram_id, &binding, None)?;
     Ok(out)
 }
 
@@ -379,7 +361,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let task_theme = prepared.task_theme();
     let text_paint = prepared.text_paint();
     let mut text_receipt = text_paint.begin_terminal_receipt();
-    let task_terminal_decisions = task_theme.terminal_decisions(effective_config)?;
+    let task_terminal_decisions = prepared.task_terminal_decisions();
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
     if layout.items.len() != task_theme.item_count()
@@ -428,7 +410,7 @@ pub(crate) fn render_kanban_diagram_svg(
     options.checkpoint_emit()?;
 
     let mut task_theme_receipt = task_theme.begin_terminal_receipt(
-        task_terminal_decisions.as_deref().unwrap_or_default(),
+        task_terminal_decisions.unwrap_or_default(),
         || kanban_typography_facts(prepared_sections, prepared_items),
         prepared.typography_layout(),
     );
@@ -436,9 +418,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let typography_emission = write_kanban_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
-        task_theme.resolved_typography_for_css(),
-        text_paint.fill_css(),
+        prepared.css(),
         text_receipt.as_mut(),
     )?;
     if let Some(receipt) = task_theme_receipt.as_mut() {
@@ -1026,7 +1006,7 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
         let prepared =
-            prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer);
+            prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer)?;
         with_test_svg_execution(DiagramFamilyId::KANBAN, options, |options| {
             render_kanban_diagram_svg(&prepared, &effective_config, options)
         })
@@ -1169,9 +1149,11 @@ mod tests {
         let emitted = write_kanban_css(
             &mut out,
             "k",
-            &serde_json::json!({}),
-            Some(("Typed, sans-serif", "24px")),
-            None,
+            &crate::kanban::KanbanCssBinding::for_test(
+                &serde_json::json!({}),
+                Some(("Typed, sans-serif", "24px")),
+            )
+            .unwrap(),
             None,
         )
         .unwrap();
@@ -1664,7 +1646,8 @@ mod tests {
                 .expect("SVG execution");
 
         let config = merman_core::MermaidConfig::default();
-        let prepared = prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer);
+        let prepared =
+            prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer).unwrap();
         let measurement_count_before_render: u64 = session
             .text_measurement_report()
             .entries()

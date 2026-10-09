@@ -1,14 +1,15 @@
-use crate::config::{
-    DiagramLook, config_bool, config_diagram_look, config_f64, config_string,
-    config_theme_or_root_font_size_px,
-};
+#[cfg(test)]
+use crate::config::config_theme_or_root_font_size_px;
+use crate::config::{DiagramLook, config_bool, config_diagram_look, config_f64, config_string};
 use crate::text::TextStyle;
 use serde_json::Value;
 
 const DEFAULT_SECTION_WIDTH: f64 = 200.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 8.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
+#[cfg(test)]
 const DEFAULT_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
+#[cfg(test)]
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 
 pub(crate) struct KanbanConfigView<'a> {
@@ -26,6 +27,7 @@ impl<'a> KanbanConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> KanbanLayoutSettings {
         KanbanLayoutSettings {
             section_width: self.section_width(),
@@ -40,10 +42,17 @@ impl<'a> KanbanConfigView<'a> {
         font_family: &str,
         font_size_px: f64,
     ) -> KanbanLayoutSettings {
-        let mut settings = self.layout_settings();
-        settings.text_style.font_family = Some(font_family.to_owned());
-        settings.text_style.font_size = font_size_px.max(1.0);
-        settings
+        KanbanLayoutSettings {
+            section_width: self.section_width(),
+            viewbox_padding: self.viewbox_padding(),
+            use_max_width: self.use_max_width(),
+            text_style: TextStyle {
+                font_family: Some(font_family.to_owned()),
+                font_size: font_size_px.max(1.0),
+                font_weight: None,
+                font_style: None,
+            },
+        }
     }
 
     pub(crate) fn look(&self) -> DiagramLook<'a> {
@@ -77,6 +86,7 @@ impl<'a> KanbanConfigView<'a> {
             .unwrap_or(DEFAULT_USE_MAX_WIDTH)
     }
 
+    #[cfg(test)]
     fn text_style(&self) -> TextStyle {
         let font_family = config_string(self.effective_config, &["fontFamily"])
             .or_else(|| config_string(self.effective_config, &["themeVariables", "fontFamily"]))

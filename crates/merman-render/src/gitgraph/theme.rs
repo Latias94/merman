@@ -22,7 +22,7 @@ mod typography;
 
 use branch_stroke::GitGraphBranchStrokePlan;
 pub(crate) use branch_stroke::GitGraphBranchStrokeReceipt;
-pub(crate) use node_paint::{GITGRAPH_NODE_PAINT_DEFAULTS, GitGraphNodePaintCss};
+pub(crate) use node_paint::GitGraphNodePaintCss;
 pub(crate) use static_paint::GitGraphStaticPaintPlan;
 use text_paint::GitGraphTextPaintPlan;
 pub(crate) use typography::{

@@ -12,8 +12,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_MODULES = {
     "merman": {"src/theme_acceptance.rs"},
-    "merman-render": {"src/svg_artifact_receipts.rs", "src/theme_raster_paint.rs"},
-    "merman-export": {"src/raster_paint_cutover.rs"},
+    "merman-render": {"src/svg_artifact_receipts.rs"},
+    "merman-export": set(),
 }
 # Exact former facade paths, checked by rustc so aliases and multiline re-exports count.
 # SDK method removals belong to each platform's own compiler/consumer checks.
@@ -29,8 +29,6 @@ RETIRED_IMPORTS = (
 PRIVATE_IMPORTS = (
     "merman::__theme_acceptance::TargetArtifactView",
     "merman_render::__private::ThemeRouteCutoverReceipt",
-    "merman_render::__private::ThemeRasterPaintBindingReceipt",
-    "merman_export::RasterPaintCutoverReceipt",
 )
 
 

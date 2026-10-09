@@ -249,8 +249,6 @@ pub mod text;
     )
 )]
 mod theme;
-#[cfg(merman_internal_theme_acceptance)]
-mod theme_raster_paint;
 mod theme_route_cutover;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;
@@ -321,12 +319,6 @@ pub mod __private {
         ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
         ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
         ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
-    };
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub use crate::theme_raster_paint::{
-        ThemeRasterPaintBinding, ThemeRasterPaintBindingReceipt, ThemeRasterPaintLineGeometry,
-        ThemeRasterPaintTerminal, ThemeRasterPaintTerminalSemantic,
     };
 
     /// Returns every currently typed route that replaces a concrete legacy bridge projection.

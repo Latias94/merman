@@ -53,6 +53,7 @@ pub(super) fn write_class_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     typography_theme: &crate::class::ClassTextThemePlan,
+    relation_theme: &crate::class::ClassRelationThemePlan,
     seal_typography_emission: bool,
 ) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
     let theme = typography_theme.css_binding();
@@ -61,13 +62,12 @@ pub(super) fn write_class_css(
     let font_family = info_css.font_family();
     let class_text = theme.class_text.as_str();
     let note_text = theme.note_text.as_str();
-    let line_color = theme.line_color.as_str();
+    let line_color = relation_theme.relation_css_default();
     let main_bkg = theme.main_bkg.as_str();
     let node_border = theme.node_border.as_str();
     let class_group_text = theme.class_group_text.as_str();
-    let cluster_bkg = theme.cluster_bkg.as_str();
-    let cluster_border = theme.cluster_border.as_str();
-    let title_color = theme.title_color.as_str();
+    let (cluster_bkg, cluster_border) = relation_theme.cluster_css_defaults();
+    let title_color = relation_theme.namespace_title_css_default();
     let text_color = theme.text_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
     let edge_label_background = theme.edge_label_background.as_str();
@@ -258,11 +258,20 @@ mod tests {
     fn class_css_emission_requires_every_writer_checkpoint() {
         let mermaid_config = merman_core::MermaidConfig::default();
         let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let relation_theme =
+            crate::class::ClassRelationThemePlan::resolve(None, &mermaid_config, 0, 0, &meter)
+                .unwrap()
+                .with_cluster_domain(None, &mermaid_config, 0, &meter)
+                .unwrap();
         let mut successful = CheckpointSink::default();
         let emission = write_class_css(
             &mut successful,
             "class-css-receipt",
             &typography_theme,
+            &relation_theme,
             true,
         )
         .expect("write complete Class CSS");
@@ -270,9 +279,14 @@ mod tests {
 
         for checkpoint in 1..=successful.checkpoint_count {
             let mut rejecting = CheckpointSink::rejecting(checkpoint);
-            let error =
-                write_class_css(&mut rejecting, "class-css-receipt", &typography_theme, true)
-                    .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
+            let error = write_class_css(
+                &mut rejecting,
+                "class-css-receipt",
+                &typography_theme,
+                &relation_theme,
+                true,
+            )
+            .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
             assert!(matches!(error, crate::Error::InvalidModel { .. }));
         }
     }

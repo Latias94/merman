@@ -463,14 +463,47 @@ impl PreparedCommonCss {
         values
     }
 
-    #[cfg(any(feature = "diagram-class", feature = "diagram-pie"))]
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-pie",
+        feature = "diagram-gantt",
+        feature = "diagram-quadrant-chart",
+        feature = "diagram-journey",
+        feature = "diagram-timeline",
+        feature = "diagram-kanban"
+    ))]
     pub(crate) fn font_family(&self) -> &str {
         &self.font_family
     }
 
-    #[cfg(feature = "diagram-pie")]
+    #[cfg(any(
+        feature = "diagram-pie",
+        feature = "diagram-timeline",
+        feature = "diagram-kanban",
+        feature = "diagram-gantt"
+    ))]
     pub(crate) fn text_color(&self) -> &str {
         &self.text_color
+    }
+
+    #[cfg(any(feature = "diagram-journey", feature = "diagram-kanban"))]
+    pub(crate) fn font_size_css(&self) -> &str {
+        &self.font_size_css
+    }
+
+    #[cfg(feature = "diagram-journey")]
+    pub(crate) fn line_color(&self) -> &str {
+        &self.line_color
+    }
+
+    #[cfg(any(
+        feature = "diagram-journey",
+        feature = "diagram-timeline",
+        feature = "diagram-kanban"
+    ))]
+    pub(crate) fn with_text_color(mut self, text_color: &str) -> Self {
+        self.text_color = text_color.to_owned();
+        self
     }
 
     pub(crate) fn new(
@@ -494,7 +527,7 @@ impl PreparedCommonCss {
         values
     }
 
-    fn with_resolved_typography(
+    pub(crate) fn with_resolved_typography(
         effective_config: &serde_json::Value,
         font_family: String,
         font_size_css: String,
@@ -736,6 +769,17 @@ where
     I: SvgDiagramIdValue,
 {
     let values = PreparedCommonCss::new(effective_config, Some(font_family));
+    write_prepared_info_css(out, diagram_id, &values)
+}
+
+pub(super) fn write_prepared_info_css<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    values: &PreparedCommonCss,
+) -> Result<InheritedFontStackCssWrite>
+where
+    I: SvgDiagramIdValue,
+{
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     values.write_prefix(out, selector_id)?;
@@ -743,7 +787,7 @@ where
     let inherited_font_family_css = values.font_family.clone().into_boxed_str();
 
     values.write_root(out, selector_id, fragment_id)?;
-    let root_variable_font_family_css = values.font_family.into_boxed_str();
+    let root_variable_font_family_css = values.font_family.clone().into_boxed_str();
 
     Ok(InheritedFontStackCssWrite {
         root_font_family_css,
@@ -1573,42 +1617,29 @@ where
 }
 
 #[cfg(feature = "diagram-gantt")]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
-pub(super) fn gantt_css_with_overrides<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    resolved_title_color: Option<&str>,
-    resolved_text_color: Option<&str>,
-    resolved_task_text_color: Option<&str>,
-    resolved_today_line_color: Option<&str>,
-    resolved_vert_line_color: Option<&str>,
-) -> String
+pub(super) fn gantt_css<I>(diagram_id: I, task_theme: &crate::gantt::GanttTaskTheme) -> String
 where
     I: SvgDiagramIdValue,
 {
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = resolved_font_family.map_or_else(
-        || info_css_parts_with_config(diagram_id, effective_config),
-        |font_family| info_css_parts_with_font_family(diagram_id, effective_config, font_family),
-    );
-    let theme = MermaidThemeAdapter::new(effective_config).gantt();
-    let mut out = parts.css_prefix;
-    let font = resolved_font_family.unwrap_or(&theme.font_family);
-    let text_color = resolved_text_color.unwrap_or(theme.text_color.as_str());
+    let theme = task_theme.css_binding();
+    let mut out = String::new();
+    theme
+        .common
+        .write_prefix(&mut out, diagram_id)
+        .expect("String-backed Gantt base CSS emission cannot fail");
+    let font = theme.common.font_family();
+    let text_color = theme.text_color.as_str();
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;
     let section_bkg_color2 = &theme.section_bkg_color2;
     let alt_section_bkg_color = &theme.alt_section_bkg_color;
-    let title_color = resolved_title_color.unwrap_or(theme.title_color.as_str());
+    let title_color = theme.title_color.as_str();
     let grid_color = &theme.grid_color;
-    let today_line_color = resolved_today_line_color.unwrap_or(&theme.today_line_color);
+    let today_line_color = &theme.today_line_color;
     let task_text_dark_color = &theme.task_text_dark_color;
     let task_text_clickable_color = &theme.task_text_clickable_color;
-    let task_text_color = resolved_task_text_color.unwrap_or(&theme.task_text_color);
+    let task_text_color = &theme.task_text_color;
     let task_bkg_color = &theme.task_bkg_color;
     let task_border_color = &theme.task_border_color;
     let task_text_outside_color = &theme.task_text_outside_color;
@@ -1618,12 +1649,8 @@ where
     let done_task_bkg_color = &theme.done_task_bkg_color;
     let crit_border_color = &theme.crit_border_color;
     let crit_bkg_color = &theme.crit_bkg_color;
-    let vert_line_color = resolved_vert_line_color.unwrap_or(&theme.vert_line_color);
-    let title_text_color = if title_color.trim().is_empty() {
-        text_color
-    } else {
-        title_color
-    };
+    let vert_line_color = &theme.vert_line_color;
+    let title_text_color = &theme.title_text_color;
 
     fn push_outside_done_text_rules<I>(out: &mut String, id: I, class_prefix: &str, color: &str)
     where
@@ -1788,7 +1815,10 @@ where
         id, title_text_color, font
     );
 
-    out.push_str(&parts.root_rule);
+    theme
+        .common
+        .write_root(&mut out, diagram_id, diagram_id)
+        .expect("String-backed Gantt root CSS emission cannot fail");
     out
 }
 

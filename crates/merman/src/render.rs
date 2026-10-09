@@ -37,8 +37,6 @@ pub use document::PreparedJpegExport;
 pub use document::PreparedPngExport;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use document::RasterOutput;
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-pub(crate) use document::ThemeRoutePngCutoverPair;
 #[cfg(feature = "svg")]
 use document::finish_standalone_svg_target;
 #[cfg(feature = "pdf")]

@@ -757,10 +757,29 @@ mod paint_emission_tests {
                 .unwrap();
             plan.bind_paint_expectations(&mut receipt, &[], None, note.then_some("note"));
             let mut css = String::new();
+            let meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let relation_plan = crate::class::ClassRelationThemePlan::resolve(
+                Some(&theme),
+                &parsed.metadata().effective_config,
+                0,
+                0,
+                &meter,
+            )
+            .unwrap()
+            .with_cluster_domain(Some(&theme), &parsed.metadata().effective_config, 0, &meter)
+            .unwrap();
             receipt.record_css_emission(
-                super::super::css::write_class_css(&mut css, "receipt-test", &plan, true)
-                    .unwrap()
-                    .unwrap(),
+                super::super::css::write_class_css(
+                    &mut css,
+                    "receipt-test",
+                    &plan,
+                    &relation_plan,
+                    true,
+                )
+                .unwrap()
+                .unwrap(),
             );
             let mut svg = String::new();
             let emitted = match channel {

@@ -10,15 +10,14 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+use super::paint::ClassPaintBinding;
 use super::terminal::ExpectedPaint;
 
 /// Namespace rectangles share static paint; ordinal rules are accounted as unsupported requests.
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClassClusterThemePlan {
-    pub(super) mermaid_owns_fill: bool,
-    mermaid_owns_stroke: bool,
-    pub(super) fill: Option<ExpectedPaint>,
-    pub(super) stroke: Option<ExpectedPaint>,
+    pub(super) fill: ClassPaintBinding,
+    pub(super) stroke: ClassPaintBinding,
     terminal_style: String,
     static_winners: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -32,13 +31,20 @@ impl ClassClusterThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
-            mermaid_owns_fill: merman_core::__private::config_path_overrides_typed_default(
+            fill: ClassPaintBinding::compatibility(
                 config,
-                "themeVariables.clusterBkg",
+                &["themeVariables.clusterBkg"],
+                crate::config::config_string(config.as_value(), &["themeVariables", "clusterBkg"])
+                    .unwrap_or_else(|| "#ffffde".into()),
             ),
-            mermaid_owns_stroke: merman_core::__private::config_path_overrides_typed_default(
+            stroke: ClassPaintBinding::compatibility(
                 config,
-                "themeVariables.clusterBorder",
+                &["themeVariables.clusterBorder"],
+                crate::config::config_string(
+                    config.as_value(),
+                    &["themeVariables", "clusterBorder"],
+                )
+                .unwrap_or_else(|| "#aaaa33".into()),
             ),
             ..Self::default()
         };
@@ -51,10 +57,11 @@ impl ClassClusterThemePlan {
         )?;
         plan.static_winners = style
             .winner_rule_properties()
+            .filter(|(property, _)| !plan.property_overridden(*property))
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect();
-        if !plan.mermaid_owns_fill {
-            plan.fill = resolve_direct_static_fill(
+        {
+            let candidate = resolve_direct_static_fill(
                 theme,
                 &style,
                 &[ThemeTarget::Cluster],
@@ -68,9 +75,10 @@ impl ClassClusterThemePlan {
                     css: css.into_string(),
                 }
             });
+            plan.fill.lower(&style, false, candidate);
         }
-        if !plan.mermaid_owns_stroke {
-            plan.stroke = resolve_direct_static_stroke(
+        {
+            let candidate = resolve_direct_static_stroke(
                 theme,
                 &style,
                 &[ThemeTarget::Cluster],
@@ -84,12 +92,13 @@ impl ClassClusterThemePlan {
                     css: css.into_string(),
                 }
             });
+            plan.stroke.lower(&style, true, candidate);
         }
-        for (property, paint) in [("fill", &plan.fill), ("stroke", &plan.stroke)] {
-            if let Some(paint) = paint {
+        for (property, paint_binding) in [("fill", &plan.fill), ("stroke", &plan.stroke)] {
+            if paint_binding.typed().is_some() {
                 plan.terminal_style.push_str(property);
                 plan.terminal_style.push(':');
-                plan.terminal_style.push_str(&paint.css);
+                plan.terminal_style.push_str(paint_binding.css());
                 plan.terminal_style.push_str(" !important;");
             }
         }
@@ -104,11 +113,12 @@ impl ClassClusterThemePlan {
                     Some(ordinal),
                     work_meter,
                 )?;
-                plan.ordinal_winners.extend(
-                    style
-                        .winner_rule_properties()
-                        .map(|(property, origin)| (origin.rule_index(), property)),
-                );
+                let winners = style
+                    .winner_rule_properties()
+                    .filter(|(property, _)| !plan.property_overridden(*property))
+                    .map(|(property, origin)| (origin.rule_index(), property))
+                    .collect::<Vec<_>>();
+                plan.ordinal_winners.extend(winners);
             }
         }
         Ok(plan)
@@ -124,11 +134,6 @@ impl ClassClusterThemePlan {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        if (matches!(facet, FamilyThemeRuleFacet::Fill(_)) && self.mermaid_owns_fill)
-            || (matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && self.mermaid_owns_stroke)
-        {
-            return false;
-        }
         let property = resolved_style_property_for_facet(facet);
         match selector {
             FamilyThemeSelectorShape::Static {
@@ -141,6 +146,14 @@ impl ClassClusterThemePlan {
             FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
                 false
             }
+        }
+    }
+
+    fn property_overridden(&self, property: ResolvedStyleProperty) -> bool {
+        match property {
+            ResolvedStyleProperty::Fill => self.fill.config_owned(),
+            ResolvedStyleProperty::Stroke => self.stroke.config_owned(),
+            _ => false,
         }
     }
 }
@@ -190,8 +203,8 @@ mod tests {
             plan.terminal_style(),
             "fill:#123456 !important;stroke:transparent !important;"
         );
-        assert_eq!(plan.fill.as_ref().unwrap().rule_index, 0);
-        assert_eq!(plan.stroke.as_ref().unwrap().rule_index, 1);
+        assert_eq!(plan.fill.typed().unwrap().rule_index, 0);
+        assert_eq!(plan.stroke.typed().unwrap().rule_index, 1);
     }
 
     #[test]

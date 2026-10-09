@@ -89,8 +89,6 @@ impl DiagramThemeCompiler {
                 mermaid_config,
             )
             .expect("compiled Mermaid compatibility must satisfy the core plan contract");
-        let parse_compatibility =
-            crate::family::bind_theme_parse_defaults(parse_compatibility, &spec);
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),

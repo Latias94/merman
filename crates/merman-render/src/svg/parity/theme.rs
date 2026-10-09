@@ -1,7 +1,4 @@
 use super::util::SvgTheme;
-#[cfg(feature = "diagram-xychart")]
-use crate::chart_palette::resolve_xychart_plot_palette;
-use merman_core::theme_color::{darken, lighten};
 use serde_json::Value;
 
 mod families;
@@ -134,56 +131,6 @@ pub(super) struct StateDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "diagram-xychart")]
-pub(crate) struct XyChartTheme {
-    pub(crate) background_color: String,
-    pub(crate) title_color: String,
-    pub(crate) legend_text_color: String,
-    pub(crate) x_axis_title_color: String,
-    pub(crate) x_axis_label_color: String,
-    pub(crate) x_axis_tick_color: String,
-    pub(crate) x_axis_line_color: String,
-    pub(crate) y_axis_title_color: String,
-    pub(crate) y_axis_label_color: String,
-    pub(crate) y_axis_tick_color: String,
-    pub(crate) y_axis_line_color: String,
-    pub(crate) plot_color_palette: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-quadrant-chart")]
-pub(crate) struct QuadrantChartTheme {
-    pub(crate) quadrant1_fill: String,
-    pub(crate) quadrant2_fill: String,
-    pub(crate) quadrant3_fill: String,
-    pub(crate) quadrant4_fill: String,
-    pub(crate) quadrant1_text_fill: String,
-    pub(crate) quadrant2_text_fill: String,
-    pub(crate) quadrant3_text_fill: String,
-    pub(crate) quadrant4_text_fill: String,
-    pub(crate) quadrant_point_fill: String,
-    pub(crate) quadrant_point_text_fill: String,
-    pub(crate) quadrant_x_axis_text_fill: String,
-    pub(crate) quadrant_y_axis_text_fill: String,
-    pub(crate) quadrant_title_fill: String,
-    pub(crate) quadrant_internal_border_stroke_fill: String,
-    pub(crate) quadrant_external_border_stroke_fill: String,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-tree-view")]
-pub(crate) struct TreeViewTheme {
-    pub(crate) label_font_size: f64,
-    pub(crate) label_font_size_css: String,
-    pub(crate) label_color: String,
-    pub(crate) line_color: String,
-    pub(crate) icon_color: String,
-    pub(crate) description_color: String,
-    pub(crate) highlight_bg: String,
-    pub(crate) highlight_stroke: String,
-}
-
-#[derive(Debug, Clone)]
 #[cfg(feature = "diagram-treemap")]
 pub(crate) struct TreemapTheme {
     pub(crate) title_color: String,
@@ -202,53 +149,6 @@ pub(crate) struct TreemapTheme {
     pub(crate) color_scale_peer: Vec<String>,
     pub(crate) color_scale_label: Vec<String>,
     text_color: String,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-gantt")]
-pub(crate) struct GanttTheme {
-    pub(crate) font_family: String,
-    pub(crate) text_color: String,
-    pub(crate) exclude_bkg_color: String,
-    pub(crate) section_bkg_color: String,
-    pub(crate) section_bkg_color2: String,
-    pub(crate) alt_section_bkg_color: String,
-    pub(crate) title_color: String,
-    pub(crate) grid_color: String,
-    pub(crate) today_line_color: String,
-    pub(crate) task_text_dark_color: String,
-    pub(crate) task_text_clickable_color: String,
-    pub(crate) task_text_color: String,
-    pub(crate) task_bkg_color: String,
-    pub(crate) task_border_color: String,
-    pub(crate) task_text_outside_color: String,
-    pub(crate) active_task_bkg_color: String,
-    pub(crate) active_task_border_color: String,
-    pub(crate) done_task_border_color: String,
-    pub(crate) done_task_bkg_color: String,
-    pub(crate) crit_border_color: String,
-    pub(crate) crit_bkg_color: String,
-    pub(crate) vert_line_color: String,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-kanban")]
-pub(crate) struct KanbanSectionTheme {
-    pub(crate) section_fill: String,
-    pub(crate) c_scale: String,
-    pub(crate) c_scale_label: String,
-    pub(crate) c_scale_inv: String,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-kanban")]
-pub(crate) struct KanbanTheme {
-    pub(crate) text_color: String,
-    pub(crate) background: String,
-    pub(crate) node_border: String,
-    pub(crate) root_fill: String,
-    pub(crate) root_label: String,
-    pub(crate) sections: Vec<KanbanSectionTheme>,
 }
 
 #[cfg(feature = "diagram-treemap")]
@@ -290,94 +190,27 @@ pub(crate) struct EventModelingTheme {
     pub(crate) arrowhead_fill: String,
 }
 
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-ishikawa")]
-pub(crate) struct IshikawaTheme {
-    pub(crate) line_color: String,
-    pub(crate) main_bkg: String,
-    pub(crate) text_color: String,
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-venn")]
-pub(crate) struct VennTheme {
-    pub(crate) title_color: String,
-    pub(crate) set_text_color: String,
-    pub(crate) circle_colors: Vec<String>,
-    pub(crate) primary_color: String,
-    pub(crate) is_dark_theme: bool,
-}
-
-#[cfg(feature = "diagram-venn")]
-impl VennTheme {
-    pub(crate) fn circle_text_color(&self, base_color: &str) -> crate::Result<String> {
-        if self.is_dark_theme {
-            Ok(lighten(base_color, 30.0)?)
-        } else {
-            Ok(darken(base_color, 30.0)?)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-journey")]
-pub(crate) struct JourneyTheme {
-    pub(crate) text_color: String,
-    pub(crate) face_color: String,
-    pub(crate) main_bkg: String,
-    pub(crate) node_border: String,
-    pub(crate) arrowhead_color: String,
-    pub(crate) edge_label_background: String,
-    pub(crate) title_color: String,
-    pub(crate) tertiary_color: String,
-    pub(crate) border2: String,
-    pub(crate) fill_types: Vec<String>,
-    pub(crate) actor_colors: Vec<Option<String>>,
-}
-
-#[derive(Debug, Clone)]
 #[cfg(feature = "diagram-radar")]
-pub(crate) struct RadarTheme {
-    pub(crate) text_color: String,
-    pub(crate) line_color: String,
-    pub(crate) error_bkg_color: String,
-    pub(crate) error_text_color: String,
-    pub(crate) title_color: String,
-    pub(crate) axis_color: String,
-    pub(crate) axis_stroke_width: f64,
-    pub(crate) axis_label_font_size: f64,
-    pub(crate) graticule_color: String,
-    pub(crate) graticule_opacity: f64,
-    pub(crate) graticule_stroke_width: f64,
-    pub(crate) legend_font_size: f64,
-    pub(crate) curve_opacity: f64,
-    pub(crate) curve_stroke_width: f64,
+pub(crate) fn radar_default_series_color(index: usize) -> &'static str {
+    default_c_scale(index)
 }
 
-#[derive(Debug, Clone)]
 #[cfg(feature = "diagram-timeline")]
-pub(crate) struct TimelineSectionTheme {
-    pub(crate) c_scale: String,
-    pub(crate) c_scale_label: String,
-    pub(crate) c_scale_inv: String,
+pub(crate) fn timeline_default_section_colors(index: usize) -> [&'static str; 3] {
+    [
+        default_c_scale(index),
+        default_c_scale_label(index),
+        default_c_scale_inv(index),
+    ]
 }
 
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-timeline")]
-pub(crate) struct TimelineTheme {
-    pub(crate) is_redux_theme: bool,
-    pub(crate) is_dark_theme: bool,
-    pub(crate) is_color_theme: bool,
-    pub(crate) stroke_width: String,
-    pub(crate) font_weight: String,
-    pub(crate) main_bkg: String,
-    pub(crate) node_border: String,
-    pub(crate) disabled_fill: String,
-    pub(crate) disabled_text_fill: String,
-    pub(crate) root_fill: String,
-    pub(crate) root_label: String,
-    pub(crate) border_colors: Vec<String>,
-    pub(crate) sections: Vec<TimelineSectionTheme>,
+#[cfg(feature = "diagram-kanban")]
+pub(crate) fn kanban_section_defaults(index: usize) -> [&'static str; 3] {
+    [
+        default_c_scale(index),
+        default_c_scale_label(index),
+        default_c_scale_inv(index),
+    ]
 }
 
 pub(crate) struct MermaidThemeAdapter<'a> {

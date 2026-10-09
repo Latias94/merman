@@ -17,7 +17,6 @@ use crate::family::{
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
-use crate::theme::MermaidThemeAdapter;
 
 const RADAR_PALETTE_SLOT_COUNT: usize = 12;
 
@@ -39,6 +38,7 @@ const RADAR_COLOR_SCALE_PATHS: [&str; RADAR_PALETTE_SLOT_COUNT] = [
 /// Final Radar base typography shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct RadarTypographyThemePlan {
+    css_binding: super::RadarCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
@@ -80,6 +80,7 @@ impl RadarTypographyThemePlan {
         .into_boxed_str();
 
         Self {
+            css_binding: super::RadarCssBinding::resolve(effective_config.as_value()),
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
@@ -91,6 +92,10 @@ impl RadarTypographyThemePlan {
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn css_binding(&self) -> &super::RadarCssBinding {
+        &self.css_binding
     }
 
     pub(crate) fn font_size_css(&self) -> &str {
@@ -619,13 +624,14 @@ pub(crate) struct RadarSeriesPaintPlan {
 }
 
 impl RadarSeriesPaintPlan {
-    pub(crate) fn resolve(
+    pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+        binding: &super::RadarCssBinding,
         model: &RadarDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline(effective_config, model);
+        let mut plan = Self::baseline_with_binding(binding, model);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -694,13 +700,12 @@ impl RadarSeriesPaintPlan {
         Ok(plan)
     }
 
-    pub(crate) fn baseline(
-        effective_config: &MermaidConfig,
+    pub(crate) fn baseline_with_binding(
+        binding: &super::RadarCssBinding,
         model: &RadarDiagramRenderModel,
     ) -> Self {
-        let colors = MermaidThemeAdapter::new(effective_config.as_value()).radar_series_colors();
         Self {
-            colors,
+            colors: binding.series_colors.clone(),
             typed_capabilities: [None; RADAR_PALETTE_SLOT_COUNT],
             curve_count: model.curves.len(),
             show_legend: model.options.show_legend,

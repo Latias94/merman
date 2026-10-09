@@ -26,6 +26,18 @@ unit tests. Its archived SHA-256 was
 `73ed3fec108884181557db1b560040fcf2401e4c5c0107b23bc78bbaddf7190c`.
 Removing it does not remove observations used by current renderer receipt tests.
 
+The private PNG route-pair exporter also had no remaining consumer. Its facade pair
+and digest metadata, document-only retained route/binding receipts, and exporter-side
+`raster_paint_cutover` implementation were removed together. The exporter no longer
+needs a direct `sha2` dependency for that private witness. Normal PNG encoding and
+native admission still use their existing implementation and checks.
+
+The corresponding renderer `theme_raster_paint` receipt chain had no other consumer.
+Its family report retention, Sequence-only terminal geometry bookkeeping, private
+exports, and self-tests were removed with the orphan exporter. This chain was
+independent of current route receipt sealing. Sequence continues to record winning
+styles and actual emitted line/effect counts for its current runtime evidence.
+
 Current guarantees remain with current consumers:
 
 - `family_mechanism_matrix` retains its narrow assertion that no route is classified as
@@ -36,7 +48,7 @@ Current guarantees remain with current consumers:
   behavior; they remain current behavior checks.
 - The current upstream Class label-background selector check moved into the Class
   label-background test. Its fixture checks survive; the historical CSS digest does not.
-- Current cutover observations and receipts remain available to the acceptance harness;
+- Current renderer cutover observations and receipts remain available to renderer tests;
   this removal does not change renderer/native admission or resource policy.
 
 Source/reference and workflow-security checks establish the deletion boundary. Runtime

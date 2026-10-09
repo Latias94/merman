@@ -379,7 +379,7 @@ impl ClassThemeEvidenceRecorder {
                 ThemeTarget::Cluster,
                 TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
             )
-            .with_fill_fully_overridden(plan.cluster_plan.mermaid_owns_fill),
+            .with_fill_fully_overridden(plan.cluster_plan.fill.config_owned()),
         );
         if let Some(count) =
             receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count)
@@ -414,7 +414,7 @@ impl ClassThemeEvidenceRecorder {
                 ThemeTarget::Title,
                 TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
             )
-            .with_fill_fully_overridden(plan.namespace_title_plan.mermaid_owns_fill),
+            .with_fill_fully_overridden(plan.namespace_title_plan.fill.config_owned()),
         );
         unsupported_domains.push(UnsupportedTerminalDomain::direct(
             ThemeTarget::ClusterLabel,

@@ -27,9 +27,7 @@ mod text_paint;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
-pub(crate) use relation_paint::{
-    REQUIREMENT_RELATION_PAINT_DEFAULTS, RequirementRelationPaintPlan,
-};
+pub(crate) use relation_paint::RequirementRelationPaintPlan;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use text_paint::{
     RequirementTextColorOwner, RequirementTextPaintPlan, RequirementTextPaintReceipt,

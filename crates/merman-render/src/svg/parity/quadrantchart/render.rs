@@ -157,11 +157,10 @@ pub(crate) fn render_quadrantchart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css_write = write_info_css_with_font_family(
+    let css_write = css::write_prepared_info_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
-        point_theme.font_family_css(),
+        point_theme.common_css(),
     )?;
     if let Some(receipt) = point_theme_receipt.as_mut() {
         receipt.record_css_emission(

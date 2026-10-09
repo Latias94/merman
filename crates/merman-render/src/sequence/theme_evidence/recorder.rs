@@ -199,29 +199,6 @@ impl SequenceThemeEvidenceRecorder {
         Ok(())
     }
 
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn raster_paint_binding_fact(
-        &self,
-    ) -> Option<crate::theme_raster_paint::ThemeRasterPaintBindingFact> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !state.lifeline.paint_emitted || state.lifeline.paint_overridden {
-            return None;
-        }
-        let selected_property = state.lifeline.selected_property?;
-        crate::theme_raster_paint::ThemeRasterPaintBindingFact::new(
-            crate::DiagramFamilyId::SEQUENCE,
-            ThemeTarget::Lifeline,
-            state
-                .lifeline
-                .receipt
-                .raster_paint_selector(selected_property)?,
-            state.lifeline.receipt.raster_paint_terminals()?,
-        )
-    }
-
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
         let state = self

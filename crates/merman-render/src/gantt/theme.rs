@@ -19,6 +19,9 @@ use crate::resources::OperationWorkMeter;
 
 use super::task_bar::GanttTaskBarState;
 
+mod css_binding;
+pub(crate) use css_binding::GanttCssBinding;
+
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +166,7 @@ impl GanttTaskTerminalExpectation {
 pub(crate) struct GanttTaskTheme {
     task_count: usize,
     tasks: Box<[GanttTaskTerminalExpectation]>,
-    font_family_css: Box<str>,
+    css: GanttCssBinding,
     title_fill: Option<GanttGlobalFillExpectation>,
     text_fill: Option<GanttTextFillExpectation>,
     warning_stroke: Option<GanttWarningStrokeExpectation>,
@@ -185,8 +188,10 @@ impl GanttTaskTheme {
     ) -> crate::Result<Self> {
         let typography = resolve_gantt_font_stack(theme, effective_config);
         let Some(theme) = theme else {
-            let mut baseline = Self::baseline(tasks);
-            baseline.font_family_css = typography.font_family_css;
+            let mut baseline = Self::baseline_with_css(
+                tasks,
+                GanttCssBinding::new(effective_config.as_value(), &typography.font_family_css),
+            );
             baseline.typed_font_stack_requested = typography.typed_font_stack_requested;
             baseline.typed_font_stack_active = typography.typed_font_stack_active;
             baseline.unsupported_typography_properties =
@@ -580,10 +585,17 @@ impl GanttTaskTheme {
             }
         }
 
+        let mut css =
+            GanttCssBinding::new(effective_config.as_value(), &typography.font_family_css);
+        css.bind_winners(
+            title_fill.as_ref(),
+            text_fill.as_ref(),
+            warning_stroke.as_ref(),
+        );
         Ok(Self {
             task_count: tasks.len(),
             tasks: task_expectations.into_boxed_slice(),
-            font_family_css: typography.font_family_css,
+            css,
             title_fill,
             text_fill,
             warning_stroke,
@@ -597,11 +609,22 @@ impl GanttTaskTheme {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn baseline(tasks: &[GanttRenderTask]) -> Self {
+        Self::baseline_with_css(
+            tasks,
+            GanttCssBinding::new(
+                &serde_json::Value::Null,
+                crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS,
+            ),
+        )
+    }
+
+    fn baseline_with_css(tasks: &[GanttRenderTask], css: GanttCssBinding) -> Self {
         Self {
             task_count: tasks.len(),
             tasks: Box::default(),
-            font_family_css: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.into(),
+            css,
             title_fill: None,
             text_fill: None,
             warning_stroke: None,
@@ -620,39 +643,11 @@ impl GanttTaskTheme {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        &self.font_family_css
+        self.css.common.font_family()
     }
 
-    pub(crate) fn title_fill_css(&self) -> Option<&str> {
-        self.title_fill.as_ref().map(|fill| fill.css.as_ref())
-    }
-
-    pub(crate) fn grid_text_fill_css(&self) -> Option<&str> {
-        self.text_fill
-            .as_ref()
-            .filter(|fill| fill.grid_typed)
-            .map(|fill| fill.grid_css.as_ref())
-    }
-
-    pub(crate) fn task_text_fill_css(&self) -> Option<&str> {
-        self.text_fill
-            .as_ref()
-            .filter(|fill| fill.task_typed)
-            .map(|fill| fill.task_css.as_ref())
-    }
-
-    pub(crate) fn warning_today_line_css(&self) -> Option<&str> {
-        self.warning_stroke
-            .as_ref()
-            .filter(|warning| warning.today_typed)
-            .map(|warning| warning.today_css.as_ref())
-    }
-
-    pub(crate) fn warning_vert_line_css(&self) -> Option<&str> {
-        self.warning_stroke
-            .as_ref()
-            .filter(|warning| warning.vert_typed)
-            .map(|warning| warning.vert_css.as_ref())
+    pub(crate) fn css_binding(&self) -> &GanttCssBinding {
+        &self.css
     }
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
@@ -727,7 +722,7 @@ impl GanttTaskTheme {
             } else {
                 GanttTaskThemeReceipt::from_expectations(
                     expectations,
-                    self.font_family_css.as_ref(),
+                    self.font_family_css(),
                     self.typed_font_stack_active,
                     self.title_fill.as_ref(),
                     self.text_fill.as_ref(),
@@ -1638,6 +1633,30 @@ mod tests {
         ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
     };
     use crate::resources::RenderResourcePolicy;
+
+    #[test]
+    fn prepared_binding_keeps_raw_mermaid_colors_and_layout_metrics() {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "gantt": {"fontFamily": "Example Sans", "fontSize": "13", "sectionFontSize": 15},
+            "themeVariables": {
+                "textColor": "var(--axis-color)",
+                "titleColor": "   ",
+                "taskBkgColor": "currentColor",
+                "todayLineColor": "var(--today-color)"
+            }
+        }));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan =
+            GanttTaskTheme::resolve(None, &config, &[], &meter).expect("resolve raw Gantt binding");
+        let css = plan.css_binding();
+        assert_eq!(plan.font_family_css(), "Example Sans");
+        assert_eq!(css.task_font_size, 13.0);
+        assert_eq!(css.section_font_size, 15.0);
+        assert_eq!(css.title_color, "   ");
+        assert_eq!(css.title_text_color, "var(--axis-color)");
+        assert_eq!(css.task_bkg_color, "currentColor");
+        assert_eq!(css.today_line_color, "var(--today-color)");
+    }
 
     fn radius_style(radius: f32) -> ThemeStylePatch {
         ThemeStylePatch {

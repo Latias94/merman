@@ -21,9 +21,13 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::config::DEFAULT_LINE_THICKNESS;
 
+mod css_binding;
+pub(crate) use css_binding::TreeViewCssBinding;
+
 /// Final Tree View theme shared by layout, terminal SVG emission, and family evidence.
 #[derive(Debug)]
 pub(crate) struct TreeViewThemePlan {
+    css: TreeViewCssBinding,
     line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
     expected_line_count: usize,
     has_visible_typography: bool,
@@ -202,12 +206,21 @@ impl TreeViewThemePlan {
         model: &TreeViewDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let Some(theme) = theme else {
-            return Ok(Self::baseline(0));
-        };
         let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
         let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(Some(theme), effective_config);
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let mut css = TreeViewCssBinding::with_font_family(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css(),
+        );
+        let Some(theme) = theme else {
+            return Ok(Self::baseline_with_css(
+                expected_line_count,
+                css,
+                inherited_font_stack,
+                node_count != 0,
+            ));
+        };
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -457,7 +470,24 @@ impl TreeViewThemePlan {
             }
         }
 
+        if let Some(assignment) = &label_color {
+            css.label_color = assignment.paint.css().to_string();
+        }
+        if let Some(assignment) = &line_color {
+            css.line_color = assignment.paint.css().to_string();
+        }
+        if let Some(color) = icon_color
+            .as_ref()
+            .map(|assignment| assignment.paint.css())
+            .or(icon_fallback_color.as_deref())
+        {
+            css.icon_color = color.to_string();
+        }
+        if let Some(width) = &line_thickness_override {
+            css.line_thickness = width.value_px;
+        }
         Ok(Self {
+            css,
             line_thickness_override,
             expected_line_count,
             has_visible_typography: node_count != 0,
@@ -472,29 +502,43 @@ impl TreeViewThemePlan {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn baseline(expected_line_count: usize) -> Self {
+        Self::baseline_with_css(
+            expected_line_count,
+            TreeViewCssBinding::from_config(&serde_json::Value::Null),
+            InheritedFontStackPlan::resolve_property_local(
+                None,
+                &merman_core::MermaidConfig::default(),
+            ),
+            false,
+        )
+    }
+
+    fn baseline_with_css(
+        expected_line_count: usize,
+        css: TreeViewCssBinding,
+        inherited_font_stack: InheritedFontStackPlan,
+        has_visible_typography: bool,
+    ) -> Self {
         Self {
+            css,
             line_thickness_override: None,
             expected_line_count,
-            has_visible_typography: false,
+            has_visible_typography,
             label_color: None,
             line_color: None,
             icon_color: None,
             icon_fallback_color: None,
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                None,
-                &merman_core::MermaidConfig::default(),
-            ),
+            inherited_font_stack,
             evidence: FamilyThemeEvidence::default(),
             pending_stroke_width_key: None,
             terminal_receipt: OnceLock::new(),
         }
     }
 
-    pub(crate) fn line_thickness_px(&self, mermaid_line_thickness: f64) -> f64 {
-        self.line_thickness_override
-            .as_ref()
-            .map_or(mermaid_line_thickness, |width| width.value_px)
+    pub(crate) fn css(&self) -> &TreeViewCssBinding {
+        &self.css
     }
 
     pub(crate) fn terminal_stroke_width_token(&self, emitted_stroke_width_px: f64) -> Option<&str> {
@@ -579,20 +623,16 @@ impl TreeViewThemePlan {
         evidence
     }
 
-    pub(crate) fn label_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
-        self.label_color
-            .as_ref()
-            .map_or(baseline, |assignment| assignment.paint.css())
+    pub(crate) fn label_color_css(&self) -> &str {
+        &self.css.label_color
     }
 
-    pub(crate) fn line_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
-        self.line_color
-            .as_ref()
-            .map_or(baseline, |assignment| assignment.paint.css())
+    pub(crate) fn line_color_css(&self) -> &str {
+        &self.css.line_color
     }
 
-    pub(crate) fn icon_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
-        self.typed_icon_color_css().unwrap_or(baseline)
+    pub(crate) fn icon_color_css(&self) -> &str {
+        &self.css.icon_color
     }
 
     pub(crate) fn typed_icon_color_css(&self) -> Option<&str> {
@@ -600,14 +640,6 @@ impl TreeViewThemePlan {
             .as_ref()
             .map(|assignment| assignment.paint.css())
             .or(self.icon_fallback_color.as_deref())
-    }
-
-    pub(crate) fn font_family_css<'a>(&'a self, baseline: &'a str) -> &'a str {
-        if self.inherited_font_stack.typed_font_stack_requested() {
-            self.inherited_font_stack.font_family_css()
-        } else {
-            baseline
-        }
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -888,6 +920,80 @@ mod tests {
             .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile TreeView terminal fixture")
             .resolve(DiagramFamilyId::TREE_VIEW)
+    }
+
+    #[test]
+    fn no_recipe_binds_config_before_layout_and_receipt() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "treeView": {"lineThickness": 3},
+            "themeVariables": {
+                "fontFamily": "Custom Font",
+                "treeView": {"labelFontSize": "22px", "lineColor": "var(--line)"}
+            }
+        }));
+        let model = TreeViewDiagramRenderModel::default();
+        let plan = TreeViewThemePlan::resolve(None, &config, &model, &work_meter())
+            .expect("bind Mermaid-only Tree View");
+        assert_eq!(plan.css().font_family, "Custom Font");
+        assert_eq!(plan.css().label_font_size, 22.0);
+        assert_eq!(plan.css().line_thickness, 3.0);
+        assert_eq!(plan.line_color_css(), "var(--line)");
+        let mut receipt = plan.begin_terminal_receipt(1, 0);
+        receipt.record_css(
+            &plan.css().font_family,
+            plan.label_color_css(),
+            plan.line_color_css(),
+            plan.icon_color_css(),
+        );
+        assert!(receipt.css_matches);
+    }
+
+    #[test]
+    fn terminal_binding_keeps_property_local_config_ownership() {
+        let theme = resolved_fill(ThemeTarget::NodeLabel);
+        let model = TreeViewDiagramRenderModel::default();
+        let mut config = merman_core::MermaidConfig::empty_object();
+        let typed = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
+            .expect("bind typed Tree View");
+        assert_eq!(typed.label_color_css(), "#123456");
+
+        config = merman_core::Engine::new()
+            .parse_metadata_sync(
+                "---\nconfig:\n  themeVariables:\n    treeView:\n      labelColor: currentColor\n---\ntreeView-beta\n    \"root\"\n",
+            )
+            .expect("parse Tree View authored config ownership")
+            .effective_config;
+        assert!(merman_core::__private::config_path_overrides_typed_default(
+            &config,
+            "themeVariables.treeView.labelColor"
+        ));
+        assert!(
+            !merman_core::__private::config_path_overrides_typed_default(
+                &config,
+                "themeVariables.treeView.lineColor"
+            )
+        );
+        let authored = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
+            .expect("bind authored Tree View");
+        assert_eq!(authored.label_color_css(), "currentColor");
+        assert!(authored.label_color.is_none());
+        assert_eq!(authored.line_color_css(), "black");
+
+        let host_config = merman_core::Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {"treeView": {"labelColor": "var(--label)"}}
+            })))
+            .parse_metadata_sync("treeView-beta\n    \"root\"\n")
+            .expect("parse Tree View host config ownership")
+            .effective_config;
+        assert!(merman_core::__private::config_path_overrides_typed_default(
+            &host_config,
+            "themeVariables.treeView.labelColor"
+        ));
+        let host = TreeViewThemePlan::resolve(Some(&theme), &host_config, &model, &work_meter())
+            .expect("bind host Tree View");
+        assert_eq!(host.label_color_css(), "var(--label)");
+        assert!(host.label_color.is_none());
     }
 
     #[test]

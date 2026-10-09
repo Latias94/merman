@@ -14,7 +14,6 @@ keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
 categories = ["visualization"]
 exclude = [
   "src/svg_artifact_receipts.rs",
-  "src/theme_raster_paint.rs",
   "examples/*_debug_svg.rs",
   "examples/ratex_math_audit.rs",
   "tests/**",

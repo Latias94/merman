@@ -9,14 +9,14 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+use super::paint::ClassPaintBinding;
 use super::terminal::ExpectedPaint;
 
 /// Class's historical Title channel belongs to visible namespace labels.
 /// Generic Text participates in author order and retains its own evidence key.
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClassNamespaceTitleThemePlan {
-    pub(super) mermaid_owns_fill: bool,
-    pub(super) fill: Option<ExpectedPaint>,
+    pub(super) fill: ClassPaintBinding,
     terminal_style: String,
     static_winners: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -30,9 +30,11 @@ impl ClassNamespaceTitleThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
-            mermaid_owns_fill: merman_core::__private::config_path_overrides_typed_default(
+            fill: ClassPaintBinding::compatibility(
                 config,
-                "themeVariables.titleColor",
+                &["themeVariables.titleColor"],
+                crate::config::config_string(config.as_value(), &["themeVariables", "titleColor"])
+                    .unwrap_or_else(|| "#333".into()),
             ),
             ..Self::default()
         };
@@ -45,10 +47,13 @@ impl ClassNamespaceTitleThemePlan {
         )?;
         plan.static_winners = style
             .winner_rule_properties()
+            .filter(|(property, _)| {
+                *property != ResolvedStyleProperty::Fill || !plan.fill.config_owned()
+            })
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect();
-        if !plan.mermaid_owns_fill {
-            plan.fill = resolve_direct_static_fill(
+        {
+            let candidate = resolve_direct_static_fill(
                 theme,
                 &style,
                 &[ThemeTarget::Title, ThemeTarget::Text],
@@ -66,11 +71,13 @@ impl ClassNamespaceTitleThemePlan {
                     css: css.into_string(),
                 }
             });
+            plan.fill.lower(&style, false, candidate);
         }
-        if let Some(paint) = &plan.fill {
+        if plan.fill.typed().is_some() {
             plan.terminal_style = format!(
                 "color:{} !important;fill:{} !important;",
-                paint.css, paint.css
+                plan.fill.css(),
+                plan.fill.css()
             );
         }
         if theme.family_rules().any(|(_, rule)| {
@@ -84,11 +91,14 @@ impl ClassNamespaceTitleThemePlan {
                     Some(ordinal),
                     work_meter,
                 )?;
-                plan.ordinal_winners.extend(
-                    style
-                        .winner_rule_properties()
-                        .map(|(property, origin)| (origin.rule_index(), property)),
-                );
+                let winners = style
+                    .winner_rule_properties()
+                    .filter(|(property, _)| {
+                        *property != ResolvedStyleProperty::Fill || !plan.fill.config_owned()
+                    })
+                    .map(|(property, origin)| (origin.rule_index(), property))
+                    .collect::<Vec<_>>();
+                plan.ordinal_winners.extend(winners);
             }
         }
         Ok(plan)
@@ -104,9 +114,6 @@ impl ClassNamespaceTitleThemePlan {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        if matches!(facet, FamilyThemeRuleFacet::Fill(_)) && self.mermaid_owns_fill {
-            return false;
-        }
         let property = resolved_style_property_for_facet(facet);
         match selector {
             FamilyThemeSelectorShape::Static {

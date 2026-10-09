@@ -187,9 +187,10 @@ pub(crate) struct TimelineEventTheme {
 }
 
 impl TimelineEventTheme {
-    pub(crate) fn resolve(
+    pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+        binding: &super::TimelineCssBinding,
         layout: &TimelineDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -208,9 +209,7 @@ impl TimelineEventTheme {
             .iter()
             .map(|occurrence| timeline_section_slot(&occurrence.node.section_class))
             .collect::<Vec<_>>();
-        let active_palette_slot_limit =
-            super::timeline_theme_color_limit(effective_config.as_value())
-                .min(TIMELINE_PALETTE_SLOT_COUNT);
+        let active_palette_slot_limit = binding.sections.len().min(TIMELINE_PALETTE_SLOT_COUNT);
         let mut palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT] =
             std::array::from_fn(|_| None);
         let mut palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT] =
@@ -220,8 +219,8 @@ impl TimelineEventTheme {
         // colors are residuals here.
         let mut missing_palette_slot = palette_node_slots.iter().any(Option::is_none);
         let palette_enabled = palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
-            && !timeline_is_redux_theme(effective_config)
-            && !super::TimelineConfigView::new(effective_config.as_value()).uses_neo_gradient();
+            && !binding.is_redux_theme
+            && !binding.use_neo_gradient;
         if palette_enabled {
             let mut used_slots = BTreeSet::new();
             for slot in palette_node_slots
@@ -238,8 +237,8 @@ impl TimelineEventTheme {
                     effective_config,
                     &color_scale_path,
                 ) {
-                    effective_config
-                        .get_str(&color_scale_path)
+                    binding
+                        .source_scale(slot)
                         .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
                 } else {
                     theme
@@ -279,9 +278,8 @@ impl TimelineEventTheme {
         );
         // nodeBorder is a shared Redux terminal: labels and the activity axis consume it even
         // when there are no events. Color and Neo shapes have independent paint owners.
-        let stroke_domain_active = timeline_is_redux_theme(effective_config)
-            && active_palette_slot_limit != 0
-            && !source_owns_event_stroke;
+        let stroke_domain_active =
+            binding.is_redux_theme && active_palette_slot_limit != 0 && !source_owns_event_stroke;
         let mut stroke = if stroke_domain_active {
             resolve_direct_static_stroke(
                 theme,
@@ -298,12 +296,7 @@ impl TimelineEventTheme {
                         capability,
                     },
                     section_limit: active_palette_slot_limit,
-                    shape_stroke: !effective_config
-                        .get_str("theme")
-                        .unwrap_or_default()
-                        .contains("color")
-                        && !super::TimelineConfigView::new(effective_config.as_value())
-                            .uses_neo_gradient(),
+                    shape_stroke: !binding.is_color_theme && !binding.use_neo_gradient,
                     expected: TimelineStrokeConsumers::default(),
                 }
             })
@@ -342,7 +335,7 @@ impl TimelineEventTheme {
                     style,
                     event,
                     node,
-                    timeline_event_fill_source_owned(effective_config, node),
+                    timeline_event_fill_source_owned(effective_config, binding, node),
                     &mut source_owned_fill_rule_occurrences,
                 );
             }
@@ -360,7 +353,11 @@ impl TimelineEventTheme {
                     &style,
                     event,
                     event_nodes[event_index],
-                    timeline_event_fill_source_owned(effective_config, event_nodes[event_index]),
+                    timeline_event_fill_source_owned(
+                        effective_config,
+                        binding,
+                        event_nodes[event_index],
+                    ),
                     &mut source_owned_fill_rule_occurrences,
                 );
             }
@@ -380,8 +377,12 @@ impl TimelineEventTheme {
                     missing_palette_slot = true;
                     continue;
                 };
-                let line_stroke =
-                    timeline_classic_line_stroke(effective_config, slot, fill.css.as_ref());
+                let line_stroke = timeline_classic_line_stroke(
+                    effective_config,
+                    binding,
+                    slot,
+                    fill.css.as_ref(),
+                );
                 if line_stroke.is_none() {
                     missing_palette_slot = true;
                 }
@@ -739,44 +740,29 @@ struct TimelinePaletteNodeOccurrence<'a> {
     event_index: Option<usize>,
 }
 
-fn timeline_is_redux_theme(config: &MermaidConfig) -> bool {
-    config
-        .get_str("theme")
-        .is_some_and(|theme| theme.contains("redux"))
-}
-
 fn timeline_event_fill_source_owned(
     config: &MermaidConfig,
+    binding: &super::TimelineCssBinding,
     event: &crate::model::TimelineNodeLayout,
 ) -> bool {
     let Some(slot) = timeline_section_slot(&event.section_class) else {
         return false;
     };
-    if super::TimelineConfigView::new(config.as_value()).uses_neo_gradient() {
+    if binding.use_neo_gradient {
         return merman_core::__private::config_path_overrides_typed_default(
             config,
             "themeVariables.mainBkg",
         );
     }
-    let theme = config.get_str("theme").unwrap_or_default();
-    if !theme.contains("redux") {
+    if !binding.is_redux_theme {
         return merman_core::__private::config_path_overrides_typed_default(
             config,
             &format!("themeVariables.cScale{slot}"),
         );
     }
 
-    if theme.contains("color") && !theme.contains("dark") {
-        let border_colors = config
-            .as_value()
-            .get("themeVariables")
-            .and_then(|variables| variables.get("borderColorArray"))
-            .and_then(serde_json::Value::as_array);
-        if border_colors
-            .and_then(|colors| colors.get(slot))
-            .and_then(serde_json::Value::as_str)
-            .is_some()
-        {
+    if binding.is_color_theme && !binding.is_dark_name {
+        if binding.has_source_border_slot(slot) {
             return merman_core::__private::config_path_overrides_typed_default(
                 config,
                 "themeVariables.borderColorArray",
@@ -794,16 +780,17 @@ fn timeline_event_fill_source_owned(
 
 fn timeline_classic_line_stroke(
     config: &MermaidConfig,
+    binding: &super::TimelineCssBinding,
     slot: usize,
     fill: &str,
 ) -> Option<Box<str>> {
-    if timeline_is_redux_theme(config) {
+    if binding.is_redux_theme {
         return None;
     }
     let inverse_path = format!("themeVariables.cScaleInv{slot}");
     if merman_core::__private::config_path_overrides_typed_default(config, &inverse_path) {
-        return config
-            .get_str(&inverse_path)
+        return binding
+            .source_inverse(slot)
             .map(str::to_owned)
             .map(Into::into);
     }

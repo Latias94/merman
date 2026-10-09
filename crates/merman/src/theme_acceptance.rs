@@ -1,43 +1,3 @@
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-pub struct ThemeRoutePngCutoverPairView {
-    inner: crate::render::ThemeRoutePngCutoverPair,
-}
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-impl ThemeRoutePngCutoverPairView {
-    pub fn solid(&self) -> TargetArtifactView<'_> {
-        TargetArtifactView::from_raster_output(self.inner.solid())
-    }
-
-    pub fn transparent(&self) -> TargetArtifactView<'_> {
-        TargetArtifactView::from_raster_output(self.inner.transparent())
-    }
-
-    pub const fn receipt_digest(&self) -> [u8; 32] {
-        self.inner.receipt_digest()
-    }
-}
-
-#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
-pub fn export_theme_route_cutover_png_pair(
-    solid_document: &crate::RenderedDocument,
-    transparent_document: &crate::RenderedDocument,
-    solid_route: merman_render::__private::ThemeRouteCutoverDescriptor,
-    transparent_route: merman_render::__private::ThemeRouteCutoverDescriptor,
-    options: &merman_export::RasterOptions,
-    control: merman_core::OperationControl,
-) -> Result<ThemeRoutePngCutoverPairView, crate::RenderError> {
-    crate::render::RenderedDocument::export_theme_route_cutover_png_pair(
-        solid_document,
-        transparent_document,
-        solid_route,
-        transparent_route,
-        options,
-        control,
-    )
-    .map(|inner| ThemeRoutePngCutoverPairView { inner })
-}
-
 /// Borrowed production-owned artifact and its inseparable target admission receipt.
 ///
 /// The acceptance harness may inspect the exact bytes, but it cannot pair arbitrary bytes with
@@ -233,11 +193,4 @@ pub fn architecture_text_cutover_receipt(
     evidence: &crate::RenderEvidence,
 ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
     evidence.architecture_text_cutover_receipt()
-}
-
-/// Returns the opaque renderer-owned route receipts for one finalized document.
-pub fn theme_route_cutover_receipts(
-    document: &crate::RenderedDocument,
-) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
-    document.theme_route_cutover_receipts()
 }
