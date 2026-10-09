@@ -500,11 +500,13 @@ fn plain_svg_allocation_bounds(
         return None;
     }
     // SVG rows start at one em. Automatic wrapping is still owned by the writer;
-    // this allocation is not a guarantee about line count or final font ink.
+    // this allocation is not a guarantee about line count or final font ink. Fallback font
+    // advance differences grow with line length, so keep a line-scaled horizontal reserve.
+    let horizontal_reserve = width.max(em);
     Some([
-        -width / 2.0 - em,
+        -width / 2.0 - horizontal_reserve,
         -em,
-        width / 2.0 + em,
+        width / 2.0 + horizontal_reserve,
         height.max(em) + em,
     ])
 }

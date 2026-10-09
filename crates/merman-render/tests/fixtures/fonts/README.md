@@ -25,3 +25,13 @@ explicitly, so the regression is independent of the host's installed fonts.
 - SHA-256: `108e66f8d1c7d2580dc8245286bd6290b815d0a002a74322322b542a832ccb7c`.
 - Subset tool: fontTools `pyftsubset`, with `--text='Request VolumeDocumentation'`,
   `--name-IDs='*'`, and `--name-languages='*'`.
+
+`DejaVuSansBold-NativeFilter.ttf` is a 21,532-byte subset of DejaVu Sans Bold 2.37 from
+Debian's `fonts-dejavu-core_2.37-8_all.deb`. It retains only `Browse Products`,
+the Flowchart label whose Cyberpunk glow overflowed its fixed-em allocation on Linux.
+Native receipt tests load it explicitly, without relying on installed system fonts.
+
+- License: `DejaVu-LICENSE.txt` in this directory.
+- SHA-256: `05cb7971d60f8bf639eb1eae2f6fabd41fc00024312066f9438263211af1c45d`.
+- Subset tool: fontTools `pyftsubset`, with `--text='Browse Products'`,
+  `--name-IDs='*'`, `--name-legacy`, and `--name-languages='*'`.

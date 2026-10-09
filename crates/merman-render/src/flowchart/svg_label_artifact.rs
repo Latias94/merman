@@ -692,12 +692,14 @@ impl PreparedFlowchartSvgLabel {
             return None;
         }
         // Host metrics bound the allocation, not arbitrary glyph ink. Keep the actual SVG
-        // row baselines and a one-em paint reserve; native export checks final glyph coverage.
+        // row baselines and a line-scaled reserve for fallback font advances. Native export
+        // still checks the final glyph coverage; this allocation does not certify font ink.
+        let horizontal_reserve = width.max(em);
         let last_baseline = em * (1.0 + self.wrapped_lines.len().saturating_sub(1) as f64 * 1.1);
         Some([
-            -width / 2.0 - em,
+            -width / 2.0 - horizontal_reserve,
             -em,
-            width / 2.0 + em,
+            width / 2.0 + horizontal_reserve,
             height.max(last_baseline) + em,
         ])
     }
@@ -2564,6 +2566,49 @@ mod tests {
     use merman_core::MermaidConfig;
 
     use super::*;
+
+    #[test]
+    fn host_label_shadow_allocation_scales_with_line_width() {
+        let style = TextStyle {
+            font_size: 14.0,
+            ..TextStyle::default()
+        };
+        let environment = RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+            &measurer,
+            &style,
+            &style,
+            None,
+            true,
+            FlowchartSvgWidthMode::ComputedLength,
+        )
+        .unwrap()
+        .into_owned();
+        let label = PreparedFlowchartSvgLabel::new(
+            binding,
+            vec![vec!["Browse Products".to_owned()]],
+            TextMetrics {
+                width: 98.56,
+                height: 15.4,
+                line_count: 1,
+            },
+            None,
+        );
+        let bounds = label.centered_shadow_bounds(&style).unwrap();
+        // DejaVu Sans Bold ink plus the Cyberpunk halo crosses the old one-em allocation.
+        assert!(bounds[0] - 20.0 <= -85.177246);
+        assert!(bounds[2] + 20.0 >= 85.79932);
+        assert!(
+            label
+                .centered_shadow_bounds(&TextStyle {
+                    font_size: 16.0,
+                    ..style
+                })
+                .is_none()
+        );
+    }
 
     fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
         session

@@ -1072,12 +1072,26 @@ mod tests {
             include_bytes!("../../merman-render/tests/fixtures/fonts/DejaVuSerif-NativeFilter.ttf")
                 .to_vec(),
         );
-        // These are the emitted metrics for the failing Linux title and popup-label cases.
+        std::sync::Arc::make_mut(&mut options.fontdb).load_font_data(
+            include_bytes!(
+                "../../merman-render/tests/fixtures/fonts/DejaVuSansBold-NativeFilter.ttf"
+            )
+            .to_vec(),
+        );
+        // These are the emitted metrics for the failing Linux title, popup, and Flowchart labels.
         // The fixed-em allocation excludes real DejaVu outlines plus their halo. A reserve
-        // proportional to the declared line metrics fits both without changing the receipt.
-        for (text, font_size, measured_width, anchor) in [
-            ("Request Volume", 20.0_f32, 112.28_f32, "middle"),
-            ("Documentation", 16.0, 95.36, "start"),
+        // proportional to the declared line metrics fits all three without changing the receipt.
+        for (text, font_size, measured_width, anchor, family, weight) in [
+            (
+                "Request Volume",
+                20.0_f32,
+                112.28_f32,
+                "middle",
+                "DejaVu Serif",
+                400,
+            ),
+            ("Documentation", 16.0, 95.36, "start", "DejaVu Serif", 400),
+            ("Browse Products", 14.0, 98.56, "middle", "DejaVu Sans", 600),
         ] {
             let make_svg = |reserve: f32| {
                 let origin = if anchor == "middle" { 256.0 } else { 128.0 };
@@ -1089,7 +1103,7 @@ mod tests {
                 let left = measured_left - reserve - 30.0;
                 let width = measured_width + 2.0 * (reserve + 30.0);
                 format!(
-                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="256" viewBox="0 0 512 256"><defs><filter id="{FIRST_ID}" filterUnits="userSpaceOnUse" x="{left}" y="64" width="{width}" height="128" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="10" flood-color="#00f2ff"/></filter></defs><text x="{origin}" y="128" text-anchor="{anchor}" dominant-baseline="middle" font-family="DejaVu Serif" font-size="{font_size}" filter="url(#{FIRST_ID})">{text}</text></svg>"##
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="256" viewBox="0 0 512 256"><defs><filter id="{FIRST_ID}" filterUnits="userSpaceOnUse" x="{left}" y="64" width="{width}" height="128" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="10" flood-color="#00f2ff"/></filter></defs><text x="{origin}" y="128" text-anchor="{anchor}" dominant-baseline="middle" font-family="{family}" font-weight="{weight}" font-size="{font_size}" filter="url(#{FIRST_ID})">{text}</text></svg>"##
                 )
             };
             let narrow = make_svg(font_size);
