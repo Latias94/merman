@@ -1,5 +1,10 @@
 # Theme retirement and declaration deduplication — 2026-10-08
 
+This is the historical October 8 implementation record. The retained authorization ledger and
+Release Preflight chain described below were retired on October 9; they are not current gate
+instructions. See the [retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+and [current verification owners](../rendering/diagram-theme-coverage.md#current-verification-owners).
+
 ## Outcome and scope
 
 This implements the evidence-backed candidates from
@@ -21,8 +26,8 @@ intentionally changed. No latency or artifact-size improvement is claimed.
 
 ## Why the entire retirement ledger remains
 
-The current executable legacy route inventory is empty, but that alone does not prove the
-historical migration contract. The live consumer chain is:
+At the recorded revision, the executable legacy route inventory was empty, but that alone did
+not prove the historical migration contract. The consumer chain at that revision was:
 
 ```text
 Release Preflight

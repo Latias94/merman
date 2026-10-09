@@ -1,4 +1,10 @@
-# Unreleased Migration Reference
+# Historical Theme Migration Reference
+
+This document preserves the prerelease theme migration decisions and symbol mappings recorded
+below. It is not the current API or publication-status guide. For current source-branch themes,
+use [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-themes.md) and
+[Options JSON](../bindings/OPTIONS_JSON.md); use the [dated publication snapshot](PUBLISH_ORDER.md)
+to distinguish published artifacts from experimental source interfaces.
 
 This guide describes the selected `v0.8.0-alpha.7` candidate after published workspace
 `v0.8.0-alpha.6`. The theme contracts below have not been released or frozen. The candidate
@@ -7,7 +13,7 @@ Web, Node.js, Flutter, Python, Apple, Android and Typst have independent publica
 
 For the published alpha.5-to-alpha.6 changes, use the
 [release upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). The mappings below describe the
-current source, including retained migration advice for callers still using older APIs;
+recorded candidate source, including retained migration advice for callers still using older APIs;
 they are not all changes introduced after alpha.6. The
 [contract version audit](UNRELEASED_CONTRACT_VERSIONS.md) records each published baseline.
 

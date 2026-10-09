@@ -9,6 +9,12 @@ tags: theme,complexity,evidence,wasm,verification
 
 # Family theme evidence requirement indexing
 
+This is a historical September 13 experiment and verification record. Its owner commands below
+include gate targets retired on October 9 and must not be used as current acceptance instructions.
+The measurements and source identities remain tied to the recorded revisions. See the
+[retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+and [current verification owners](../rendering/diagram-theme-coverage.md#current-verification-owners).
+
 Date: 2026-09-13. Base: `973e7c893de47ef61977e4480b854ef4361b46a1`.
 Candidate: `d92dee3ade9e83fdb519e8d1e908ca2da27d041a`. Host: macOS ARM64, Rust 1.95.0. The experiment ledger is
 `target/bench/experiments/theme-evidence-index-973e7c893/experiment.yaml`.

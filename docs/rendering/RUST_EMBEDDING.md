@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide targets the source candidate for `0.8.0`. The latest published workspace release at this checkpoint is `0.8.0-alpha.7` (2026-09-30); `0.8.0` is not yet published. The feature and request recipes below also apply to alpha.7. The candidate selects Mermaid 12.1; review the [alpha.7-to-0.8.0 migration](../release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for later rendering and low-level ELK changes. Use [the stable upgrade guide](../release/V070_TO_V080_UPGRADE_GUIDE.md) when starting from `0.7.0`, and the [versioned index](../release/README.md) for earlier prereleases.
+This guide covers the `0.8.0` Rust feature and request interface, whose publication is recorded in the [October 6 snapshot](../release/PUBLISH_ORDER.md#080-publication-snapshot). Current source-branch compiled-theme work remains experimental; use a matching source checkout and artifact for those interfaces. Merman selects Mermaid 12.1; review the [alpha.7-to-0.8.0 migration](../release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) for rendering and low-level ELK changes. Use [the stable upgrade guide](../release/V070_TO_V080_UPGRADE_GUIDE.md) when starting from `0.7.0`, and the [versioned index](../release/README.md) for earlier prereleases.
 
 ## Select languages, outputs, and layout backends
 
@@ -10,10 +10,10 @@ For the currently published package, an SVG host preserving the pre-selector par
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.7", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
+merman = { version = "=0.8.0", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
 ```
 
-For the `0.8.0` source candidate, point the same declaration at the reviewed checkout. Change the version to `0.8.0` only after that package is published. Default facade builds include all languages, SVG, Cytoscape, ELK, and math. Disable defaults when that exceeds the host's requirements; `complete-svg` adds SVG, Cytoscape, and math without ELK, and still needs a family selection. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
+For current source-branch development, point the same feature selection at the reviewed checkout. Default facade builds include all languages, SVG, Cytoscape, ELK, and math. Disable defaults when that exceeds the host's requirements; `complete-svg` adds SVG, Cytoscape, and math without ELK, and still needs a family selection. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
 
 For a host accepting only Flowchart and Sequence, replace `all-diagrams` with `diagram-flowchart, diagram-sequence`. Forward selectors from a reusable library rather than assuming another dependency will enable them. Cargo features are additive: inspect the final application with `cargo tree -e features`, and verify a narrow selection in an independent consumer workspace.
 
@@ -54,7 +54,7 @@ Reuse the configured `Renderer` across calls when site configuration and default
 The reviewed Zed reference snapshot pins `0.8.0-alpha.5` and selects `svg, layout-cytoscape` with defaults disabled. Updating that declaration alone compiles on alpha.7, but strict parsing fails because no built-in family is selected. Add `all-diagrams` to preserve the former language surface, or select the families from the host's own allowlist:
 
 ```toml
-merman = { version = "=0.8.0-alpha.7", default-features = false, features = [
+merman = { version = "=0.8.0", default-features = false, features = [
     "svg", "layout-cytoscape",
     "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state",
     "diagram-er", "diagram-gantt", "diagram-pie", "diagram-git-graph",

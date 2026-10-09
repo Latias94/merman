@@ -99,9 +99,10 @@ facets, host-dependent fonts, or other target residuals; this is stronger than c
 
 ## Save and share a theme
 
-The alpha.7 source API accepts a preset ID, a complete specification, or a versioned
+The current source API accepts a preset ID, a complete specification, or a versioned
 `ThemeRecipeV1` document in `options.theme`. Export a preset once and keep the returned document
-intact when saving or sharing it:
+intact when saving or sharing it. Use a matching artifact that exposes these experimental theme
+operations; a package version alone does not establish their availability:
 
 ```ts
 import { exportThemePreset, renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
@@ -152,7 +153,7 @@ and CLI `--ascii-report` provide the report-oriented recipes. See the
 the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) for admitted family combinations.
 
 For known host RGB colors, supply `ascii.theme` with TrueColor, or ANSI256 for an approximation.
-ANSI16 uses terminal Reset and named colors for semantic roles. SVG `presentation.theme` does not
+ANSI16 uses terminal Reset and named colors for semantic roles. SVG's top-level `theme` does not
 configure ASCII colors; the host maps its application theme into each output independently.
 
 ## Mount SVG safely
