@@ -76,6 +76,84 @@ fn render_cluster_with_spec(
 }
 
 #[test]
+fn dagre_duplicate_subgraph_ids_keep_first_title_style_and_class() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile baseline ER theme");
+    let source = r##"---
+config:
+  layout: dagre
+  htmlLabels: false
+---
+erDiagram
+classDef first fill:#112233,stroke:#445566,color:#778899
+classDef last fill:#aabbcc,stroke:#ddeeff,color:#abcdef
+subgraph Shared ["First title"]
+ FIRST
+end
+class Shared first
+style Shared stroke-width:2px
+subgraph Shared ["Last title"]
+ LAST
+end
+class Shared last
+style Shared stroke-width:7px
+"##;
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse duplicate ER clusters")
+        .expect("detect ER diagram");
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin ER session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Dagre duplicate clusters")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render duplicate ER clusters");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+    let clusters: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("cluster first"))
+        .collect();
+    assert!(
+        !clusters.is_empty(),
+        "the writer must select the first subgraph class"
+    );
+    for cluster in clusters {
+        let rect = cluster
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("cluster rectangle");
+        let style = rect.attribute("style").expect("prepared source style");
+        assert!(style.contains("fill:#112233 !important"), "{style}");
+        assert!(style.contains("stroke:#445566 !important"), "{style}");
+        assert!(style.contains("stroke-width:2px !important"), "{style}");
+        assert!(!style.contains("#aabbcc"), "{style}");
+        let label = cluster
+            .descendants()
+            .find(|node| node.attribute("class") == Some("cluster-label"))
+            .expect("cluster label");
+        let text = label
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .expect("SVG title");
+        assert_eq!(text.attribute("style"), Some("fill:#778899 !important"));
+        let title: String = text
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(title.contains("First"), "{title}");
+        assert!(!title.contains("Last"), "{title}");
+    }
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("cluster last"))
+    );
+}
+
+#[test]
 fn svg_cluster_uses_typed_text_fill_when_title_color_selects_the_text_fallback() {
     for look in ["classic", "neo", "handDrawn"] {
         for (paint, color) in [

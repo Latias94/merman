@@ -396,7 +396,11 @@ pub(super) fn render_flowchart_svg_model(
         html_label_text_style,
     };
 
-    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx)?;
+    let node_inventory_input =
+        super::node_inventory::FlowchartNodeInventoryInput::from_render_context(&ctx);
+    let node_schedule =
+        super::node_inventory::FlowchartNodeRootSchedule::prepare(&node_inventory_input)?;
+    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, &node_schedule)?;
     let cluster_theme_plan = crate::flowchart::FlowchartClusterThemePlan::prepare(
         ctx.resolved_theme,
         ctx.subgraph_order

@@ -2803,6 +2803,13 @@ impl BuiltinFamilyArtifact {
             }
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(pair) => {
+                pair.layout()
+                    .theme_evidence()
+                    .record_unsupported_text_emission(
+                        context.resolved_theme(),
+                        pair.layout().diagram_title().is_some(),
+                        context.session().work_meter().as_ref(),
+                    )?;
                 let evidence = pair
                     .layout()
                     .theme_evidence()
@@ -3650,11 +3657,6 @@ impl RenderedResvgCompatibleSvg {
     #[cfg(test)]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style_report
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
-        &self.root_theme
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {

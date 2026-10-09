@@ -2,6 +2,7 @@ use crate::config::{config_css_number_or_string, config_string};
 
 #[derive(Debug)]
 pub(crate) struct SequenceCompatBinding {
+    pub(crate) svg_activation_width: f64,
     pub(crate) font_family: String,
     pub(crate) root_font_family: String,
     pub(crate) font_size_css: String,
@@ -91,6 +92,8 @@ impl SequenceCompatBinding {
             })
             .unwrap_or_else(|| "rgba(128, 128, 128, 0.5)".to_owned());
         Self {
+            svg_activation_width: super::config::SequenceConfigView::new(config)
+                .sequence_json_number_min("activationWidth", 10.0, 1.0),
             font_family: crate::config::config_font_family_css(config),
             root_font_family: crate::config::config_root_font_family_css(config),
             font_size_css: value("fontSize", "16px"),

@@ -4,8 +4,6 @@ use super::super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
-const MINDMAP_THEME_COLOR_LIMIT_DEFAULT: usize = crate::mindmap::MINDMAP_SECTION_COUNT + 1;
-
 #[derive(Debug, Clone, Copy)]
 enum MindmapPathNumberFormat {
     D3Path,
@@ -289,44 +287,24 @@ fn mindmap_normalize_section_classes(classes: &str) -> String {
         .join(" ")
 }
 
-fn mindmap_gradient_defs(
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-    use_gradient: bool,
-) -> String {
-    if !use_gradient {
-        return String::new();
-    }
-
-    let Some(gradient_start) =
-        config_string(effective_config, &["themeVariables", "gradientStart"])
-    else {
-        return String::new();
-    };
-    let Some(gradient_stop) = config_string(effective_config, &["themeVariables", "gradientStop"])
-    else {
+fn mindmap_gradient_defs(diagram_id: &str, binding: &crate::mindmap::MindmapCssBinding) -> String {
+    let Some((gradient_start, gradient_stop)) = &binding.gradient else {
         return String::new();
     };
 
     format!(
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
         diagram_id,
-        escape_xml(&gradient_start),
-        escape_xml(&gradient_stop)
+        escape_xml(gradient_start),
+        escape_xml(gradient_stop)
     )
 }
 
 fn push_mindmap_shadow_defs(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
+    flood_color: &str,
 ) -> Result<()> {
-    let flood_color = effective_config
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
@@ -338,91 +316,46 @@ fn push_mindmap_shadow_defs(
 struct MindmapCssEmission {
     css: String,
     font_family_css: Box<str>,
-    writer_tokens: crate::mindmap::MindmapWriterThemeTokens,
 }
 
 fn mindmap_css(
     diagram_id: &str,
-    config: &merman_core::MermaidConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
-    font_family_css: &str,
-    theme_color_limit: usize,
-    use_gradient: bool,
 ) -> MindmapCssEmission {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
     // that baseline so its private owner attribute can win without interpreting user classes.
-    let effective_config = config.as_value();
+    let binding = node_palette.css_binding();
+    let theme_color_limit = binding.sections.len();
+    let use_gradient = binding.use_gradient;
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
-    let parts = info_css_parts_with_font_family(diagram_id, effective_config, font_family_css);
+    let parts = info_css_parts_from_prepared(diagram_id, &binding.common);
     let mut out = parts.css_prefix;
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
 
     // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
-    const DEFAULT_INV_FILLS: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
-        "hsl(60, 100%, 86.2745098039%)",
-        "hsl(240, 100%, 83.5294117647%)",
-        "hsl(260, 100%, 86.2745098039%)",
-        "hsl(90, 100%, 86.2745098039%)",
-        "hsl(120, 100%, 86.2745098039%)",
-        "hsl(150, 100%, 86.2745098039%)",
-        "hsl(180, 100%, 86.2745098039%)",
-        "hsl(210, 100%, 86.2745098039%)",
-        "hsl(270, 100%, 86.2745098039%)",
-        "hsl(330, 100%, 86.2745098039%)",
-        "hsl(0, 100%, 86.2745098039%)",
-        "hsl(30, 100%, 86.2745098039%)",
-    ];
-
-    fn default_mindmap_inv_fill(i: usize) -> &'static str {
-        DEFAULT_INV_FILLS[i % DEFAULT_INV_FILLS.len()]
-    }
-
-    fn default_mindmap_label(i: usize) -> &'static str {
-        if i == 0 || i == 3 { "#ffffff" } else { "black" }
-    }
-
-    let theme = config.get_str("theme").unwrap_or_default();
-    let look = crate::config::mermaid_config_diagram_look(config);
-    let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
-    let base_node_border = crate::mindmap::mindmap_node_border_css(config);
-    let base_main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
-    let writer_tokens = node_palette.writer_theme_tokens(&base_main_bkg, &base_node_border);
+    let theme = binding.theme.as_ref();
+    let root_fill = &binding.root_fill;
+    let root_label = &binding.root_label;
+    let writer_tokens = &binding.tokens;
     let node_border = writer_tokens.node_border_css();
     let main_bkg = writer_tokens.main_background_css();
-    let stroke_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "strokeWidth"],
-    )
-    .unwrap_or_else(|| "2".to_string());
-    let drop_shadow = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "dropShadow"],
-    )
-    .unwrap_or_else(|| "none".to_string());
-    let scoped_drop_shadow = drop_shadow.replace(
+    let stroke_width = &binding.stroke_width;
+    let scoped_drop_shadow = binding.drop_shadow.replace(
         "url(#drop-shadow)",
         &format!("url(#{fragment_id}-drop-shadow)"),
     );
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
-        let c_scale = crate::mindmap::mindmap_color_scale_css(config, i);
-        let c_scale_inv = theme_token(
-            effective_config,
-            &format!("cScaleInv{}", i),
-            default_mindmap_inv_fill(i),
-        );
-        let c_scale_label = theme_token(
-            effective_config,
-            &format!("cScaleLabel{}", i),
-            default_mindmap_label(i),
-        );
-        let sw = if look.is_neo() {
+        let slot = &binding.sections[i];
+        let c_scale = &slot.fill;
+        let c_scale_inv = &slot.inverse;
+        let c_scale_label = &slot.label;
+        let sw = if binding.look.as_ref() == "neo" {
             (10_i64 - (section * 2)).max(2)
         } else {
             17_i64 - 3_i64 * (i as i64)
@@ -437,20 +370,17 @@ fn mindmap_css(
         } else {
             c_scale.as_str()
         };
-        let neo_edge_stroke = if crate::mindmap::mindmap_neo_edges_use_node_border(theme) {
+        let neo_edge_stroke = if theme.contains("redux") || theme == "neo-dark" {
             node_border
         } else {
             c_scale.as_str()
         };
-        let neo_text_label_index = if theme == "neutral" { 1 } else { i };
         let neo_text_label = if theme == "redux" || theme == "redux-dark" {
-            node_border.to_string()
+            node_border
+        } else if theme == "neutral" {
+            binding.neutral_label.as_str()
         } else {
-            theme_token(
-                effective_config,
-                &format!("cScaleLabel{}", neo_text_label_index),
-                default_mindmap_label(neo_text_label_index),
-            )
+            c_scale_label.as_str()
         };
         let _ = write!(
             &mut out,
@@ -571,15 +501,12 @@ fn mindmap_css(
     } else {
         root_fill.as_str()
     };
-    let neo_root_text_label_index = if theme == "neutral" { 1 } else { 0 };
     let neo_root_text = if theme.contains("redux") {
-        node_border.to_string()
+        node_border
+    } else if theme == "neutral" {
+        binding.neutral_label.as_str()
     } else {
-        theme_token(
-            effective_config,
-            &format!("cScaleLabel{}", neo_root_text_label_index),
-            default_mindmap_label(neo_root_text_label_index),
-        )
+        binding.sections[0].label.as_str()
     };
     let _ = write!(
         &mut out,
@@ -609,7 +536,7 @@ fn mindmap_css(
 
     out.push_str(&parts.root_rule);
 
-    // `info_css_parts_with_font_family` intentionally reads the original config. When a direct
+    // Shared CSS retains the original prepared values. When a direct
     // Mindmap Node.stroke historically replaced `nodeBorder`, retain only the shared Neo root
     // selector that actually consumed that token instead of cloning and globally rewriting config.
     if writer_tokens.has_direct_node_stroke() && !use_gradient {
@@ -637,7 +564,6 @@ fn mindmap_css(
     MindmapCssEmission {
         css: out,
         font_family_css: parts.font_family.into_boxed_str(),
-        writer_tokens,
     }
 }
 
@@ -850,54 +776,25 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     ..root_svg::RootChrome::new(diagram_id, "mindmap")
                 },
             )?;
-    let theme_color_limit = config_f64(config.as_value(), &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| value.round() as i64)
-        .filter(|value| *value > 0)
-        .unwrap_or(MINDMAP_THEME_COLOR_LIMIT_DEFAULT as i64)
-        .clamp(1, 64) as usize;
-    let use_gradient =
-        config_bool(config.as_value(), &["themeVariables", "useGradient"]).unwrap_or(false);
-    let neo_fill_source = if use_gradient {
-        crate::mindmap::MindmapNodeFillSource::MainBackground
-    } else {
-        let theme = merman_core::MermaidThemeId::parse(config.get_str("theme").unwrap_or_default())
-            .unwrap_or_default();
-        if matches!(
-            theme,
-            merman_core::MermaidThemeId::Redux
-                | merman_core::MermaidThemeId::ReduxDark
-                | merman_core::MermaidThemeId::Neutral
-        ) {
-            crate::mindmap::MindmapNodeFillSource::MainBackground
-        } else {
-            crate::mindmap::MindmapNodeFillSource::ColorScale
-        }
-    };
+    let binding = node_palette.css_binding();
+    let theme_color_limit = binding.sections.len();
+    let use_gradient = binding.use_gradient;
+    let neo_fill_source = binding.neo_fill_source;
+    let writer_tokens = &binding.tokens;
     let mut node_palette_receipt = node_palette.begin_terminal_receipt();
-    let css = mindmap_css(
-        diagram_id.semantic_str(),
-        config,
-        node_palette,
-        node_palette.font_family_css(),
-        theme_color_limit,
-        use_gradient,
-    );
+    let css = mindmap_css(diagram_id.semantic_str(), node_palette);
     let _ = write!(&mut out, "<style>{}</style>", css.css);
     node_palette_receipt.record_typography_css(&css.font_family_css);
     node_palette_receipt.record_node_paint_css(
-        css.writer_tokens.main_background_css(),
-        css.writer_tokens.node_border_css(),
+        writer_tokens.main_background_css(),
+        writer_tokens.node_border_css(),
     );
-    let mindmap_theme = config.get_str("theme").unwrap_or_default();
+    let mindmap_theme = binding.theme.as_ref();
     let neo_branch_uses_main_background =
         use_gradient || matches!(mindmap_theme, "redux" | "redux-dark" | "neutral");
     let neo_branch_uses_node_border =
         !use_gradient && matches!(mindmap_theme, "redux" | "redux-dark");
-    out.push_str(&mindmap_gradient_defs(
-        diagram_id.semantic_str(),
-        config.as_value(),
-        use_gradient,
-    ));
+    out.push_str(&mindmap_gradient_defs(diagram_id.semantic_str(), binding));
     out.push_str("<g>");
     out.checkpoint()?;
 
@@ -934,7 +831,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 out,
                 r#"<g class="cluster swimlane" id="{id}" data-id="{id}" data-et="cluster" data-look="{look}"><rect class="swimlane-body" style="" x="{x}" y="{y}" width="{width}" height="{height}" fill="none" stroke="{stroke}"/><rect class="swimlane-title" style="" x="{x}" y="{y}" width="{width}" height="0" fill="{fill}" stroke="{stroke}"/><g class="cluster-label swimlane-label" transform="translate({center}, {y})"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
                 id = escape_xml(&lane.id),
-                look = escape_attr(crate::config::mermaid_config_diagram_look(config).as_str()),
+                look = escape_attr(&binding.look),
                 x = fmt(x),
                 y = fmt(y),
                 width = fmt(lane.width),
@@ -1075,7 +972,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             e.thickness.trim(),
             edge_classes.trim()
         );
-        let look = crate::mindmap::mindmap_model_look(&e.look, config);
+        let look = binding.model_look(&e.look);
         let data_look_attr = mindmap_data_look_attr(look);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
         let typed_stroke = node_palette.terminal_edge_stroke(edge_index);
@@ -1083,10 +980,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let terminal_source = node_palette.terminal_edge_source(edge_index);
         let source_stroke = terminal_source.map(|source| match source {
             crate::mindmap::MindmapEdgeStrokeSource::ColorScale { section } => {
-                Cow::Owned(crate::mindmap::mindmap_color_scale_css(config, section + 1))
+                Cow::Borrowed(binding.sections[section + 1].fill.as_str())
             }
             crate::mindmap::MindmapEdgeStrokeSource::NodeBorder => {
-                Cow::Borrowed(css.writer_tokens.node_border_css())
+                Cow::Borrowed(writer_tokens.node_border_css())
             }
         });
         let final_stroke = typed_stroke
@@ -1143,7 +1040,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
-    let node_fill_ownership = crate::mindmap::MindmapNodeFillOwnership::from_config(config);
+    let node_fill_ownership = &binding.node_fill_ownership;
     for (node_index, n) in model.nodes.iter().enumerate() {
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
@@ -1162,7 +1059,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let half_padding = padding / 2.0;
         let node_classes = mindmap_normalize_section_classes(&n.css_classes);
         let class = format!("node {}", node_classes.trim());
-        let look = crate::mindmap::mindmap_model_look(&n.look, config);
+        let look = binding.model_look(&n.look);
         let is_root = node_classes
             .split_whitespace()
             .any(|class| class == "section-root");
@@ -1183,7 +1080,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             node_palette.terminal_decision_for_node(
                 n.section,
                 fill_source,
-                &node_fill_ownership,
+                node_fill_ownership,
                 theme_color_limit,
             )
         };
@@ -1484,14 +1381,14 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out.checkpoint()?;
         let root_uses_node_border = is_root
             && (mindmap_theme.contains("redux")
-                || (look == "neo" && !use_gradient && css.writer_tokens.has_direct_node_stroke()));
+                || (look == "neo" && !use_gradient && writer_tokens.has_direct_node_stroke()));
         if root_uses_node_border {
             // Redux carries `nodeBorder` into the root XHTML label in every look. This is the
             // only Classic consumer of the historical Node.stroke bridge token. The explicit
             // Neo root overlay below is the corresponding non-Redux shape consumer.
             node_palette_receipt.record_node_paint_terminal(
                 crate::mindmap::MindmapWriterThemeToken::NodeBorder,
-                css.writer_tokens.node_border_css(),
+                writer_tokens.node_border_css(),
             );
         }
         if look == "neo" {
@@ -1500,13 +1397,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             {
                 node_palette_receipt.record_node_paint_terminal(
                     crate::mindmap::MindmapWriterThemeToken::MainBackground,
-                    css.writer_tokens.main_background_css(),
+                    writer_tokens.main_background_css(),
                 );
             }
             if !use_gradient && !is_root && neo_branch_uses_node_border {
                 node_palette_receipt.record_node_paint_terminal(
                     crate::mindmap::MindmapWriterThemeToken::NodeBorder,
-                    css.writer_tokens.node_border_css(),
+                    writer_tokens.node_border_css(),
                 );
             }
         }
@@ -1515,7 +1412,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str("</g>");
 
     out.push_str("</g>");
-    push_mindmap_shadow_defs(&mut out, diagram_id.semantic_str(), config.as_value())?;
+    push_mindmap_shadow_defs(&mut out, diagram_id.semantic_str(), binding.shadow_flood)?;
     out.push_str("</svg>\n");
     out.checkpoint()?;
 
@@ -1557,6 +1454,43 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_gradient_preserves_coercion_and_requires_both_raw_endpoints() {
+        for enabled in [
+            serde_json::json!(true),
+            serde_json::json!(1),
+            serde_json::json!("on"),
+        ] {
+            for complete in [false, true] {
+                let mut raw = serde_json::json!({"themeVariables": {
+                    "useGradient": enabled, "gradientStart": "var(--start)"
+                }});
+                if complete {
+                    raw["themeVariables"]["gradientStop"] = serde_json::json!("currentColor");
+                }
+                let config = merman_core::MermaidConfig::from_value(raw);
+                let meter = crate::resources::OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                );
+                let plan = crate::mindmap::MindmapNodePalettePlan::resolve(
+                    None,
+                    &config,
+                    &Default::default(),
+                    &meter,
+                )
+                .expect("prepare raw Mindmap gradient");
+                let defs = mindmap_gradient_defs("scoped", plan.css_binding());
+                if complete {
+                    assert!(defs.contains("id=\"scoped-gradient\""));
+                    assert!(defs.contains("stop-color=\"var(--start)\""));
+                    assert!(defs.contains("stop-color=\"currentColor\""));
+                } else {
+                    assert!(defs.is_empty());
+                }
+            }
+        }
+    }
     use std::fmt;
     use std::ops::Range;
 
@@ -1676,14 +1610,7 @@ mod tests {
         let node_palette =
             crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
                 .unwrap();
-        let css = mindmap_css(
-            "mm",
-            &config,
-            &node_palette,
-            node_palette.font_family_css(),
-            3,
-            false,
-        );
+        let css = mindmap_css("mm", &node_palette);
 
         assert!(css.css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
         assert!(css.css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));

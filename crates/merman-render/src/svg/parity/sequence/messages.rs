@@ -22,14 +22,6 @@ use std::collections::BTreeMap;
 
 const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
 
-pub(super) fn has_sequence_message_line_candidates(model: &SequenceSvgModel) -> bool {
-    model.messages.iter().any(|message| {
-        message.semantic_kind() == SequenceMessageKind::Signal
-            && message.from.is_some()
-            && message.to.is_some()
-    })
-}
-
 /// Family-owned message geometry includes the line and its endpoint markers.
 #[derive(Default)]
 pub(super) struct SequenceMessagePaintPlan {

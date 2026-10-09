@@ -337,7 +337,7 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
     buf.format_finite(v)
 }
 
-pub(super) fn escape_xml(text: &str) -> String {
+pub(crate) fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     escape_xml_into(&mut out, text);
     out
@@ -500,7 +500,7 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
     }
 }
 
-pub(super) fn escape_attr(text: &str) -> String {
+pub(crate) fn escape_attr(text: &str) -> String {
     // Note: XML parsers normalize literal newlines/carriage-returns/tabs inside attribute values
     // into spaces. Mermaid's serialized SVGs typically encode those characters as numeric
     // character references (e.g. `&#10;`) to keep the attribute value stable across parsers.

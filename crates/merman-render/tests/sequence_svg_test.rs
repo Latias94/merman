@@ -1109,6 +1109,37 @@ fn render_sequence_svg_with_theme_variables(
         .to_string()
 }
 
+#[test]
+fn sequence_activation_svg_width_preserves_json_number_only_input() {
+    for (input, expected) in [
+        (serde_json::json!("0.25"), 10.0),
+        (serde_json::json!(0.25), 1.0),
+        (serde_json::json!(4), 4.0),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"sequence": {"activationWidth": input}}),
+        ));
+        let parsed =
+            parse_sequence_for_render(&engine, "sequenceDiagram\nA->>+B: Hello\nB-->>-A: Reply");
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect") && node.attribute("class") == Some("activation0")
+            })
+            .expect("paired activation rectangle");
+        assert_eq!(
+            rect.attribute("width").unwrap().parse::<f64>().unwrap(),
+            expected
+        );
+    }
+}
+
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic());

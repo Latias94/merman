@@ -213,26 +213,6 @@ fn move_point_towards(point: &LayoutPoint, target: &LayoutPoint, distance: f64) 
     }
 }
 
-fn edge_marker_end(arrow: Option<&str>) -> Option<&'static str> {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => Some("pointEnd"),
-        "arrow_circle" => Some("circleEnd"),
-        "arrow_cross" => Some("crossEnd"),
-        "arrow_open" | "" => None,
-        _ => Some("pointEnd"),
-    }
-}
-
-fn edge_marker_start(arrow: Option<&str>) -> Option<&'static str> {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => Some("pointStart"),
-        "arrow_circle" => Some("circleStart"),
-        "arrow_cross" => Some("crossStart"),
-        "arrow_open" | "" => None,
-        _ => None,
-    }
-}
-
 struct BlockEdgePoints {
     /// Points before marker insets, matching Mermaid's `data-points` payload.
     data_points: Vec<LayoutPoint>,
@@ -599,8 +579,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let line_color = theme.line_color.as_str();
         let arrowhead_color = theme.arrowhead_color.as_str();
         let stroke_width = theme.stroke_width.as_str();
-        let edge_label_background =
-            label_background_theme.color(theme.edge_label_background.as_str());
+        let edge_label_background = label_background_theme.color();
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
 
@@ -1175,48 +1154,41 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
         let prefixed_edge_id = dom_id(diagram_id, &e.id);
         let path_id = dom_id(diagram_id, &prefixed_edge_id);
-        let edge_style = edge_paint_theme
-            .color(edge_index)
-            .map(|color| format!("stroke:{color};fill:none;"));
+        let edge_style =
+            edge_paint_theme
+                .declaration(edge_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "Block edge declaration plan does not match semantic edges".to_owned(),
+                })?;
         let _ = write!(
             &mut out,
             r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr(&d),
             escape_attr(&path_id),
             escape_attr(class_attr),
-            escape_attr(edge_style.as_deref().unwrap_or("undefined;;;undefined")),
+            escape_attr(edge_style),
             escape_attr(&prefixed_edge_id),
             escape_attr(&data_points)
         );
 
-        if let Some(m) = edge_marker_start(e.arrow_type_start.as_deref()) {
+        if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, true) {
             if let Some(point) = edge_points.rendered_points.first() {
-                include_block_marker_bounds(&mut marker_bounds, point, m);
+                include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
                 &mut out,
                 r#" marker-start="{}""#,
-                escape_attr(&marker_url(
-                    diagram_id,
-                    marker_paint_theme
-                        .reference_suffix(edge_index, true)
-                        .unwrap_or(m)
-                ))
+                escape_attr(&marker_url(diagram_id, suffix))
             );
         }
-        if let Some(m) = edge_marker_end(e.arrow_type_end.as_deref()) {
+        if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, false) {
             if let Some(point) = edge_points.rendered_points.last() {
-                include_block_marker_bounds(&mut marker_bounds, point, m);
+                include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
                 &mut out,
                 r#" marker-end="{}""#,
-                escape_attr(&marker_url(
-                    diagram_id,
-                    marker_paint_theme
-                        .reference_suffix(edge_index, false)
-                        .unwrap_or(m)
-                ))
+                escape_attr(&marker_url(diagram_id, suffix))
             );
         }
         options.checkpoint_emit()?;

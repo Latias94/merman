@@ -699,16 +699,14 @@ impl InfoCssWriter {
     }
 }
 
-pub(super) fn info_css_parts_with_font_family<I>(
+pub(super) fn info_css_parts_from_prepared<I>(
     diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_family: &str,
+    values: &PreparedCommonCss,
 ) -> InfoCssParts
 where
     I: Copy + std::fmt::Display,
 {
-    let values = PreparedCommonCss::new(effective_config, Some(font_family));
-    info_css_parts_from_values(diagram_id, values)
+    info_css_parts_from_values(diagram_id, values.clone())
 }
 
 fn info_css_parts_from_values<I>(diagram_id: I, values: PreparedCommonCss) -> InfoCssParts

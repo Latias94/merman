@@ -7,6 +7,88 @@ use merman_core::MermaidConfig;
 
 use super::SequenceNumberLabelThemeReceipt;
 
+mod actor;
+mod control;
+mod lines;
+mod rect;
+pub(crate) use actor::SequencePreparedActorTheme;
+pub(crate) use control::SequencePreparedControlTheme;
+pub(crate) use lines::{SequencePreparedLifelineTheme, SequencePreparedMessageTheme};
+pub(crate) use rect::SequencePreparedStaticRectTheme;
+
+#[derive(Debug)]
+pub(crate) struct SequencePreparedTerminalTheme {
+    pub(crate) actor: SequencePreparedActorTheme,
+    pub(crate) lifeline: SequencePreparedLifelineTheme,
+    pub(crate) message: SequencePreparedMessageTheme,
+    pub(crate) keyword: SequencePreparedControlTheme,
+    pub(crate) frame: SequencePreparedControlTheme,
+    pub(crate) note: SequencePreparedStaticRectTheme,
+    pub(crate) number: SequencePreparedNumberTheme,
+    pub(crate) note_count: usize,
+}
+
+impl SequencePreparedTerminalTheme {
+    pub(super) fn resolve(
+        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        config: &MermaidConfig,
+        theme: Option<&ResolvedDiagramTheme>,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let owns = |path| merman_core::__private::config_path_overrides_typed_default(config, path);
+        let mut note_count = 0usize;
+        let mut has_lines = false;
+        for message in &model.messages {
+            work_meter.charge(1)?;
+            let kind = message.semantic_kind();
+            note_count +=
+                usize::from(kind == merman_core::diagrams::sequence::SequenceMessageKind::Note);
+            has_lines |= kind == merman_core::diagrams::sequence::SequenceMessageKind::Signal
+                && message.from.is_some()
+                && message.to.is_some();
+        }
+        Ok(Self {
+            actor: SequencePreparedActorTheme::resolve(theme, config, model, work_meter)?,
+            lifeline: SequencePreparedLifelineTheme::resolve(
+                theme,
+                !model.actor_order.is_empty(),
+                owns("themeVariables.actorLineColor"),
+                work_meter,
+            )?,
+            message: SequencePreparedMessageTheme::resolve(
+                theme,
+                has_lines,
+                owns("themeVariables.signalColor"),
+                work_meter,
+            )?,
+            keyword: SequencePreparedControlTheme::resolve(
+                theme,
+                ThemeTarget::LoopLabelBackground,
+                owns("themeVariables.labelBoxBkgColor"),
+                owns("themeVariables.labelBoxBorderColor"),
+                work_meter,
+            )?,
+            frame: SequencePreparedControlTheme::resolve(
+                theme,
+                ThemeTarget::Loop,
+                true,
+                owns("themeVariables.labelBoxBorderColor"),
+                work_meter,
+            )?,
+            note: SequencePreparedStaticRectTheme::resolve(
+                theme,
+                ThemeTarget::Note,
+                note_count != 0,
+                owns("themeVariables.noteBkgColor"),
+                owns("themeVariables.noteBorderColor"),
+                work_meter,
+            )?,
+            number: SequencePreparedNumberTheme::resolve(theme, config, work_meter)?,
+            note_count,
+        })
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct SequencePreparedNumberTheme {
     typed_fill: Option<String>,
@@ -93,6 +175,20 @@ pub(crate) fn css_paint(paint: Option<&CanvasPaint>) -> Option<String> {
         | CanvasPaint::RadialGradient(_)
         | CanvasPaint::Pattern(_) => None,
     }
+}
+
+pub(super) fn typed_static_sequence_stroke(
+    theme: &ResolvedDiagramTheme,
+    style: &ResolvedThemeStyle,
+) -> Option<String> {
+    let origin = style.stroke_resolution().winner()?;
+    let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
+    if theme.rule_facet_disposition(origin.rule_index(), facet)
+        != Some(FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+    css_paint(style.stroke())
 }
 
 #[cfg(test)]

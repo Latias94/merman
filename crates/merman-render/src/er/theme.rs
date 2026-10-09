@@ -15,6 +15,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod css_binding;
 mod terminal;
+mod visual;
 pub(crate) use css_binding::ErCssBinding;
 
 use terminal::{
@@ -116,17 +117,10 @@ impl ErBaseFontSizePlan {
 pub(crate) struct ErEntitySourceStyle {
     rect_declarations: Vec<ErStyleDeclaration>,
     text_declarations: Vec<ErStyleDeclaration>,
+    pub(crate) visual: visual::ErSourceVisual,
 }
 
 impl ErEntitySourceStyle {
-    pub(crate) fn rect_declarations(&self) -> &[ErStyleDeclaration] {
-        &self.rect_declarations
-    }
-
-    pub(crate) fn text_declarations(&self) -> &[ErStyleDeclaration] {
-        &self.text_declarations
-    }
-
     pub(crate) fn rect_value(&self, property: &str) -> Option<&str> {
         last_source_style_value(&self.rect_declarations, property)
     }
@@ -215,6 +209,7 @@ fn compile_er_source_style<'a>(
     }
 
     ErEntitySourceStyle {
+        visual: visual::ErSourceVisual::default(),
         rect_declarations: ordered_declarations(
             &rect_map,
             &[
@@ -321,6 +316,7 @@ pub(crate) struct ErEntityThemePlan {
     css_binding: css_binding::ErCssBinding,
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
+    subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
     base_font_size: ErBaseFontSizePlan,
     has_visible_typography: bool,
@@ -336,10 +332,16 @@ pub(crate) struct ErEntityThemePlan {
     text_terminal_evidence_enabled: bool,
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
     table_rows: BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>>,
-    relation_strokes: Vec<Option<ExpectedPaint>>,
+    relation_strokes: Vec<ErRelationStrokeVisual>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<ErEntityThemeReceipt>,
+}
+
+#[derive(Debug, Clone)]
+struct ErRelationStrokeVisual {
+    paint: Option<ExpectedPaint>,
+    style_suffix: String,
 }
 
 impl ErEntityThemePlan {
@@ -375,11 +377,35 @@ impl ErEntityThemePlan {
             .values()
             .map(|entity| compile_er_entity_source_style(entity, &model.classes))
             .collect::<Vec<_>>();
+        work_meter.charge(model.subgraphs.len())?;
+        let mut subgraphs = BTreeMap::new();
+        for subgraph in &model.subgraphs {
+            subgraphs.entry(subgraph.id.as_str()).or_insert(subgraph);
+        }
+        let mut subgraph_source_styles = BTreeMap::new();
+        for cluster in &layout.clusters {
+            let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
+                continue;
+            };
+            if subgraph_source_styles.contains_key(&subgraph.id) {
+                continue;
+            }
+            work_meter.charge(1usize.saturating_add(subgraph.title.len()))?;
+            for raw in &subgraph.css_styles {
+                work_meter.charge(1usize.saturating_add(raw.len()))?;
+            }
+            charge_er_subgraph_class_style_work(&subgraph.classes, &model.classes, work_meter)?;
+            subgraph_source_styles.insert(
+                subgraph.id.clone(),
+                compile_er_subgraph_source_style(subgraph, &model.classes),
+            );
+        }
         let Some(theme) = theme else {
-            return Ok(Self {
+            return Self {
                 css_binding,
                 entity_indices,
                 entity_source_styles,
+                subgraph_source_styles,
                 inherited_font_stack,
                 base_font_size,
                 has_visible_typography: false,
@@ -399,7 +425,8 @@ impl ErEntityThemePlan {
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
-            });
+            }
+            .prepare_visuals(model, work_meter);
         };
         let expectations = vec![EntityExpectation::default(); entity_count];
         let needs_text_terminal_evidence = theme.family_mechanism_routes().iter().any(|route| {
@@ -439,23 +466,11 @@ impl ErEntityThemePlan {
         let mermaid_owns_relation_text =
             mermaid_owns_text_fill(effective_config, relationship_html_labels);
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
-        let mut visible_subgraph_styles = BTreeMap::<String, ErEntitySourceStyle>::new();
-        if svg_subgraph_labels && needs_text_terminal_evidence {
-            let subgraphs = model
-                .subgraphs
-                .iter()
-                .map(|subgraph| (subgraph.id.as_str(), subgraph))
-                .collect::<BTreeMap<_, _>>();
-            for cluster in &layout.clusters {
-                let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
-                    continue;
-                };
-                visible_subgraph_styles.insert(
-                    subgraph.id.clone(),
-                    compile_er_subgraph_source_style(subgraph, &model.classes),
-                );
-            }
-        }
+        let visible_subgraph_styles = if svg_subgraph_labels && needs_text_terminal_evidence {
+            &subgraph_source_styles
+        } else {
+            &BTreeMap::new()
+        };
         let source_owns_font_family = entity_source_styles
             .iter()
             .any(|style| style.text_value("font-family").is_some())
@@ -564,21 +579,10 @@ impl ErEntityThemePlan {
         }
 
         if svg_subgraph_labels && needs_text_terminal_evidence {
-            work_meter.charge(model.subgraphs.len())?;
-            let subgraphs: BTreeMap<_, _> = model
-                .subgraphs
-                .iter()
-                .map(|subgraph| (subgraph.id.as_str(), subgraph))
-                .collect();
             for cluster in &layout.clusters {
                 let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
                     continue;
                 };
-                work_meter.charge(1usize.saturating_add(subgraph.title.len()))?;
-                for raw in &subgraph.css_styles {
-                    work_meter.charge(1usize.saturating_add(raw.len()))?;
-                }
-                charge_er_subgraph_class_style_work(&subgraph.classes, &model.classes, work_meter)?;
                 let source_style = visible_subgraph_styles
                     .get(&subgraph.id)
                     .expect("visible ER subgraph styles are indexed with layout clusters");
@@ -713,7 +717,15 @@ impl ErEntityThemePlan {
                     paint_capability_from_css(&expected.css),
                 );
             }
-            relation_strokes.push(expected);
+            let style_suffix = expected
+                .as_ref()
+                .map(|paint| format!(";stroke:{}", paint.css))
+                .unwrap_or_default();
+            work_meter.charge(style_suffix.len())?;
+            relation_strokes.push(ErRelationStrokeVisual {
+                paint: expected,
+                style_suffix,
+            });
         }
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<(usize, ThemeTarget), ErRuleObservation>::new();
@@ -840,10 +852,11 @@ impl ErEntityThemePlan {
             }
         }
 
-        Ok(Self {
+        Self {
             css_binding,
             entity_indices,
             entity_source_styles,
+            subgraph_source_styles,
             inherited_font_stack,
             base_font_size,
             has_visible_typography,
@@ -863,7 +876,8 @@ impl ErEntityThemePlan {
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
-        })
+        }
+        .prepare_visuals(model, work_meter)
     }
 
     pub(crate) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {
@@ -884,6 +898,22 @@ impl ErEntityThemePlan {
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
         self.entity_source_styles.get(entity_index)
+    }
+
+    pub(crate) fn subgraph_source_style(&self, id: &str) -> Option<&ErEntitySourceStyle> {
+        self.subgraph_source_styles.get(id)
+    }
+
+    pub(crate) fn relation_label_visual(&self, index: usize) -> Option<&visual::ErTextVisual> {
+        self.text_terminals
+            .get(&ErTextTerminalId::relation_label(index))
+            .map(|t| &t.visual)
+    }
+
+    pub(crate) fn title_visual(&self) -> Option<&visual::ErTextVisual> {
+        self.text_terminals
+            .get(&ErTextTerminalId::DiagramTitle)
+            .map(|t| &t.visual)
     }
 
     pub(crate) fn typed_fill(&self, entity_index: usize) -> Option<(usize, &str)> {
@@ -915,22 +945,10 @@ impl ErEntityThemePlan {
         self.typed_text_terminal(&ErTextTerminalId::attribute(entity_id, row_index, role))
     }
 
-    pub(crate) fn typed_subgraph_label(&self, id: &str) -> Option<(usize, &str)> {
-        self.typed_text_terminal(&ErTextTerminalId::SubgraphLabel(id.into()))
-    }
-
     pub(crate) fn records_subgraph_labels(&self) -> bool {
         self.text_terminals
             .keys()
             .any(|id| matches!(id, ErTextTerminalId::SubgraphLabel(_)))
-    }
-
-    pub(crate) fn typed_diagram_title(&self) -> Option<(usize, &str)> {
-        self.typed_text_terminal(&ErTextTerminalId::DiagramTitle)
-    }
-
-    pub(crate) fn typed_relation_label(&self, relationship_index: usize) -> Option<(usize, &str)> {
-        self.typed_text_terminal(&ErTextTerminalId::relation_label(relationship_index))
     }
 
     fn typed_text_terminal(&self, id: &ErTextTerminalId) -> Option<(usize, &str)> {
@@ -955,8 +973,16 @@ impl ErEntityThemePlan {
     pub(crate) fn typed_relation_stroke(&self, relationship_index: usize) -> Option<(usize, &str)> {
         self.relation_strokes
             .get(relationship_index)?
+            .paint
             .as_ref()
             .map(|expected| (expected.rule_index, expected.css.as_str()))
+    }
+
+    pub(crate) fn relation_stroke_style(&self, relationship_index: usize) -> &str {
+        self.relation_strokes
+            .get(relationship_index)
+            .map(|stroke| stroke.style_suffix.as_str())
+            .unwrap_or("")
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -1201,6 +1227,7 @@ fn insert_text_terminal(
             id,
             TextTerminalExpectation {
                 paint: None,
+                visual: visual::ErTextVisual::default(),
                 visible_run_count: facts.visible_run_count(),
                 inherited_color_run_count: facts.inherited_color_run_count(),
                 inherited_font_family_run_count: facts.inherited_font_family_run_count(),

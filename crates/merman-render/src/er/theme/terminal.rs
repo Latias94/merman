@@ -97,6 +97,7 @@ impl ErTableRowTerminalId {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct TextTerminalExpectation {
+    pub(super) visual: super::visual::ErTextVisual,
     pub(super) paint: Option<ExpectedPaint>,
     pub(super) visible_run_count: usize,
     pub(super) inherited_color_run_count: usize,
@@ -874,6 +875,7 @@ mod tests {
             BTreeMap::from([(
                 id,
                 TextTerminalExpectation {
+                    visual: super::super::visual::ErTextVisual::default(),
                     paint: Some(ExpectedPaint {
                         rule_index: 7,
                         css: "#123456".to_string(),
@@ -928,6 +930,7 @@ mod tests {
             BTreeMap::from([(
                 id,
                 TextTerminalExpectation {
+                    visual: super::super::visual::ErTextVisual::default(),
                     paint: Some(ExpectedPaint {
                         rule_index: 7,
                         css: "#123456".to_string(),
@@ -964,6 +967,7 @@ mod tests {
             BTreeMap::from([(
                 id,
                 TextTerminalExpectation {
+                    visual: super::super::visual::ErTextVisual::default(),
                     paint: None,
                     visible_run_count: 1,
                     inherited_color_run_count: 1,
@@ -991,6 +995,7 @@ mod tests {
             BTreeMap::from([(
                 ErTextTerminalId::entity_name("entity-A-0"),
                 TextTerminalExpectation {
+                    visual: super::super::visual::ErTextVisual::default(),
                     paint: None,
                     visible_run_count: 1,
                     inherited_color_run_count: 1,
@@ -1140,6 +1145,7 @@ mod tests {
                 BTreeMap::from([(
                     ErTextTerminalId::entity_name("entity-A-0"),
                     TextTerminalExpectation {
+                        visual: super::super::visual::ErTextVisual::default(),
                         paint: None,
                         visible_run_count: 1,
                         inherited_color_run_count: 1,

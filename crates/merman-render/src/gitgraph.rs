@@ -16,11 +16,10 @@ pub(crate) use css_binding::GitGraphCssBinding;
 
 pub(crate) use theme::{
     GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
-    GitGraphCommitPaletteRole, GitGraphNodePaintCss, GitGraphNodePalettePlan,
-    GitGraphNodePaletteReceipt, GitGraphPaletteSource, GitGraphPaletteSurface,
-    GitGraphPaletteSurfaceOwnership, GitGraphStaticPaintPlan, GitGraphTypographyCssEmission,
-    GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible, gitgraph_tags_in_output_order,
-    palette_slot,
+    GitGraphNodePaintCss, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt,
+    GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphStaticPaintPlan,
+    GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
+    gitgraph_tags_in_output_order, palette_slot,
 };
 
 pub(crate) fn resolve_gitgraph_title<'a>(

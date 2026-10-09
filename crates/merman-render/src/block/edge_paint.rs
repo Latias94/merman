@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -19,6 +20,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// Block owns edge paint at the visible path, independently of shared marker definitions.
 #[derive(Debug)]
 pub(crate) struct BlockEdgePaintPlan {
+    declarations: Box<[Cow<'static, str>]>,
     expectations: Vec<Option<BlockEdgeExpectation>>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<usize, BTreeSet<ThemeCapability>>,
@@ -55,7 +57,28 @@ impl BlockEdgePaintPlan {
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        let mut plan = Self::resolve_paint(theme, config, model, layout, work)?;
+        work.charge(model.edges.len())?;
+        plan.declarations = (0..model.edges.len())
+            .map(|index| {
+                plan.color(index).map_or_else(
+                    || Cow::Borrowed("undefined;;;undefined"),
+                    |color| Cow::Owned(format!("stroke:{color};fill:none;")),
+                )
+            })
+            .collect();
+        Ok(plan)
+    }
+
+    fn resolve_paint(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        work: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
+            declarations: Box::new([]),
             expectations: Vec::new(),
             evidence: FamilyThemeEvidence::from_theme(theme),
             pending: BTreeMap::new(),
@@ -282,11 +305,15 @@ impl BlockEdgePaintPlan {
         Ok(plan)
     }
 
-    pub(crate) fn color(&self, edge_index: usize) -> Option<&str> {
+    fn color(&self, edge_index: usize) -> Option<&str> {
         self.expectations
             .get(edge_index)?
             .as_ref()
             .map(|expected| expected.paint.css())
+    }
+
+    pub(crate) fn declaration(&self, edge_index: usize) -> Option<&str> {
+        self.declarations.get(edge_index).map(AsRef::as_ref)
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockEdgePaintReceipt> {
@@ -424,8 +451,41 @@ fn path_visibility(d: &str) -> Option<bool> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn unthemed_edges_have_prepared_historical_declarations() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block-beta\nA --> B\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("Block model")
+        };
+        let layout = crate::block::layout_block_diagram_typed(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        let work = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let plan = BlockEdgePaintPlan::resolve(
+            None,
+            &parsed.metadata().effective_config,
+            model,
+            &layout,
+            &work,
+        )
+        .unwrap();
+        assert_eq!(plan.declarations.len(), model.edges.len());
+        assert_eq!(plan.declaration(0), Some("undefined;;;undefined"));
+        assert_eq!(plan.declaration(model.edges.len()), None);
+    }
+
     fn receipt_plan() -> BlockEdgePaintPlan {
         BlockEdgePaintPlan {
+            declarations: Box::new([]),
             expectations: vec![Some(BlockEdgeExpectation {
                 id: "edge-1".to_string(),
                 paint: DirectPaintExpectation::new(0, "#123456", ThemeCapability::SolidPaint),

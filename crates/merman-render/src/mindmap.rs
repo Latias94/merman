@@ -10,15 +10,15 @@ use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::sync::Arc;
 
+mod css_binding;
 mod registered;
+pub(crate) use css_binding::MindmapCssBinding;
 mod theme;
 mod tidy_tree;
 
 pub(crate) use theme::{
-    MINDMAP_SECTION_COUNT, MindmapEdgeStrokeSource, MindmapNodeFillOwnership,
-    MindmapNodeFillSource, MindmapNodePalettePlan, MindmapNodePaletteTerminalDecision,
-    MindmapWriterThemeToken, MindmapWriterThemeTokens, mindmap_color_scale_css, mindmap_model_look,
-    mindmap_neo_edges_use_node_border, mindmap_node_border_css,
+    MINDMAP_SECTION_COUNT, MindmapEdgeStrokeSource, MindmapNodeFillSource, MindmapNodePalettePlan,
+    MindmapNodePaletteTerminalDecision, MindmapWriterThemeToken,
 };
 
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {

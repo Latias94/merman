@@ -1,5 +1,6 @@
 //! Flowchart hierarchy helpers (clusters, LCA, edge selection).
 
+use super::node_inventory::FlowchartNodeInventoryInput;
 use super::*;
 
 pub(super) fn flowchart_node_dom_indices<'a>(
@@ -48,7 +49,7 @@ struct FlowchartClusterOrderKey<'a> {
 }
 
 fn flowchart_cluster_order_key<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     id: &'a str,
 ) -> FlowchartClusterOrderKey<'a> {
     let (left, top) = ctx
@@ -104,7 +105,7 @@ struct FlowchartNodeOrderKey<'a> {
 }
 
 fn flowchart_node_hierarchy_key_with<'a, E>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     id: &str,
     parent_cluster: Option<&str>,
     mut visit_parent: impl FnMut() -> std::result::Result<(), E>,
@@ -136,7 +137,7 @@ fn flowchart_node_hierarchy_key_with<'a, E>(
 }
 
 fn flowchart_node_hierarchy_key_metered<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     id: &str,
     parent_cluster: Option<&str>,
 ) -> crate::Result<(usize, Option<&'a str>)> {
@@ -156,7 +157,7 @@ fn flowchart_directional_sort_key(primary_dir: &str, x: f64, y: f64) -> (f64, f6
 }
 
 fn flowchart_explicit_dom_indices<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     parent_cluster: Option<&str>,
 ) -> Option<FxHashMap<&'a str, usize>> {
     ctx.dom_node_order_by_root
@@ -172,7 +173,7 @@ fn flowchart_explicit_dom_indices<'a>(
 }
 
 fn flowchart_node_order_key<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     explicit_dom_indices: Option<&FxHashMap<&str, usize>>,
     id: &'a str,
     nesting_depth: usize,
@@ -242,20 +243,20 @@ fn flowchart_sort_node_order_keys<'a>(mut keyed: Vec<FlowchartNodeOrderKey<'a>>)
 }
 
 #[derive(Default)]
-struct FlowchartDomCandidates<'a> {
+pub(super) struct FlowchartDomCandidates<'a> {
     nodes: Vec<&'a str>,
     clusters: Vec<&'a str>,
 }
 
 #[derive(Default)]
-struct FlowchartDomCandidateBuckets<'a> {
+pub(super) struct FlowchartDomCandidateBuckets<'a> {
     by_root: FxHashMap<Option<&'a str>, FlowchartDomCandidates<'a>>,
 }
 
 impl<'a> FlowchartDomCandidateBuckets<'a> {
-    fn prepare(
-        ctx: &'a FlowchartRenderCtx<'a>,
-        parent_index: &FlowchartEffectiveParentIndex<'a>,
+    pub(super) fn prepare(
+        ctx: &'a FlowchartNodeInventoryInput<'a>,
+        parent_index: &'a FlowchartEffectiveParentIndex,
     ) -> crate::Result<Self> {
         let scan_work = ctx
             .nodes_by_id
@@ -265,7 +266,7 @@ impl<'a> FlowchartDomCandidateBuckets<'a> {
         ctx.work_meter.charge(scan_work)?;
 
         let mut buckets = Self::default();
-        for (id, node) in &ctx.nodes_by_id {
+        for (id, node) in ctx.nodes_by_id {
             if ctx.subgraph_has_children(id) {
                 continue;
             }
@@ -292,13 +293,13 @@ impl<'a> FlowchartDomCandidateBuckets<'a> {
         self.by_root.entry(root).or_default().clusters.push(id);
     }
 
-    fn take(&mut self, root: Option<&'a str>) -> FlowchartDomCandidates<'a> {
+    pub(super) fn take(&mut self, root: Option<&'a str>) -> FlowchartDomCandidates<'a> {
         self.by_root.remove(&root).unwrap_or_default()
     }
 }
 
 fn flowchart_prepare_root_children_nodes_metered<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     parent_cluster: Option<&str>,
     ids: Vec<&'a str>,
 ) -> crate::Result<Vec<FlowchartNodeOrderKey<'a>>> {
@@ -324,7 +325,7 @@ fn flowchart_prepare_root_children_nodes_metered<'a>(
 }
 
 fn flowchart_prepare_root_children_clusters_metered<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     ids: Vec<&'a str>,
 ) -> crate::Result<Vec<FlowchartClusterOrderKey<'a>>> {
     ctx.work_meter.charge(ids.len())?;
@@ -346,8 +347,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_checked_sort_work(
         .ok_or_else(|| work_meter.arithmetic_overflow().into())
 }
 
-fn flowchart_dom_order_for_root<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+pub(super) fn flowchart_dom_order_for_root<'a>(
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     cluster_id: Option<&str>,
     candidates: FlowchartDomCandidates<'a>,
 ) -> crate::Result<Vec<&'a str>> {
@@ -398,8 +399,8 @@ fn flowchart_dom_order_for_root<'a>(
     Ok(dom_order)
 }
 
-fn flowchart_elk_dom_order<'a>(
-    ctx: &'a FlowchartRenderCtx<'a>,
+pub(super) fn flowchart_elk_dom_order<'a>(
+    ctx: &'a FlowchartNodeInventoryInput<'a>,
     candidates: FlowchartDomCandidates<'a>,
 ) -> crate::Result<Vec<&'a str>> {
     if let Some(ids) = ctx.dom_node_order_by_root.get("")
@@ -479,7 +480,7 @@ struct FlowchartRenderedClusterBuckets<'a> {
 impl<'a> FlowchartRenderedClusterBuckets<'a> {
     fn prepare(
         ctx: &'a FlowchartRenderCtx<'a>,
-        parent_index: &FlowchartEffectiveParentIndex<'a>,
+        parent_index: &'a FlowchartEffectiveParentIndex,
         ancestry: &FlowchartAncestryIndex<'a>,
     ) -> crate::Result<Self> {
         let scan_work = ctx
@@ -572,7 +573,7 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
 
 fn flowchart_prepare_root_offsets<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
-    parent_index: &FlowchartEffectiveParentIndex<'a>,
+    parent_index: &'a FlowchartEffectiveParentIndex,
 ) -> crate::Result<(FxHashMap<&'a str, FlowchartRootOffsets>, f64)> {
     const ROOT_MARGIN_PX: f64 = 8.0;
 
@@ -660,7 +661,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartHierarchyPlan<'a> {
     ordered_edges: Vec<super::render_input::FlowchartRenderEdgeRef<'a>>,
     edge_root_by_key: FxHashMap<crate::flowchart::FlowchartEdgeKey, Option<&'a str>>,
     physical_ancestry: FlowchartAncestryIndex<'a>,
-    effective_parents: FlowchartEffectiveParentIndex<'a>,
+    effective_parents: &'a FlowchartEffectiveParentIndex,
     root_offsets: FxHashMap<&'a str, FlowchartRootOffsets>,
     extra_recursive_root_y: f64,
 }
@@ -668,6 +669,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartHierarchyPlan<'a> {
 impl<'a> FlowchartHierarchyPlan<'a> {
     pub(in crate::svg::parity::flowchart) fn prepare(
         ctx: &'a FlowchartRenderCtx<'a>,
+        node_schedule: &'a super::node_inventory::FlowchartNodeRootSchedule,
     ) -> crate::Result<Self> {
         let parent_identity_capacity = ctx
             .parent
@@ -694,14 +696,9 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             &ctx.parent,
             ctx.work_meter,
         )?;
-        let effective_parents = FlowchartEffectiveParentIndex::prepare(
-            &ctx.parent,
-            |id| ctx.subgraphs_by_id.contains_key(id) && !ctx.recursive_clusters.contains(id),
-            ctx.work_meter,
-        )?;
+        let effective_parents = node_schedule.effective_parents();
         let (root_offsets, extra_recursive_root_y) =
-            flowchart_prepare_root_offsets(ctx, &effective_parents)?;
-        let mut dom_candidates = FlowchartDomCandidateBuckets::prepare(ctx, &effective_parents)?;
+            flowchart_prepare_root_offsets(ctx, effective_parents)?;
 
         if ctx.uses_elk_adapter_dom {
             ctx.work_meter.charge(ctx.edge_order.len())?;
@@ -713,7 +710,11 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                     return Err(flowchart_duplicate_edge_key_error(edge.key));
                 }
             }
-            let dom_order = flowchart_elk_dom_order(ctx, dom_candidates.take(None))?;
+            let dom_order = node_schedule
+                .top()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
             let mut cluster_buckets = FlowchartRenderedClusterBuckets::prepare_elk(ctx)?;
             let clusters = cluster_buckets.take(None);
             let retained_refs = edges
@@ -739,7 +740,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         }
 
         let mut cluster_buckets =
-            FlowchartRenderedClusterBuckets::prepare(ctx, &effective_parents, &physical_ancestry)?;
+            FlowchartRenderedClusterBuckets::prepare(ctx, effective_parents, &physical_ancestry)?;
         let mut top_edges = Vec::new();
         let mut edges_by_nested_root: FxHashMap<
             &'a str,
@@ -753,7 +754,7 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 ctx,
                 edge.edge.from.as_str(),
                 edge.edge.to.as_str(),
-                &effective_parents,
+                effective_parents,
                 ctx.work_meter,
             )?;
             if edge_root_by_key.insert(edge.key, root).is_some() {
@@ -765,8 +766,11 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             }
         }
 
-        ctx.work_meter.charge(1)?;
-        let top_dom_order = flowchart_dom_order_for_root(ctx, None, dom_candidates.take(None))?;
+        let top_dom_order = node_schedule
+            .top()
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
         let top_clusters = cluster_buckets.take(None);
         let top_retained_refs = top_edges
             .len()
@@ -776,16 +780,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         ctx.work_meter.charge(top_retained_refs)?;
         let mut ordered_edges = Vec::with_capacity(ctx.edge_order.len());
         ordered_edges.extend(top_edges.iter().copied());
-        let mut pending = top_dom_order
-            .iter()
-            .rev()
-            .filter_map(|id| {
-                (ctx.subgraphs_by_id.contains_key(id)
-                    && ctx.subgraph_has_children(id)
-                    && ctx.recursive_clusters.contains(id))
-                .then_some(*id)
-            })
-            .collect::<Vec<_>>();
         let top_root = FlowchartRootEmission {
             edges: top_edges,
             dom_order: top_dom_order,
@@ -793,14 +787,13 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         };
 
         let mut nested_roots = FxHashMap::default();
-        while let Some(cluster_id) = pending.pop() {
-            ctx.work_meter.charge(1)?;
+        for (cluster_id, scheduled_order) in node_schedule.nested() {
+            let cluster_id = cluster_id.as_str();
             let edges = edges_by_nested_root.remove(cluster_id).unwrap_or_default();
-            let dom_order = flowchart_dom_order_for_root(
-                ctx,
-                Some(cluster_id),
-                dom_candidates.take(Some(cluster_id)),
-            )?;
+            let dom_order = scheduled_order
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
             let clusters = cluster_buckets.take(Some(cluster_id));
             let retained_refs = edges
                 .len()
@@ -809,12 +802,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
             ctx.work_meter.charge(retained_refs)?;
             ordered_edges.extend(edges.iter().copied());
-            pending.extend(dom_order.iter().rev().filter_map(|id| {
-                (ctx.subgraphs_by_id.contains_key(id)
-                    && ctx.subgraph_has_children(id)
-                    && ctx.recursive_clusters.contains(id))
-                .then_some(*id)
-            }));
             if nested_roots
                 .insert(
                     cluster_id,
@@ -1072,13 +1059,12 @@ impl<'a> FlowchartAncestryIndex<'a> {
 }
 
 #[derive(Debug)]
-struct FlowchartEffectiveParentIndex<'a> {
-    parent_by_id: FxHashMap<&'a str, Option<&'a str>>,
-    depth_by_id: FxHashMap<&'a str, usize>,
+pub(super) struct FlowchartEffectiveParentIndex {
+    entries: FxHashMap<String, (Option<String>, usize)>,
 }
 
-impl<'a> FlowchartEffectiveParentIndex<'a> {
-    fn prepare(
+impl FlowchartEffectiveParentIndex {
+    pub(super) fn prepare<'a>(
         physical_parent_by_id: &FxHashMap<&'a str, &'a str>,
         mut is_transparent_parent: impl FnMut(&str) -> bool,
         work_meter: &crate::resources::OperationWorkMeter,
@@ -1160,17 +1146,24 @@ impl<'a> FlowchartEffectiveParentIndex<'a> {
         }
 
         Ok(Self {
-            parent_by_id,
-            depth_by_id,
+            entries: depth_by_id
+                .into_iter()
+                .map(|(id, depth)| {
+                    let parent = parent_by_id.get(id).copied().flatten().map(str::to_owned);
+                    (id.to_owned(), (parent, depth))
+                })
+                .collect(),
         })
     }
 
-    fn parent(&self, id: &str) -> Option<&'a str> {
-        self.parent_by_id.get(id).copied().flatten()
+    fn parent(&self, id: &str) -> Option<&str> {
+        self.entries
+            .get(id)
+            .and_then(|(parent, _)| parent.as_deref())
     }
 
     fn depth(&self, id: &str) -> usize {
-        self.depth_by_id.get(id).copied().unwrap_or(1)
+        self.entries.get(id).map_or(1, |(_, depth)| *depth)
     }
 }
 
@@ -1184,12 +1177,12 @@ fn flowchart_lca_with_work_meter<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     a: &'a str,
     b: &'a str,
-    parent_index: &FlowchartEffectiveParentIndex<'a>,
+    parent_index: &'a FlowchartEffectiveParentIndex,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> crate::Result<Option<&'a str>> {
     fn first_render_root<'a>(
         ctx: &'a FlowchartRenderCtx<'a>,
-        parent_index: &FlowchartEffectiveParentIndex<'a>,
+        parent_index: &'a FlowchartEffectiveParentIndex,
         id: &'a str,
         include_cluster_endpoint: bool,
     ) -> Option<&'a str> {
@@ -1209,7 +1202,7 @@ fn flowchart_lca_with_work_meter<'a>(
 fn flowchart_lca_from_render_roots<'a>(
     mut left: Option<&'a str>,
     mut right: Option<&'a str>,
-    parent_index: &FlowchartEffectiveParentIndex<'a>,
+    parent_index: &'a FlowchartEffectiveParentIndex,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> crate::Result<Option<&'a str>> {
     let mut left_depth = left.map_or(0, |root| parent_index.depth(root));
@@ -1252,7 +1245,7 @@ mod tests {
 
     fn prepare_parent_index(
         work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<FlowchartEffectiveParentIndex<'static>> {
+    ) -> crate::Result<FlowchartEffectiveParentIndex> {
         FlowchartEffectiveParentIndex::prepare(
             &parent_fixture(),
             |id| id == "transparent",

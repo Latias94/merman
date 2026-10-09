@@ -27,25 +27,29 @@ use super::BlockNodeShellKind;
 /// Block edge-label background owner; it shares the proven receipt implementation
 /// with Flowchart while remaining a family-local plan.
 #[derive(Debug)]
-pub(crate) struct BlockLabelBackgroundPlan(crate::flowchart::FlowchartLabelBackgroundPlan);
+pub(crate) struct BlockLabelBackgroundPlan(
+    crate::flowchart::FlowchartLabelBackgroundPlan,
+    Box<str>,
+);
 
 impl BlockLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::MermaidConfig,
+        configured: &str,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        Ok(Self(
-            crate::flowchart::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?,
-        ))
+        let inner = crate::flowchart::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?;
+        let color = Box::from(inner.color(configured));
+        Ok(Self(inner, color))
     }
 
     pub(crate) fn requested(&self) -> bool {
         self.0.requested()
     }
 
-    pub(crate) fn color<'a>(&'a self, configured: &'a str) -> &'a str {
-        self.0.color(configured)
+    pub(crate) fn color(&self) -> &str {
+        &self.1
     }
 
     pub(crate) fn record_stylesheet(&self) {

@@ -53,6 +53,8 @@ pub(crate) use parity::cssom_color_value;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::flowchart_node_label_fill_config_override;
+#[cfg(feature = "diagram-er")]
+pub(crate) use parity::{escape_attr, escape_xml};
 mod pipeline;
 pub(crate) mod scanner;
 

@@ -67,16 +67,8 @@ where
     let mut out = String::new();
 
     if binding.sources.use_gradient {
-        let gradient_start = binding
-            .gradient_start
-            .as_deref()
-            .or(primary_border)
-            .unwrap_or(&binding.primary_border);
-        let gradient_stop = binding
-            .gradient_stop
-            .as_deref()
-            .or(binding.secondary_border.as_deref())
-            .unwrap_or(gradient_start);
+        let gradient_start = binding.gradient_start(primary_border);
+        let gradient_stop = binding.gradient_stop(gradient_start);
 
         let _ = write!(
             &mut out,
@@ -233,9 +225,7 @@ fn gitgraph_css(
                     if use_gradient {
                         let primary_border =
                             if node_paint.is_some() && binding.gradient_start.is_none() {
-                                Some(node_paint_values[3].map(Cow::Borrowed).unwrap_or_else(|| {
-                                    Cow::Borrowed(binding.primary_border.as_str())
-                                }))
+                                Some(binding.gradient_start(node_paint_values[3]))
                             } else {
                                 None
                             };
@@ -249,7 +239,7 @@ fn gitgraph_css(
                                 && label_i < GITGRAPH_PALETTE_SLOT_COUNT
                             {
                                 facts.branches[0][label_i] = facts.source(1, &main_bkg);
-                                if let Some(primary_border) = primary_border.as_deref() {
+                                if let Some(primary_border) = primary_border {
                                     facts.branches[1][label_i] = facts.source(3, primary_border);
                                 }
                             }
@@ -566,75 +556,17 @@ fn gitgraph_css(
     }
 }
 
-fn gitgraph_node_palette_surface_ownership(
-    binding: &crate::gitgraph::GitGraphCssBinding,
-    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
-) -> crate::gitgraph::GitGraphPaletteSurfaceOwnership {
-    let mut ownership = crate::gitgraph::GitGraphPaletteSurfaceOwnership::default();
-    if !node_palette.has_palette_assignment() {
-        return ownership;
-    }
-    let sources = binding.sources;
-
-    for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
-        if node_palette.surface_is_visible(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot)
-            && node_palette.mermaid_source_is_owned(sources.branch_slot(slot))
-        {
-            ownership.mark_stroke_owned(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot);
-        }
-        if node_palette.surface_is_visible(
-            crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
-            slot,
-        ) && sources
-            .branch_label_background(slot)
-            .is_some_and(|source| node_palette.mermaid_source_is_owned(source))
-        {
-            ownership.mark_fill_owned(
-                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
-                slot,
-            );
-        }
-    }
-
-    for (slot, role) in node_palette.commit_palette_elements() {
-        let (fill_source, stroke_source) = match role {
-            crate::gitgraph::GitGraphCommitPaletteRole::BranchSlot => (
-                Some(sources.branch_slot(slot)),
-                Some(sources.branch_slot(slot)),
-            ),
-            crate::gitgraph::GitGraphCommitPaletteRole::State => {
-                let source = sources.state();
-                (Some(source), Some(source))
-            }
-        };
-        if fill_source.is_some_and(|source| node_palette.mermaid_source_is_owned(source)) {
-            // A single `.commitN` selector covers every palette-bearing element in the slot. If
-            // any concrete element has a higher-priority Mermaid fill owner, suppress only the
-            // shared fill declaration while leaving an independently unowned stroke available.
-            ownership.mark_fill_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
-        }
-        if stroke_source.is_some_and(|source| node_palette.mermaid_source_is_owned(source)) {
-            // Stroke ownership is independent from fill ownership because the two properties can
-            // reach the commit through different explicit or inherited terminal declarations.
-            ownership.mark_stroke_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
-        }
-    }
-
-    ownership
-}
-
 fn gitgraph_node_palette_css(
     diagram_id: &str,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
-    ownership: crate::gitgraph::GitGraphPaletteSurfaceOwnership,
     receipt: &mut Option<crate::gitgraph::GitGraphNodePaletteReceipt>,
 ) -> String {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let mut css = String::new();
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
         for surface in crate::gitgraph::GitGraphPaletteSurface::ALL {
-            let fill = node_palette.terminal_fill_css(surface, slot, ownership);
-            let stroke = node_palette.terminal_stroke_css(surface, slot, ownership);
+            let fill = node_palette.prepared_fill_css(surface, slot);
+            let stroke = node_palette.prepared_stroke_css(surface, slot);
             if fill.is_none() && stroke.is_none() {
                 continue;
             }
@@ -851,7 +783,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             .then(|| node_palette.text_paint().css_colors()),
         node_palette.branch_stylesheet_stroke(),
     );
-    let node_palette_ownership = gitgraph_node_palette_surface_ownership(binding, node_palette);
+    let node_palette_ownership = node_palette.terminal_ownership();
     let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
     let mut branch_stroke_receipt: Option<crate::gitgraph::GitGraphBranchStrokeReceipt> =
         node_palette.begin_branch_stroke_receipt();
@@ -860,7 +792,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let node_palette_css = gitgraph_node_palette_css(
         diagram_id.semantic_str(),
         node_palette,
-        node_palette_ownership,
         &mut node_palette_receipt,
     );
     let _ = write!(
@@ -902,9 +833,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 ]
                 .map(|surface| {
                     std::array::from_fn(|slot| {
-                        node_palette
-                            .terminal_fill_css(surface, slot, node_palette_ownership)
-                            .is_some()
+                        node_palette.prepared_fill_css(surface, slot).is_some()
                     })
                 });
                 let stroke_masked = [
@@ -913,9 +842,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 ]
                 .map(|surface| {
                     std::array::from_fn(|slot| {
-                        node_palette
-                            .terminal_stroke_css(surface, slot, node_palette_ownership)
-                            .is_some()
+                        node_palette.prepared_stroke_css(surface, slot).is_some()
                     })
                 });
                 plan.begin_terminal_receipt(layout, &branch_idx, fill_masked, stroke_masked, facts)
@@ -931,21 +858,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             .enumerate()
         {
             if node_palette
-                .terminal_fill_css(
+                .prepared_fill_css(
                     crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
                     slot,
-                    node_palette_ownership,
                 )
                 .is_some()
             {
                 *branch_inherited = false;
             }
             if node_palette
-                .terminal_fill_css(
-                    crate::gitgraph::GitGraphPaletteSurface::Commit,
-                    slot,
-                    node_palette_ownership,
-                )
+                .prepared_fill_css(crate::gitgraph::GitGraphPaletteSurface::Commit, slot)
                 .is_some()
             {
                 // Highlight outer uses commit-highlightN, so a .commitN override does not own it.
@@ -1167,10 +1089,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             if let Some(receipt) = text_receipt.as_mut() {
                 let root_inherited = css.root_geometry[0][idx]
                     && node_palette
-                        .terminal_fill_css(
+                        .prepared_fill_css(
                             crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
                             idx,
-                            node_palette_ownership,
                         )
                         .is_none();
                 receipt.record_branch(
@@ -1384,11 +1305,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 _ => {
                     css.root_geometry[1][idx]
                         && node_palette
-                            .terminal_fill_css(
-                                crate::gitgraph::GitGraphPaletteSurface::Commit,
-                                idx,
-                                node_palette_ownership,
-                            )
+                            .prepared_fill_css(crate::gitgraph::GitGraphPaletteSurface::Commit, idx)
                             .is_none()
                 }
             };

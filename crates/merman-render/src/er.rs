@@ -21,16 +21,13 @@ mod theme;
 use crate::layout_backend::GraphLayoutBackend;
 use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
-#[cfg(test)]
-pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
     ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntityThemePlan, ErEntityThemeReceipt,
-    ErRelationTerminalExpectation, compile_er_subgraph_source_style, subgraph_svg_text_facts,
+    ErRelationTerminalExpectation, subgraph_svg_text_facts,
 };
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
-pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
 
 #[derive(Debug, Clone)]

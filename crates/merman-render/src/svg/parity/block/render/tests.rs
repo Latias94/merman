@@ -151,6 +151,7 @@ fn render_block_direct_with_edge_theme(
         &BlockLabelBackgroundPlan::resolve(
             None,
             &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            &typography_theme.css_binding().edge_label_background,
             execution.work_meter(),
         )
         .expect("background theme"),

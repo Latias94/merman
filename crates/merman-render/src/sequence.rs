@@ -21,6 +21,7 @@ const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
 const SEQUENCE_CHECKPOINT_INTERVAL: usize = 64;
 
 mod activation;
+mod activation_geometry;
 mod actors;
 mod block_collection;
 mod block_geometry;
@@ -42,12 +43,13 @@ mod theme_binding;
 mod theme_evidence;
 mod typography;
 pub(crate) use terminal_theme::{
-    SequencePreparedNumberTheme, css_paint, typed_static_sequence_fill,
+    SequencePreparedNumberTheme, SequencePreparedStaticRectTheme, SequencePreparedTerminalTheme,
 };
 pub(crate) use text_effect::SequencePreparedTextEffect;
 pub(crate) use theme_binding::SequenceCompatBinding;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
+pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
 pub(crate) use block_collection::{
     AltSection, SequenceBlock, collect_sequence_blocks, sequence_block_section_geometry,
 };
@@ -196,7 +198,9 @@ pub(crate) struct SequencePreparedArtifact {
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
     expected_effect_applications: std::cell::Cell<usize>,
     typography: Arc<SequenceTypographyPlan>,
-    number_theme: SequencePreparedNumberTheme,
+    terminal_theme: SequencePreparedTerminalTheme,
+    activation_geometry: SequencePreparedActivationGeometry,
+    activation_theme: SequencePreparedStaticRectTheme,
     diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
@@ -243,7 +247,19 @@ impl SequencePreparedArtifact {
     }
 
     pub(crate) const fn number_theme(&self) -> &SequencePreparedNumberTheme {
-        &self.number_theme
+        &self.terminal_theme.number
+    }
+
+    pub(crate) const fn terminal_theme(&self) -> &SequencePreparedTerminalTheme {
+        &self.terminal_theme
+    }
+
+    pub(crate) const fn activation_geometry(&self) -> &SequencePreparedActivationGeometry {
+        &self.activation_geometry
+    }
+
+    pub(crate) const fn activation_theme(&self) -> &SequencePreparedStaticRectTheme {
+        &self.activation_theme
     }
 
     pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
@@ -569,9 +585,10 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         work_meter.as_ref(),
     )?);
     checkpoints.checkpoint()?;
-    let number_theme = SequencePreparedNumberTheme::resolve(
-        resolved_theme,
+    let terminal_theme = SequencePreparedTerminalTheme::resolve(
+        model,
         effective_config,
+        resolved_theme,
         work_meter.as_ref(),
     )?;
     let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
@@ -739,6 +756,27 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
 
     let math_sidecar = math_sidecar_builder.finish()?;
     checkpoints.checkpoint()?;
+    let activation_geometry = SequencePreparedActivationGeometry::prepare(
+        model,
+        &nodes,
+        &edges,
+        typography.compat_binding().svg_activation_width,
+        checkpoints,
+    )?;
+    let activation_theme = SequencePreparedStaticRectTheme::resolve(
+        resolved_theme,
+        crate::diagram_theme::ThemeTarget::Activation,
+        activation_geometry.rect_count() != 0,
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.activationBkgColor",
+        ),
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.activationBorderColor",
+        ),
+        work_meter.as_ref(),
+    )?;
 
     Ok(SequencePreparedArtifact {
         layout: SequenceDiagramLayout {
@@ -760,7 +798,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         effect_evidence: Default::default(),
         expected_effect_applications: Default::default(),
         typography,
-        number_theme,
+        terminal_theme,
+        activation_geometry,
+        activation_theme,
         diagram_title,
         block_label_box_metrics,
         box_layouts,

@@ -302,6 +302,8 @@ pub(crate) struct GitGraphNodePalettePlan {
     expected_branch_label_slots: Vec<usize>,
     expected_arrow_slots: Vec<usize>,
     expected_commit_elements: Vec<ExpectedCommitElement>,
+    terminal_ownership: GitGraphPaletteSurfaceOwnership,
+    terminal_declarations: [[(bool, bool); 3]; GITGRAPH_PALETTE_SLOT_COUNT],
     terminal_receipt: OnceLock<GitGraphNodePaletteReceipt>,
 }
 
@@ -498,12 +500,95 @@ impl GitGraphNodePalettePlan {
             expected_branch_label_slots: Vec::new(),
             expected_arrow_slots: Vec::new(),
             expected_commit_elements: Vec::new(),
+            terminal_ownership: GitGraphPaletteSurfaceOwnership::default(),
+            terminal_declarations: [[(false, false); 3]; GITGRAPH_PALETTE_SLOT_COUNT],
             terminal_receipt: OnceLock::new(),
         }
     }
 
     pub(crate) fn has_palette_assignment(&self) -> bool {
         self.fills_by_slot.iter().any(Option::is_some)
+    }
+
+    pub(crate) fn bind_terminal_palette(&mut self, binding: &super::GitGraphCssBinding) {
+        let mut ownership = GitGraphPaletteSurfaceOwnership::default();
+        if self.has_palette_assignment() {
+            let sources = binding.sources;
+            for slot in 0..GITGRAPH_PALETTE_SLOT_COUNT {
+                if self.surface_is_visible(GitGraphPaletteSurface::Arrow, slot)
+                    && self.mermaid_source_is_owned(sources.branch_slot(slot))
+                {
+                    ownership.mark_stroke_owned(GitGraphPaletteSurface::Arrow, slot);
+                }
+                if self.surface_is_visible(GitGraphPaletteSurface::BranchLabelBackground, slot)
+                    && sources
+                        .branch_label_background(slot)
+                        .is_some_and(|source| self.mermaid_source_is_owned(source))
+                {
+                    ownership.mark_fill_owned(GitGraphPaletteSurface::BranchLabelBackground, slot);
+                }
+            }
+            for (slot, role) in self.commit_palette_elements() {
+                let source = match role {
+                    GitGraphCommitPaletteRole::BranchSlot => sources.branch_slot(slot),
+                    GitGraphCommitPaletteRole::State => sources.state(),
+                };
+                if self.mermaid_source_is_owned(source) {
+                    ownership.mark_fill_owned(GitGraphPaletteSurface::Commit, slot);
+                    ownership.mark_stroke_owned(GitGraphPaletteSurface::Commit, slot);
+                }
+            }
+        }
+        self.terminal_declarations = std::array::from_fn(|slot| {
+            GitGraphPaletteSurface::ALL.map(|surface| {
+                (
+                    self.terminal_fill_css(surface, slot, ownership).is_some(),
+                    self.terminal_stroke_css(surface, slot, ownership).is_some(),
+                )
+            })
+        });
+        self.terminal_ownership = ownership;
+    }
+
+    pub(crate) const fn terminal_ownership(&self) -> GitGraphPaletteSurfaceOwnership {
+        self.terminal_ownership
+    }
+
+    pub(crate) fn prepared_fill_css(
+        &self,
+        surface: GitGraphPaletteSurface,
+        slot: usize,
+    ) -> Option<&str> {
+        self.prepared_paint_css(surface, slot, false)
+    }
+
+    pub(crate) fn prepared_stroke_css(
+        &self,
+        surface: GitGraphPaletteSurface,
+        slot: usize,
+    ) -> Option<&str> {
+        self.prepared_paint_css(surface, slot, true)
+    }
+
+    fn prepared_paint_css(
+        &self,
+        surface: GitGraphPaletteSurface,
+        slot: usize,
+        stroke: bool,
+    ) -> Option<&str> {
+        let index = match surface {
+            GitGraphPaletteSurface::Commit => 0,
+            GitGraphPaletteSurface::Arrow => 1,
+            GitGraphPaletteSurface::BranchLabelBackground => 2,
+        };
+        let &(fill_active, stroke_active) = self.terminal_declarations.get(slot)?.get(index)?;
+        (if stroke { stroke_active } else { fill_active })
+            .then(|| {
+                self.fills_by_slot[slot]
+                    .as_ref()
+                    .map(|fill| fill.css.as_str())
+            })
+            .flatten()
     }
 
     fn has_visible_surface(&self) -> bool {
@@ -1024,8 +1109,49 @@ mod tests {
                     role: GitGraphCommitPaletteRole::BranchSlot,
                 },
             ],
+            terminal_ownership: GitGraphPaletteSurfaceOwnership::default(),
+            terminal_declarations: [[(false, false); 3]; GITGRAPH_PALETTE_SLOT_COUNT],
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    #[test]
+    fn prepared_palette_shares_property_local_ownership_and_masks() {
+        let config = MermaidConfig::from_value(serde_json::json!({"theme": "default"}));
+        let typography = GitGraphTypographyThemePlan::resolve(None, &config);
+        let mut plan = receipt_plan();
+        plan.fill_winner_by_slot[0] = true;
+        plan.mermaid_source_ownership.git[1] = true;
+        plan.bind_terminal_palette(typography.css_binding());
+
+        assert_eq!(
+            plan.prepared_fill_css(GitGraphPaletteSurface::Commit, 0),
+            None
+        );
+        assert_eq!(
+            plan.prepared_stroke_css(GitGraphPaletteSurface::Commit, 0),
+            Some("#123456")
+        );
+        assert_eq!(
+            plan.prepared_fill_css(GitGraphPaletteSurface::Arrow, 0),
+            None
+        );
+        for surface in GitGraphPaletteSurface::ALL {
+            assert_eq!(plan.prepared_fill_css(surface, 1), None);
+            assert_eq!(plan.prepared_stroke_css(surface, 1), None);
+        }
+
+        let mut receipt = plan
+            .begin_terminal_receipt(plan.terminal_ownership())
+            .unwrap();
+        receipt.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            None,
+            Some("#ffffff"),
+        );
+        assert!(!receipt.values_match);
     }
 
     #[test]

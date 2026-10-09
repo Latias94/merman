@@ -298,8 +298,7 @@ use css::write_pie_css;
     )
 )]
 use css::{
-    MermaidBaseCss, info_css_parts_with_font_family,
-    write_mermaid_base_css_prefix_with_font_emission,
+    MermaidBaseCss, info_css_parts_from_prepared, write_mermaid_base_css_prefix_with_font_emission,
     write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
     write_prepared_info_css,
 };
@@ -346,11 +345,12 @@ use style::{is_text_style_key, parse_style_decl};
 )]
 use util::{
     config_bool, config_diagram_look, config_f64, config_string, css_rgba_fade,
-    decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_attr_into,
-    escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path,
-    fmt_path_into, fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
+    decode_mermaid_entities_for_render_text, escape_attr_display, escape_attr_into,
+    escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
+    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
     normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
 };
+pub(crate) use util::{escape_attr, escape_xml};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.

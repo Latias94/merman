@@ -112,6 +112,27 @@ impl GitGraphCssBinding {
             filter_color: color("filterColor", "#000000"),
         }
     }
+
+    /// Resolves the gradient start using the same raw/typed fallback order for defs and CSS.
+    ///
+    /// An authored empty string is a value and must therefore remain distinct from absence.
+    pub(crate) fn gradient_start<'a>(&'a self, typed_primary_border: Option<&'a str>) -> &'a str {
+        self.gradient_start
+            .as_deref()
+            .or(typed_primary_border)
+            .unwrap_or(&self.primary_border)
+    }
+
+    /// Resolves the gradient stop after the start has already been selected.
+    ///
+    /// The explicit stop and secondary border preserve their raw CSS spelling, including an
+    /// authored empty string; only an absent value falls back to the selected start.
+    pub(crate) fn gradient_stop<'a>(&'a self, start: &'a str) -> &'a str {
+        self.gradient_stop
+            .as_deref()
+            .or(self.secondary_border.as_deref())
+            .unwrap_or(start)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

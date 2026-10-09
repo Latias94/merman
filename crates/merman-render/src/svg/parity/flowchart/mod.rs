@@ -14,6 +14,7 @@ mod hierarchy;
 mod label;
 mod label_effect;
 mod node_effect;
+mod node_inventory;
 mod render;
 mod render_config;
 mod render_input;

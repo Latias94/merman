@@ -47,7 +47,7 @@ impl SequenceRenderSettings {
         let wrap_padding = config.sequence_json_number("wrapPadding").unwrap_or(10.0);
         let note_margin = config.sequence_json_number("noteMargin").unwrap_or(10.0);
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
-        let activation_width = config.sequence_json_number_min("activationWidth", 10.0, 1.0);
+        let activation_width = typography.compat_binding().svg_activation_width;
 
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
         let rect_default_fill = typography.compat_binding().rect_default_fill.clone();

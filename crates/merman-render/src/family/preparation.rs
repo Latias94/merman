@@ -160,14 +160,15 @@ fn prepare_block_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let label_background_theme = crate::block::BlockLabelBackgroundPlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        execution.work_meter_ref(),
-    )?;
     let typography_theme = crate::block::BlockTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+    )?;
+    let label_background_theme = crate::block::BlockLabelBackgroundPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &typography_theme.css_binding().edge_label_background,
+        execution.work_meter_ref(),
     )?;
     let layout = crate::block::layout_block_diagram_typed_with_text_style(
         &model,
@@ -998,6 +999,7 @@ fn prepare_gitgraph_family(
         crate::gitgraph::resolve_gitgraph_title(&model, meta.title.as_deref()),
         execution.work_meter_ref(),
     )?;
+    node_palette.bind_terminal_palette(typography_theme.css_binding());
     let static_paint = crate::gitgraph::GitGraphStaticPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

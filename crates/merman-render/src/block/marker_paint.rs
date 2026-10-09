@@ -21,6 +21,7 @@ use crate::svg::BaseEdgeMarkerKind;
 /// Final marker paint and reference ownership. A definition alone is never a terminal witness.
 #[derive(Debug)]
 pub(crate) struct BlockMarkerPaintPlan {
+    final_references: Box<[[Option<FinalMarkerReference>; 2]]>,
     active: bool,
     definitions: Vec<BlockMarkerDefinition>,
     paths: Vec<Option<MarkerPathExpectation>>,
@@ -28,6 +29,12 @@ pub(crate) struct BlockMarkerPaintPlan {
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<usize, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
     terminal: OnceLock<BlockMarkerPaintReceipt>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FinalMarkerReference {
+    Base(BaseEdgeMarkerKind),
+    Definition(usize),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -120,7 +127,39 @@ impl BlockMarkerPaintPlan {
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        let mut plan = Self::resolve_paint(theme, config, model, layout, work)?;
+        work.charge(model.edges.len())?;
+        plan.final_references = model
+            .edges
+            .iter()
+            .enumerate()
+            .map(|(index, edge)| {
+                [
+                    (true, edge.arrow_type_start.as_deref()),
+                    (false, edge.arrow_type_end.as_deref()),
+                ]
+                .map(|(start, arrow)| {
+                    BaseEdgeMarkerKind::from_arrow(arrow, start).map(|kind| {
+                        plan.reference_definition(index, start).map_or(
+                            FinalMarkerReference::Base(kind),
+                            FinalMarkerReference::Definition,
+                        )
+                    })
+                })
+            })
+            .collect();
+        Ok(plan)
+    }
+
+    fn resolve_paint(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        work: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
+            final_references: Box::new([]),
             active: false,
             definitions: Vec::new(),
             paths: Vec::new(),
@@ -438,10 +477,24 @@ impl BlockMarkerPaintPlan {
         &self.definitions
     }
 
-    pub(crate) fn reference_suffix(&self, edge_index: usize, start: bool) -> Option<&str> {
+    fn reference_definition(&self, edge_index: usize, start: bool) -> Option<usize> {
         let path = self.paths.get(edge_index)?.as_ref()?;
         let reference = &self.references[path.references[usize::from(!start)]?];
-        Some(self.definitions[reference.definition].suffix())
+        Some(reference.definition)
+    }
+
+    pub(crate) fn final_reference(
+        &self,
+        edge_index: usize,
+        start: bool,
+    ) -> Option<(BaseEdgeMarkerKind, &str)> {
+        match self.final_references.get(edge_index)?[usize::from(!start)]? {
+            FinalMarkerReference::Base(kind) => Some((kind, kind.suffix())),
+            FinalMarkerReference::Definition(index) => {
+                let definition = &self.definitions[index];
+                Some((definition.kind(), definition.suffix()))
+            }
+        }
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockMarkerPaintReceipt> {
@@ -628,6 +681,44 @@ fn valid_attachment_path(d: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn unthemed_reference_binding_preserves_unknown_arrow_asymmetry() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block-beta\nA --> B\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("Block model")
+        };
+        let layout = crate::block::layout_block_diagram_typed(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        let mut model = model.clone();
+        model.edges[0].arrow_type_start = Some("unknown".into());
+        model.edges[0].arrow_type_end = Some("unknown".into());
+        let work = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let plan = BlockMarkerPaintPlan::resolve(
+            None,
+            &parsed.metadata().effective_config,
+            &model,
+            &layout,
+            &work,
+        )
+        .unwrap();
+        assert_eq!(plan.final_reference(0, true), None);
+        assert_eq!(
+            plan.final_reference(0, false),
+            Some((BaseEdgeMarkerKind::PointEnd, "pointEnd"))
+        );
+        assert_eq!(plan.final_references.len(), model.edges.len());
+    }
+
     const DEFINITION: &str = r##"<marker id="test_block-pointEnd" class="marker block" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;fill:#123456;stroke:#abcdef;"/></marker>"##;
     const PATH: &str = r##"<path id="test-test-edge" data-id="test-edge" data-edge="true" d="M0,0L20,0" marker-end="url(#test_block-pointEnd)"/>"##;
 
@@ -637,6 +728,7 @@ mod tests {
 
     fn fixture_plan() -> BlockMarkerPaintPlan {
         BlockMarkerPaintPlan {
+            final_references: Box::new([]),
             active: true,
             definitions: vec![BlockMarkerDefinition {
                 kind: BaseEdgeMarkerKind::PointEnd,

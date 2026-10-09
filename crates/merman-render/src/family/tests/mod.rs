@@ -7862,36 +7862,43 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     let ordinal = OrdinalSelector::cycle(1, 0).unwrap();
     let mut radius = ThemeStylePatch::default();
     radius.geometry.radius = Specified::Value(6.0);
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Actor,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
-                        )
-                        .with_ordinal(ordinal)
-                        .for_family(DiagramFamilyId::SEQUENCE),
-                    )
-                    .with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Actor,
-                            ThemeStylePatch::default()
-                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-                        )
-                        .with_ordinal(ordinal)
-                        .for_family(DiagramFamilyId::SEQUENCE),
-                    )
-                    .with_rule(
-                        ThemeRule::new(ThemeTarget::Actor, radius)
-                            .with_ordinal(ordinal)
+    let build_theme = |with_ordinal: bool| {
+        let select = |rule: ThemeRule| {
+            if with_ordinal {
+                rule.with_ordinal(ordinal)
+            } else {
+                rule
+            }
+        };
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            select(ThemeRule::new(
+                                ThemeTarget::Actor,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                            ))
                             .for_family(DiagramFamilyId::SEQUENCE),
-                    ),
-            ),
-        )
-        .expect("compile ordinal Sequence actor theme");
+                        )
+                        .with_rule(
+                            select(ThemeRule::new(
+                                ThemeTarget::Actor,
+                                ThemeStylePatch::default()
+                                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                            ))
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        )
+                        .with_rule(
+                            select(ThemeRule::new(ThemeTarget::Actor, radius.clone()))
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                ),
+            )
+            .expect("compile Sequence actor theme")
+    };
+    let theme = build_theme(true);
     let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
     let parse = || {
         theme
@@ -7919,13 +7926,28 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
             .expect("begin unbounded Sequence session"),
     )
     .expect("prepare unbounded Sequence artifact");
-    let layout_work_units = unbounded.context.session.work_meter().used();
+    let exact_limit = unbounded.context.session.work_meter().used();
     drop(unbounded);
 
-    // Three ordinal candidates are resolved once for each of the two actual actors. The
-    // three facets must share those two resolutions instead of each rescanning both actors.
-    let evidence_work_units = 3 * 2;
-    let exact_limit = layout_work_units + evidence_work_units;
+    // Ordinal selection now belongs to preparation. Compared with the same static rules,
+    // two actor visits and two scans of three rules are charged once before any SVG output.
+    let control_theme = build_theme(false);
+    let control = prepare(
+        control_theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("parse static Sequence control"),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&control_theme)
+            .unwrap(),
+    )
+    .expect("prepare static Sequence control");
+    assert_eq!(
+        exact_limit - control.context.session.work_meter().used(),
+        2 + 3 * 2
+    );
     let rendered = prepare(
         parse(),
         &LayoutOptions::default(),
@@ -7963,15 +7985,14 @@ fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
     );
 
     let short_limit = exact_limit - 1;
-    let artifact = prepare(
+    let error = match prepare(
         parse(),
         &LayoutOptions::default(),
         environment_with_limit(short_limit),
-    )
-    .expect("short limit must still admit Sequence layout");
-    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    {
-        Ok(_) => panic!("ordinal evidence must fail closed when its work exceeds the limit"),
+    ) {
+        Ok(_) => {
+            panic!("prepared ordinal selection must fail closed when its work exceeds the limit")
+        }
         Err(error) => error,
     };
     let Error::ResourceLimitExceeded(limit) = error else {

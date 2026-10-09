@@ -159,7 +159,7 @@ fn normalized_section(section: i32) -> Option<usize> {
     node_palette_ordinal_for_section(section).map(|ordinal| ordinal - 1)
 }
 
-fn mindmap_theme_color_limit(config: &MermaidConfig) -> usize {
+pub(super) fn mindmap_theme_color_limit(config: &MermaidConfig) -> usize {
     crate::config::config_f64(config.as_value(), &["themeVariables", "THEME_COLOR_LIMIT"])
         .map(|value| value.round() as i64)
         .filter(|value| *value > 0)
@@ -205,8 +205,7 @@ pub(crate) struct MindmapNodePalettePlan {
     node_terminal_receipt: OnceLock<MindmapNodePaletteReceipt>,
     edge_terminal_receipt: OnceLock<MindmapEdgeStrokeReceipt>,
     inherited_font_stack: InheritedFontStackPlan,
-    cluster_background_css: Box<str>,
-    cluster_border_css: Box<str>,
+    css_binding: OnceLock<super::css_binding::MindmapCssBinding>,
 }
 
 #[derive(Debug)]
@@ -297,6 +296,7 @@ impl MindmapNodePalettePlan {
 
         let mut plan = Self::baseline(config, model, work_meter)?;
         let Some(theme) = theme else {
+            plan.prepare_css_binding(config, work_meter)?;
             return Ok(plan);
         };
 
@@ -333,6 +333,7 @@ impl MindmapNodePalettePlan {
             ],
             work_meter,
         )?;
+        plan.prepare_css_binding(config, work_meter)?;
         Ok(plan)
     }
 
@@ -743,14 +744,7 @@ impl MindmapNodePalettePlan {
             node_terminal_receipt: OnceLock::new(),
             edge_terminal_receipt: OnceLock::new(),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
-            cluster_background_css: config
-                .get_str("themeVariables.clusterBkg")
-                .unwrap_or("#ffffde")
-                .into(),
-            cluster_border_css: config
-                .get_str("themeVariables.clusterBorder")
-                .unwrap_or("#aaaa33")
-                .into(),
+            css_binding: OnceLock::new(),
         })
     }
 
@@ -759,11 +753,31 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn cluster_background_css(&self) -> &str {
-        &self.cluster_background_css
+        &self.css_binding().cluster_background
     }
 
     pub(crate) fn cluster_border_css(&self) -> &str {
-        &self.cluster_border_css
+        &self.css_binding().cluster_border
+    }
+
+    fn prepare_css_binding(
+        &self,
+        config: &MermaidConfig,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        let binding = super::css_binding::MindmapCssBinding::new(config, self);
+        work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
+        self.css_binding
+            .set(binding)
+            .expect("Mindmap CSS prepared once before layout");
+        Ok(())
+    }
+
+    pub(crate) fn css_binding(&self) -> &super::css_binding::MindmapCssBinding {
+        self.css_binding
+            .get()
+            .expect("Mindmap CSS prepared before layout")
     }
 
     pub(crate) fn terminal_decision_for_node(

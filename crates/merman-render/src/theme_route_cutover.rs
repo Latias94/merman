@@ -587,16 +587,6 @@ pub enum ThemeRouteCutoverProjectionAction {
     RetireFallback,
 }
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
-impl ThemeRouteCutoverProjectionAction {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::Replace => "replace",
-            Self::RetireFallback => "retire-fallback",
-        }
-    }
-}
-
 /// Fixed, canonical set of legacy projection obligations for one route.
 #[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -761,14 +751,6 @@ impl ThemeRouteCutoverProjectionSet {
             .into_iter()
             .filter(move |projection| self.contains(*projection))
     }
-
-    pub const fn len(self) -> usize {
-        self.0.count_ones() as usize
-    }
-
-    pub const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
 }
 
 /// Workspace-private route plus the legacy projections that typed ownership replaces or retires.
@@ -876,30 +858,6 @@ impl ThemeRouteCutoverDescriptor {
             && self
                 .projections()
                 .contains(ThemeRouteCutoverProjection::ChartTextPaint)
-    }
-
-    /// Returns the route-local solid paint used by the private raster cutover witness.
-    ///
-    /// The value is renderer-owned so the acceptance harness cannot silently choose a different
-    /// control palette from the route receipt it is trying to authorize.
-    pub fn raster_control_css(self) -> String {
-        let mut hash = 0x811c9dc5_u32;
-        for bytes in [
-            self.family_id().as_str().as_bytes(),
-            self.target().id().as_bytes(),
-            self.selector().id().as_bytes(),
-            route_facet_id(self.facet()).as_bytes(),
-        ] {
-            for byte in bytes {
-                hash = (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193);
-            }
-        }
-        let rgb = [
-            ((hash >> 16) as u8 & 0x7f).saturating_add(0x40),
-            ((hash >> 8) as u8 & 0x7f).saturating_add(0x40),
-            (hash as u8 & 0x7f).saturating_add(0x40),
-        ];
-        format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
     }
 }
 
@@ -1022,7 +980,7 @@ fn route_cutover_receipt_digest(
     hasher.finalize().into()
 }
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(merman_internal_theme_acceptance)]
 const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     match facet {
         ThemeRouteCutoverFacet::Fill => "fill",
@@ -1030,7 +988,7 @@ const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     }
 }
 
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(merman_internal_theme_acceptance)]
 const fn route_value_id(value: ThemeRouteCutoverValue) -> &'static str {
     match value {
         ThemeRouteCutoverValue::Transparent => "transparent",
