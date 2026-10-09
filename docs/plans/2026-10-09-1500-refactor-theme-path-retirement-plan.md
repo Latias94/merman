@@ -13,13 +13,22 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
-The latest frozen code batch is `7594b3272`. Sequence reuses its prepared Neo
-selection across root geometry, menus, blocks and notes. Ishikawa binds normalized
-look and optional numeric seed before emission while execution retains randomness
-and fallback ownership. Requirement binds its literal, case-sensitive theme-name
-shadow choice. The batch passed 4,848 renderer tests (six skipped), strict
-all-feature CLI Clippy, formatting and diff checks. Independent static review
-reported no confirmed regressions.
+The latest frozen code batch is `803ef3512`. Flowchart node source typography
+is shared through the existing label sidecar across labels, shapes, bounds and
+intersection consumers. HTML/Markdown/opaque paths retain the same projection;
+disabled label preparation uses one metered fallback. Review found and corrected
+missing fallback font accounting and duplicate render-ID accounting. Reservations
+follow actual Arc/sidecar ownership and focused resource tests cover both repairs.
+Look, seed, shadow and gradient choices are also prepared once for Flowchart,
+Swimlane and Agentflow. Review found a missing Agentflow accessor cfg; the corrected
+Agentflow-only build passed. All 4,854 renderer tests passed (six skipped), together
+with strict all-feature CLI Clippy, formatting and diff checks. Renderer rustdoc
+passed nine compile-fail contracts with broken intra-doc links denied.
+
+`7594b3272` prepares Sequence Neo selections, Ishikawa look/seed and Requirement
+shadow choices. Its 4,848 renderer tests passed (six skipped), with strict Clippy
+and independent static review. `bb3f1ae36` fixes current resource-helper schema
+statements and artifact-version wording and consolidates this status.
 
 The preceding `d88469f1f` batch binds Class render settings, C4 source colors,
 Venn area styles, Mindmap strokes, Sankey links, Treemap visuals, Flowchart effects
@@ -30,15 +39,16 @@ retained bytes do not measure temporary allocation peak.
 
 - U1: Inventory complete; all 35 supported families remain in scope.
 - U2-U4: Most family terminal bindings are committed. Flowchart node source
-  typography and label-measurement reuse are still being implemented and have no
-  final acceptance receipt yet. Removing the adapter alone does not close these units.
+  typography reuse is committed. Cluster and edge source interpretation and shared
+  render-configuration ownership remain active work. Removing the adapter alone
+  does not close these units.
 - U5: Historical authorization gates, orphaned raster acceptance machinery and
   callers are removed. The final executable-call audit found no surviving invocation.
 - U6: Unused compatibility providers, fallback evidence and private conveniences
   are removed. Mermaid public input compatibility remains in the core.
 - U7: Current recipe guides are corrected. Final active-doc audit found four
   resource-helper schema statements and several unanchored candidate-version
-  descriptions; their corrections are in progress. Explicit historical records remain.
+  descriptions; their corrections are committed. Explicit historical records remain.
 - U8: Final frozen-tree feature, browser, documentation and adjacent-revision
   performance/size verification remain open. No speed or size improvement is claimed.
 
