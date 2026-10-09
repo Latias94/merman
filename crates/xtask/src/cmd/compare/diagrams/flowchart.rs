@@ -327,7 +327,8 @@ fn run_flowchart_compare(
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background("flowchart", rendered.svg());
 
             let mut issues = Vec::new();
             if report_label {

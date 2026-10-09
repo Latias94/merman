@@ -1023,7 +1023,8 @@ pub(crate) fn run_canonical_svg_compare(
             let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
-            let local_svg = rendered.svg().to_owned();
+            let local_svg =
+                crate::cmd::apply_upstream_svg_capture_background(fact.diagram, rendered.svg());
 
             let mut issues = Vec::new();
             if !request.check_dom
@@ -2077,6 +2078,31 @@ pub(crate) fn write_notes_section(report: &mut String, notes: &[String]) {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn canonical_runner_matches_the_reference_capture_canvas() {
+        let root = unique_test_root("canonical-capture-canvas");
+        for (diagram, stem) in [
+            ("info", "upstream_info_spec"),
+            (
+                "flowchart",
+                "upstream_examples_flowchart_basic_flowchart_001",
+            ),
+        ] {
+            let result = super::super::compare_diagram_request(
+                diagram,
+                CompareRequest {
+                    out_path: Some(root.join(format!("{diagram}.md"))),
+                    filter: Some(stem.to_owned()),
+                    check_dom: true,
+                    dom_modes: vec![svgdom::DomMode::ParityRoot],
+                    ..CompareRequest::default()
+                },
+            )
+            .expect("comparison must apply the same capture canvas as upstream");
+            assert_eq!(result.rendered_fixtures(), 1);
+        }
+    }
 
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
