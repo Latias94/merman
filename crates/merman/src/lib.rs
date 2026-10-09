@@ -20,13 +20,13 @@
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
 //! | Parse Mermaid or produce semantic JSON | `diagram-*` selectors, without defaults | [`Engine`] and [`ParseOptions`] |
-//! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
-//! | Build parser-backed editor snapshots | `editor` | [`editor::analyze_document_snapshot_with_shared_text`] |
-//! | Render Mermaid-like SVG | `svg` | [`Renderer`] and [`RenderRequest::svg`] |
-//! | Render terminal-friendly text | `ascii` | [`Renderer`] and [`RenderRequest::ascii`] |
-//! | Render PNG from Rust | `png` | [`Renderer`] and [`RenderRequest::png`] |
-//! | Render JPEG from Rust | `jpeg` | [`Renderer`] and [`RenderRequest::jpeg`] |
-//! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and [`RenderRequest::pdf`] |
+//! | Analyze diagnostics or Markdown fences | `analysis` | `analysis::Analyzer` |
+//! | Build parser-backed editor snapshots | `editor` | `editor::analyze_document_snapshot_with_shared_text` |
+//! | Render Mermaid-like SVG | `svg` | [`Renderer`] and `RenderRequest::svg` |
+//! | Render terminal-friendly text | `ascii` | [`Renderer`] and `RenderRequest::ascii` |
+//! | Render PNG from Rust | `png` | [`Renderer`] and `RenderRequest::png` |
+//! | Render JPEG from Rust | `jpeg` | [`Renderer`] and `RenderRequest::jpeg` |
+//! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and `RenderRequest::pdf` |
 //!
 //! If you already know the diagram type, use the `*_with_type_sync` methods on
 //! [`Engine`] to skip detection. If you need lower-level layout or SVG pipeline
@@ -84,7 +84,7 @@
 //! ```
 //!
 //! For semantic inspection, use [`Renderer::prepare_semantic`] or a
-//! [`RenderTarget::Semantic`] request. For terminal output, use [`RenderTarget::Ascii`]. The
+//! [`RenderTarget::Semantic`] request. For terminal output, use `RenderTarget::Ascii`. The
 //! target adapters never create a replacement operation or silently replace the caller's
 //! cancellation handle.
 

@@ -1,11 +1,13 @@
 //! Versioned, target-independent visual diagram-theme authoring.
 //!
-//! [`compile_theme_definition`] is the normal Rust entry point: it expands a compact
-//! [`ThemeDefinitionV1`] and delegates the resulting complete recipe to a caller-owned
-//! [`DiagramThemeCompiler`]. The bounded `materialize_theme` operations expose the complete-spec
-//! wire for callers that need to inspect or edit the intermediate representation. Rendering
-//! consumes only the compiled [`DiagramTheme`]. Terminal/ASCII styling is a separate concern and
-//! is not part of this visual contract.
+//! [`compile_theme_definition`](crate::diagram_theme::compile_theme_definition) is the normal
+//! Rust entry point: it expands a compact [`ThemeDefinitionV1`](crate::diagram_theme::ThemeDefinitionV1)
+//! and delegates the resulting complete recipe to a caller-owned
+//! [`DiagramThemeCompiler`](crate::diagram_theme::DiagramThemeCompiler). The bounded
+//! `materialize_theme` operations expose the complete-spec wire for callers that need to inspect
+//! or edit the intermediate representation. Rendering consumes only the compiled
+//! [`DiagramTheme`](crate::diagram_theme::DiagramTheme). Terminal/ASCII styling is a separate
+//! concern and is not part of this visual contract.
 
 mod authoring;
 
