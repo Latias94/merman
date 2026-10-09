@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
-use super::super::{SvgOutput, escape_attr_display, fmt, theme_token};
+use super::super::{SvgOutput, escape_attr_display, fmt};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
@@ -20,6 +20,7 @@ use super::rough::{
 
 pub(super) struct ClassNoteRenderContext<'a> {
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
+    pub css_binding: &'a crate::class::ClassCssThemeBinding,
     pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
@@ -132,8 +133,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         label_h,
     );
     let path_bounds_start = ctx.timing.start();
-    let note_fill = theme_token(ctx.mermaid_config.as_value(), "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_token(ctx.mermaid_config.as_value(), "noteBorderColor", "#aaaa33");
+    let note_fill = ctx.css_binding.note_fill.as_str();
+    let note_stroke = ctx.css_binding.note_stroke.as_str();
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -141,8 +142,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             top,
             w,
             h,
-            &note_fill,
-            &note_stroke,
+            note_fill,
+            note_stroke,
             1.3,
             "0 0",
             &rough_seed,

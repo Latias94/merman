@@ -22,71 +22,22 @@ fn write_class_icon_css(out: &mut impl SvgOutput, id: &str) {
     );
 }
 
-// The same palette gate drives CSS slots and node stamping (colorThemeGate.ts).
-pub(super) fn class_palette_size(config: &serde_json::Value) -> usize {
-    if !matches!(
-        config.get("theme").and_then(serde_json::Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
-        return 0;
-    }
-    config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-        .map_or(0, Vec::len)
-}
-
 fn write_class_palette_css(
     out: &mut impl SvgOutput,
     id: &str,
-    config: &serde_json::Value,
+    theme: &crate::class::ClassCssThemeBinding,
 ) -> Result<()> {
-    if class_palette_size(config) == 0 {
+    if theme.palette.is_empty() {
         return out.checkpoint();
     }
-    let Some(borders) = config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return out.checkpoint();
-    };
-    let backgrounds = config
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(serde_json::Value::as_array)
-        .filter(|colors| !colors.is_empty());
-    let look = config
-        .get("look")
-        .and_then(|value| match value {
-            serde_json::Value::String(value) => Some(value.clone()),
-            serde_json::Value::Number(value) => Some(value.to_string()),
-            _ => None,
-        })
-        .filter(|look| {
-            !look.is_empty()
-                && look
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-        })
-        .unwrap_or_else(|| "classic".into());
-    let color = |value: &serde_json::Value| {
-        // Stylis removes declaration-value whitespace from upstream generated CSS.
-        value
-            .as_str()
-            .map(|value| value.trim().to_owned())
-            .unwrap_or_else(|| value.to_string())
-    };
-    for (index, border) in borders.iter().enumerate() {
-        let border = color(border);
+    let look = &theme.palette_look;
+    for (index, (border, background)) in theme.palette.iter().enumerate() {
         let _ = write!(
             out,
             r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .outer-path path{{stroke:{border};"#
         );
-        if let Some(backgrounds) = backgrounds {
-            let _ = write!(
-                out,
-                "fill:{};",
-                color(&backgrounds[index % backgrounds.len()])
-            );
+        if let Some(background) = background {
+            let _ = write!(out, "fill:{background};");
         }
         out.push('}');
         let _ = write!(
@@ -102,30 +53,29 @@ pub(super) fn write_class_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
-    stylesheet_font_family: &str,
-    stylesheet_font_size: &str,
-    typed_font_stack_active: bool,
+    typography_theme: &crate::class::ClassTextThemePlan,
     seal_typography_emission: bool,
 ) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
+    let theme = typography_theme.css_binding();
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let resolved_font_family = normalize_css_font_family(stylesheet_font_family);
+    let resolved_font_family =
+        normalize_css_font_family(typography_theme.stylesheet_font_family_css());
     let info_css = super::super::css::InfoCssWriter::with_resolved_typography(
         effective_config,
         resolved_font_family.as_str(),
-        stylesheet_font_size,
+        typography_theme.font_size_css(),
     );
-    let info_css = if typed_font_stack_active {
+    let info_css = if typography_theme.typed_font_stack_active() {
         info_css
     } else {
         info_css.with_root_font_family(&crate::config::config_root_font_family_css(
             effective_config,
         ))
     };
-    let theme = MermaidThemeAdapter::new(effective_config).class_diagram();
     let font_family = info_css.font_family();
     let class_text = theme.class_text.as_str();
     let note_text = theme.note_text.as_str();
-    let line_color = theme.common.line_color.as_str();
+    let line_color = theme.line_color.as_str();
     let main_bkg = theme.main_bkg.as_str();
     let node_border = theme.node_border.as_str();
     let class_group_text = theme.class_group_text.as_str();
@@ -134,14 +84,10 @@ pub(super) fn write_class_css(
     let title_color = theme.title_color.as_str();
     let text_color = theme.text_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let edge_label_background = theme_token(
-        effective_config,
-        "edgeLabelBackground",
-        "rgba(232,232,232, 0.8)",
-    );
+    let edge_label_background = theme.edge_label_background.as_str();
 
     let base_font_emission = info_css.write_prefix(out, diagram_id)?;
-    write_class_palette_css(out, &id, effective_config)?;
+    write_class_palette_css(out, &id, theme)?;
 
     let _ = write!(
         out,
@@ -325,14 +271,14 @@ mod tests {
     #[test]
     fn class_css_emission_requires_every_writer_checkpoint() {
         let config = serde_json::json!({});
+        let mermaid_config = merman_core::MermaidConfig::default();
+        let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
         let mut successful = CheckpointSink::default();
         let emission = write_class_css(
             &mut successful,
             "class-css-receipt",
             &config,
-            "Inter,sans-serif",
-            "18px",
-            true,
+            &typography_theme,
             true,
         )
         .expect("write complete Class CSS");
@@ -344,9 +290,7 @@ mod tests {
                 &mut rejecting,
                 "class-css-receipt",
                 &config,
-                "Inter,sans-serif",
-                "18px",
-                true,
+                &typography_theme,
                 true,
             )
             .expect_err("a failed Class CSS checkpoint must prevent receipt emission");

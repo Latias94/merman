@@ -33,11 +33,11 @@ use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 pub(crate) use theme::{
-    ClassMarkerTerminalExpectation, ClassNodeLabelStyleFacts, ClassNodePaintTerminalEmission,
-    ClassNodeTerminalEmission, ClassNodeTerminalExpectation, ClassRelationTerminalExpectation,
-    ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTextPaint, ClassTextTerminalFacts,
-    ClassTextThemePlan, ClassTextThemeReceipt, ClassThemeEvidenceRecorder,
-    ClassTypographyCssEmission,
+    ClassCssThemeBinding, ClassMarkerTerminalExpectation, ClassNodeLabelStyleFacts,
+    ClassNodePaintTerminalEmission, ClassNodeTerminalEmission, ClassNodeTerminalExpectation,
+    ClassRelationTerminalExpectation, ClassRelationThemePlan, ClassRelationThemeReceipt,
+    ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan, ClassTextThemeReceipt,
+    ClassThemeEvidenceRecorder, ClassTypographyCssEmission,
 };
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;

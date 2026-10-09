@@ -730,6 +730,7 @@ fn render_class_node_id<O: SvgOutput>(
                     || crate::math::contains_delimited_math(&note.text),
                 mermaid_config: ctx.mermaid_config,
                 text_paint: ctx.typography_theme.note_paint(),
+                css_binding: ctx.typography_theme.css_binding(),
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
                 hand_drawn_seed: settings.hand_drawn_seed.clone(),
@@ -850,7 +851,7 @@ fn render_class_node_id<O: SvgOutput>(
             look: settings.look.as_str(),
             security_level_loose: settings.security_level_loose,
             color_index: ctx.class_color_indices.get(n.id.as_str()).copied(),
-            palette_size: super::css::class_palette_size(ctx.mermaid_config.as_value()),
+            palette_size: ctx.typography_theme.css_binding().palette.len(),
         },
     )?;
     let basic_container = render_class_node_basic_container(
@@ -904,11 +905,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
-                use_gradient: config_bool(
-                    ctx.mermaid_config.as_value(),
-                    &["themeVariables", "useGradient"],
-                )
-                .unwrap_or(false),
+                use_gradient: ctx.typography_theme.css_binding().use_gradient,
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },
@@ -936,11 +933,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                use_gradient: config_bool(
-                    ctx.mermaid_config.as_value(),
-                    &["themeVariables", "useGradient"],
-                )
-                .unwrap_or(false),
+                use_gradient: ctx.typography_theme.css_binding().use_gradient,
                 timing: ctx.timing,
             },
         );

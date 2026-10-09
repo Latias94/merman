@@ -21,6 +21,7 @@ const CARDINALITY_SLOT_COUNT: usize = 4;
 /// inactive, config-owned, and unsupported routes preserve the upstream split.
 #[derive(Debug)]
 pub(crate) struct ClassTextThemePlan {
+    css_binding: super::ClassCssThemeBinding,
     inherited_font_stack: InheritedFontStackPlan,
     text_rules: BTreeMap<usize, Option<ThemeCapability>>,
     fully_shadowed_text_rules: BTreeSet<usize>,
@@ -294,6 +295,7 @@ impl ClassTextThemePlan {
             configured_layout_font
         };
         Self {
+            css_binding: super::ClassCssThemeBinding::resolve(effective_config.as_value()),
             text_rules,
             fully_shadowed_text_rules: shadowed
                 .into_iter()
@@ -318,6 +320,9 @@ impl ClassTextThemePlan {
 
     pub(crate) fn edge_paint(&self) -> Option<&ClassTextPaint> {
         self.edge_paint.as_ref()
+    }
+    pub(crate) fn css_binding(&self) -> &super::ClassCssThemeBinding {
+        &self.css_binding
     }
     pub(crate) fn note_paint(&self) -> Option<&ClassTextPaint> {
         self.note_paint.as_ref()

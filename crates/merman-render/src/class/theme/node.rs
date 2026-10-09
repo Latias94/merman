@@ -35,7 +35,7 @@ impl ClassNodeTerminalPaintPlan {
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClassNodeThemePlan {
-    resolved_theme: Option<ResolvedDiagramTheme>,
+    static_paints: ClassNodeTerminalPaintPlan,
     mermaid_owns_fill: bool,
     mermaid_owns_stroke: bool,
     mermaid_owns_label_fill: bool,
@@ -104,7 +104,7 @@ impl ClassNodeThemePlan {
                     ((ThemeTarget::NodeLabel, property), origin.rule_index())
                 }),
         );
-        self.resolved_theme = Some(theme.clone());
+        self.static_paints = self.terminal_paints(theme, &node_style, &node_label_style);
         self.static_winner_rules = static_winner_rules;
         Ok(())
     }
@@ -153,12 +153,12 @@ impl ClassNodeThemePlan {
     pub(super) fn resolve_expectations(
         &self,
         node_ids: impl IntoIterator<Item = String>,
-        work_meter: &OperationWorkMeter,
+        _work_meter: &OperationWorkMeter,
     ) -> Result<Vec<ClassNodeTerminalExpectation>, OperationWorkError> {
         node_ids
             .into_iter()
             .enumerate()
-            .map(|(index, id)| self.resolve_expectation(id, index + 1, work_meter))
+            .map(|(index, id)| self.resolve_expectation(id, index + 1))
             .collect()
     }
 
@@ -205,29 +205,11 @@ impl ClassNodeThemePlan {
         &self,
         id: String,
         ordinal: usize,
-        work_meter: &OperationWorkMeter,
     ) -> Result<ClassNodeTerminalExpectation, OperationWorkError> {
         if let Some(paints) = self.ordinal_paints.get(ordinal.saturating_sub(1)) {
             return Ok(paints.expectation(id));
         }
-        let Some(theme) = self.resolved_theme.as_ref() else {
-            return Ok(ClassNodeTerminalExpectation::new(id));
-        };
-        let node_style = theme.style_with_work_meter(
-            ThemeTarget::Node,
-            ThemeVariant::Default,
-            Some(ordinal),
-            work_meter,
-        )?;
-        let node_label_style = theme.text_style_with_work_meter(
-            ThemeTarget::NodeLabel,
-            ThemeVariant::Default,
-            Some(ordinal),
-            work_meter,
-        )?;
-        Ok(self
-            .terminal_paints(theme, &node_style, &node_label_style)
-            .expectation(id))
+        Ok(self.static_paints.expectation(id))
     }
 
     fn terminal_paints(
@@ -344,6 +326,43 @@ mod tests {
 
     fn work_meter() -> OperationWorkMeter {
         OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
+
+    #[test]
+    fn static_node_paint_binding_does_not_resolve_each_occurrence_again() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::CLASS),
+                    ),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let meter = work_meter();
+        let plan = ClassRelationThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::default(),
+            0,
+            2,
+            &meter,
+        )
+        .unwrap();
+        let preparation_work = meter.used();
+        let expectations = plan
+            .resolve_node_expectations(["Alpha".into(), "Beta".into()], &meter)
+            .unwrap();
+        assert_eq!(meter.used(), preparation_work);
+        for expectation in expectations {
+            assert_eq!(expectation.typed_fill(false), Some((0, "#123456")));
+            assert_eq!(expectation.typed_fill(true), None);
+        }
     }
 
     #[test]

@@ -11,6 +11,7 @@ use crate::family::{
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod cluster;
+mod css_binding;
 mod evidence;
 mod namespace_title;
 mod node;
@@ -18,6 +19,7 @@ mod terminal;
 mod text;
 
 use cluster::ClassClusterThemePlan;
+pub(crate) use css_binding::ClassCssThemeBinding;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use namespace_title::ClassNamespaceTitleThemePlan;
 use node::ClassNodeThemePlan;
