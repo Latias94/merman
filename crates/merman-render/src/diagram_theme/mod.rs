@@ -24,15 +24,6 @@ mod definition_admission;
 mod effects;
 mod family_mechanism_matrix;
 mod family_program;
-#[cfg(any(test, merman_internal_theme_acceptance))]
-mod legacy_family_theme_bridge;
-#[cfg(any(test, merman_internal_theme_acceptance))]
-mod legacy_projection_retirement;
-mod shadow_evidence;
-mod shadow_plan;
-// KTD23 route identities are renderer-owned and intentionally independent of the bridge.
-#[cfg(any(test, merman_internal_theme_acceptance))]
-mod legacy_tombstones;
 mod materializer;
 mod mechanisms;
 mod mermaid_compatibility;
@@ -40,6 +31,8 @@ mod presets;
 mod resolved;
 mod resources;
 mod semantic;
+mod shadow_evidence;
+mod shadow_plan;
 pub(crate) mod source;
 mod source_styles;
 mod spec;
@@ -98,27 +91,6 @@ pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape,
-};
-#[cfg(merman_internal_theme_acceptance)]
-pub use legacy_family_theme_bridge::{
-    LegacyFamilyThemeBridgeInventory, legacy_family_theme_bridge_inventory,
-};
-#[cfg(merman_internal_theme_acceptance)]
-#[doc(hidden)]
-pub use legacy_projection_retirement::{
-    ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
-    ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
-    ThemeLegacyRouteValue,
-};
-#[cfg(merman_internal_theme_acceptance)]
-pub(crate) use legacy_projection_retirement::{
-    legacy_projection_retirement_inventory, legacy_projection_retirement_receipts,
-};
-#[cfg(merman_internal_theme_acceptance)]
-#[doc(hidden)]
-pub use legacy_tombstones::{
-    ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector,
-    ThemeLegacyTombstoneInventoryError, ktd23_tombstone_inventory,
 };
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,

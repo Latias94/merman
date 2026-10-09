@@ -1,4 +1,4 @@
-//! Exhaustive historical route auditing. Excluded from normal runtime builds.
+//! Current route invariants and workspace-private cutover observations.
 
 use super::*;
 pub(super) use crate::theme_route_cutover::{
@@ -7,11 +7,10 @@ pub(super) use crate::theme_route_cutover::{
     ThemeRouteCutoverValue,
 };
 
-/// Stable, index-free identity for one route that can still enter the legacy compatibility
-/// bridge. Rule indexes and binding indexes are compilation details, so the retirement gate uses
-/// this semantic key instead of copying a concrete recipe's positions.
+/// Stable identity used by the current matrix test to detect legacy compatibility routes.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum LegacyCompatibilityRouteKey {
+pub(super) enum LegacyCompatibilityRouteKey {
     BaseTypography {
         family: DiagramFamilyId,
         property: ThemeTypographyProperty,
@@ -32,13 +31,9 @@ pub(crate) enum LegacyCompatibilityRouteKey {
     },
 }
 
-/// Enumerates the complete semantic route domain understood by the matrix.
-///
-/// This is intentionally independent of any concrete theme recipe. A recipe only materializes
-/// routes that have values, while bridge retirement must answer whether *any* valid input could
-/// still reach the compatibility lane. The domain is kept here next to the classifiers so a new
-/// mechanism cannot silently bypass the exit gate.
-pub(crate) fn legacy_compatibility_route_inventory() -> Vec<LegacyCompatibilityRouteKey> {
+/// Checks the current matrix domain independently of a concrete theme recipe.
+#[cfg(test)]
+pub(super) fn legacy_compatibility_route_inventory() -> Vec<LegacyCompatibilityRouteKey> {
     let mut routes = Vec::new();
     for &family in DiagramFamilyId::all() {
         for &property in ThemeTypographyProperty::ALL {
@@ -532,6 +527,7 @@ fn gantt_task_projections(
     }
 }
 
+#[cfg(test)]
 pub(super) fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
         visit(FamilyThemeSelectorShape::Static { variant });
@@ -549,6 +545,7 @@ pub(super) fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelector
     }
 }
 
+#[cfg(test)]
 pub(super) fn for_each_matrix_rule_facet(mut visit: impl FnMut(FamilyThemeRuleFacet)) {
     for kind in FamilyThemePaintKind::ALL {
         visit(FamilyThemeRuleFacet::Fill(kind));

@@ -197,13 +197,6 @@ impl FamilyThemeProgram {
         &self.effect_binding_indices
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
-    pub(super) fn has_legacy_compatibility(&self) -> bool {
-        self.mechanism_routes
-            .iter()
-            .any(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
-    }
-
     pub(super) fn rule_facet_disposition(
         &self,
         rule_index: usize,

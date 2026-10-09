@@ -484,14 +484,6 @@ jobs:
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         run: cargo check --workspace --all-targets --locked
 
-      - name: Test KTD23 legacy projection retirement on pull-request hosts
-        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
-        shell: bash
-        run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --test legacy_projection_retirement \
-            --cargo-quiet
-
       - name: Test theme authoring and font resource boundaries
         shell: bash
         run: |
@@ -533,7 +525,7 @@ jobs:
           cargo test -p merman-render --doc --features all-diagrams
           cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
-      - name: Test preset qualification and legacy projection retirement
+      - name: Test preset qualification and family terminal behavior
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked \

@@ -245,12 +245,7 @@ jobs:
       - name: Verify published theme acceptance boundary
         run: python3 scripts/verify_theme_acceptance_boundary.py
 
-      - name: Test KTD23 legacy projection retirement
-        run: |
-          python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
-            --no-default-features --test legacy_projection_retirement
-
-      - name: Test preset qualification and legacy projection retirement
+      - name: Test preset qualification and family terminal behavior
         run: |
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --features png,all-diagrams,layout-cytoscape \

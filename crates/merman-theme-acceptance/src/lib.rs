@@ -3,7 +3,6 @@
 //! Non-published theme runtime acceptance harness.
 //!
 //! Preset qualification checks exact catalog recipes under named host-dependent profiles.
-//! The independent KTD23 inventory still compares renderer probes with historical witnesses.
 
 macro_rules! c6_ensure {
     ($stage:expr, $condition:expr, $($arg:tt)+) => {
@@ -12,9 +11,6 @@ macro_rules! c6_ensure {
         }
     };
 }
-
-#[cfg(all(test, feature = "png"))]
-mod cutover_manifest;
 
 #[cfg(feature = "png")]
 mod observation;
@@ -30,11 +26,4 @@ pub use preset_qualification::{
     PresetAdmissionError, PresetAdmissionObservation, PresetAdmissionReport,
     PresetQualificationReceipt, PresetQualificationSpec, inspect_preset_admission,
     preset_qualification_config, run_preset_qualification,
-};
-
-mod route_retirement_manifest;
-
-pub use route_retirement_manifest::{
-    LegacyProjectionRetirementAuthorization, LegacyProjectionVerificationError,
-    authorize_legacy_projection_retirements,
 };

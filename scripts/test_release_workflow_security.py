@@ -380,7 +380,6 @@ jobs:
                 for retired in ("c6_runtime", "route_cutover_runtime", "native_export_smoke"):
                     self.assertNotIn(f"--test {retired}", text)
                 self.assertIn("--test preset_qualification", text)
-                self.assertIn("--test legacy_projection_retirement", text)
 
     def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):

@@ -1,10 +1,7 @@
 #[cfg(any(test, merman_internal_theme_acceptance))]
 mod audit;
 #[cfg(any(test, merman_internal_theme_acceptance))]
-pub(crate) use audit::{
-    LegacyCompatibilityRouteKey, legacy_compatibility_route_inventory,
-    legacy_replacing_typed_routes,
-};
+pub(crate) use audit::legacy_replacing_typed_routes;
 
 use crate::DiagramFamilyId;
 #[cfg(test)]
@@ -80,7 +77,7 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub(crate) const ALL: [Self; 6] = [
         Self::Clear,
         Self::Transparent,
@@ -149,11 +146,6 @@ pub(crate) enum FamilyThemeSelectorShape {
 }
 
 impl FamilyThemeSelectorShape {
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) const fn is_static_unqualified(self) -> bool {
-        matches!(self, Self::Static { variant: None })
-    }
-
     fn from_rule(rule: &ThemeRule) -> Self {
         match rule.ordinal() {
             None => Self::Static {
