@@ -13,6 +13,26 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
+The latest frozen batch is `d88469f1f`. It prepares Class render settings, C4 source
+colors, Venn actual-area styles, Mindmap edge strokes, Sankey link selections,
+Treemap section/leaf visuals, Flowchart effect applicability and concrete edge
+stroke widths, special-shape compatibility values, Wardley root-background
+ownership, and Usecase source declarations before SVG emission. The old Class
+writer settings module and Usecase writer style compiler are removed. Static
+review found and fixed a Treemap false resource-limit rejection caused by a raw
+style-length multiplier; actual folded retained fields now own the reservation.
+Retained bytes do not measure temporary allocation peak.
+
+This batch passed all 4,845 renderer library/integration tests across 85 binaries
+(six existing tests skipped), seven Usecase preparation tests and 33 additional
+Usecase/Wardley/root integration tests after the final edits, 25 private theme
+acceptance tests, public package/API boundary checks, strict all-feature CLI
+Clippy, formatting, and diff checks. Web TypeScript contracts (42 exports, 53
+bindings, five entries) and all 151 Web input tests also passed. These are
+incremental receipts: Flowchart source-typography reuse, the final public/native
+feature matrix, rebuilt browser artifacts, and adjacent-revision performance and
+size measurements remain outstanding. No speed or size improvement is claimed.
+
 - U1: Inventory recorded; all 35 supported families remain in scope.
 - U2-U4: In progress. Class and Pie changes are committed. Gantt, Radar, Quadrant, Tree View, XYChart, Timeline, Journey, Venn, Ishikawa, and Kanban bindings are committed in `6ff15c63d`. Class relation convergence, EventModeling, Treemap, ER, and Requirement are committed in `01cb9ca2d`. The next working-tree batch covers Flowchart/Swimlane/Agentflow compatibility, Sequence compatibility and prepared text/number selection, Block compatibility and node terminal declarations, Wardley, Cynefin, Info/Error, Packet, Architecture, Sankey, and State. These are bounded migrations: Flowchart, Sequence, Block, Class, Mindmap, GitGraph, C4, and Usecase still have remaining terminal-selection or visual-reader work.
 - U5: Historical authorization gates removed in `c72f605e9`; orphaned raster acceptance machinery and its callers removed in `6ff15c63d`.
