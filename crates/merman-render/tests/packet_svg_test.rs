@@ -321,7 +321,6 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         assert_eq!(parse_evidence.mermaid_residual_count(), 1);
         assert!(parse_evidence.mermaid_theme_field_survives());
         assert!(!parse_evidence.mermaid_dark_mode_field_survives());
-        assert_eq!(parse_evidence.fallback_contribution_count(), 0);
         assert!(parse_evidence.mermaid_residual_path_survives("theme"));
         assert!(!parse_evidence.mermaid_residual_path_survives("darkMode"));
         assert!(!parse_evidence.mermaid_residual_path_survives("themeVariables.darkMode"));

@@ -751,20 +751,6 @@ fn ishikawa_font_size_is_direct_and_portable_in_classic_and_hand_drawn() {
     for look in ["classic", "handDrawn"] {
         let rendered =
             render_ishikawa_with_theme(&ishikawa_theme_source(look), &theme, Engine::new());
-        let metadata = rendered.metadata();
-        for path in [
-            "fontFamily",
-            "themeVariables.fontFamily",
-            "themeVariables.fontSize",
-        ] {
-            assert!(
-                !merman_core::__private::fallback_overlay_owns_path(
-                    &metadata.effective_config,
-                    path,
-                ),
-                "look={look} fallback path={path}"
-            );
-        }
 
         let stylesheet = ishikawa_stylesheet(rendered.svg());
         let base = stylesheet

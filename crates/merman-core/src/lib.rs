@@ -100,8 +100,8 @@ pub mod __private {
     use std::sync::Arc;
 
     use crate::config::{
-        ConfigOverlayContributionProvenance, FrozenThemeCompatibilityField,
-        ThemeCompatibilityFieldKind as ConfigFieldKind, ThemeParseBinding, ThemeParseBindingError,
+        FrozenThemeCompatibilityField, ThemeCompatibilityFieldKind as ConfigFieldKind,
+        ThemeParseBinding, ThemeParseBindingError,
     };
     use crate::{Engine, MermaidConfig, ParseMetadata};
 
@@ -194,75 +194,6 @@ pub mod __private {
             engine.fallback_post_detection_config_overlay = None;
         }
         engine
-    }
-
-    /// One bounded compatibility contribution and the assignments that survived finalization.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct ThemeCompatibilityContributionEvidence {
-        provenance: ConfigOverlayContributionProvenance,
-        surviving_assignments: Arc<[ThemeCompatibilityAssignmentEvidence]>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct ThemeCompatibilityAssignmentEvidence {
-        path: Arc<str>,
-        value: Arc<serde_json::Value>,
-    }
-
-    impl ThemeCompatibilityContributionEvidence {
-        fn from_frozen(
-            provenance: ConfigOverlayContributionProvenance,
-            effective_config: &MermaidConfig,
-        ) -> Self {
-            let surviving_assignments = provenance
-                .surviving_assignment_paths()
-                .filter_map(|path| {
-                    config_value_at_path(effective_config, path).map(|value| {
-                        ThemeCompatibilityAssignmentEvidence {
-                            path: Arc::from(path),
-                            value: Arc::new(value.clone()),
-                        }
-                    })
-                })
-                .collect::<Vec<_>>()
-                .into();
-            Self {
-                provenance,
-                surviving_assignments,
-            }
-        }
-
-        pub fn opaque_id(&self) -> &str {
-            self.provenance.opaque_id()
-        }
-
-        pub fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
-            self.surviving_assignments
-                .iter()
-                .map(|assignment| assignment.path.as_ref())
-        }
-
-        /// Returns the post-finalization value owned by this contribution at one surviving path.
-        pub fn surviving_assignment_value(
-            &self,
-            assignment_path: &str,
-        ) -> Option<&serde_json::Value> {
-            self.surviving_assignments
-                .iter()
-                .find(|assignment| assignment.path.as_ref() == assignment_path)
-                .map(|assignment| assignment.value.as_ref())
-        }
-    }
-
-    fn config_value_at_path<'a>(
-        config: &'a MermaidConfig,
-        dotted_path: &str,
-    ) -> Option<&'a serde_json::Value> {
-        let mut current = config.as_value();
-        for segment in dotted_path.split('.') {
-            current = current.as_object()?.get(segment)?;
-        }
-        Some(current)
     }
 
     /// Conceptual Mermaid compatibility field retained after config precedence is finalized.
@@ -382,7 +313,6 @@ pub mod __private {
     pub struct ThemeParseEvidence {
         recipe: Option<ThemeCompatibilityRecipe>,
         mermaid_fields: Arc<[ThemeCompatibilityFieldEvidence]>,
-        fallback_contributions: Arc<[ThemeCompatibilityContributionEvidence]>,
     }
 
     impl ThemeParseEvidence {
@@ -469,16 +399,6 @@ pub mod __private {
                 consumed_field_count,
             }
         }
-
-        pub fn fallback_contribution_count(&self) -> usize {
-            self.fallback_contributions.len()
-        }
-
-        pub fn fallback_contributions(
-            &self,
-        ) -> impl ExactSizeIterator<Item = &ThemeCompatibilityContributionEvidence> {
-            self.fallback_contributions.iter()
-        }
     }
 
     /// Freezes the compatibility identity and surviving residual evidence of a parsed artifact.
@@ -501,19 +421,6 @@ pub mod __private {
                 .cloned()
                 .map(ThemeCompatibilityRecipe),
             mermaid_fields,
-            fallback_contributions: metadata
-                .effective_config
-                .overlay_provenance()
-                .fallback_contributions()
-                .cloned()
-                .map(|contribution| {
-                    ThemeCompatibilityContributionEvidence::from_frozen(
-                        contribution,
-                        &metadata.effective_config,
-                    )
-                })
-                .collect::<Vec<_>>()
-                .into(),
         }
     }
 
@@ -525,11 +432,6 @@ pub mod __private {
     /// Reports whether site or source configuration explicitly owns this path.
     pub fn explicit_config_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
         config.explicit_config_owns_path(dotted_path)
-    }
-
-    /// Reports whether a surviving compatibility fallback assignment owns this exact path.
-    pub fn fallback_overlay_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
-        config.fallback_overlay_owns_path(dotted_path)
     }
 
     /// Resolves Mermaid's bounded `THEME_COLOR_LIMIT` loop count using the same coercion and

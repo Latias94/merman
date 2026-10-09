@@ -87,6 +87,7 @@ pub(super) fn normalize_post_detection_default_paths(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ConfigOverlayProvenance {
     host: Arc<[ConfigOverlayContributionProvenance]>,
+    #[cfg(test)]
     fallback: Arc<[ConfigOverlayContributionProvenance]>,
 }
 
@@ -96,6 +97,7 @@ pub(crate) struct ConfigOverlayContributionProvenance {
     surviving_assignment_paths: Arc<[Arc<str>]>,
 }
 
+#[cfg(test)]
 impl ConfigOverlayContributionProvenance {
     pub(crate) fn opaque_id(&self) -> &str {
         &self.opaque_id
@@ -134,6 +136,7 @@ impl ConfigOverlayProvenance {
             .map(ConfigOverlayContributionProvenance::opaque_id)
     }
 
+    #[cfg(test)]
     pub(crate) fn fallback_contributions(
         &self,
     ) -> impl ExactSizeIterator<Item = &ConfigOverlayContributionProvenance> {
@@ -142,10 +145,11 @@ impl ConfigOverlayProvenance {
 
     fn from_lanes(
         host: Vec<ConfigOverlayContributionProvenance>,
-        fallback: Vec<ConfigOverlayContributionProvenance>,
+        #[cfg(test)] fallback: Vec<ConfigOverlayContributionProvenance>,
     ) -> Self {
         Self {
             host: host.into(),
+            #[cfg(test)]
             fallback: fallback.into(),
         }
     }
@@ -521,8 +525,6 @@ impl ConfigOverlayApplication {
         let mut surviving_host = Vec::new();
         #[cfg(test)]
         let mut surviving_fallback = Vec::new();
-        #[cfg(not(test))]
-        let surviving_fallback = Vec::new();
         for contribution in &self.contributions {
             let surviving_assignment_paths = contribution
                 .assignments
@@ -547,7 +549,11 @@ impl ConfigOverlayApplication {
                 surviving_assignment_paths,
             );
         }
-        ConfigOverlayProvenance::from_lanes(surviving_host, surviving_fallback)
+        ConfigOverlayProvenance::from_lanes(
+            surviving_host,
+            #[cfg(test)]
+            surviving_fallback,
+        )
     }
 
     fn claims_path(&self, path: &str) -> bool {

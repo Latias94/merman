@@ -266,20 +266,6 @@ gitGraph
     )
     .expect("render strict portable GitGraph typography");
 
-    for path in [
-        "fontFamily",
-        "themeVariables.fontFamily",
-        "themeVariables.fontSize",
-    ] {
-        assert!(
-            !merman_core::__private::fallback_overlay_owns_path(
-                &rendered.metadata().effective_config,
-                path,
-            ),
-            "GitGraph direct typography must retire fallback ownership of {path}"
-        );
-    }
-
     let stylesheet = gitgraph_stylesheet(rendered.svg());
     assert_eq!(
         gitgraph_css_rule(&stylesheet, "#git-typography"),

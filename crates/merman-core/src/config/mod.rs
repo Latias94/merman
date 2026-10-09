@@ -6,10 +6,7 @@ pub(crate) use overlay::ConfigOverlayContribution;
 #[cfg(test)]
 pub(crate) use overlay::ConfigOverlayField;
 pub(crate) use overlay::ConfigOverlayLane;
-pub(crate) use overlay::{
-    ConfigOverlayContributionProvenance, ConfigOverlayError, ConfigOverlayProvenance,
-    PostDetectionConfigOverlay,
-};
+pub(crate) use overlay::{ConfigOverlayError, ConfigOverlayProvenance, PostDetectionConfigOverlay};
 
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
@@ -820,6 +817,7 @@ impl MermaidConfig {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn overlay_provenance(&self) -> &ConfigOverlayProvenance {
         &self.overlay_provenance
     }
@@ -970,6 +968,7 @@ impl MermaidConfig {
             .is_some_and(|candidate| candidate.starts_with(&prefix))
     }
 
+    #[cfg(test)]
     /// Reports whether a surviving compatibility fallback assignment owns this exact path.
     ///
     /// Fallback ownership is deliberately kept separate from typed/default ownership: the

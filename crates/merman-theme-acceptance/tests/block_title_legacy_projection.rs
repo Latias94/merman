@@ -165,8 +165,6 @@ fn retired_block_text_bridges_are_absent() {
                         engine.clone(),
                     );
                     let metadata = parser.parse_metadata_sync(SOURCE).unwrap();
-                    let evidence = merman::__private::theme_parse_evidence(&metadata);
-                    assert_eq!(evidence.fallback_contributions().len(), 0);
                     for path in paths {
                         assert_eq!(
                             metadata.effective_config.get_str(path),

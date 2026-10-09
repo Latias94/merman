@@ -228,8 +228,6 @@ fn retired_marker_bridge_is_absent() {
         for (look, animated) in PROFILES {
             let source = source(family, animated);
             let baseline = engine(look).parse_metadata_sync(&source).unwrap();
-            let baseline_evidence = merman::__private::theme_parse_evidence(&baseline);
-            assert_eq!(baseline_evidence.fallback_contributions().len(), 0);
             for variant in [None, Some(ThemeVariant::Default)] {
                 for stroke in [false, true] {
                     for transparent in [false, true] {
@@ -239,11 +237,9 @@ fn retired_marker_bridge_is_absent() {
                             engine(look),
                         );
                         let metadata = parser.parse_metadata_sync(&source).unwrap();
-                        let evidence = merman::__private::theme_parse_evidence(&metadata);
                         let context = format!(
                             "{family:?}/{look}/animated={animated}/{variant:?}/stroke={stroke}/transparent={transparent}"
                         );
-                        assert_eq!(evidence.fallback_contributions().len(), 0, "{context}");
                         assert_eq!(
                             metadata
                                 .effective_config

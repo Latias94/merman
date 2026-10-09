@@ -474,7 +474,6 @@ pub(crate) struct FamilyStyleReport {
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
-    compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
     residuals: Vec<FamilyStyleResidual>,
 }
@@ -518,7 +517,6 @@ impl FamilyStyleReport {
             architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
-            compatibility_residual_count: plan.compatibility_residual_count,
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
             residuals,
         }
@@ -605,10 +603,9 @@ impl FamilyStyleReport {
         &self.theme_residuals
     }
 
-    /// Returns temporary family-local Mermaid compatibility contributions used by this operation.
-    #[cfg(test)]
+    /// Returns zero because historical family compatibility contributions are retired.
     pub const fn compatibility_residual_count(&self) -> usize {
-        self.compatibility_residual_count
+        0
     }
 
     pub fn theme_coverage_complete(&self) -> bool {
@@ -649,8 +646,7 @@ impl FamilyStyleReport {
         if self.output_mutated {
             return FamilyStyleVerification::Unverified;
         }
-        if self.compatibility_residual_count != 0 || self.mermaid_compatibility_residual_count != 0
-        {
+        if self.mermaid_compatibility_residual_count != 0 {
             return FamilyStyleVerification::Unverified;
         }
         if !self.residuals.is_empty() {
@@ -740,12 +736,6 @@ impl FamilyStyleReport {
     }
 
     fn ensure_compatibility_portable(&self) -> Result<()> {
-        if self.compatibility_residual_count != 0 {
-            return Err(Error::LegacyFamilyThemeCompatibility {
-                family_id: self.family_id,
-                residual_count: self.compatibility_residual_count,
-            });
-        }
         if self.mermaid_compatibility_residual_count != 0 {
             return Err(Error::MermaidThemeCompatibility {
                 family_id: self.family_id,
@@ -849,7 +839,7 @@ impl FamilyRenderReport {
             self.style.theme_not_applicable.len(),
             self.style.theme_residuals.len(),
             self.style.residuals.len(),
-            self.style.compatibility_residual_count,
+            self.style.compatibility_residual_count(),
             self.style.mermaid_compatibility_residual_count,
             self.style.output_mutated,
         )
@@ -1067,7 +1057,6 @@ pub(crate) struct ResolvedFamilyStylePlan {
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     output_mutated: bool,
-    compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
     payload: FamilyStylePayload,
 }
@@ -1094,7 +1083,6 @@ impl ResolvedFamilyStylePlan {
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: None,
             output_mutated: false,
-            compatibility_residual_count: 0,
             mermaid_compatibility_residual_count: 0,
             payload,
         }
@@ -1151,14 +1139,6 @@ impl ResolvedFamilyStylePlan {
                 .reconcile_mermaid_consumptions(deferred.iter())
                 .remaining_field_count();
         }
-        self.compatibility_residual_count = if self.family_id == DiagramFamilyId::ERROR {
-            crate::error::remaining_legacy_compatibility_residual_count(
-                self.resolved_theme.as_deref(),
-                &evidence,
-            )
-        } else {
-            evidence.fallback_contribution_count()
-        };
     }
 
     fn reconcile_packet_mermaid_compatibility(

@@ -582,7 +582,6 @@ fn family_report(
         architecture_text_cutover_receipt: None,
         theme_not_applicable: Vec::new(),
         theme_residuals,
-        compatibility_residual_count: 0,
         mermaid_compatibility_residual_count: 0,
         residuals: Vec::new(),
     }
@@ -909,7 +908,6 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
             architecture_text_cutover_receipt: None,
             theme_not_applicable: Vec::new(),
             theme_residuals: Vec::new(),
-            compatibility_residual_count: 0,
             mermaid_compatibility_residual_count: 0,
             residuals: Vec::new(),
         }

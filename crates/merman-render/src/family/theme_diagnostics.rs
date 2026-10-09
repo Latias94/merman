@@ -207,8 +207,7 @@ pub(super) fn project(
             None,
         ));
     }
-    if family.compatibility_residual_count != 0 || family.mermaid_compatibility_residual_count != 0
-    {
+    if family.mermaid_compatibility_residual_count != 0 {
         diagnostics.push(ThemeDiagnostic::new(
             "compatibility-unverified",
             "compatibility",

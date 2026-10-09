@@ -1,6 +1,5 @@
 use std::sync::OnceLock;
 
-use merman_core::__private::{ThemeCompatibilityContributionEvidence, ThemeParseEvidence};
 use merman_core::MermaidConfig;
 
 use crate::Result;
@@ -18,7 +17,6 @@ use crate::text::TextMeasurer;
 
 pub const UPSTREAM_MERMAID_VERSION: &str = merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 
-const LEGACY_FAMILY_THEME_CONTRIBUTION_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const ERROR_BASELINE_VIEWBOX_WIDTH: f64 = 2412.0;
 const ERROR_BASELINE_VIEWBOX_HEIGHT: f64 = 512.0;
 #[cfg(test)]
@@ -332,94 +330,6 @@ fn error_unsupported_routes(theme: Option<&ResolvedDiagramTheme>) -> Box<[ErrorU
         })
         .collect::<Vec<_>>()
         .into_boxed_slice()
-}
-
-pub(crate) fn remaining_legacy_compatibility_residual_count(
-    theme: Option<&ResolvedDiagramTheme>,
-    evidence: &ThemeParseEvidence,
-) -> usize {
-    let Some(theme) = theme else {
-        return evidence.fallback_contribution_count();
-    };
-    // ErrorSurfaceReceipt independently proves this planned value reached every terminal. Parse
-    // compatibility can retire only the contribution assignment that selected the same value.
-    let expected_terminal_font_family_css = theme.typography().font_stack().as_css();
-
-    evidence
-        .fallback_contributions()
-        .filter(|contribution| {
-            !is_exact_legacy_family_typography_contribution(contribution.opaque_id())
-                || contribution.surviving_assignment_paths().len() == 0
-                || !contribution.surviving_assignment_paths().all(|path| {
-                    error_typography_assignment_is_accounted(
-                        theme,
-                        contribution,
-                        path,
-                        &expected_terminal_font_family_css,
-                    )
-                })
-        })
-        .count()
-}
-
-fn is_exact_legacy_family_typography_contribution(opaque_id: &str) -> bool {
-    let Some(suffix) = opaque_id.strip_prefix(LEGACY_FAMILY_THEME_CONTRIBUTION_PREFIX) else {
-        return false;
-    };
-    let Some((family, mapping)) = suffix.split_once('.') else {
-        return false;
-    };
-    mapping == "typography" && crate::DiagramFamilyId::from_id(family).is_some()
-}
-
-fn error_typography_assignment_is_accounted(
-    theme: &ResolvedDiagramTheme,
-    contribution: &ThemeCompatibilityContributionEvidence,
-    path: &str,
-    expected_terminal_font_family_css: &str,
-) -> bool {
-    let expected = match path {
-        "fontFamily" | "themeVariables.fontFamily" => (
-            ThemeTypographyProperty::FontStack,
-            FamilyThemeDisposition::TypedAdapter,
-        ),
-        "themeVariables.fontSize" => (
-            ThemeTypographyProperty::FontSize,
-            FamilyThemeDisposition::Unsupported,
-        ),
-        _ => return false,
-    };
-    let route_is_accounted = theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .any(|route| {
-            route.mechanism() == FamilyThemeMechanism::BaseTypography(expected.0)
-                && route.disposition() == expected.1
-        });
-    if !route_is_accounted {
-        return false;
-    }
-
-    let Some(assignment_value) = contribution.surviving_assignment_value(path) else {
-        return false;
-    };
-    match expected.0 {
-        ThemeTypographyProperty::FontStack => assignment_value
-            .as_str()
-            .is_some_and(|value| value == expected_terminal_font_family_css),
-        ThemeTypographyProperty::FontSize => true,
-        ThemeTypographyProperty::FontWeight
-        | ThemeTypographyProperty::FontStyle
-        | ThemeTypographyProperty::LineHeight
-        | ThemeTypographyProperty::LetterSpacing
-        | ThemeTypographyProperty::WordSpacing
-        | ThemeTypographyProperty::Transform
-        | ThemeTypographyProperty::Decoration
-        | ThemeTypographyProperty::TextAlign
-        | ThemeTypographyProperty::WhiteSpace
-        | ThemeTypographyProperty::Wrap => false,
-    }
 }
 
 /// Wraps the upstream error text at 75 Unicode code points and at most four lines.

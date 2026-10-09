@@ -287,12 +287,6 @@ impl TreeViewThemePlan {
             effective_config,
             "themeVariables.treeView.iconColor",
         );
-        let icon_compatibility_owned = merman_core::__private::fallback_overlay_owns_path(
-            effective_config,
-            "themeVariables.treeView.iconColor",
-        );
-        let icon_terminal_owned = icon_config_owned || icon_compatibility_owned;
-
         // Text is the broad fallback; a NodeLabel winner is the terminal-specific winner.
         let label_color = resolve_tree_view_paint(
             theme,
@@ -318,10 +312,10 @@ impl TreeViewThemePlan {
             work_meter,
             &[ThemeTarget::Marker],
             TreeViewPaintProperty::StrokeThenFill,
-            icon_terminal_owned,
+            icon_config_owned,
             &mut paint_residuals,
         )?;
-        let icon_fallback_color = (!icon_terminal_owned)
+        let icon_fallback_color = (!icon_config_owned)
             .then(|| {
                 line_color
                     .as_ref()

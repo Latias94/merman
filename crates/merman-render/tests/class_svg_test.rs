@@ -444,18 +444,6 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
         metadata.effective_config.get_str("themeVariables.fontSize"),
         Some("16px")
     );
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "themeVariables.fontSize"
-    ));
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "themeVariables.fontFamily"
-    ));
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "fontFamily"
-    ));
 
     let rendered = try_render_class_svg_with_theme_requirement(
         source,

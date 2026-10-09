@@ -584,19 +584,6 @@ fn eventmodeling_mixed_typography_is_direct_and_portable() {
     let theme = eventmodeling_typography_theme(typography);
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
         .expect("render mixed Event Modeling typography");
-    let metadata = rendered.metadata();
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "themeVariables.fontSize"
-    ));
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "themeVariables.fontFamily"
-    ));
-    assert!(!merman_core::__private::fallback_overlay_owns_path(
-        &metadata.effective_config,
-        "fontFamily"
-    ));
     let stylesheet = eventmodeling_stylesheet(rendered.svg());
     assert!(stylesheet.contains("EventModelingMixed"));
     assert!(stylesheet.contains("font-size: 24px;"), "{stylesheet}");

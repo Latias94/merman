@@ -306,19 +306,6 @@ fn radar_mixed_typography_is_direct_and_portable() {
         Engine::new(),
     );
 
-    for path in [
-        "fontFamily",
-        "themeVariables.fontFamily",
-        "themeVariables.fontSize",
-    ] {
-        assert!(
-            !merman_core::__private::fallback_overlay_owns_path(
-                &rendered.metadata().effective_config,
-                path,
-            ),
-            "Radar typed typography must not retain fallback ownership of {path}"
-        );
-    }
     let stylesheet = radar_stylesheet(rendered.svg());
     assert!(stylesheet.contains("#radar{font-family:RadarMixed;font-size:24px;"));
     assert!(stylesheet.contains("#radar svg{font-family:RadarMixed;font-size:24px;}"));
