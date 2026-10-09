@@ -1,7 +1,7 @@
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::document_ids::{FlowchartDocumentIdRequest, FlowchartDocumentIds};
-use super::render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
+use super::render_config::FlowchartRenderConfig;
 use super::render_input::{FlowchartRenderInputs, prepare_flowchart_render_inputs};
 use super::viewbox::{
     FlowchartRenderedBoundsRequest, FlowchartViewboxBounds, FlowchartViewboxBoundsRequest,
@@ -32,6 +32,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             edge_theme: artifact.edge_theme(),
             prepared_theme: artifact.prepared_theme(),
             prepared_nodes: artifact.prepared_nodes(),
+            render_config: artifact.render_config(),
         },
         options,
         edge_paint_geometry,
@@ -39,6 +40,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
 }
 
 pub(super) struct FlowchartSvgModelRequest<'a> {
+    pub(super) render_config: &'a FlowchartRenderConfig,
     pub(super) prepared_nodes: &'a super::node_inventory::FlowchartPreparedNodes,
     pub(super) prepared_theme: &'a crate::flowchart::FlowchartPreparedTheme,
     pub(super) layout: &'a FlowchartLayout,
@@ -62,6 +64,7 @@ pub(super) fn render_flowchart_svg_model(
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let FlowchartSvgModelRequest {
+        render_config,
         prepared_nodes,
         prepared_theme,
         layout,
@@ -122,47 +125,38 @@ pub(super) fn render_flowchart_svg_model(
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
     }
 
-    let FlowchartRenderConfig {
-        font_family,
-        font_size,
-        wrapping_width,
-        node_html_labels,
-        edge_html_labels,
-        swimlane_title_html_labels,
-        node_wrap_mode,
-        edge_wrap_mode,
-        diagram_padding,
-        use_max_width,
-        title_top_margin,
-        node_padding,
-        text_style,
-        html_label_text_style,
-        default_edge_interpolate,
-        default_edge_style,
-        node_border_color,
-        node_stroke_width,
-        node_typography_config_ownership,
-        node_label_fill_config_override,
-        node_border_config_override,
-        node_fill_config_override,
-        node_stroke_width_config_override,
-        edge_stroke_config_override,
-        cluster_fill_color,
-        cluster_stroke_color,
-        cluster_fill_config_override,
-        cluster_stroke_config_override,
-        node_corner_radius_config_override,
-        edge_corner_radius,
-        edge_label_padding,
-        compact_edge_corners,
-    } = prepare_flowchart_render_config(
-        model,
-        effective_config,
-        &prepared_theme.compatibility,
-        layout.uses_elk_adapter_dom,
-        svg_label_sidecar.base_typography(),
-        svg_label_sidecar.edge_label_padding(),
-    );
+    let font_family = &render_config.font_family;
+    let font_size = render_config.font_size;
+    let wrapping_width = render_config.wrapping_width;
+    let node_html_labels = render_config.node_html_labels;
+    let edge_html_labels = render_config.edge_html_labels;
+    let swimlane_title_html_labels = render_config.swimlane_title_html_labels;
+    let node_wrap_mode = render_config.node_wrap_mode;
+    let edge_wrap_mode = render_config.edge_wrap_mode;
+    let diagram_padding = render_config.diagram_padding;
+    let use_max_width = render_config.use_max_width;
+    let title_top_margin = render_config.title_top_margin;
+    let node_padding = render_config.node_padding;
+    let text_style = &render_config.text_style;
+    let html_label_text_style = &render_config.html_label_text_style;
+    let default_edge_interpolate = &render_config.default_edge_interpolate;
+    let default_edge_style = &render_config.default_edge_style;
+    let node_border_color = &render_config.node_border_color;
+    let node_stroke_width = render_config.node_stroke_width;
+    let node_typography_config_ownership = render_config.node_typography_config_ownership;
+    let node_label_fill_config_override = render_config.node_label_fill_config_override;
+    let node_border_config_override = render_config.node_border_config_override;
+    let node_fill_config_override = render_config.node_fill_config_override;
+    let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
+    let edge_stroke_config_override = render_config.edge_stroke_config_override;
+    let cluster_fill_color = &render_config.cluster_fill_color;
+    let cluster_stroke_color = &render_config.cluster_stroke_color;
+    let cluster_fill_config_override = render_config.cluster_fill_config_override;
+    let cluster_stroke_config_override = render_config.cluster_stroke_config_override;
+    let node_corner_radius_config_override = render_config.node_corner_radius_config_override;
+    let edge_corner_radius = render_config.edge_corner_radius;
+    let edge_label_padding = render_config.edge_label_padding;
+    let compact_edge_corners = render_config.compact_edge_corners;
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
@@ -451,7 +445,7 @@ pub(super) fn render_flowchart_svg_model(
             render_edges: &render_edges,
             base_bounds: bounds,
             diagram_title,
-            font_family: &font_family,
+            font_family,
             title_top_margin,
             timing: render_timing,
             theme_resource_policy: &theme_resource_policy,
@@ -546,7 +540,7 @@ pub(super) fn render_flowchart_svg_model(
         document_ids.drop_shadow_small(),
         document_ids.root_gradient(),
         &prepared_theme.compatibility,
-        &font_family,
+        font_family,
         font_size,
         &model.class_defs,
         Some(text_surface_paint),
@@ -565,7 +559,7 @@ pub(super) fn render_flowchart_svg_model(
         .base_typography()
         .filter(|plan| plan.requires_terminal_evidence())
     {
-        base_typography.record_stylesheet_emission(&font_family, font_size);
+        base_typography.record_stylesheet_emission(font_family, font_size);
     }
 
     let defs = prepare_flowchart_defs(
@@ -941,6 +935,14 @@ mod integration_tests {
 
         let error = render_flowchart_svg_model(
             FlowchartSvgModelRequest {
+                render_config: &super::render_config::prepare_flowchart_render_config(
+                    &model,
+                    &metadata.effective_config,
+                    &prepared_theme.compatibility,
+                    layout.uses_elk_adapter_dom,
+                    sidecar.base_typography(),
+                    sidecar.edge_label_padding(),
+                ),
                 prepared_theme: &prepared_theme,
                 prepared_nodes: &prepared_nodes,
                 layout: &layout,
@@ -1092,6 +1094,14 @@ mod integration_tests {
             .expect("prepared nodes");
             render_flowchart_svg_model(
                 FlowchartSvgModelRequest {
+                    render_config: &super::render_config::prepare_flowchart_render_config(
+                        &model,
+                        &metadata.effective_config,
+                        &prepared_theme.compatibility,
+                        layout.uses_elk_adapter_dom,
+                        sidecar.base_typography(),
+                        sidecar.edge_label_padding(),
+                    ),
                     prepared_theme: &prepared_theme,
                     prepared_nodes: &prepared_nodes,
                     layout: &layout,

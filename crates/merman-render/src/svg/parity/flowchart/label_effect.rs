@@ -262,7 +262,7 @@ impl FlowchartLabelEffects {
                     .unwrap_or_default();
                 let text_style = weights.apply_cow(
                     ThemeTarget::EdgeLabel,
-                    source.effective_edge_label_text_style(&ctx.text_style),
+                    source.effective_edge_label_text_style(ctx.text_style),
                 );
                 let (bounds, translation) = if ctx.edge_html_labels {
                     let content = ctx

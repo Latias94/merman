@@ -285,10 +285,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     );
     let fill = cluster_theme
         .fill_value(fill_precedence, true)
-        .unwrap_or(&ctx.cluster_fill_color);
+        .unwrap_or(ctx.cluster_fill_color);
     let stroke = cluster_theme
         .stroke_value(stroke_precedence, true)
-        .unwrap_or(&ctx.cluster_stroke_color);
+        .unwrap_or(ctx.cluster_stroke_color);
     let label_style = compiled_styles.label_style.trim();
 
     let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
@@ -323,9 +323,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         );
     let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
         if ctx.edge_html_labels {
-            &ctx.html_label_text_style
+            ctx.html_label_text_style
         } else {
-            &ctx.text_style
+            ctx.text_style
         },
         ctx.class_defs,
         classes,

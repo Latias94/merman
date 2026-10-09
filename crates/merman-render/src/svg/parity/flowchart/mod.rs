@@ -34,7 +34,10 @@ pub(in crate::svg::parity::flowchart) use edge_geom::{
 pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
-pub(crate) use render_config::flowchart_node_label_fill_config_override;
+pub(crate) use render_config::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
 pub(super) use style::*;
 
 pub(in crate::svg::parity) use render::node::roughjs::{

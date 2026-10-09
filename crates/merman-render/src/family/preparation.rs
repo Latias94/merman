@@ -83,6 +83,18 @@ fn prepare_flowchart_artifact<L>(
     if let Some(error) = svg_label_sidecar.prepared_error().cloned() {
         return Err(error.into());
     }
+    let uses_elk = match layout_view(&layout) {
+        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => layout.uses_elk_adapter_dom,
+        crate::svg::FlowchartNodeLayoutView::Swimlane(_) => false,
+    };
+    let render_config = crate::svg::prepare_flowchart_render_config(
+        &semantic,
+        effective_config,
+        &prepared_theme.compatibility,
+        uses_elk,
+        svg_label_sidecar.base_typography(),
+        svg_label_sidecar.edge_label_padding(),
+    );
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
         &render_context,
@@ -100,6 +112,7 @@ fn prepare_flowchart_artifact<L>(
         edge_theme,
         prepared_theme,
         prepared_nodes,
+        render_config,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
         effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),

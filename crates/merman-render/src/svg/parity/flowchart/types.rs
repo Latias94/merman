@@ -70,7 +70,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(in crate::svg::parity::flowchart) document_ids:
         &'a super::document_ids::FlowchartDocumentIds<'a>,
-    pub(in crate::svg::parity::flowchart) node_border_color: String,
+    pub(in crate::svg::parity::flowchart) node_border_color: &'a String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
     pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
         crate::flowchart::FlowchartTypographyConfigOwnership,
@@ -79,8 +79,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,
-    pub(in crate::svg::parity::flowchart) cluster_fill_color: String,
-    pub(in crate::svg::parity::flowchart) cluster_stroke_color: String,
+    pub(in crate::svg::parity::flowchart) cluster_fill_color: &'a String,
+    pub(in crate::svg::parity::flowchart) cluster_stroke_color: &'a String,
     pub(in crate::svg::parity::flowchart) cluster_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) cluster_stroke_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
@@ -88,8 +88,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) edge_label_padding:
         crate::flowchart::FlowchartEdgeLabelPadding,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
-    pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
-    pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
+    pub(in crate::svg::parity::flowchart) default_edge_interpolate: &'a String,
+    pub(in crate::svg::parity::flowchart) default_edge_style: &'a Vec<String>,
     pub(in crate::svg::parity::flowchart) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
@@ -126,8 +126,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) wrapping_width: f64,
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
-    pub(in crate::svg::parity::flowchart) text_style: TextStyle,
-    pub(in crate::svg::parity::flowchart) html_label_text_style: TextStyle,
+    pub(in crate::svg::parity::flowchart) text_style: &'a TextStyle,
+    pub(in crate::svg::parity::flowchart) html_label_text_style: &'a TextStyle,
 }
 
 impl FlowchartRenderCtx<'_> {

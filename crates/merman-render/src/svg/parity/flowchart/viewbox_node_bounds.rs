@@ -610,6 +610,14 @@ mod tests {
         .expect("prepared nodes");
         render_flowchart_svg_model(
             FlowchartSvgModelRequest {
+                render_config: &super::render_config::prepare_flowchart_render_config(
+                    &model,
+                    &metadata.effective_config,
+                    &prepared_theme.compatibility,
+                    layout.uses_elk_adapter_dom,
+                    sidecar.base_typography(),
+                    sidecar.edge_label_padding(),
+                ),
                 prepared_theme: &prepared_theme,
                 prepared_nodes: &prepared_nodes,
                 layout: &layout,

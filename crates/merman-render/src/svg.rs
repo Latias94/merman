@@ -52,7 +52,10 @@ pub(crate) use parity::cssom_color_value;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use parity::flowchart_node_label_fill_config_override;
+pub(crate) use parity::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
 #[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use parity::{escape_attr, escape_xml};
 mod pipeline;

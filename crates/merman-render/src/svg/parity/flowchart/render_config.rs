@@ -3,7 +3,8 @@
 use crate::flowchart::FlowchartConfigView;
 use crate::text::{TextStyle, WrapMode};
 
-pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
+#[derive(Debug)]
+pub(crate) struct FlowchartRenderConfig {
     pub font_family: String,
     pub font_size: f64,
     pub wrapping_width: f64,
@@ -38,7 +39,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub compact_edge_corners: bool,
 }
 
-pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
+pub(crate) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     compatibility: &crate::flowchart::FlowchartCompatibilityBinding,

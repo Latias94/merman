@@ -377,10 +377,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         crate::flowchart::FlowchartLabelWeights::default(),
         |sidecar| sidecar.label_weights(),
     );
-    let edge_wrap_style = weights.apply(ThemeTarget::EdgeLabel, &ctx.text_style);
+    let edge_wrap_style = weights.apply(ThemeTarget::EdgeLabel, ctx.text_style);
     let edge_metrics_style = weights.apply_cow(
         ThemeTarget::EdgeLabel,
-        compiled_label_styles.effective_edge_label_text_style(&ctx.text_style),
+        compiled_label_styles.effective_edge_label_text_style(ctx.text_style),
     );
     let mut effective_label_style = Cow::Borrowed(compiled_label_styles.label_style.as_str());
     if weights.get(ThemeTarget::EdgeLabel).is_some() {
@@ -989,7 +989,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let label_text_style = weights.apply_cow(
         ThemeTarget::EdgeLabel,
         ctx.edge_style_plan
-            .swimlane_edge_label_text_style_for(key, &ctx.text_style)?
+            .swimlane_edge_label_text_style_for(key, ctx.text_style)?
             .style,
     );
     let mut weighted_label_style = Cow::Borrowed(first_label_style);

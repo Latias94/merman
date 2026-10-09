@@ -223,9 +223,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let is_lr = direction == crate::model::SwimlaneDirection::Lr;
 
     let typed_lane_fill = cluster_theme.fill_value(fill_precedence, true);
-    let lane_fill = typed_lane_fill.unwrap_or(&ctx.cluster_fill_color);
+    let lane_fill = typed_lane_fill.unwrap_or(ctx.cluster_fill_color);
     let typed_lane_stroke = cluster_theme.stroke_value(stroke_precedence, true);
-    let lane_stroke = typed_lane_stroke.unwrap_or(&ctx.cluster_stroke_color);
+    let lane_stroke = typed_lane_stroke.unwrap_or(ctx.cluster_stroke_color);
     // The body has no compatibility fill path in hand-drawn output. Only a direct typed fill may
     // add one; a typed stroke owns the outline independently and must not recolor the body.
     let body_fill = typed_lane_fill;
@@ -452,7 +452,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             escape_xml_display(&transform),
         );
         let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-            &ctx.text_style,
+            ctx.text_style,
             ctx.class_defs,
             class_names,
             styles,

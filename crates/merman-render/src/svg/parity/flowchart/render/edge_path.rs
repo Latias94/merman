@@ -197,7 +197,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             .map(|(_, _, _, reference)| reference.as_str()),
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
-        default_edge_style: &ctx.default_edge_style,
+        default_edge_style: ctx.default_edge_style,
         neo_edge_mask,
         line_hop_applied: geom.line_hop_applied,
     };

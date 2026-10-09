@@ -67,7 +67,10 @@ pub(crate) use css::PreparedCommonNeoCss;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use flowchart::flowchart_node_label_fill_config_override;
+pub(crate) use flowchart::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
 pub(crate) use look_defs::PreparedLookDefs;
 pub(crate) use util::cssom_color_value;
 #[cfg_attr(
