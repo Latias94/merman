@@ -479,7 +479,7 @@ explicit terminal, machine-channel, SVG, and raster request composition.
 the supplied RGB palette; ANSI256 approximates those colors. ANSI16 instead uses terminal Reset and
 named ANSI colors for semantic roles, so it does not apply that RGB palette to those roles. The host
 owns any mapping of its application theme into both output-specific inputs. See
-[terminal themes](../rendering/presentation-themes.md#terminal-themes).
+[terminal theme API](../../crates/merman-ascii/README.md#terminal-theme-api).
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests

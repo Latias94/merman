@@ -154,11 +154,24 @@ host's RGB palette should control terminal role colors, or ANSI256 for an approx
 changes encoding only: its stripped text and logical extent are identical to Plain for the same
 layout request.
 
-SVG `HostTheme` and terminal `AsciiTerminalPalette` are independent inputs. The host can map its
-own palette into both; selecting an SVG presentation theme does not set terminal colors. See
-[presentation and terminal themes](../../docs/rendering/presentation-themes.md#terminal-themes).
+| Host intent | ASCII color mode | Palette behavior |
+| --- | --- | --- |
+| Plain logs or a machine text channel | `Plain` | No color escapes; viewport fallback is available |
+| Use the terminal's own palette | `Ansi16` | Primary text and most structural roles use Reset; emphasis uses named ANSI colors |
+| Apply a known host RGB palette | `TrueColor` | Semantic roles resolve through `AsciiColorTheme` |
+| Approximate a host RGB palette | `Ansi256` | Resolved RGB colors are mapped to the 256-color encoding |
 
-Bindings expose the same shape as `ascii.theme` in options JSON. Color values use the existing CSS color parser for opaque terminal colors; transparent colors are rejected rather than silently falling back.
+Named terminal colors and Reset do not guarantee contrast for an arbitrary user-customized
+terminal palette. Styled output accepts viewport `Allow` or `Error`; `Fallback` is Plain-only
+and an invalid styled/fallback combination is rejected even when the diagram would fit.
+
+SVG compiled diagram themes and terminal `AsciiTerminalPalette` are independent inputs. The host
+can map its own palette into both; selecting an SVG theme does not set terminal colors. SVG
+typography, CSS-oriented family variables, and terminal role encoding remain separate. See the
+[diagram theme guide](../../docs/rendering/custom-diagram-themes.md) and the executable
+[terminal palette example](../merman/examples/terminal_palette.rs).
+
+Bindings expose the same shape as `ascii.theme` in [Options JSON](../../docs/bindings/OPTIONS_JSON.md#ascii-options). Color values use the existing CSS color parser for opaque terminal colors; transparent colors are rejected rather than silently falling back.
 
 ## XYChart ASCII Contract
 
