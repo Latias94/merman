@@ -39,6 +39,29 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
     pub extra_nodes: Vec<crate::flowchart::FlowNode>,
 }
 
+pub(super) fn flowchart_helper_node_ids(
+    model: &crate::flowchart::FlowchartModel,
+    render_context: &crate::flowchart::FlowchartRenderContext,
+    owners: &crate::flowchart::FlowchartEdgeOwners,
+    uses_elk: bool,
+) -> BTreeSet<String> {
+    if uses_elk {
+        return BTreeSet::new();
+    }
+    owners
+        .iter()
+        .filter_map(|owner| model.edges.get(owner.semantic_index()))
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
+        .filter(|(from, to)| from == to)
+        .flat_map(|(from, _)| {
+            [
+                format!("{from}---{from}---1"),
+                format!("{from}---{from}---2"),
+            ]
+        })
+        .collect()
+}
+
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
     render_context: &crate::flowchart::FlowchartRenderContext,
@@ -76,14 +99,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
     // back into the original logical self-loop before rendering.
     let mut render_edges: Vec<FlowchartRenderEdge<'a>> = semantic_edges.collect();
-    let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
-    for edge in &render_edges {
-        if edge.edge.from != edge.edge.to {
-            continue;
-        }
-        self_loop_label_node_ids.insert(format!("{}---{}---1", edge.edge.from, edge.edge.from));
-        self_loop_label_node_ids.insert(format!("{}---{}---2", edge.edge.from, edge.edge.from));
-    }
+    let self_loop_label_node_ids = flowchart_helper_node_ids(
+        model,
+        render_context,
+        layout_edge_owners,
+        uses_elk_adapter_dom,
+    );
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
     // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a

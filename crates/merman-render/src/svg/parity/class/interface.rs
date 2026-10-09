@@ -18,7 +18,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
-    pub visual_binding: &'a super::node_binding::ClassInterfaceVisualBinding,
+    pub visual_binding: &'a crate::class::ClassInterfaceVisualBinding,
     pub emit: ClassEmitCheckpoint<'a>,
 }
 

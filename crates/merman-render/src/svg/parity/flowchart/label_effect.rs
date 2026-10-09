@@ -147,7 +147,7 @@ impl FlowchartLabelEffects {
                 let Some(height) = node.label_height else {
                     continue;
                 };
-                let Some(prepared) = ctx.node_effects.get().and_then(|nodes| nodes.node(id)) else {
+                let Some(prepared) = ctx.prepared_nodes.node(id) else {
                     continue;
                 };
                 let style = &prepared.style;

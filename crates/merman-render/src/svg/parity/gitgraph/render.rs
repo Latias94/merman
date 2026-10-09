@@ -59,17 +59,14 @@ const GITGRAPH_NAMED_COLOR_COUNT: usize = 8;
 fn gitgraph_defs<I>(
     diagram_id: I,
     binding: &crate::gitgraph::GitGraphCssBinding,
-    primary_border: Option<&str>,
+    gradient: Option<(&str, &str)>,
 ) -> String
 where
     I: Copy + std::fmt::Display,
 {
     let mut out = String::new();
 
-    if binding.sources.use_gradient {
-        let gradient_start = binding.gradient_start(primary_border);
-        let gradient_stop = binding.gradient_stop(gradient_start);
-
+    if let Some((gradient_start, gradient_stop)) = gradient {
         let _ = write!(
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
@@ -97,21 +94,13 @@ fn gitgraph_css(
     binding: &crate::gitgraph::GitGraphCssBinding,
     static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
-    text_colors: Option<[Option<&str>; 3]>,
-    branch_stroke: Option<&str>,
 ) -> GitGraphCss {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
-    let node_paint_values = static_paint
-        .node_paint()
-        .map(|plan| plan.css_values())
-        .unwrap_or([None; 6]);
-    let css = super::super::css::InfoCssWriter::from_prepared(&binding.common);
-    let css = match text_colors.and_then(|colors| colors[0]) {
-        Some(color) => css.with_text_color(color),
-        None => css,
-    };
-    let css = match node_paint_values[4] {
+    let terminal = static_paint.terminal_styles();
+    let css = super::super::css::InfoCssWriter::from_prepared(&binding.common)
+        .with_text_color(&terminal.text_color);
+    let css = match terminal.common_node_border_override.as_deref() {
         Some(border) => css.with_node_border(border),
         None => css,
     };
@@ -124,34 +113,12 @@ fn gitgraph_css(
 
     let commit_label_font_size = typography_theme.commit_label_font_size_css();
     let tag_label_font_size = typography_theme.tag_label_font_size_css();
-    let commit_label_color = text_colors
-        .and_then(|colors| colors[2])
-        .unwrap_or(&binding.commit_label_color)
-        .to_owned();
-    let commit_label_background = static_paint
-        .commit_label_background_css()
-        .unwrap_or(&binding.commit_label_background)
-        .to_owned();
-    let tag_label_color = text_colors
-        .and_then(|colors| colors[1])
-        .unwrap_or(&binding.tag_label_color)
-        .to_owned();
-    let tag_label_background =
-        Cow::Borrowed(node_paint_values[2].unwrap_or(&binding.tag_label_background));
-    let tag_label_border = node_paint_values[5]
-        .unwrap_or(&binding.tag_label_border)
-        .to_owned();
+    let tag_label_color = terminal.tag_label_color.clone();
     let theme_color_limit = binding.theme_color_limit;
     let stroke_width = &binding.stroke_width;
-    let commit_line_color = branch_stroke
-        .or(binding.commit_line_color.as_deref())
-        .unwrap_or(&parts.line_color)
-        .to_owned();
-    let primary_color = Cow::Borrowed(node_paint_values[0].unwrap_or(&binding.primary_color));
-    let node_border = node_paint_values[4]
-        .unwrap_or(&binding.node_border)
-        .to_owned();
-    let main_bkg = Cow::Borrowed(node_paint_values[1].unwrap_or(&binding.main_bkg));
+    let commit_line_color = terminal.commit_line_color.clone();
+    let node_border = terminal.node_border.clone();
+    let main_bkg = Cow::Borrowed(terminal.main_bkg.as_str());
     let note_font_weight = &binding.note_font_weight;
     let note_font_weight_decl = if use_redux_geometry {
         format!("font-weight:{};", note_font_weight)
@@ -160,10 +127,16 @@ fn gitgraph_css(
     };
     let drop_shadow = &binding.drop_shadow;
     let use_gradient = binding.sources.use_gradient;
-    let border_color_array = &binding.border_color_array;
     // gitGraph owns its draw path instead of using rendering-util/render.ts, so it must append the
     // configured root gradient itself for every theme. Several classic themes enable gradients.
-    let defs = gitgraph_defs(diagram_id, binding, node_paint_values[3]);
+    let defs = gitgraph_defs(
+        diagram_id,
+        binding,
+        terminal
+            .gradient
+            .as_ref()
+            .map(|gradient| (gradient.start.as_str(), gradient.stop.as_str())),
+    );
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
@@ -223,12 +196,11 @@ fn gitgraph_css(
                         facts.arrows[0] = border;
                     }
                     if use_gradient {
-                        let primary_border =
-                            if node_paint.is_some() && binding.gradient_start.is_none() {
-                                Some(binding.gradient_start(node_paint_values[3]))
-                            } else {
-                                None
-                            };
+                        let primary_border = terminal
+                            .gradient
+                            .as_ref()
+                            .filter(|gradient| gradient.primary_border_source)
+                            .map(|gradient| gradient.start.as_str());
                         for label_i in 0..theme_color_limit {
                             let _ = write!(
                                 &mut out,
@@ -347,14 +319,11 @@ fn gitgraph_css(
                     facts.arrows[0] = border;
                 }
             } else {
-                let border_color = border_color_array
-                    .get(i % border_color_array.len().max(1))
-                    .cloned()
-                    .unwrap_or_else(|| node_border.clone());
+                let border_color = terminal.border_color(binding, i);
                 let label_fill = if use_dark_theme {
                     main_bkg.as_ref()
                 } else {
-                    border_color.as_str()
+                    border_color
                 };
                 let _ = write!(
                     &mut out,
@@ -384,7 +353,7 @@ fn gitgraph_css(
                     && i < GITGRAPH_PALETTE_SLOT_COUNT
                 {
                     let border = facts.source(4, &node_border);
-                    let slot_border = if border_color_array.is_empty() {
+                    let slot_border = if binding.border_color_array.is_empty() {
                         border
                     } else {
                         0
@@ -435,53 +404,25 @@ fn gitgraph_css(
             );
         }
     }
-    let branch_dasharray = if use_color_gen { "4 2" } else { "2" };
-    let commit_label_fill = if use_color_gen {
-        node_border.as_str()
-    } else {
-        commit_label_color.as_str()
-    };
+    let branch_dasharray = terminal.branch_dasharray;
+    let commit_label_fill = terminal.commit_label_fill.as_str();
     let commit_label_weight = if use_color_gen {
         format!("font-weight:{};", note_font_weight)
     } else {
         String::new()
     };
-    let commit_label_bkg_fill = if use_color_gen {
-        "transparent"
-    } else {
-        commit_label_background.as_str()
-    };
-    let commit_label_bkg_opacity = if use_color_gen { "" } else { "opacity:0.5;" };
-    let tag_label_bkg_fill = if use_color_gen {
-        main_bkg.as_ref()
-    } else {
-        tag_label_background.as_ref()
-    };
-    let tag_label_bkg_stroke = if use_color_gen {
-        node_border.as_str()
-    } else {
-        tag_label_border.as_str()
-    };
+    let commit_label_bkg_fill = terminal.commit_label_background.as_str();
+    let commit_label_bkg_opacity = terminal.commit_background_opacity;
+    let tag_label_bkg_fill = terminal.tag_background.as_str();
+    let tag_label_bkg_stroke = terminal.tag_border.as_str();
     let tag_label_bkg_filter = if use_color_gen {
         format!("filter:{};", drop_shadow)
     } else {
         String::new()
     };
-    let state_fill = if use_color_gen {
-        main_bkg.as_ref()
-    } else {
-        primary_color.as_ref()
-    };
-    let reverse_stroke_width = if use_color_gen {
-        stroke_width.as_str()
-    } else {
-        "3"
-    };
-    let arrow_stroke_width = if use_redux_geometry {
-        stroke_width.as_str()
-    } else {
-        "8"
-    };
+    let state_fill = terminal.state_fill.as_str();
+    let reverse_stroke_width = terminal.reverse_stroke_width.as_str();
+    let arrow_stroke_width = terminal.arrow_stroke_width.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:{};}}#{} .arrow{{stroke-width:{};stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};{}}}#{} .commit-label-bkg{{font-size:{};fill:{};{}}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};{}}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:{};}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:{}px;fill:{};}}"#,
@@ -541,7 +482,7 @@ fn gitgraph_css(
         base_typography_emitted: parts.base_typography_emitted,
         commit_label_background_fill: commit_label_bkg_fill.to_string(),
         branch_stroke: commit_line_color,
-        text_colors: text_colors.map(|_| {
+        text_colors: terminal.text_colors_requested.then(|| {
             [
                 parts.text_color.clone(),
                 parts.text_color.clone(),
@@ -777,11 +718,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         binding,
         static_paint,
         typography_theme,
-        node_palette
-            .text_paint()
-            .is_requested()
-            .then(|| node_palette.text_paint().css_colors()),
-        node_palette.branch_stylesheet_stroke(),
     );
     let node_palette_ownership = node_palette.terminal_ownership();
     let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
@@ -1622,6 +1558,37 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 mod tests {
     use super::*;
 
+    fn gitgraph_css(
+        diagram_id: &str,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
+        typography: &crate::gitgraph::GitGraphTypographyThemePlan,
+        text_colors: Option<[Option<&str>; 3]>,
+        branch_stroke: Option<&str>,
+    ) -> GitGraphCss {
+        static_paint.bind_terminal_values_for_test(binding, text_colors, branch_stroke);
+        super::gitgraph_css(diagram_id, binding, static_paint, typography)
+    }
+
+    fn gitgraph_defs<I>(
+        diagram_id: I,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        primary_border: Option<&str>,
+    ) -> String
+    where
+        I: Copy + std::fmt::Display,
+    {
+        let start = binding.gradient_start(primary_border);
+        super::gitgraph_defs(
+            diagram_id,
+            binding,
+            binding
+                .sources
+                .use_gradient
+                .then(|| (start, binding.gradient_stop(start))),
+        )
+    }
+
     fn static_paint_plan() -> crate::gitgraph::GitGraphStaticPaintPlan {
         crate::gitgraph::GitGraphStaticPaintPlan::baseline()
     }
@@ -1736,6 +1703,7 @@ mod tests {
         let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(layout);
         let static_paint = static_paint_plan();
         let typography_theme = typography_plan(config);
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
         render_gitgraph_diagram_svg_with_accessibility(
             layout,
             None,
@@ -1888,6 +1856,7 @@ mod tests {
         let static_paint = crate::gitgraph::GitGraphStaticPaintPlan::baseline();
         let config = json!({});
         let typography_theme = typography_plan(&config);
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
         let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_model(
                 &layout,
@@ -2112,6 +2081,7 @@ mod tests {
 
         let config = json!({"themeVariables": {"THEME_COLOR_LIMIT": 8.9, "git0": "var(--slot0)"}});
         let typography = typography_plan(&config);
+        let paint = static_paint_plan();
         let css = gitgraph_css(
             "git",
             typography.css_binding(),
@@ -2369,6 +2339,7 @@ mod tests {
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
         let request = SvgRenderOptions::default();
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
         let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,

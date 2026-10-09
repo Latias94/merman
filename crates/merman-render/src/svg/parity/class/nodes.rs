@@ -56,11 +56,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) mermaid_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
-    pub(super) node_visual_bindings:
-        &'a std::cell::RefCell<FxHashMap<&'a str, super::node_binding::ClassNodeVisualBinding>>,
-    pub(super) interface_visual_bindings: &'a std::cell::RefCell<
-        FxHashMap<&'a str, super::node_binding::ClassInterfaceVisualBinding>,
-    >,
+    pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
     pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
@@ -745,11 +741,7 @@ fn render_class_node_id<O: SvgOutput>(
     }
 
     if let Some(iface) = ctx.iface_by_id.get(n.id.as_str()).copied() {
-        let binding = ctx
-            .interface_visual_bindings
-            .borrow_mut()
-            .remove(n.id.as_str())
-            .expect("prepared Class interface visual binding");
+        let binding = ctx.node_visual_plan.interface(n.id.as_str());
         let result = render_class_interface_node(
             ClassInterfaceRenderState {
                 out,
@@ -770,7 +762,7 @@ fn render_class_node_id<O: SvgOutput>(
                 look: settings.look.as_str(),
                 mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
-                visual_binding: &binding,
+                visual_binding: binding,
                 emit: ctx.emit,
             },
         )?;
@@ -786,11 +778,7 @@ fn render_class_node_id<O: SvgOutput>(
         .copied()
         .expect("validated Class semantic node payload");
 
-    let binding = ctx
-        .node_visual_bindings
-        .borrow_mut()
-        .remove(n.id.as_str())
-        .expect("prepared Class node visual binding");
+    let binding = ctx.node_visual_plan.node(n.id.as_str());
     let node_label_plan = ctx
         .layout
         .class_label_plans_by_id
@@ -910,7 +898,7 @@ fn render_class_node_id<O: SvgOutput>(
         out.push_str("</a>");
     }
     Ok(ClassNodeRenderOutcome {
-        theme_emission: Some(binding.emission),
+        theme_emission: Some(binding.emission.clone()),
         typography: binding.typography,
     })
 }

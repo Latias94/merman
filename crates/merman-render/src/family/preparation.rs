@@ -29,6 +29,7 @@ fn prepare_flowchart_artifact<L>(
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     svg_label_preparation: FlowchartSvgLabelPreparation,
+    layout_view: impl for<'a> Fn(&'a L) -> crate::svg::FlowchartNodeLayoutView<'a>,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderContext,
@@ -50,7 +51,7 @@ fn prepare_flowchart_artifact<L>(
         crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
             prepared_text_layout,
             resolved_theme,
-            work_meter,
+            Arc::clone(&work_meter),
         )
         .with_base_typography(base_typography)
         .with_prepared_math_backend(math_backend, &prepared_theme.compatibility)
@@ -75,12 +76,22 @@ fn prepare_flowchart_artifact<L>(
     if let Some(error) = svg_label_sidecar.prepared_error().cloned() {
         return Err(error.into());
     }
+    let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
+        &semantic,
+        &render_context,
+        layout_view(&layout),
+        resolved_theme,
+        effective_config,
+        &prepared_theme,
+        work_meter.as_ref(),
+    )?;
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
         render_context,
         edge_style_plan,
         edge_theme,
         prepared_theme,
+        prepared_nodes,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
         effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
@@ -409,6 +420,7 @@ fn prepare_flowchart_family(
                 execution.work_meter(),
                 edge_style_plan,
                 svg_label_preparation,
+                |layout| crate::svg::FlowchartNodeLayoutView::Swimlane(layout),
                 |model, render_context, svg_label_sidecar, edge_style_plan| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
@@ -442,6 +454,7 @@ fn prepare_flowchart_family(
                     execution.work_meter(),
                     edge_style_plan,
                     svg_label_preparation,
+                    |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
                     |model, render_context, svg_label_sidecar, edge_style_plan| {
                         crate::layout_flowchart_typed_with_render_labels_by_engine(
                             model,
@@ -1006,6 +1019,7 @@ fn prepare_gitgraph_family(
         &layout,
         execution.work_meter_ref(),
     )?;
+    static_paint.bind_terminal_styles(&typography_theme, &node_palette);
     Ok(BuiltinFamilyArtifact::GitGraph(Box::new(
         GitGraphFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -1177,11 +1191,20 @@ fn prepare_class_family(
         cluster_label_count,
         execution.work_meter_ref(),
     )?;
+    let node_visual_plan = crate::class::ClassNodeVisualPlan::resolve(
+        &model,
+        &relation_theme,
+        &typography_theme,
+        crate::class::config::ClassConfigView::new(meta.effective_config.as_value())
+            .render_diagram_html_labels(),
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Class(Box::new(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             relation_theme,
             typography_theme,
+            node_visual_plan,
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
                 execution.resolved_theme(),
                 relation_count,
@@ -1522,6 +1545,7 @@ pub(super) fn prepare_non_class_render(
                 execution.work_meter(),
                 edge_style_plan,
                 svg_label_preparation,
+                |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
                 |model, render_context, sidecar, edge_style_plan| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         model,

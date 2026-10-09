@@ -26,6 +26,8 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
 }
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) prepared_nodes:
+        &'a super::node_inventory::FlowchartPreparedNodes,
     pub(in crate::svg::parity::flowchart) label_effects:
         std::cell::OnceCell<super::label_effect::FlowchartLabelEffects>,
     pub(in crate::svg::parity::flowchart) node_effects:
@@ -67,7 +69,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) document_ids:
         &'a super::document_ids::FlowchartDocumentIds<'a>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
-    pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
     pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
         crate::flowchart::FlowchartTypographyConfigOwnership,
@@ -80,7 +81,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) cluster_stroke_color: String,
     pub(in crate::svg::parity::flowchart) cluster_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) cluster_stroke_config_override: bool,
-    pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) edge_label_padding:
@@ -120,9 +120,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
         &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
-    /// Dense one-based semantic Node ordinals used by theme ordinal selectors. This differs from
-    /// DOM suffixes, which include repeated vertex references and synthetic nodes.
-    pub(in crate::svg::parity::flowchart) node_theme_ordinals: FxHashMap<&'a str, usize>,
     pub(in crate::svg::parity::flowchart) node_padding: f64,
     pub(in crate::svg::parity::flowchart) wrapping_width: f64,
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,

@@ -9,7 +9,6 @@ use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
 use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
-use rustc_hash::FxHashMap;
 
 #[allow(
     clippy::too_many_arguments,
@@ -20,6 +19,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
     typography_theme: &crate::class::ClassTextThemePlan,
+    node_visual_plan: &crate::class::ClassNodeVisualPlan,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
@@ -55,55 +55,15 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         settings.edge_use_html_labels,
         Some(mermaid_config),
     );
-    let node_expectations = relation_theme.resolve_node_expectations(
-        model.classes.keys().cloned().chain(
-            model
-                .interfaces
-                .iter()
-                .map(|interface| interface.id.clone()),
-        ),
-    );
+    let node_expectations = node_visual_plan.expectations();
     if let Some(receipt) = typography_receipt.as_mut() {
         typography_theme.bind_paint_expectations(
             receipt,
-            &node_expectations,
+            node_expectations,
             relation_theme.namespace_title_terminal(),
             model.notes.iter().map(|note| note.id.as_str()),
         );
     }
-    let node_expectations_by_id = node_expectations
-        .iter()
-        .map(|expectation| (expectation.id(), expectation))
-        .collect::<FxHashMap<_, _>>();
-    let mut node_visual_bindings = FxHashMap::default();
-    for (id, node) in &model.classes {
-        emit.checkpoint()?;
-        let expectation = node_expectations_by_id
-            .get(id.as_str())
-            .expect("prepared Class node theme owner");
-        node_visual_bindings.insert(
-            id.as_str(),
-            super::node_binding::ClassNodeVisualBinding::lower(
-                node,
-                expectation,
-                typography_theme,
-                settings.diagram_use_html_labels,
-            )?,
-        );
-    }
-    let mut interface_visual_bindings = FxHashMap::default();
-    for interface in &model.interfaces {
-        emit.checkpoint()?;
-        let expectation = node_expectations_by_id
-            .get(interface.id.as_str())
-            .expect("prepared Class interface theme owner");
-        interface_visual_bindings.insert(
-            interface.id.as_str(),
-            super::node_binding::ClassInterfaceVisualBinding::lower(interface, expectation),
-        );
-    }
-    let node_visual_bindings = std::cell::RefCell::new(node_visual_bindings);
-    let interface_visual_bindings = std::cell::RefCell::new(interface_visual_bindings);
     let relation_expectations = model
         .relations
         .iter()
@@ -311,8 +271,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         measurer,
         mermaid_config,
         math_renderer: options.math_renderer(),
-        node_visual_bindings: &node_visual_bindings,
-        interface_visual_bindings: &interface_visual_bindings,
+        node_visual_plan,
         typography_theme,
         content_tx,
         content_ty,
@@ -441,8 +400,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         emit_class_render_timing(&timings, &detail, layout);
     }
     let rooted_svg = root_document.complete(out)?;
-    drop(node_expectations_by_id);
-    let relation_theme_receipt = relation_theme_receipt.with_nodes(node_expectations);
+    let relation_theme_receipt = relation_theme_receipt.with_nodes(node_expectations.to_vec());
     if !theme_evidence.record_terminal(relation_theme_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Class theme receipt did not match the terminal SVG".to_string(),

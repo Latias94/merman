@@ -13,7 +13,6 @@ pub(super) struct SequenceRenderSettings {
     pub(super) note_margin: f64,
     pub(super) sequence_width: f64,
     pub(super) activation_width: f64,
-    pub(super) actor_label_font_size: f64,
     pub(super) actor_wrap_width: f64,
     pub(super) rect_default_fill: String,
     pub(super) actor_text_style: TextStyle,
@@ -65,7 +64,6 @@ impl SequenceRenderSettings {
             note_margin,
             sequence_width,
             activation_width,
-            actor_label_font_size: typography.base_font_size_px(),
             actor_wrap_width,
             rect_default_fill,
             message_text_style: typography.message().measurement_style().clone(),
@@ -138,7 +136,6 @@ mod tests {
         let settings =
             SequenceRenderSettings::from_resolved_typography(config.as_value(), &typography);
 
-        assert_eq!(settings.actor_label_font_size, 31.0);
         for style in [
             &settings.actor_text_style,
             &settings.message_text_style,

@@ -124,7 +124,9 @@ mod flowchart;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use flowchart::FlowchartEdgeStylePlan;
+pub(crate) use flowchart::{
+    FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes,
+};
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
 #[cfg(feature = "diagram-git-graph")]
@@ -1275,6 +1277,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().semantic(),
                 artifact.relation_theme(),
                 artifact.typography_theme(),
+                artifact.node_visual_plan(),
                 artifact.theme_evidence(),
                 effective_config,
                 title,

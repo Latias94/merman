@@ -1,4 +1,5 @@
 use super::super::*;
+pub(super) use crate::class::node_binding::{class_node_label_style, class_node_paint_style};
 
 pub(super) fn class_math_html_label(
     text: &str,
@@ -13,31 +14,6 @@ pub(super) fn class_math_html_label(
     };
     crate::math::render_math_html_label(text, config, Some(renderer))
         .map(crate::math::mark_math_html_native_unavailable)
-}
-
-pub(super) struct ClassInlineStyles<'a> {
-    pub style_attr: String,
-    pub color: Option<&'a str>,
-    pub fill: Option<&'a str>,
-    pub stroke: Option<&'a str>,
-    pub stroke_width: Option<&'a str>,
-    pub stroke_dasharray: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct ClassNodeLabelTerminalTruth {
-    source_owns_paint: bool,
-    typed_fill_verified: bool,
-}
-
-impl ClassNodeLabelTerminalTruth {
-    pub(super) const fn source_owns_paint(self) -> bool {
-        self.source_owns_paint
-    }
-
-    pub(super) const fn typed_fill_verified(self) -> bool {
-        self.typed_fill_verified
-    }
 }
 
 pub(super) struct ClassHtmlLabelSpec<'a> {
@@ -446,95 +422,6 @@ fn class_svg_text_computed_length_px(
     } else {
         measurer.measure_svg_text_computed_length_px(text, style)
     }
-}
-
-pub(super) fn class_apply_inline_styles<'a>(
-    node: &'a super::ClassSvgNode,
-) -> ClassInlineStyles<'a> {
-    let mut style_attr = String::new();
-    let mut color: Option<&str> = None;
-    let mut fill: Option<&str> = None;
-    let mut stroke: Option<&str> = None;
-    let mut stroke_width: Option<&str> = None;
-    let mut stroke_dasharray: Option<&str> = None;
-
-    for raw in &node.styles {
-        let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
-            continue;
-        };
-        if !style_attr.is_empty() {
-            style_attr.push(';');
-        }
-        style_attr.push_str(parsed.property_css());
-        style_attr.push(':');
-        style_attr.push_str(parsed.source_value());
-
-        match parsed.property() {
-            "color" => color = Some(parsed.value()),
-            "fill" => fill = Some(parsed.value()),
-            "stroke" => stroke = Some(parsed.value()),
-            "stroke-width" => stroke_width = Some(parsed.value()),
-            "stroke-dasharray" => stroke_dasharray = Some(parsed.value()),
-            _ => {}
-        }
-    }
-
-    ClassInlineStyles {
-        style_attr,
-        color,
-        fill,
-        stroke,
-        stroke_width,
-        stroke_dasharray,
-    }
-}
-
-pub(super) fn class_node_label_terminal_truth(
-    terminal_facts: crate::class::ClassTextTerminalFacts,
-) -> ClassNodeLabelTerminalTruth {
-    ClassNodeLabelTerminalTruth {
-        source_owns_paint: terminal_facts.source_owns_every_visible_run(),
-        typed_fill_verified: terminal_facts.paint_ownership_is_unambiguous(),
-    }
-}
-
-pub(super) fn class_source_label_style(color: Option<&str>) -> String {
-    color.map_or_else(String::new, |color| format!("color:{color};fill:{color}"))
-}
-
-pub(super) fn class_node_label_style(source_style: &str, typed_fill: Option<&str>) -> String {
-    let mut style = source_style.trim().trim_end_matches(';').to_string();
-    let Some(fill) = typed_fill else {
-        return style;
-    };
-    if !style.is_empty() {
-        style.push(';');
-    }
-    style.push_str("color:");
-    style.push_str(fill);
-    style.push_str(" !important;fill:");
-    style.push_str(fill);
-    style.push_str(" !important");
-    style
-}
-
-pub(super) fn class_node_paint_style(
-    source_style: &str,
-    property: &str,
-    typed_paint: Option<&str>,
-) -> String {
-    let mut style = source_style.trim().trim_end_matches(';').to_string();
-    let Some(paint) = typed_paint else {
-        return style;
-    };
-    if !style.is_empty() {
-        style.push(';');
-    }
-    style.push_str(property);
-    style.push(':');
-    style.push_str(paint);
-    style.push_str(" !important");
-    style
 }
 
 #[cfg(test)]

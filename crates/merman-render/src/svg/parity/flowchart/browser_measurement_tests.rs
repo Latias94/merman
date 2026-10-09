@@ -210,17 +210,29 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         )
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            None,
+            &metadata.effective_config,
+            super::render_config::flowchart_node_label_fill_config_override(
+                &metadata.effective_config,
+            ),
+            execution.work_meter(),
+        )
+        .expect("prepared theme");
+        let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
+            &model,
+            &render_context,
+            super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            None,
+            &metadata.effective_config,
+            &prepared_theme,
+            execution.work_meter(),
+        )
+        .expect("prepared nodes");
         let svg = render_flowchart_svg_model(
             FlowchartSvgModelRequest {
-                prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
-                    None,
-                    &metadata.effective_config,
-                    super::render_config::flowchart_node_label_fill_config_override(
-                        &metadata.effective_config,
-                    ),
-                    execution.work_meter(),
-                )
-                .expect("prepared theme"),
+                prepared_theme: &prepared_theme,
+                prepared_nodes: &prepared_nodes,
                 layout: &layout,
                 swimlane_layout: None,
                 model: &model,

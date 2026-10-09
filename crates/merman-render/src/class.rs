@@ -27,7 +27,9 @@ pub(crate) mod config;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
 mod measured;
+pub(crate) mod node_binding;
 use self::config::{ClassConfigView, ClassLayoutSettings};
+pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
 mod theme;
 use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
 #[cfg(feature = "layout-elk")]

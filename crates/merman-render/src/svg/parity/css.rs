@@ -460,7 +460,6 @@ pub(super) struct InfoCssParts {
     pub(super) font_size_css: String,
     pub(super) base_typography_emitted: bool,
     pub(super) text_color: String,
-    pub(super) line_color: String,
 }
 
 #[derive(Debug, Clone)]
@@ -519,6 +518,7 @@ impl PreparedCommonCss {
         feature = "diagram-kanban",
         feature = "diagram-gantt",
         feature = "diagram-sankey",
+        feature = "diagram-git-graph",
         feature = "diagram-requirement"
     ))]
     pub(crate) fn text_color(&self) -> &str {
@@ -535,7 +535,11 @@ impl PreparedCommonCss {
         &self.font_size_css
     }
 
-    #[cfg(any(feature = "diagram-journey", feature = "diagram-requirement"))]
+    #[cfg(any(
+        feature = "diagram-journey",
+        feature = "diagram-requirement",
+        feature = "diagram-git-graph"
+    ))]
     pub(crate) fn line_color(&self) -> &str {
         &self.line_color
     }
@@ -731,7 +735,6 @@ where
         font_size_css: values.font_size_css,
         base_typography_emitted,
         text_color: values.text_color,
-        line_color: values.line_color,
     }
 }
 

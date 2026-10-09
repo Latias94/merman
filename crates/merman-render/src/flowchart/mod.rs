@@ -108,10 +108,10 @@ impl<'a> FlowchartRenderModelRef<'a> {
 /// Projects a logical Flowchart edge through Mermaid's collapsed-subgraph view. The typed model
 /// remains lossless; render/layout callers use this helper to hide fully internal edges and route
 /// boundary edges to the visible collapsed node.
-pub(crate) fn project_flowchart_edge(
-    edge: &FlowEdge,
-    render_context: &FlowchartRenderContext,
-) -> Option<FlowEdge> {
+pub(crate) fn project_flowchart_edge_endpoints<'a>(
+    edge: &'a FlowEdge,
+    render_context: &'a FlowchartRenderContext,
+) -> Option<(&'a str, &'a str)> {
     let from = render_context
         .collapsed_replacement(edge.from.as_str())
         .unwrap_or(edge.from.as_str());
@@ -122,6 +122,15 @@ pub(crate) fn project_flowchart_edge(
     if from == to && changed {
         return None;
     }
+    Some((from, to))
+}
+
+pub(crate) fn project_flowchart_edge(
+    edge: &FlowEdge,
+    render_context: &FlowchartRenderContext,
+) -> Option<FlowEdge> {
+    let (from, to) = project_flowchart_edge_endpoints(edge, render_context)?;
+    let changed = from != edge.from || to != edge.to;
     if !changed {
         return Some(edge.clone());
     }

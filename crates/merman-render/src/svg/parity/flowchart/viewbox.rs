@@ -605,7 +605,7 @@ fn builtin_neo_paint_bounds(
         {
             continue;
         }
-        let Some(prepared) = ctx.node_effects.get().and_then(|nodes| nodes.node(id)) else {
+        let Some(prepared) = ctx.prepared_nodes.node(id) else {
             continue;
         };
         let source = &prepared.source;

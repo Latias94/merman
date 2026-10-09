@@ -20,6 +20,8 @@ use crate::family::{
 use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
 use crate::resources::OperationWorkMeter;
 
+mod node_visual;
+
 fn configured_font_size_css(effective_config: &MermaidConfig) -> Box<str> {
     crate::config::config_css_number_or_string(
         effective_config.as_value(),
@@ -63,6 +65,7 @@ impl RequirementDividerEmission {
 /// Requirement box paint resolved once for semantic nodes and shared by SVG emission and evidence.
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
+    node_visuals: BTreeMap<String, node_visual::RequirementNodeVisual>,
     css: super::RequirementCssBinding,
     relation_paint: Option<super::RequirementRelationPaintPlan>,
     text_paint: super::RequirementTextPaintPlan,
@@ -93,7 +96,8 @@ impl RequirementPaintThemePlan {
         let configured_font_size_css = configured_font_size_css(effective_config);
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
-            return Ok(Self {
+            return Self {
+                node_visuals: BTreeMap::new(),
                 css: super::RequirementCssBinding::resolve(
                     effective_config.as_value(),
                     None,
@@ -113,7 +117,8 @@ impl RequirementPaintThemePlan {
                 evidence: FamilyThemeEvidence::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
-            });
+            }
+            .prepare_node_visuals(model, effective_config, work_meter);
         };
 
         // Node identities and checkpoints belong to theme evidence, not ordinary rendering.
@@ -302,7 +307,8 @@ impl RequirementPaintThemePlan {
             typed_font_size_active.then_some(font_size_px),
             relation_paint.as_ref().and_then(|plan| plan.typed_color()),
         );
-        Ok(Self {
+        Self {
+            node_visuals: BTreeMap::new(),
             css,
             relation_paint,
             text_paint,
@@ -316,11 +322,16 @@ impl RequirementPaintThemePlan {
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
-        })
+        }
+        .prepare_node_visuals(model, effective_config, work_meter)
     }
 
     pub(crate) fn css(&self) -> &super::RequirementCssBinding {
         &self.css
+    }
+
+    pub(crate) fn node_visual(&self, id: &str) -> Option<&node_visual::RequirementNodeVisual> {
+        self.node_visuals.get(id)
     }
 
     pub(crate) fn index_for_node_id(&self, node_id: &str) -> Option<usize> {

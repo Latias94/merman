@@ -1556,6 +1556,7 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     prepared_theme: crate::flowchart::FlowchartPreparedTheme,
+    prepared_nodes: crate::svg::FlowchartPreparedNodes,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
@@ -1568,6 +1569,10 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     feature = "diagram-agentflow"
 ))]
 impl<L> FlowchartFamilyArtifact<L> {
+    pub(crate) const fn prepared_nodes(&self) -> &crate::svg::FlowchartPreparedNodes {
+        &self.prepared_nodes
+    }
+
     pub(crate) fn prepared_theme(&self) -> &crate::flowchart::FlowchartPreparedTheme {
         &self.prepared_theme
     }
@@ -1627,6 +1632,7 @@ pub(crate) struct ClassFamilyArtifact {
     pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
+    node_visual_plan: crate::class::ClassNodeVisualPlan,
     theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
 
@@ -1661,6 +1667,10 @@ impl C4FamilyArtifact {
 
 #[cfg(feature = "diagram-class")]
 impl ClassFamilyArtifact {
+    pub(crate) const fn node_visual_plan(&self) -> &crate::class::ClassNodeVisualPlan {
+        &self.node_visual_plan
+    }
+
     pub(crate) const fn pair(&self) -> &FamilyPair<ClassDiagram, ClassDiagramLayout> {
         &self.pair
     }

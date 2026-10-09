@@ -211,121 +211,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         out
     }
 
-    struct NodeStyleOverrides {
-        label_styles: String,
-        label_div_style_prefix: String,
-        svg_text_styles: String,
-        node_styles: String,
-        fill: Option<String>,
-        color: Option<String>,
-        stroke: Option<String>,
-        stroke_width: Option<f64>,
-    }
-
-    fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeStyleOverrides {
-        // Mirror Mermaid `styles2String(node)` output:
-        // - De-duplicate by key (`Map` semantics) while preserving first insertion order.
-        // - Split into label vs node styles via Mermaid `isLabelStyle`.
-        // - Append ` !important` when emitting style strings.
-        fn is_label_style(key: &str) -> bool {
-            matches!(
-                key,
-                "color"
-                    | "font-size"
-                    | "font-family"
-                    | "font-weight"
-                    | "font-style"
-                    | "text-decoration"
-                    | "text-align"
-                    | "text-transform"
-                    | "line-height"
-                    | "letter-spacing"
-                    | "word-spacing"
-                    | "text-shadow"
-                    | "text-overflow"
-                    | "white-space"
-                    | "word-wrap"
-                    | "word-break"
-                    | "overflow-wrap"
-                    | "hyphens"
-            )
-        }
-
-        let mut styles: IndexMap<String, String> = IndexMap::new();
-        for raw in css_styles {
-            let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
-                continue;
-            };
-            let k = parsed.property().to_string();
-            let v = parsed.value().to_string();
-
-            // JS `Map#set` overwrites the value without changing the key order.
-            if let Some(existing) = styles.get_mut(&k) {
-                *existing = v;
-            } else {
-                styles.insert(k, v);
-            }
-        }
-
-        let mut label_kv: Vec<(&str, &str)> = Vec::new();
-        let mut node_kv: Vec<(&str, &str)> = Vec::new();
-        for (k, v) in &styles {
-            if is_label_style(k.trim().to_ascii_lowercase().as_str()) {
-                label_kv.push((k.as_str(), v.as_str()));
-            } else {
-                node_kv.push((k.as_str(), v.as_str()));
-            }
-        }
-
-        let label_styles = label_kv
-            .iter()
-            .map(|(k, v)| format!("{k}:{v} !important"))
-            .collect::<Vec<_>>()
-            .join(";");
-        // createText converts color only on <text>; requirementBox retains the
-        // original declarations on the label group and first-row inner tspans.
-        let svg_text_styles = if html_labels {
-            String::new()
-        } else {
-            label_kv
-                .iter()
-                .map(|(key, value)| {
-                    let key = if *key == "color" { "fill" } else { key };
-                    format!("{key}:{value} !important")
-                })
-                .collect::<Vec<_>>()
-                .join(";")
-        };
-        let label_div_style_prefix = label_kv
-            .iter()
-            .map(|(k, v)| format!("{k}: {v} !important; "))
-            .collect::<Vec<_>>()
-            .join("");
-        let node_styles = node_kv
-            .iter()
-            .map(|(k, v)| format!("{k}:{v} !important"))
-            .collect::<Vec<_>>()
-            .join(";");
-
-        let fill = styles.get("fill").cloned();
-        let color = styles.get("color").cloned();
-        let stroke = styles.get("stroke").cloned();
-        let stroke_width = styles
-            .get("stroke-width")
-            .and_then(|v| v.trim_end_matches("px").trim().parse::<f64>().ok());
-
-        NodeStyleOverrides {
-            label_styles,
-            label_div_style_prefix,
-            svg_text_styles,
-            node_styles,
-            fill,
-            color,
-            stroke,
-            stroke_width,
-        }
-    }
-
     let diagram_id = options.diagram_id_or("requirement");
     let render_settings = crate::requirement::RequirementConfigView::new(effective_config)
         .render_settings_with_binding(paint_theme.css());
@@ -352,8 +237,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     let font_family = Some(render_settings.font_family.clone());
     let font_size = render_settings.font_size;
-    let default_fill_color = &binding.default_fill;
-    let default_stroke_color = &binding.default_stroke;
     let hand_drawn_seed = options.rough_randomness(
         render_settings.hand_drawn_seed,
         "render.requirement.roughjs",
@@ -976,13 +859,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             })?;
 
         let mut node_classes: Vec<&str> = Vec::new();
-        let mut css_styles: &[String] = &[];
         if let Some(req) = req_by_id.get(n.id.as_str()) {
             node_classes = req.classes.iter().map(String::as_str).collect();
-            css_styles = &req.css_styles;
         } else if let Some(el) = el_by_id.get(n.id.as_str()) {
             node_classes = el.classes.iter().map(String::as_str).collect();
-            css_styles = &el.css_styles;
         }
         let paint_theme_index = paint_theme_receipt
             .as_ref()
@@ -1029,60 +909,30 @@ pub(crate) fn render_requirement_diagram_svg_model(
             cy = fmt(cy),
         );
 
-        let NodeStyleOverrides {
-            label_styles,
-            label_div_style_prefix,
-            svg_text_styles,
-            node_styles,
-            fill: fill_override,
-            color: source_text_color,
-            stroke: stroke_override,
-            stroke_width: stroke_width_override,
-        } = parse_node_style_overrides(css_styles, render_settings.html_labels);
-        let typed_fill = paint_theme_index
-            .and_then(|index| paint_theme.typed_fill(index, fill_override.is_some()));
-        let typed_stroke = paint_theme_index
-            .and_then(|index| paint_theme.typed_stroke(index, stroke_override.is_some()));
-        let fill_color = fill_override
-            .as_deref()
-            .or_else(|| typed_fill.map(|(_, fill)| fill))
-            .unwrap_or(default_fill_color);
-        let stroke_color = stroke_override
-            .as_deref()
-            .or_else(|| typed_stroke.map(|(_, stroke)| stroke))
-            .unwrap_or(default_stroke_color);
-        let stroke_width = stroke_width_override.unwrap_or(1.3);
-        let source_path_style =
-            if look != "handDrawn" && !node_styles.is_empty() && binding.source_path_style_active {
-                node_styles.as_str()
-            } else {
-                ""
-            };
-        let mut fill_style_declaration = source_path_style.to_owned();
-        if fill_override.is_some() || typed_fill.is_some() {
-            if !fill_style_declaration.is_empty() {
-                fill_style_declaration.push(';');
-            }
-            let _ = write!(fill_style_declaration, "fill:{fill_color} !important");
-        }
-        let fill_style_attr = if fill_style_declaration.is_empty() {
-            String::new()
-        } else {
-            format!(r#" style="{}""#, escape_xml(&fill_style_declaration))
-        };
-        let mut stroke_style_declaration = source_path_style.to_owned();
-        if stroke_override.is_some() || typed_stroke.is_some() {
-            if !stroke_style_declaration.is_empty() {
-                stroke_style_declaration.push(';');
-            }
-            let _ = write!(stroke_style_declaration, "stroke:{stroke_color} !important");
-        }
-        let stroke_style_declaration =
-            (!stroke_style_declaration.is_empty()).then_some(stroke_style_declaration);
-        let stroke_style_attr = stroke_style_declaration
-            .as_deref()
-            .map(|declaration| format!(r#" style="{}""#, escape_xml(declaration)))
-            .unwrap_or_default();
+        let visual = paint_theme
+            .node_visual(&n.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("Requirement final node visual is missing {}", n.id),
+            })?;
+        let label_styles = &visual.label_styles;
+        let label_div_style_prefix = &visual.label_div_style_prefix;
+        let svg_text_styles = &visual.svg_text_styles;
+        let node_styles = &visual.node_styles;
+        let source_text_color = &visual.source_text_color;
+        let typed_fill = visual
+            .typed_fill
+            .as_ref()
+            .map(|(rule, css)| (*rule, css.as_str()));
+        let typed_stroke = visual
+            .typed_stroke
+            .as_ref()
+            .map(|(rule, css)| (*rule, css.as_str()));
+        let fill_color = visual.fill.as_str();
+        let stroke_color = visual.stroke.as_str();
+        let stroke_width = visual.stroke_width;
+        let fill_style_attr = &visual.fill_style_attr;
+        let stroke_style_declaration = &visual.stroke_style_declaration;
+        let stroke_style_attr = &visual.stroke_style_attr;
 
         // RoughJS path geometry does not depend on RGB values. Keep paint-only values such as
         // `transparent` from selecting a different geometry fallback than an opaque color.
@@ -1116,7 +966,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<g class="basic label-container outer-path" style="{style}">"#,
-            style = escape_xml(&node_styles)
+            style = escape_xml(node_styles)
         );
         let _ = write!(
             &mut out,
@@ -1148,7 +998,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let style = if line.bold {
                 format!("{label_styles}; font-weight: bold;")
             } else {
-                label_styles.clone()
+                label_styles.to_owned()
             };
             let span_style = if style.trim().is_empty() {
                 None
@@ -1158,7 +1008,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let div_style_prefix = {
                 let mut p = String::new();
                 if !label_div_style_prefix.is_empty() {
-                    p.push_str(&label_div_style_prefix);
+                    p.push_str(label_div_style_prefix);
                 }
                 if line.bold {
                     p.push_str("font-weight: bold; ");
@@ -1211,7 +1061,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 let svg_style = if line.bold {
                     format!("{svg_text_styles}; font-weight: bold;")
                 } else {
-                    svg_text_styles.clone()
+                    svg_text_styles.to_owned()
                 };
                 let base_style = TextStyle {
                     font_weight: line.measurement_bold.then(|| "bold".to_owned()),
@@ -1329,7 +1179,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 write!(
                 &mut out,
                 r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
-                style = escape_xml(&node_styles),
+                style = escape_xml(node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),
                 stroke_width = fmt(stroke_width),
@@ -1359,11 +1209,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     .iter()
                     .any(|line| !line.display_text.trim().is_empty()),
                 &rendered_node.typography,
-                &label_styles,
-                fill_override.is_some(),
+                label_styles,
+                visual.source_owns_fill,
                 typed_fill,
                 fill_color,
-                stroke_override.is_some(),
+                visual.source_owns_stroke,
                 typed_stroke,
                 stroke_color,
                 stroke_style_declaration.as_deref().unwrap_or_default(),
@@ -2169,6 +2019,48 @@ mod tests {
                 .all(|style| style.contains("max-width: 200px;")),
             "Requirement edge labels keep Mermaid's fixed 200px wrap cap: {svg}"
         );
+    }
+
+    #[test]
+    fn requirement_prepared_source_paints_reach_actual_paths_in_both_label_modes() {
+        let mut node = requirement_node("source-node");
+        node.css_styles = vec![
+            "fill:#112233 !important".to_owned(),
+            "stroke:#445566 !important".to_owned(),
+            "stroke-width:2px".to_owned(),
+            "color:#778899".to_owned(),
+        ];
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![node],
+            ..empty_requirement_model()
+        };
+        for html in [false, true] {
+            let svg = render_requirement_for_test(
+                &model,
+                &serde_json::json!({"htmlLabels": html, "layout": "dagre"}),
+                None,
+                &crate::text::DeterministicTextMeasurer::default(),
+                &SvgRenderOptions::default(),
+            )
+            .expect("render prepared source paints");
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            assert!(
+                document
+                    .descendants()
+                    .any(|element| element.has_tag_name("path")
+                        && element.attribute("fill") == Some("#112233")),
+                "{svg}"
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|element| element.has_tag_name("path")
+                        && element.attribute("stroke") == Some("#445566")
+                        && element.attribute("stroke-width") == Some("2")),
+                "{svg}"
+            );
+            assert!(!svg.contains("!important !important"), "{svg}");
+        }
     }
 
     #[test]

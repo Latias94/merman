@@ -31,6 +31,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             edge_style_plan: artifact.edge_style_plan(),
             edge_theme: artifact.edge_theme(),
             prepared_theme: artifact.prepared_theme(),
+            prepared_nodes: artifact.prepared_nodes(),
         },
         options,
         edge_paint_geometry,
@@ -38,6 +39,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
 }
 
 pub(super) struct FlowchartSvgModelRequest<'a> {
+    pub(super) prepared_nodes: &'a super::node_inventory::FlowchartPreparedNodes,
     pub(super) prepared_theme: &'a crate::flowchart::FlowchartPreparedTheme,
     pub(super) layout: &'a FlowchartLayout,
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
@@ -60,6 +62,7 @@ pub(super) fn render_flowchart_svg_model(
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<root_svg::RootedSvg> {
     let FlowchartSvgModelRequest {
+        prepared_nodes,
         prepared_theme,
         layout,
         swimlane_layout,
@@ -137,7 +140,6 @@ pub(super) fn render_flowchart_svg_model(
         default_edge_interpolate,
         default_edge_style,
         node_border_color,
-        node_fill_color,
         node_stroke_width,
         node_typography_config_ownership,
         node_label_fill_config_override,
@@ -149,7 +151,6 @@ pub(super) fn render_flowchart_svg_model(
         cluster_stroke_color,
         cluster_fill_config_override,
         cluster_stroke_config_override,
-        node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
@@ -307,12 +308,11 @@ pub(super) fn render_flowchart_svg_model(
         swimlane_nodes: swimlane_layout.map(|layout| layout.nodes.as_slice()),
         swimlane_lanes: swimlane_layout.map(|layout| layout.lanes.as_slice()),
     });
-    let node_theme_ordinals =
-        flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
     let text_surface_paint = &prepared_theme.text_surface;
     let ctx = FlowchartRenderCtx {
+        prepared_nodes,
         edges_by_key: edge_order
             .iter()
             .map(|edge| (edge.key, edge.edge))
@@ -347,7 +347,6 @@ pub(super) fn render_flowchart_svg_model(
         edge_style_plan,
         document_ids: &document_ids,
         node_border_color,
-        node_fill_color,
         node_stroke_width,
         node_typography_config_ownership,
         node_label_fill_config_override,
@@ -359,7 +358,6 @@ pub(super) fn render_flowchart_svg_model(
         cluster_stroke_color,
         cluster_fill_config_override,
         cluster_stroke_config_override,
-        node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
@@ -387,7 +385,6 @@ pub(super) fn render_flowchart_svg_model(
         swimlane_edge_label_edges_by_node_id,
         dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
-        node_theme_ordinals,
         node_padding,
         wrapping_width,
         node_wrap_mode,
@@ -396,11 +393,7 @@ pub(super) fn render_flowchart_svg_model(
         html_label_text_style,
     };
 
-    let node_inventory_input =
-        super::node_inventory::FlowchartNodeInventoryInput::from_render_context(&ctx);
-    let node_schedule =
-        super::node_inventory::FlowchartNodeRootSchedule::prepare(&node_inventory_input)?;
-    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, &node_schedule)?;
+    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, prepared_nodes.schedule())?;
     let cluster_theme_plan = crate::flowchart::FlowchartClusterThemePlan::prepare(
         ctx.resolved_theme,
         ctx.subgraph_order
@@ -703,7 +696,7 @@ pub(super) fn render_flowchart_svg_model(
     Ok(rooted)
 }
 
-fn flowchart_node_theme_ordinals<'a>(
+pub(super) fn flowchart_node_theme_ordinals<'a>(
     nodes: &'a [crate::flowchart::FlowNode],
     subgraphs: &'a [crate::flowchart::FlowSubgraph],
     uses_elk_adapter_dom: bool,
@@ -935,18 +928,30 @@ mod integration_tests {
         )
         .expect("SVG execution");
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            None,
+            &metadata.effective_config,
+            super::render_config::flowchart_node_label_fill_config_override(
+                &metadata.effective_config,
+            ),
+            execution.work_meter(),
+        )
+        .expect("prepared theme");
+        let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
+            &model,
+            &render_context,
+            super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+            None,
+            &metadata.effective_config,
+            &prepared_theme,
+            execution.work_meter(),
+        )
+        .expect("prepared nodes");
 
         let error = render_flowchart_svg_model(
             FlowchartSvgModelRequest {
-                prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
-                    None,
-                    &metadata.effective_config,
-                    super::render_config::flowchart_node_label_fill_config_override(
-                        &metadata.effective_config,
-                    ),
-                    execution.work_meter(),
-                )
-                .expect("prepared theme"),
+                prepared_theme: &prepared_theme,
+                prepared_nodes: &prepared_nodes,
                 layout: &layout,
                 swimlane_layout: None,
                 model: &model,
@@ -1066,17 +1071,29 @@ mod integration_tests {
             )
             .unwrap();
             let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+            let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+                None,
+                &metadata.effective_config,
+                super::render_config::flowchart_node_label_fill_config_override(
+                    &metadata.effective_config,
+                ),
+                execution.work_meter(),
+            )
+            .expect("prepared theme");
+            let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
+                &model,
+                &render_context,
+                super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
+                None,
+                &metadata.effective_config,
+                &prepared_theme,
+                execution.work_meter(),
+            )
+            .expect("prepared nodes");
             render_flowchart_svg_model(
                 FlowchartSvgModelRequest {
-                    prepared_theme: &crate::flowchart::FlowchartPreparedTheme::resolve(
-                        None,
-                        &metadata.effective_config,
-                        super::render_config::flowchart_node_label_fill_config_override(
-                            &metadata.effective_config,
-                        ),
-                        execution.work_meter(),
-                    )
-                    .expect("prepared theme"),
+                    prepared_theme: &prepared_theme,
+                    prepared_nodes: &prepared_nodes,
                     layout: &layout,
                     swimlane_layout: None,
                     model: &model,

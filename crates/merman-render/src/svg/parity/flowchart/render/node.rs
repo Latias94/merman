@@ -211,9 +211,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     let style_start = timing.start();
     let prepared_effect = ctx.node_effects.get().and_then(|plan| plan.node(node_id));
-    let prepared = prepared_effect.ok_or_else(|| crate::Error::InvalidModel {
-        message: format!("Flowchart node `{node_id}` has no prepared terminal style"),
-    })?;
+    let prepared = ctx
+        .prepared_nodes
+        .node(node_id)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("Flowchart node `{node_id}` has no prepared terminal style"),
+        })?;
     let compiled_styles = &prepared.source;
     let selection = &prepared.selection;
     let style = selection
@@ -247,7 +250,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     );
 
     let effect_application = prepared_effect
-        .and_then(|prepared| prepared.shadow.zip(prepared.style.effect()))
+        .and_then(|geometry| geometry.shadow.zip(prepared.style.effect()))
         .map(|(materialized, effect)| {
             let id = format!("{}-theme-effect-{}", node_dom_id, effect.id());
             let reference = crate::svg::parity::shadow::write_theme_shadow_application(

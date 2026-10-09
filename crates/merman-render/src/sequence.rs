@@ -36,12 +36,14 @@ mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
+mod terminal_css;
 mod terminal_theme;
 mod text_artifact;
 mod text_effect;
 mod theme_binding;
 mod theme_evidence;
 mod typography;
+pub(crate) use terminal_css::SequencePreparedCss;
 pub(crate) use terminal_theme::{
     SequencePreparedNumberTheme, SequencePreparedStaticRectTheme, SequencePreparedTerminalTheme,
 };
@@ -201,6 +203,7 @@ pub(crate) struct SequencePreparedArtifact {
     terminal_theme: SequencePreparedTerminalTheme,
     activation_geometry: SequencePreparedActivationGeometry,
     activation_theme: SequencePreparedStaticRectTheme,
+    css: SequencePreparedCss,
     diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
@@ -260,6 +263,10 @@ impl SequencePreparedArtifact {
 
     pub(crate) const fn activation_theme(&self) -> &SequencePreparedStaticRectTheme {
         &self.activation_theme
+    }
+
+    pub(crate) const fn css(&self) -> &SequencePreparedCss {
+        &self.css
     }
 
     pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
@@ -778,6 +785,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         work_meter.as_ref(),
     )?;
 
+    let css = SequencePreparedCss::resolve(&typography, &terminal_theme, &activation_theme);
     Ok(SequencePreparedArtifact {
         layout: SequenceDiagramLayout {
             nodes,
@@ -801,6 +809,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         terminal_theme,
         activation_geometry,
         activation_theme,
+        css,
         diagram_title,
         block_label_box_metrics,
         box_layouts,

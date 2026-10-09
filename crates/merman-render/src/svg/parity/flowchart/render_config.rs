@@ -21,7 +21,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub default_edge_interpolate: String,
     pub default_edge_style: Vec<String>,
     pub node_border_color: String,
-    pub node_fill_color: String,
     pub node_stroke_width: f32,
     pub node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     pub node_label_fill_config_override: bool,
@@ -33,7 +32,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub cluster_stroke_color: String,
     pub cluster_fill_config_override: bool,
     pub cluster_stroke_config_override: bool,
-    pub node_corner_radius: f64,
     pub node_corner_radius_config_override: bool,
     pub edge_corner_radius: f64,
     pub edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
@@ -100,7 +98,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .unwrap_or_default();
 
     let node_border_color = compatibility.node_border.clone();
-    let node_fill_color = compatibility.main_bkg.clone();
     let node_stroke_width = compatibility.node_stroke_width;
     let node_typography_config_ownership =
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
@@ -134,7 +131,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
             effective_config,
             "themeVariables.clusterBorder",
         );
-    let node_corner_radius = compatibility.node_corner_radius;
     let node_corner_radius_config_override =
         merman_core::__private::config_path_overrides_typed_default(
             effective_config,
@@ -161,7 +157,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         default_edge_interpolate,
         default_edge_style,
         node_border_color,
-        node_fill_color,
         node_stroke_width,
         node_typography_config_ownership,
         node_label_fill_config_override,
@@ -173,7 +168,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         cluster_stroke_color,
         cluster_fill_config_override,
         cluster_stroke_config_override,
-        node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,

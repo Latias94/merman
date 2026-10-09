@@ -18,7 +18,7 @@ use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
-use super::css::{SequenceThemeCssAdapter, write_sequence_css_with_theme_adapter};
+use super::css::write_sequence_css;
 use super::model::*;
 
 const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
@@ -310,42 +310,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
 
     out.push_str("<style>");
-    let css_emission = write_sequence_css_with_theme_adapter(
-        &mut out,
-        diagram_id,
-        settings.actor_label_font_size,
-        compat,
-        SequenceThemeCssAdapter {
-            base_font_family: prepared
-                .typography()
-                .base_typed_properties()
-                .contains(&crate::diagram_theme::ThemeTypographyProperty::FontStack)
-                .then(|| prepared.typography().base_font_family_css()),
-            base_font_size_px: prepared
-                .typography()
-                .base_typed_properties()
-                .contains(&crate::diagram_theme::ThemeTypographyProperty::FontSize)
-                .then(|| prepared.typography().base_font_size_px()),
-            actor_fill: actor_theme.typed_fill.as_deref(),
-            actor_stroke: actor_theme.typed_stroke.as_deref(),
-            lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
-            lifeline_stroke_width: lifeline_theme.typed_stroke_width,
-            message_stroke: message_theme.typed_stroke.as_deref(),
-            message_stroke_width: message_theme.typed_stroke_width,
-            sequence_number_fill: sequence_number_theme.typed_fill(),
-            frame_stroke: frame_theme.typed_stroke.as_deref(),
-            keyword_fill: keyword_theme.typed_fill.as_deref(),
-            keyword_stroke: keyword_theme.typed_stroke.as_deref(),
-            note_fill: note_theme.typed_fill.as_deref(),
-            note_stroke: note_theme.typed_stroke.as_deref(),
-            activation_fill: activation_theme.typed_fill.as_deref(),
-            activation_stroke: activation_theme.typed_stroke.as_deref(),
-            actor_typography: Some(prepared.typography().actor()),
-            message_typography: Some(prepared.typography().message()),
-            note_typography: Some(prepared.typography().note()),
-            loop_typography: Some(prepared.typography().loop_label()),
-        },
-    )?;
+    let css_emission = write_sequence_css(&mut out, diagram_id, prepared.css())?;
     sequence_number_receipt.record_stylesheet_emission(
         css_emission.sequence_number_fill(),
         css_emission.typed_sequence_number_fill(),

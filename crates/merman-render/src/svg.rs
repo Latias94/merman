@@ -53,7 +53,7 @@ pub(crate) use parity::cssom_color_value;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::flowchart_node_label_fill_config_override;
-#[cfg(feature = "diagram-er")]
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
 pub(crate) use parity::{escape_attr, escape_xml};
 mod pipeline;
 pub(crate) mod scanner;
@@ -64,15 +64,15 @@ pub(crate) use fallback::{
     PREPARED_TEXT_LABEL_DATA_ATTR,
 };
 pub(crate) use icon_registry::IconCurrentColorUse;
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+pub(crate) use parity::render_architecture_family_artifact;
+pub(crate) use parity::theme as render_theme;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use parity::FlowchartEdgeStylePlan;
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
-pub(crate) use parity::render_architecture_family_artifact;
-pub(crate) use parity::theme as render_theme;
+pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
 pub(crate) use pipeline::SvgPostprocessExecution;
 pub(crate) use pipeline::partition_prepared_text_label_ids;

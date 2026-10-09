@@ -27,7 +27,6 @@ mod namespace;
 
 mod node;
 
-mod node_binding;
 mod nodes;
 
 mod note;

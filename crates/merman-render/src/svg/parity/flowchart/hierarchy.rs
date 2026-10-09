@@ -55,12 +55,7 @@ fn flowchart_cluster_order_key<'a>(
     let (left, top) = ctx
         .layout_clusters_by_id
         .get(id)
-        .map(|cluster| {
-            (
-                cluster.x - cluster.width / 2.0,
-                cluster.y - cluster.height / 2.0,
-            )
-        })
+        .map(|cluster| cluster.top_left())
         .unwrap_or((0.0, 0.0));
     FlowchartClusterOrderKey {
         id,
@@ -182,11 +177,11 @@ fn flowchart_node_order_key<'a>(
     let (x, y) = ctx
         .layout_nodes_by_id
         .get(id)
-        .map(|node| (node.x, node.y))
+        .map(|node| node.position())
         .unwrap_or((0.0, 0.0));
     let direction = nearest_cluster_id
         .and_then(|cluster_id| ctx.layout_clusters_by_id.get(cluster_id))
-        .map(|cluster| cluster.effective_dir.as_str())
+        .map(|cluster| cluster.direction())
         .unwrap_or("TB");
     let (directional_primary, directional_secondary) =
         flowchart_directional_sort_key(direction, x, y);
@@ -266,11 +261,11 @@ impl<'a> FlowchartDomCandidateBuckets<'a> {
         ctx.work_meter.charge(scan_work)?;
 
         let mut buckets = Self::default();
-        for (id, node) in ctx.nodes_by_id {
+        for id in ctx.nodes_by_id.keys().copied() {
             if ctx.subgraph_has_children(id) {
                 continue;
             }
-            buckets.push_node(parent_index.parent(id), node.id.as_str());
+            buckets.push_node(parent_index.parent(id), id);
         }
         for id in ctx.subgraphs_by_id.keys().copied() {
             let root = parent_index.parent(id);

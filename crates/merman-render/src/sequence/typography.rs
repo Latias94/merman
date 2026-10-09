@@ -490,7 +490,7 @@ fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -
 
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
-    compat: super::SequenceCompatBinding,
+    compat: std::sync::Arc<super::SequenceCompatBinding>,
     base_typography: SequenceBaseTypography,
     actor: SequenceResolvedTypography,
     message: SequenceResolvedTypography,
@@ -520,7 +520,9 @@ impl SequenceTypographyPlan {
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let compat = super::SequenceCompatBinding::resolve(effective_config.as_value());
+        let compat = std::sync::Arc::new(super::SequenceCompatBinding::resolve(
+            effective_config.as_value(),
+        ));
         let base_typography =
             SequenceBaseTypography::resolve(effective_config, resolved_theme, &compat);
         let actor = SequenceResolvedTypography::resolve(
@@ -581,6 +583,10 @@ impl SequenceTypographyPlan {
 
     pub(crate) fn compat_binding(&self) -> &super::SequenceCompatBinding {
         &self.compat
+    }
+
+    pub(super) fn shared_compat_binding(&self) -> std::sync::Arc<super::SequenceCompatBinding> {
+        std::sync::Arc::clone(&self.compat)
     }
 
     pub(crate) const fn inherited_font_stack(&self) -> &ParsedCssFontStack {

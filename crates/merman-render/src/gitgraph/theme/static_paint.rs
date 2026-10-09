@@ -30,6 +30,49 @@ pub(crate) struct GitGraphStaticPaintPlan {
     pending_key: Option<FamilyThemeMechanismKey>,
     evidence: FamilyThemeEvidence,
     terminal_receipt: OnceLock<GitGraphStaticPaintReceipt>,
+    terminal_styles: OnceLock<GitGraphTerminalStyles>,
+}
+
+#[derive(Debug)]
+pub(crate) struct GitGraphTerminalStyles {
+    pub(crate) text_colors_requested: bool,
+    pub(crate) text_color: String,
+    pub(crate) common_node_border_override: Option<String>,
+    pub(crate) node_border: String,
+    pub(crate) main_bkg: String,
+    pub(crate) tag_label_color: String,
+    pub(crate) commit_label_fill: String,
+    pub(crate) commit_label_background: String,
+    pub(crate) commit_line_color: String,
+    pub(crate) tag_background: String,
+    pub(crate) tag_border: String,
+    pub(crate) state_fill: String,
+    border_color_fallback: Option<String>,
+    pub(crate) gradient: Option<GitGraphGradient>,
+    pub(crate) branch_dasharray: &'static str,
+    pub(crate) commit_background_opacity: &'static str,
+    pub(crate) reverse_stroke_width: String,
+    pub(crate) arrow_stroke_width: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct GitGraphGradient {
+    pub(crate) start: String,
+    pub(crate) stop: String,
+    pub(crate) primary_border_source: bool,
+}
+
+impl GitGraphTerminalStyles {
+    pub(crate) fn border_color<'a>(
+        &'a self,
+        binding: &'a crate::gitgraph::GitGraphCssBinding,
+        index: usize,
+    ) -> &'a str {
+        match self.border_color_fallback.as_deref() {
+            Some(color) => color,
+            None => &binding.border_color_array[index % binding.border_color_array.len()],
+        }
+    }
 }
 
 impl GitGraphStaticPaintPlan {
@@ -40,6 +83,7 @@ impl GitGraphStaticPaintPlan {
             pending_key: None,
             evidence: FamilyThemeEvidence::default(),
             terminal_receipt: OnceLock::new(),
+            terminal_styles: OnceLock::new(),
         }
     }
 
@@ -163,6 +207,130 @@ impl GitGraphStaticPaintPlan {
         self.assignment
             .as_ref()
             .map(|assignment| assignment.paint.css())
+    }
+
+    pub(crate) fn bind_terminal_styles(
+        &self,
+        typography: &super::GitGraphTypographyThemePlan,
+        palette: &super::GitGraphNodePalettePlan,
+    ) {
+        self.bind_terminal_values(
+            typography.css_binding(),
+            palette
+                .text_paint()
+                .is_requested()
+                .then(|| palette.text_paint().css_colors()),
+            palette.branch_stylesheet_stroke(),
+        );
+    }
+
+    pub(crate) fn terminal_styles(&self) -> &GitGraphTerminalStyles {
+        self.terminal_styles
+            .get()
+            .expect("GitGraph terminal styles prepared before SVG emission")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_terminal_values_for_test(
+        &self,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        text_colors: Option<[Option<&str>; 3]>,
+        branch_stroke: Option<&str>,
+    ) {
+        self.bind_terminal_values(binding, text_colors, branch_stroke);
+    }
+
+    fn bind_terminal_values(
+        &self,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        text_colors: Option<[Option<&str>; 3]>,
+        branch_stroke: Option<&str>,
+    ) {
+        let values = self
+            .node_paint()
+            .map(|plan| plan.css_values())
+            .unwrap_or([None; 6]);
+        let color_gen = binding.sources.use_color_gen;
+        let node_border = values[4].unwrap_or(&binding.node_border);
+        let main_bkg = values[1].unwrap_or(&binding.main_bkg);
+        let state_fill = if color_gen {
+            main_bkg
+        } else {
+            values[0].unwrap_or(&binding.primary_color)
+        };
+        let tag_background = if color_gen {
+            main_bkg
+        } else {
+            values[2].unwrap_or(&binding.tag_label_background)
+        };
+        let tag_border = if color_gen {
+            node_border
+        } else {
+            values[5].unwrap_or(&binding.tag_label_border)
+        };
+        let commit_label = text_colors
+            .and_then(|colors| colors[2])
+            .unwrap_or(&binding.commit_label_color);
+        let gradient = binding.sources.use_gradient.then(|| {
+            let start = binding.gradient_start(values[3]);
+            GitGraphGradient {
+                start: start.to_owned(),
+                stop: binding.gradient_stop(start).to_owned(),
+                primary_border_source: self.node_paint().is_some()
+                    && binding.gradient_start.is_none(),
+            }
+        });
+        let styles = GitGraphTerminalStyles {
+            text_colors_requested: text_colors.is_some(),
+            text_color: text_colors
+                .and_then(|colors| colors[0])
+                .unwrap_or(binding.common.text_color())
+                .to_owned(),
+            common_node_border_override: values[4].map(str::to_owned),
+            node_border: node_border.to_owned(),
+            main_bkg: main_bkg.to_owned(),
+            tag_label_color: text_colors
+                .and_then(|colors| colors[1])
+                .unwrap_or(&binding.tag_label_color)
+                .to_owned(),
+            commit_label_fill: if color_gen { node_border } else { commit_label }.to_owned(),
+            commit_label_background: if color_gen {
+                "transparent"
+            } else {
+                self.commit_label_background_css()
+                    .unwrap_or(&binding.commit_label_background)
+            }
+            .to_owned(),
+            commit_line_color: branch_stroke
+                .or(binding.commit_line_color.as_deref())
+                .unwrap_or(binding.common.line_color())
+                .to_owned(),
+            tag_background: tag_background.to_owned(),
+            tag_border: tag_border.to_owned(),
+            state_fill: state_fill.to_owned(),
+            border_color_fallback: binding
+                .border_color_array
+                .is_empty()
+                .then(|| node_border.to_owned()),
+            gradient,
+            branch_dasharray: if color_gen { "4 2" } else { "2" },
+            commit_background_opacity: if color_gen { "" } else { "opacity:0.5;" },
+            reverse_stroke_width: if color_gen {
+                binding.stroke_width.as_str()
+            } else {
+                "3"
+            }
+            .to_owned(),
+            arrow_stroke_width: if binding.use_redux_geometry {
+                binding.stroke_width.as_str()
+            } else {
+                "8"
+            }
+            .to_owned(),
+        };
+        self.terminal_styles
+            .set(styles)
+            .expect("GitGraph terminal styles bound once per prepared artifact");
     }
 
     pub(crate) fn node_paint(&self) -> Option<&super::node_paint::GitGraphNodePaintPlan> {
@@ -301,6 +469,47 @@ mod tests {
                 pos_with_offset: 0.0,
             }],
             arrows: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn prepared_default_slots_preserve_raw_gradient_and_generated_label_ownership() {
+        for (theme, background, state, tag) in [
+            ("base", "var(--label)", "var(--primary)", "var(--tag)"),
+            ("redux-color", "transparent", "var(--main)", "var(--main)"),
+        ] {
+            let config = MermaidConfig::from_value(serde_json::json!({
+                "theme": theme,
+                "themeVariables": {
+                    "useGradient": " YES ",
+                    "gradientStart": "",
+                    "secondaryBorderColor": "currentColor",
+                    "primaryColor": "var(--primary)",
+                    "mainBkg": "var(--main)",
+                    "nodeBorder": "var(--border)",
+                    "commitLabelBackground": "var(--label)",
+                    "tagLabelBackground": "var(--tag)",
+                    "lineColor": "var(--line)"
+                }
+            }));
+            let typography = super::super::GitGraphTypographyThemePlan::resolve(None, &config);
+            let palette = super::super::GitGraphNodePalettePlan::baseline(&layout_with_label());
+            let plan = GitGraphStaticPaintPlan::baseline();
+            plan.bind_terminal_styles(&typography, &palette);
+            let styles = plan.terminal_styles();
+            assert_eq!(styles.commit_label_background, background);
+            assert_eq!(styles.state_fill, state);
+            assert_eq!(styles.tag_background, tag);
+            assert_eq!(styles.commit_line_color, "var(--line)");
+            assert_eq!(
+                styles.border_color(typography.css_binding(), 63),
+                "var(--border)"
+            );
+            assert!(styles.common_node_border_override.is_none());
+            let gradient = styles.gradient.as_ref().expect("coerced gradient enabled");
+            assert_eq!(gradient.start, "");
+            assert_eq!(gradient.stop, "currentColor");
+            assert!(!gradient.primary_border_source);
         }
     }
 
