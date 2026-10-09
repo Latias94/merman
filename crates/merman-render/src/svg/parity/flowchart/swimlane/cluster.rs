@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::flowchart::{
-    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission, FlowchartFacetPrecedence,
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission,
     FlowchartShapeFacetEmissionReceipt, FlowchartThemeFacetEmission,
     flowchart_label_is_empty_for_render,
 };
@@ -153,7 +153,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     cluster: &LayoutCluster,
-    cluster_theme: &crate::flowchart::FlowchartClusterThemeStyle,
     lane: &SwimlaneLaneLayout,
     origin_x: f64,
     origin_y: f64,
@@ -161,31 +160,18 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     ctx.checkpoint_emit()?;
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
     let subgraph_index = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied();
-    let (class_names, styles) = subgraph
+    let class_names = subgraph
         .zip(subgraph_index)
-        .map(|(subgraph, subgraph_index)| {
-            ctx.model.effective_subgraph_css(subgraph_index, subgraph)
-        })
+        .map(|(subgraph, index)| ctx.model.effective_subgraph_css(index, subgraph).0)
         .unwrap_or_default();
-    let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
-    let fill_precedence = FlowchartFacetPrecedence::new(
-        compiled.source_fill_status(),
-        ctx.cluster_fill_config_override,
-    );
-    let stroke_precedence = FlowchartFacetPrecedence::new(
-        compiled.source_stroke_status(),
-        ctx.cluster_stroke_config_override,
-    );
-    let stroke_width_precedence =
-        FlowchartFacetPrecedence::new(compiled.source_stroke_width_status(), false);
-    let typed_stroke_width = cluster_theme.stroke_width_value(stroke_width_precedence);
-    let mut node_style = compiled.node_style.trim().to_string();
-    cluster_theme.append_inline_style(
-        &mut node_style,
-        fill_precedence,
-        stroke_precedence,
-        stroke_width_precedence,
-    );
+    let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
+    let cluster_theme = &terminal.theme;
+    let compiled = &terminal.compiled;
+    let fill_precedence = terminal.fill_precedence;
+    let stroke_precedence = terminal.stroke_precedence;
+    let stroke_width_precedence = terminal.stroke_width_precedence;
+    let typed_stroke_width = terminal.typed_stroke_width;
+    let node_style = terminal.rect_style.as_str();
     let label_style = compiled.label_style.trim();
     let render_title =
         subgraph
@@ -222,10 +208,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let lane_left = lane.x - width / 2.0 + ctx.tx - origin_x;
     let is_lr = direction == crate::model::SwimlaneDirection::Lr;
 
-    let typed_lane_fill = cluster_theme.fill_value(fill_precedence, true);
-    let lane_fill = typed_lane_fill.unwrap_or(ctx.cluster_fill_color);
-    let typed_lane_stroke = cluster_theme.stroke_value(stroke_precedence, true);
-    let lane_stroke = typed_lane_stroke.unwrap_or(ctx.cluster_stroke_color);
+    let typed_lane_fill = terminal.typed_fill.as_deref();
+    let lane_fill = terminal.fill.as_str();
+    let lane_stroke = terminal.stroke.as_str();
     // The body has no compatibility fill path in hand-drawn output. Only a direct typed fill may
     // add one; a typed stroke owns the outline independently and must not recolor the body.
     let body_fill = typed_lane_fill;
@@ -266,9 +251,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let body_receipt = write_swimlane_rect(
             out,
             ctx,
-            &compiled,
+            compiled,
             "swimlane-body",
-            &node_style,
+            node_style,
             typed_stroke_width,
             lane_dom_id,
             body_x,
@@ -281,9 +266,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_receipt = write_swimlane_rect(
             out,
             ctx,
-            &compiled,
+            compiled,
             "swimlane-title",
-            &node_style,
+            node_style,
             typed_stroke_width,
             lane_dom_id,
             lane_left,
@@ -317,9 +302,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let body_receipt = write_swimlane_rect(
             out,
             ctx,
-            &compiled,
+            compiled,
             "swimlane-body",
-            &node_style,
+            node_style,
             typed_stroke_width,
             lane_dom_id,
             lane_left,
@@ -332,9 +317,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_receipt = write_swimlane_rect(
             out,
             ctx,
-            &compiled,
+            compiled,
             "swimlane-title",
-            &node_style,
+            node_style,
             typed_stroke_width,
             lane_dom_id,
             lane_left,
@@ -451,18 +436,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             r#"<g class="cluster-label swimlane-label" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
             escape_xml_display(&transform),
         );
-        let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-            ctx.text_style,
-            ctx.class_defs,
-            class_names,
-            styles,
-        );
+        let title_text_style = terminal.title_text_style.as_ref();
         let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
             ctx.svg_label_sidecar,
             title_owner,
             render_title,
             ctx.measurer,
-            title_text_style.as_ref(),
+            title_text_style,
             Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
             true,
             crate::flowchart::FlowchartSvgWidthMode::Bbox,

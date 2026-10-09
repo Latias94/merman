@@ -103,6 +103,7 @@ fn prepare_flowchart_artifact<L>(
         resolved_theme,
         effective_config,
         &prepared_theme,
+        &render_config,
         &work_meter,
     )?;
     Ok(Box::new(FlowchartFamilyArtifact {

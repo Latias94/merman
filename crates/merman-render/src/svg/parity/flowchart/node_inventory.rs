@@ -217,6 +217,24 @@ pub(crate) struct FlowchartNodeRootSchedule {
 pub(crate) struct FlowchartPreparedNodes {
     schedule: FlowchartNodeRootSchedule,
     terminals: FxHashMap<String, super::node_effect::PreparedNodeTerminal>,
+    cluster_ids: Vec<String>,
+    clusters: FxHashMap<String, FlowchartPreparedCluster>,
+    _cluster_retained_reservation: crate::resources::PreparedTextRetainedReservation,
+}
+
+#[derive(Debug)]
+pub(super) struct FlowchartPreparedCluster {
+    pub(super) theme: crate::flowchart::FlowchartClusterThemeStyle,
+    pub(super) compiled: FlowchartCompiledStyles,
+    pub(super) rect_style: String,
+    pub(super) fill: String,
+    pub(super) stroke: String,
+    pub(super) typed_fill: Option<String>,
+    pub(super) typed_stroke_width: Option<f32>,
+    pub(super) fill_precedence: crate::flowchart::FlowchartFacetPrecedence,
+    pub(super) stroke_precedence: crate::flowchart::FlowchartFacetPrecedence,
+    pub(super) stroke_width_precedence: crate::flowchart::FlowchartFacetPrecedence,
+    pub(super) title_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
 }
 
 impl FlowchartPreparedNodes {
@@ -232,6 +250,7 @@ impl FlowchartPreparedNodes {
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         config: &merman_core::MermaidConfig,
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
+        render_config: &super::render_config::FlowchartRenderConfig,
         work: &std::sync::Arc<crate::resources::OperationWorkMeter>,
     ) -> crate::Result<Self> {
         let swimlane = matches!(layout, FlowchartNodeLayoutView::Swimlane(_));
@@ -267,8 +286,10 @@ impl FlowchartPreparedNodes {
             uses_elk,
         );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
-        let selection_inputs =
-            super::node_effect::NodeSelectionInputs::new(config, &prepared_theme.compatibility);
+        let selection_inputs = super::node_effect::NodeSelectionInputs::new(
+            &prepared_theme.compatibility,
+            render_config,
+        );
         let mut terminals = FxHashMap::default();
         for id in schedule
             .top
@@ -328,9 +349,173 @@ impl FlowchartPreparedNodes {
                 });
             }
         }
+        let cluster_ids = prepared_cluster_ids(model, layout, &input, &schedule)?;
+        let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+        let class_styles = FlowchartPreparedClassStyles::prepare(
+            &model.class_defs,
+            cluster_ids.iter().flat_map(|id| {
+                input
+                    .subgraphs_by_id
+                    .get(id.as_str())
+                    .zip(input.subgraph_indices_by_id.get(id.as_str()))
+                    .map(|(subgraph, index)| {
+                        render_model.effective_subgraph_css(*index, subgraph).0
+                    })
+                    .unwrap_or_default()
+                    .iter()
+                    .map(String::as_str)
+            }),
+            Some(work),
+        )?;
+        let mut clusters = FxHashMap::default();
+        let mut cluster_retained_bytes = cluster_ids.iter().fold(0usize, |bytes, id| {
+            bytes
+                .saturating_add(std::mem::size_of::<FlowchartPreparedCluster>())
+                .saturating_add(std::mem::size_of::<String>() * 2)
+                .saturating_add(id.len().saturating_mul(2))
+        });
+        let mut remaining = cluster_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<FxHashSet<_>>();
+        let top_lane_ids = match layout {
+            FlowchartNodeLayoutView::Swimlane(layout) => layout
+                .lanes
+                .iter()
+                .filter(|lane| lane.parent_id.is_none())
+                .map(|lane| lane.id.as_str())
+                .collect::<FxHashSet<_>>(),
+            FlowchartNodeLayoutView::Flowchart(_) => FxHashSet::default(),
+        };
+        let lane_ids = match layout {
+            FlowchartNodeLayoutView::Swimlane(layout) => layout
+                .lanes
+                .iter()
+                .map(|lane| lane.id.as_str())
+                .collect::<Vec<_>>(),
+            FlowchartNodeLayoutView::Flowchart(_) => Vec::new(),
+        };
+        let mut ordinal = 1usize;
+        for id in model
+            .subgraphs
+            .iter()
+            .map(|subgraph| subgraph.id.as_str())
+            .chain(lane_ids)
+        {
+            work.charge(1)?;
+            if !remaining.remove(id) {
+                continue;
+            }
+            let source = input
+                .subgraphs_by_id
+                .get(id)
+                .zip(input.subgraph_indices_by_id.get(id))
+                .map(|(subgraph, index)| render_model.effective_subgraph_css(*index, subgraph))
+                .unwrap_or_default();
+            let compiled = flowchart_compile_prepared_styles(
+                &class_styles,
+                source.0,
+                source.1,
+                &[],
+                Some(work),
+            )?;
+            let theme =
+                crate::flowchart::FlowchartClusterThemeStyle::resolve(theme, Some(ordinal), work)?;
+            ordinal = ordinal
+                .checked_add(1)
+                .ok_or_else(|| work.arithmetic_overflow())?;
+            let fill_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+                compiled.source_fill_status(),
+                render_config.cluster_fill_config_override,
+            );
+            let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+                compiled.source_stroke_status(),
+                render_config.cluster_stroke_config_override,
+            );
+            let stroke_width_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+                compiled.source_stroke_width_status(),
+                false,
+            );
+            let typed_fill = theme.fill_value(fill_precedence, true).map(str::to_owned);
+            let fill = typed_fill
+                .as_deref()
+                .unwrap_or(&render_config.cluster_fill_color)
+                .to_owned();
+            let stroke = theme
+                .stroke_value(stroke_precedence, true)
+                .unwrap_or(&render_config.cluster_stroke_color)
+                .to_owned();
+            let typed_stroke_width = theme.stroke_width_value(stroke_width_precedence);
+            let mut rect_style = compiled.node_style.trim().to_owned();
+            theme.append_inline_style(
+                &mut rect_style,
+                fill_precedence,
+                stroke_precedence,
+                stroke_width_precedence,
+            );
+            let lane = top_lane_ids.contains(id);
+            let owner = if lane {
+                svg_labels.swimlane_group_title_owner(id)
+            } else {
+                svg_labels.subgraph_title_owner(id)
+            };
+            let title_text_style = match owner
+                .and_then(|owner| svg_labels.node_source_style(owner))
+                .cloned()
+            {
+                Some(style) => style,
+                None => {
+                    let base = if !lane && render_config.edge_html_labels {
+                        &render_config.html_label_text_style
+                    } else {
+                        &render_config.text_style
+                    };
+                    let style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                        base,
+                        &model.class_defs,
+                        source.0,
+                        source.1,
+                    )
+                    .into_owned();
+                    std::sync::Arc::new(
+                        crate::flowchart::FlowchartNodeSourceTypography::from_style(style, work)?,
+                    )
+                }
+            };
+            cluster_retained_bytes = cluster_retained_bytes
+                .saturating_add(rect_style.len())
+                .saturating_add(fill.len())
+                .saturating_add(stroke.len())
+                .saturating_add(typed_fill.as_ref().map_or(0, String::len));
+            clusters.insert(
+                id.to_owned(),
+                FlowchartPreparedCluster {
+                    theme,
+                    compiled,
+                    rect_style,
+                    fill,
+                    stroke,
+                    typed_fill,
+                    typed_stroke_width,
+                    fill_precedence,
+                    stroke_precedence,
+                    stroke_width_precedence,
+                    title_text_style,
+                },
+            );
+        }
+        if !remaining.is_empty() {
+            return Err(crate::Error::InvalidModel {
+                message: "Flowchart hierarchy emits clusters outside the semantic inventory".into(),
+            });
+        }
         Ok(Self {
             schedule,
             terminals,
+            cluster_ids,
+            clusters,
+            _cluster_retained_reservation: work
+                .reserve_prepared_text_retained_bytes(cluster_retained_bytes)?,
         })
     }
 
@@ -340,11 +525,205 @@ impl FlowchartPreparedNodes {
     pub(super) fn node(&self, id: &str) -> Option<&super::node_effect::PreparedNodeTerminal> {
         self.terminals.get(id)
     }
+    pub(super) fn cluster_ids(&self) -> impl Iterator<Item = &str> {
+        self.cluster_ids.iter().map(String::as_str)
+    }
+    pub(super) fn cluster(&self, id: &str) -> crate::Result<&FlowchartPreparedCluster> {
+        self.clusters
+            .get(id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart cluster `{id}`"),
+            })
+    }
+}
+
+fn prepared_cluster_ids(
+    model: &crate::flowchart::FlowchartModel,
+    layout: FlowchartNodeLayoutView<'_>,
+    input: &FlowchartNodeInventoryInput<'_>,
+    schedule: &FlowchartNodeRootSchedule,
+) -> crate::Result<Vec<String>> {
+    let mut ids = Vec::new();
+    let scheduled_roots = schedule
+        .nested
+        .iter()
+        .map(|(id, _)| id.as_str())
+        .collect::<FxHashSet<_>>();
+    if input.uses_elk_adapter_dom {
+        ids.extend(
+            input
+                .dom_node_order_by_root
+                .get("")
+                .into_iter()
+                .flatten()
+                .filter(|id| {
+                    input.subgraphs_by_id.contains_key(id.as_str())
+                        && input.layout_clusters_by_id.contains_key(id.as_str())
+                })
+                .cloned(),
+        );
+        if ids.is_empty() {
+            let mut seen = FxHashSet::default();
+            ids.extend(
+                model
+                    .subgraphs
+                    .iter()
+                    .filter(|subgraph| {
+                        seen.insert(subgraph.id.as_str())
+                            && input
+                                .layout_clusters_by_id
+                                .contains_key(subgraph.id.as_str())
+                    })
+                    .map(|subgraph| subgraph.id.clone()),
+            );
+        }
+    } else {
+        for id in input.subgraphs_by_id.keys().copied() {
+            if !input.subgraph_has_children(id) || !input.layout_clusters_by_id.contains_key(id) {
+                continue;
+            }
+            let root = if input.recursive_clusters.contains(id) {
+                Some(id)
+            } else {
+                schedule.effective_parents.parent(id)
+            };
+            if root.is_none_or(|root| scheduled_roots.contains(root)) {
+                ids.push(id.to_owned());
+            }
+        }
+        if let FlowchartNodeLayoutView::Swimlane(layout) = layout {
+            ids.extend(
+                layout
+                    .lanes
+                    .iter()
+                    .filter(|lane| {
+                        !input.subgraphs_by_id.contains_key(lane.id.as_str())
+                            && input.layout_clusters_by_id.contains_key(lane.id.as_str())
+                            && lane
+                                .parent_id
+                                .as_deref()
+                                .is_none_or(|root| scheduled_roots.contains(root))
+                    })
+                    .map(|lane| lane.id.clone()),
+            );
+        }
+    }
+    let mut seen = FxHashSet::default();
+    for id in &ids {
+        input.work_meter.charge(1)?;
+        if !seen.insert(id.as_str()) {
+            return Err(crate::Error::InvalidModel {
+                message: format!("Flowchart hierarchy emits cluster `{id}` more than once"),
+            });
+        }
+    }
+    Ok(ids)
 }
 
 #[cfg(test)]
 mod source_typography_tests {
     use super::*;
+
+    #[test]
+    fn cluster_terminal_uses_first_source_owner_and_releases_retained_paint() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nflowchart LR\nclassDef first fill:#112233,font-size:19px\nclassDef last fill:#aabbcc,font-size:27px\nsubgraph Shared[First]\nA\nend\nclass Shared first\nsubgraph Shared[Last]\nB\nend\n",
+                merman_core::ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let render_context = parsed.flowchart_render_context().unwrap().clone();
+        let (metadata, semantic) = parsed.into_parts();
+        let merman_core::RenderSemanticModel::Flowchart(model) = semantic else {
+            panic!("Flowchart model");
+        };
+        assert_eq!(model.subgraphs.len(), 1);
+        assert_eq!(model.subgraphs[0].title, "First");
+        assert_eq!(
+            render_context
+                .effective_subgraph_css(0, &model.subgraphs[0])
+                .0,
+            ["first"]
+        );
+        let work = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let edge_style = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &metadata.effective_config,
+            false,
+            &work,
+        )
+        .unwrap();
+        let mut layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+            &model, &render_context, &metadata.effective_config,
+            &crate::text::DeterministicTextMeasurer::default(), None, None, &edge_style, work.clone(),
+        ).unwrap();
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            None,
+            &metadata.effective_config,
+            false,
+            &work,
+        )
+        .unwrap();
+        let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let render_config = super::render_config::prepare_flowchart_render_config(
+            &model,
+            &metadata.effective_config,
+            &theme.compatibility,
+            layout.uses_elk_adapter_dom,
+            sidecar.base_typography(),
+            sidecar.edge_label_padding(),
+        );
+        let before = work.prepared_text_retained_bytes();
+        let prepared = FlowchartPreparedNodes::prepare(
+            &model,
+            &render_context,
+            FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
+            None,
+            &metadata.effective_config,
+            &theme,
+            &render_config,
+            &work,
+        )
+        .unwrap();
+        assert_eq!(prepared.cluster_ids().collect::<Vec<_>>(), ["Shared"]);
+        let terminal = prepared.cluster("Shared").unwrap();
+        assert!(terminal.compiled.node_style.contains("#112233"));
+        assert!(!terminal.compiled.node_style.contains("#aabbcc"));
+        assert_eq!(terminal.title_text_style.font_size, 19.0);
+        assert!(prepared._cluster_retained_reservation.retained_bytes() > 0);
+        assert!(work.prepared_text_retained_bytes() > before);
+        drop(prepared);
+        assert_eq!(work.prepared_text_retained_bytes(), before);
+
+        layout.uses_elk_adapter_dom = true;
+        layout
+            .dom_node_order_by_root
+            .insert(String::new(), vec!["Shared".into(), "Shared".into()]);
+        let helpers = std::collections::BTreeSet::new();
+        let input = FlowchartNodeInventoryInput::prepare(
+            &model,
+            &render_context,
+            FlowchartNodeLayoutView::Flowchart(&layout),
+            &helpers,
+            &work,
+        );
+        let schedule = FlowchartNodeRootSchedule::prepare(&input).unwrap();
+        let error = prepared_cluster_ids(
+            &model,
+            FlowchartNodeLayoutView::Flowchart(&layout),
+            &input,
+            &schedule,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, crate::Error::InvalidModel { message } if message.contains("cluster `Shared` more than once"))
+        );
+    }
 
     #[test]
     fn disabled_svg_label_preparation_still_enforces_retained_font_limit() {
@@ -396,6 +775,14 @@ mod source_typography_tests {
         )
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let render_config = super::render_config::prepare_flowchart_render_config(
+            &model,
+            &metadata.effective_config,
+            &theme.compatibility,
+            layout.uses_elk_adapter_dom,
+            sidecar.base_typography(),
+            sidecar.edge_label_padding(),
+        );
         let result = FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
@@ -404,6 +791,7 @@ mod source_typography_tests {
             None,
             &metadata.effective_config,
             &theme,
+            &render_config,
             &work,
         );
         assert!(

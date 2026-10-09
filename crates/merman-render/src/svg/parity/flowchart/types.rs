@@ -79,10 +79,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,
-    pub(in crate::svg::parity::flowchart) cluster_fill_color: &'a String,
-    pub(in crate::svg::parity::flowchart) cluster_stroke_color: &'a String,
-    pub(in crate::svg::parity::flowchart) cluster_fill_config_override: bool,
-    pub(in crate::svg::parity::flowchart) cluster_stroke_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) edge_label_padding:
@@ -94,7 +90,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
-    pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) edge_order: Vec<FlowchartRenderEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) edges_by_key:
         FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::flowchart::FlowEdge>,
@@ -116,11 +111,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         Option<crate::model::SwimlaneDirection>,
     pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
         FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
-    pub(in crate::svg::parity::flowchart) swimlane_lane_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
         FxHashMap<&'a str, FlowchartRenderEdgeRef<'a>>,
-    pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
-        &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
     pub(in crate::svg::parity::flowchart) node_padding: f64,
     pub(in crate::svg::parity::flowchart) wrapping_width: f64,

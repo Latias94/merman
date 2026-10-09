@@ -22,8 +22,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
     pub(in crate::svg::parity::flowchart) edge_cache:
         &'cache mut FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     pub(in crate::svg::parity::flowchart) hierarchy_plan: &'marker FlowchartHierarchyPlan<'data>,
-    pub(in crate::svg::parity::flowchart) cluster_theme_plan:
-        &'marker crate::flowchart::FlowchartClusterThemePlan<'data>,
     pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
     pub(in crate::svg::parity::flowchart) edge_label_positions:
         Option<FxHashMap<crate::flowchart::FlowchartEdgeKey, crate::model::LayoutPoint>>,
@@ -267,14 +265,7 @@ fn render_flowchart_elk_subgraphs(
     out.push_str(r#"<g class="clusters">"#);
     for &cluster in clusters_to_draw {
         ctx.checkpoint_emit()?;
-        render_flowchart_cluster(
-            out,
-            ctx,
-            cluster,
-            session.cluster_theme_plan.style(cluster.id.as_str())?,
-            0.0,
-            0.0,
-        )?;
+        render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0)?;
         out.checkpoint()?;
     }
     out.push_str("</g>");
@@ -442,14 +433,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
         out.push_str(r#"<g class="clusters">"#);
         for &cluster in clusters_to_draw {
             ctx.checkpoint_emit()?;
-            render_flowchart_cluster(
-                out,
-                ctx,
-                cluster,
-                session.cluster_theme_plan.style(cluster.id.as_str())?,
-                origin_x,
-                frame.content_origin_y,
-            )?;
+            render_flowchart_cluster(out, ctx, cluster, origin_x, frame.content_origin_y)?;
             out.checkpoint()?;
         }
         out.push_str("</g>");

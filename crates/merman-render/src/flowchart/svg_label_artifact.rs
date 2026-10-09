@@ -1349,6 +1349,8 @@ impl FlowchartSvgLabelSidecarBuilder {
             FlowchartSvgLabelOwner::Node(_)
                 | FlowchartSvgLabelOwner::EmptySubgraphNode(_)
                 | FlowchartSvgLabelOwner::SwimlaneNode(_)
+                | FlowchartSvgLabelOwner::SubgraphTitle(_)
+                | FlowchartSvgLabelOwner::SwimlaneGroupTitle(_)
         ) && self
             .pending
             .borrow()
@@ -2766,7 +2768,7 @@ mod tests {
     #[test]
     fn render_id_budget_is_single_owned_across_source_native_and_math() {
         use crate::resources::RenderResourcePolicy;
-        fn retained_for(render_id: &str, math: bool) -> usize {
+        fn retained_for(render_id: &str, math: bool, owner: FlowchartSvgLabelOwner) -> usize {
             let work = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ));
@@ -2777,7 +2779,6 @@ mod tests {
             let environment = RenderEnvironment::deterministic();
             let session = environment.begin_session().unwrap();
             let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-            let owner = FlowchartSvgLabelOwner::Node(0);
             builder.measure_for_layout(
                 owner,
                 render_id,
@@ -2830,11 +2831,17 @@ mod tests {
             assert!(builder.pending.borrow().math.get(owner).is_some());
             work.prepared_text_retained_bytes()
         }
-        for math in [false, true] {
-            assert_eq!(
-                retained_for("abcdefghij", math) - retained_for("a", math),
-                9
-            );
+        for owner in [
+            FlowchartSvgLabelOwner::Node(0),
+            FlowchartSvgLabelOwner::SubgraphTitle(0),
+            FlowchartSvgLabelOwner::SwimlaneGroupTitle(0),
+        ] {
+            for math in [false, true] {
+                assert_eq!(
+                    retained_for("abcdefghij", math, owner) - retained_for("a", math, owner),
+                    9
+                );
+            }
         }
     }
 
@@ -2893,6 +2900,42 @@ mod tests {
             assert_eq!(source.font_size, style.font_size);
             assert_eq!(source.font_weight, style.font_weight);
             assert_eq!(source.font_style, style.font_style);
+        }
+    }
+
+    #[test]
+    fn cluster_source_typography_keeps_first_owner_on_repeated_measurement() {
+        let config = MermaidConfig::default();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        for owner in [
+            FlowchartSvgLabelOwner::SubgraphTitle(0),
+            FlowchartSvgLabelOwner::SwimlaneGroupTitle(0),
+        ] {
+            let builder = FlowchartSvgLabelSidecarBuilder::default();
+            for (render_id, size) in [("first", 19.0), ("second", 27.0)] {
+                let style = TextStyle {
+                    font_size: size,
+                    ..TextStyle::default()
+                };
+                builder.measure_for_layout(
+                    owner,
+                    render_id,
+                    FlowchartLabelMetricsRequest {
+                        measurer: &measurer,
+                        raw_label: "Title",
+                        label_type: "html",
+                        style: &style,
+                        max_width_px: None,
+                        wrap_mode: WrapMode::HtmlLike,
+                        config: &config,
+                        math_renderer: None,
+                    },
+                    true,
+                    FlowchartSvgWidthMode::Bbox,
+                );
+            }
+            let sidecar = builder.finish();
+            assert_eq!(sidecar.node_source_style(owner).unwrap().font_size, 19.0);
         }
     }
 

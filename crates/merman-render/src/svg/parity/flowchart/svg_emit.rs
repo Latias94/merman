@@ -149,10 +149,6 @@ pub(super) fn render_flowchart_svg_model(
     let node_fill_config_override = render_config.node_fill_config_override;
     let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
     let edge_stroke_config_override = render_config.edge_stroke_config_override;
-    let cluster_fill_color = &render_config.cluster_fill_color;
-    let cluster_stroke_color = &render_config.cluster_stroke_color;
-    let cluster_fill_config_override = render_config.cluster_fill_config_override;
-    let cluster_stroke_config_override = render_config.cluster_stroke_config_override;
     let node_corner_radius_config_override = render_config.node_corner_radius_config_override;
     let edge_corner_radius = render_config.edge_corner_radius;
     let edge_label_padding = render_config.edge_label_padding;
@@ -189,11 +185,6 @@ pub(super) fn render_flowchart_svg_model(
         .flat_map(|layout| layout.lanes.iter())
         .map(|lane| (lane.id.as_str(), lane))
         .collect();
-    let swimlane_lane_order = swimlane_layout
-        .into_iter()
-        .flat_map(|layout| layout.lanes.iter())
-        .map(|lane| lane.id.as_str())
-        .collect::<Vec<_>>();
     let swimlane_edge_label_edges_by_node_id: FxHashMap<
         &str,
         super::render_input::FlowchartRenderEdgeRef<'_>,
@@ -206,7 +197,6 @@ pub(super) fn render_flowchart_svg_model(
             Some((label_node_id, edge))
         })
         .collect();
-    let mut subgraph_order: Vec<&str> = Vec::with_capacity(model.subgraphs.len());
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
     let mut subgraph_index_by_id: FxHashMap<&str, usize> =
@@ -217,7 +207,6 @@ pub(super) fn render_flowchart_svg_model(
         if let std::collections::hash_map::Entry::Vacant(entry) = subgraphs_by_id.entry(id) {
             entry.insert(sg);
             subgraph_index_by_id.insert(id, subgraph_index);
-            subgraph_order.push(id);
         }
         if !sg.nodes.is_empty()
             && !render_context.is_subgraph_collapsed(id)
@@ -349,10 +338,6 @@ pub(super) fn render_flowchart_svg_model(
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
-        cluster_fill_color,
-        cluster_stroke_color,
-        cluster_fill_config_override,
-        cluster_stroke_config_override,
         node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
@@ -362,7 +347,6 @@ pub(super) fn render_flowchart_svg_model(
         edge_theme,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
         trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
-        subgraph_order,
         edge_order,
         nodes_by_id,
         subgraphs_by_id,
@@ -376,9 +360,7 @@ pub(super) fn render_flowchart_svg_model(
         layout_clusters_by_id,
         swimlane_direction,
         swimlane_lanes_by_id,
-        swimlane_lane_order,
         swimlane_edge_label_edges_by_node_id,
-        dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
         node_padding,
         wrapping_width,
@@ -389,15 +371,6 @@ pub(super) fn render_flowchart_svg_model(
     };
 
     let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, prepared_nodes.schedule())?;
-    let cluster_theme_plan = crate::flowchart::FlowchartClusterThemePlan::prepare(
-        ctx.resolved_theme,
-        ctx.subgraph_order
-            .iter()
-            .copied()
-            .chain(ctx.swimlane_lane_order.iter().copied()),
-        hierarchy_plan.rendered_cluster_ids(),
-        ctx.work_meter,
-    )?;
     text_surface_paint
         .begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
@@ -574,7 +547,6 @@ pub(super) fn render_flowchart_svg_model(
         details: &mut detail,
         edge_cache: &mut edge_path_cache,
         hierarchy_plan: &hierarchy_plan,
-        cluster_theme_plan: &cluster_theme_plan,
         marker_plan: &marker_plan,
         edge_label_positions: edge_paint_geometry.as_ref().map(|_| FxHashMap::default()),
     };
@@ -929,6 +901,14 @@ mod integration_tests {
             None,
             &metadata.effective_config,
             &prepared_theme,
+            &super::render_config::prepare_flowchart_render_config(
+                &model,
+                &metadata.effective_config,
+                &prepared_theme.compatibility,
+                layout.uses_elk_adapter_dom,
+                sidecar.base_typography(),
+                sidecar.edge_label_padding(),
+            ),
             session.work_meter(),
         )
         .expect("prepared nodes");
@@ -1089,6 +1069,14 @@ mod integration_tests {
                 None,
                 &metadata.effective_config,
                 &prepared_theme,
+                &super::render_config::prepare_flowchart_render_config(
+                    &model,
+                    &metadata.effective_config,
+                    &prepared_theme.compatibility,
+                    layout.uses_elk_adapter_dom,
+                    sidecar.base_typography(),
+                    sidecar.edge_label_padding(),
+                ),
                 session.work_meter(),
             )
             .expect("prepared nodes");

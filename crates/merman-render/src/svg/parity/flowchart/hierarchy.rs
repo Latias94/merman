@@ -478,40 +478,26 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
         parent_index: &'a FlowchartEffectiveParentIndex,
         ancestry: &FlowchartAncestryIndex<'a>,
     ) -> crate::Result<Self> {
-        let scan_work = ctx
-            .subgraphs_by_id
-            .len()
-            .checked_add(ctx.swimlane_lanes_by_id.len())
-            .ok_or_else(|| ctx.work_meter.arithmetic_overflow())?;
-        ctx.work_meter.charge(scan_work)?;
-
         let mut buckets = Self::default();
-        for id in ctx.subgraphs_by_id.keys().copied() {
-            if !ctx.subgraph_has_children(id) {
-                continue;
-            }
-            let Some(cluster) = ctx.layout_clusters_by_id.get(id).copied() else {
-                continue;
-            };
-            let root = if ctx.recursive_clusters.contains(id) {
-                Some(id)
+        for id in ctx.prepared_nodes.cluster_ids() {
+            ctx.work_meter.charge(1)?;
+            let cluster = ctx.layout_clusters_by_id.get(id).copied().ok_or_else(|| {
+                crate::Error::InvalidModel {
+                    message: format!("missing prepared Flowchart cluster geometry `{id}`"),
+                }
+            })?;
+            let root = if ctx.subgraphs_by_id.contains_key(id) {
+                if ctx.recursive_clusters.contains(id) {
+                    Some(cluster.id.as_str())
+                } else {
+                    parent_index.parent(cluster.id.as_str())
+                }
             } else {
-                parent_index.parent(id)
+                ctx.swimlane_lanes_by_id
+                    .get(id)
+                    .and_then(|lane| lane.parent_id.as_deref())
             };
             buckets.by_root.entry(root).or_default().push(cluster);
-        }
-        for lane in ctx.swimlane_lanes_by_id.values().copied() {
-            if ctx.subgraphs_by_id.contains_key(lane.id.as_str()) {
-                continue;
-            }
-            let Some(cluster) = ctx.layout_clusters_by_id.get(lane.id.as_str()).copied() else {
-                continue;
-            };
-            buckets
-                .by_root
-                .entry(lane.parent_id.as_deref())
-                .or_default()
-                .push(cluster);
         }
 
         for clusters in buckets.by_root.values_mut() {
@@ -522,38 +508,14 @@ impl<'a> FlowchartRenderedClusterBuckets<'a> {
     }
 
     fn prepare_elk(ctx: &'a FlowchartRenderCtx<'a>) -> crate::Result<Self> {
-        let mut clusters = ctx
-            .dom_node_order_by_root
-            .get("")
-            .into_iter()
-            .flat_map(|ids| ids.iter().map(String::as_str))
-            .filter_map(|id| {
-                ctx.subgraphs_by_id.get(id)?;
-                if !ctx.subgraph_has_children(id) && !ctx.uses_elk_adapter_dom {
-                    return None;
+        let mut clusters = Vec::new();
+        for id in ctx.prepared_nodes.cluster_ids() {
+            ctx.work_meter.charge(1)?;
+            clusters.push(ctx.layout_clusters_by_id.get(id).copied().ok_or_else(|| {
+                crate::Error::InvalidModel {
+                    message: format!("missing prepared Flowchart cluster geometry `{id}`"),
                 }
-                ctx.layout_clusters_by_id.get(id).copied()
-            })
-            .collect::<Vec<_>>();
-        ctx.work_meter.charge(
-            ctx.dom_node_order_by_root
-                .get("")
-                .map_or(0, std::vec::Vec::len),
-        )?;
-
-        if clusters.is_empty() {
-            ctx.work_meter.charge(ctx.subgraph_order.len())?;
-            clusters = ctx
-                .subgraph_order
-                .iter()
-                .filter_map(|id| {
-                    ctx.subgraphs_by_id.get(*id)?;
-                    if !ctx.subgraph_has_children(id) && !ctx.uses_elk_adapter_dom {
-                        return None;
-                    }
-                    ctx.layout_clusters_by_id.get(*id).copied()
-                })
-                .collect();
+            })?);
         }
 
         let mut by_root = FxHashMap::default();
@@ -1151,7 +1113,7 @@ impl FlowchartEffectiveParentIndex {
         })
     }
 
-    fn parent(&self, id: &str) -> Option<&str> {
+    pub(super) fn parent(&self, id: &str) -> Option<&str> {
         self.entries
             .get(id)
             .and_then(|(parent, _)| parent.as_deref())

@@ -221,7 +221,6 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     cluster: &LayoutCluster,
-    cluster_theme: &crate::flowchart::FlowchartClusterThemeStyle,
     origin_x: f64,
     origin_y: f64,
 ) -> crate::Result<()> {
@@ -229,13 +228,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         && lane.parent_id.is_none()
     {
         super::super::swimlane::render_swimlane_cluster(
-            out,
-            ctx,
-            cluster,
-            cluster_theme,
-            lane,
-            origin_x,
-            origin_y,
+            out, ctx, cluster, lane, origin_x, origin_y,
         )?;
         return Ok(());
     }
@@ -262,34 +255,18 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         return Ok(());
     }
 
-    let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
-    let compiled_styles = flowchart_compile_styles(ctx.class_defs, classes, styles, &[]);
-    let fill_precedence = FlowchartFacetPrecedence::new(
-        compiled_styles.source_fill_status(),
-        ctx.cluster_fill_config_override,
-    );
-    let stroke_precedence = FlowchartFacetPrecedence::new(
-        compiled_styles.source_stroke_status(),
-        ctx.cluster_stroke_config_override,
-    );
-    // Cluster CSS has a fixed width fallback; node strokeWidth config does not own it.
-    let stroke_width_precedence =
-        FlowchartFacetPrecedence::new(compiled_styles.source_stroke_width_status(), false);
-    let typed_stroke_width = cluster_theme.stroke_width_value(stroke_width_precedence);
-    let mut rect_style = compiled_styles.node_style.trim().to_string();
-    cluster_theme.append_inline_style(
-        &mut rect_style,
-        fill_precedence,
-        stroke_precedence,
-        stroke_width_precedence,
-    );
-    let fill = cluster_theme
-        .fill_value(fill_precedence, true)
-        .unwrap_or(ctx.cluster_fill_color);
-    let stroke = cluster_theme
-        .stroke_value(stroke_precedence, true)
-        .unwrap_or(ctx.cluster_stroke_color);
+    let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
+    let cluster_theme = &terminal.theme;
+    let compiled_styles = &terminal.compiled;
+    let fill_precedence = terminal.fill_precedence;
+    let stroke_precedence = terminal.stroke_precedence;
+    let stroke_width_precedence = terminal.stroke_width_precedence;
+    let typed_stroke_width = terminal.typed_stroke_width;
+    let rect_style = terminal.rect_style.as_str();
+    let fill = terminal.fill.as_str();
+    let stroke = terminal.stroke.as_str();
     let label_style = compiled_styles.label_style.trim();
+    let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
@@ -321,16 +298,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             !crate::flowchart::flowchart_label_is_empty_for_render(render_title),
             false,
         );
-    let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-        if ctx.edge_html_labels {
-            ctx.html_label_text_style
-        } else {
-            ctx.text_style
-        },
-        ctx.class_defs,
-        classes,
-        styles,
-    );
+    let title_text_style = terminal.title_text_style.as_ref();
     // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
     // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
     let markdown_wrap_width = if ctx.uses_elk_adapter_dom {
@@ -344,7 +312,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                 measurer: ctx.measurer,
                 raw_label: render_title,
                 label_type,
-                style: title_text_style.as_ref(),
+                style: title_text_style,
                 max_width_px: Some(rect_w),
                 wrap_mode: ctx.edge_wrap_mode,
                 config: ctx.config,
@@ -396,8 +364,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         let shape_source_receipt = write_flowchart_cluster_shape(
             out,
             ctx,
-            &compiled_styles,
-            &rect_style,
+            compiled_styles,
+            rect_style,
             typed_stroke_width,
             &fill_path_id,
             fill,
@@ -410,7 +378,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         record_cluster_shape_emission(
             ctx,
             cluster_theme,
-            &compiled_styles,
+            compiled_styles,
             cluster.id.as_str(),
             shape_source_receipt,
             fill_precedence,
@@ -430,7 +398,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                     render_title,
                     true,
                     ctx.measurer,
-                    title_text_style.as_ref(),
+                    title_text_style,
                     Some(markdown_wrap_width),
                 );
             } else {
@@ -442,7 +410,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                 title_owner,
                 render_title,
                 ctx.measurer,
-                title_text_style.as_ref(),
+                title_text_style,
                 None,
                 true,
                 crate::flowchart::FlowchartSvgWidthMode::Bbox,
@@ -537,8 +505,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let shape_source_receipt = write_flowchart_cluster_shape(
         out,
         ctx,
-        &compiled_styles,
-        &rect_style,
+        compiled_styles,
+        rect_style,
         typed_stroke_width,
         &fill_path_id,
         fill,
@@ -551,7 +519,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     record_cluster_shape_emission(
         ctx,
         cluster_theme,
-        &compiled_styles,
+        compiled_styles,
         cluster.id.as_str(),
         shape_source_receipt,
         fill_precedence,

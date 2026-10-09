@@ -160,8 +160,7 @@ impl PreparedNodeSelection {
                 .to_owned(),
             typed_radius,
             source_radii: source.rectangle_source_radii(),
-            configured_radius: (flowchart_config_look(ctx.config) == "neo"
-                && ctx.node_corner_radius_config_override)
+            configured_radius: (ctx.look.is_neo() && ctx.node_corner_radius_config_override)
                 .then_some(ctx.node_corner_radius),
             typed_label_fill: typed_label_fill.map(str::to_owned),
             typed_fill_selected: fill.is_some(),
@@ -191,29 +190,25 @@ pub(super) struct NodeSelectionInputs<'a> {
     node_border_color: &'a str,
     node_stroke_width: f32,
     node_corner_radius: f64,
-    config: &'a merman_core::MermaidConfig,
+    look: crate::config::DiagramLook<'static>,
 }
 impl<'a> NodeSelectionInputs<'a> {
     pub(super) fn new(
-        config: &'a merman_core::MermaidConfig,
         compatibility: &'a crate::flowchart::FlowchartCompatibilityBinding,
+        render_config: &super::render_config::FlowchartRenderConfig,
     ) -> Self {
-        let owned =
-            |path| merman_core::__private::config_path_overrides_typed_default(config, path);
         Self {
-            node_fill_config_override: owned("themeVariables.mainBkg"),
-            node_border_config_override: owned("themeVariables.nodeBorder"),
-            node_stroke_width_config_override: owned("themeVariables.strokeWidth"),
-            node_corner_radius_config_override: owned("themeVariables.radius"),
-            node_label_fill_config_override:
-                super::render_config::flowchart_node_label_fill_config_override(config),
-            node_typography_config_ownership:
-                crate::flowchart::flowchart_typography_config_ownership(config),
+            node_fill_config_override: render_config.node_fill_config_override,
+            node_border_config_override: render_config.node_border_config_override,
+            node_stroke_width_config_override: render_config.node_stroke_width_config_override,
+            node_corner_radius_config_override: render_config.node_corner_radius_config_override,
+            node_label_fill_config_override: render_config.node_label_fill_config_override,
+            node_typography_config_ownership: render_config.node_typography_config_ownership,
             node_fill_color: &compatibility.main_bkg,
             node_border_color: &compatibility.node_border,
             node_stroke_width: compatibility.node_stroke_width,
             node_corner_radius: compatibility.node_corner_radius,
-            config,
+            look: compatibility.look,
         }
     }
 }
@@ -282,7 +277,7 @@ impl FlowchartNodeEffects {
             // would clip the source by substituting the renderer default stroke width.
             let shadow = if source_filter.is_absent()
                 && source_stroke_width != FlowchartSourceFacetStatus::Unverified
-                && flowchart_config_look(ctx.config) == "classic"
+                && ctx.compatibility.look.as_str() == "classic"
             {
                 if let (Some(effect), Some((_, _, width, height))) = (style.effect(), geometry) {
                     let half_stroke = f64::from(selection.effect_stroke_width) / 2.0;
