@@ -38,6 +38,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBoundsRequest<
 pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBounds {
     pub diagram_title: Option<String>,
     pub title_anchor_x: f64,
+    pub source_paint_bounds: Option<Bounds>,
     pub bbox_min_x: f64,
     pub bbox_min_y: f64,
     pub bbox_max_x: f64,
@@ -516,12 +517,118 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
         bbox_max_y = bbox_max_y.max(baseline_y + descent);
     }
 
+    let source_paint_bounds = builtin_neo_paint_bounds(ctx, hierarchy_plan)?;
+
     Ok(FlowchartViewboxBounds {
         diagram_title,
         title_anchor_x,
+        source_paint_bounds,
         bbox_min_x,
         bbox_min_y,
         bbox_max_x,
         bbox_max_y,
     })
+}
+
+// Union known source paint after diagram padding, so ordinary padded outputs retain their
+// existing viewport. Font-dependent title ink remains owned by the host measurement seam.
+fn builtin_neo_paint_bounds(
+    ctx: &FlowchartRenderCtx<'_>,
+    hierarchy: &FlowchartHierarchyPlan<'_>,
+) -> Result<Option<Bounds>> {
+    if !flowchart_config_diagram_look(ctx.config).is_neo() {
+        return Ok(None);
+    }
+    let title_shift = crate::flowchart::FlowchartConfigView::new(ctx.config.as_value())
+        .render_subgraph_title_y_shift();
+    let y_offset = |id: &str, recursive: bool| {
+        if recursive || hierarchy.effective_parent(id).is_some() {
+            -title_shift
+        } else {
+            0.0
+        }
+    };
+    let mut bounds: Option<Bounds> = None;
+    let mut include = |min_x: f64, min_y: f64, max_x: f64, max_y: f64| {
+        if let Some(bounds) = &mut bounds {
+            bounds.min_x = bounds.min_x.min(min_x);
+            bounds.min_y = bounds.min_y.min(min_y);
+            bounds.max_x = bounds.max_x.max(max_x);
+            bounds.max_y = bounds.max_y.max(max_y);
+        } else {
+            bounds = Some(Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            });
+        }
+    };
+    for cluster in ctx.layout_clusters_by_id.values() {
+        ctx.work_meter.charge(1)?;
+        // The default cluster writer emits a one-pixel outline without a Neo filter.
+        let y = cluster.y
+            + y_offset(
+                &cluster.id,
+                ctx.recursive_clusters.contains(cluster.id.as_str()),
+            );
+        include(
+            cluster.x - cluster.width / 2.0 - 0.5,
+            y - cluster.height / 2.0 - 0.5,
+            cluster.x + cluster.width / 2.0 + 0.5,
+            y + cluster.height / 2.0 + 0.5,
+        );
+    }
+    if ctx
+        .config
+        .as_value()
+        .pointer("/themeVariables/dropShadow")
+        .and_then(serde_json::Value::as_str)
+        != Some("url(#drop-shadow)")
+    {
+        return Ok(bounds);
+    }
+    for id in hierarchy.rendered_node_ids() {
+        ctx.work_meter.charge(1)?;
+        let Some(node) = ctx.layout_nodes_by_id.get(id) else {
+            continue;
+        };
+        let Some(info) = super::render::node::helpers::resolve_node_render_info(ctx, id) else {
+            continue;
+        };
+        if !matches!(
+            crate::flowchart::FlowchartShape::resolve(info.shape)?,
+            crate::flowchart::FlowchartShape::Process
+                | crate::flowchart::FlowchartShape::RoundedRectangle
+        ) {
+            continue;
+        }
+        if ctx
+            .node_effects
+            .get()
+            .and_then(|effects| effects.node(id))
+            .is_some_and(|effect| effect.shadow.is_some())
+        {
+            continue;
+        }
+        let source =
+            flowchart_compile_node_styles(ctx.class_defs, info.node_classes, info.node_styles, &[]);
+        if !source.source_filter_status().is_absent() {
+            continue;
+        }
+        let stroke = f64::from(
+            source
+                .admitted_stroke_width_value()
+                .unwrap_or(ctx.node_stroke_width),
+        ) / 2.0;
+        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
+        let y = node.y + y_offset(id, node.is_cluster && ctx.recursive_clusters.contains(id));
+        include(
+            node.x - node.width / 2.0 - stroke,
+            y - node.height / 2.0 - stroke,
+            node.x + node.width / 2.0 + stroke + offset,
+            y + node.height / 2.0 + stroke + offset,
+        );
+    }
+    Ok(bounds)
 }

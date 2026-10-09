@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// Mermaid Neo emits a zero-blur shadow translated by this distance on each axis.
+pub(super) const NEO_SHADOW_OFFSET_PX: f64 = 4.0;
+
 pub(super) fn push_look_shadow_defs(
     out: &mut impl SvgOutput,
     diagram_id: impl SvgDiagramIdValue,

@@ -1737,6 +1737,29 @@ sequenceDiagram
 }
 
 #[test]
+fn sequence_builtin_neo_box_shadow_fits_the_root_viewport() {
+    let svg = render_sequence_svg_from_fixture("box_variants.mmd");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let (viewbox, _) = root_view_box_and_max_width(&svg);
+    let right = viewbox[0] + viewbox[2];
+    let bottom = viewbox[1] + viewbox[3];
+    let mut checked = 0;
+    for frame in document
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+    {
+        let number = |name| frame.attribute(name).unwrap().parse::<f64>().unwrap();
+        let x = number("x");
+        let y = number("y");
+        assert!(x - 0.5 >= viewbox[0] && y - 0.5 >= viewbox[1]);
+        assert!(x + number("width") + 4.5 <= right);
+        assert!(y + number("height") + 4.5 <= bottom);
+        checked += 1;
+    }
+    assert!(checked > 0);
+}
+
+#[test]
 fn sequence_control_labels_follow_look_height_margin_and_font() {
     let source = r#"sequenceDiagram
     Alice->>Bob: Start

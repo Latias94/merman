@@ -16,6 +16,60 @@ pub(super) struct SequenceFrameRenderOptions<'a> {
     pub(super) rect_default_fill: &'a str,
 }
 
+fn box_rect_geometry(
+    box_layout: &crate::sequence::SequenceBoxLayout,
+    height: f64,
+    margin: f64,
+) -> Option<[f64; 4]> {
+    let padding = margin * 2.0;
+    Some([
+        box_layout.x? - padding,
+        -padding * 0.25,
+        box_layout.width + padding * 2.0,
+        height + padding * 0.75,
+    ])
+}
+
+pub(super) fn builtin_box_paint_bounds(
+    boxes: &[crate::sequence::SequenceBoxLayout],
+    height: f64,
+    margin: f64,
+    config: &serde_json::Value,
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Option<Bounds>> {
+    let theme = MermaidThemeAdapter::new(config).sequence_diagram();
+    if !crate::config::config_diagram_look(config).is_neo()
+        || theme.drop_shadow.as_str() != "url(#drop-shadow)"
+    {
+        return Ok(None);
+    }
+    let mut bounds: Option<Bounds> = None;
+    for (index, box_layout) in boxes.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        let Some([x, y, width, height]) = box_rect_geometry(box_layout, height, margin) else {
+            continue;
+        };
+        // Box frames use SVG's default one-pixel stroke and the emitted zero-blur Neo filter.
+        let half_stroke = 0.5;
+        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
+        let paint = Bounds {
+            min_x: x - half_stroke,
+            min_y: y - half_stroke,
+            max_x: x + width + half_stroke + offset,
+            max_y: y + height + half_stroke + offset,
+        };
+        if let Some(bounds) = &mut bounds {
+            bounds.min_x = bounds.min_x.min(paint.min_x);
+            bounds.min_y = bounds.min_y.min(paint.min_y);
+            bounds.max_x = bounds.max_x.max(paint.max_x);
+            bounds.max_y = bounds.max_y.max(paint.max_y);
+        } else {
+            bounds = Some(paint);
+        }
+    }
+    Ok(bounds)
+}
+
 pub(super) fn render_sequence_box_frames_and_rect_blocks(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
@@ -39,19 +93,15 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
         .enumerate()
     {
         checkpoints.checkpoint_loop(emission_index)?;
-        let Some(box_x) = box_layout.x else {
+        let Some([x, y, w, h]) =
+            box_rect_geometry(box_layout, options.box_height, options.box_margin)
+        else {
             if b.name.is_some() {
                 typography_receipt
                     .record_missing_text_effect(crate::sequence::SequenceTextSurface::BoxTitle);
             }
             continue;
         };
-        let padding = options.box_margin * 2.0;
-        let x = box_x - padding;
-        let w = box_layout.width + padding * 2.0;
-        let y = -padding * 0.25;
-        let h = options.box_height + padding * 0.75;
-
         out.push_str("<g>");
         let _ = write!(
             out,

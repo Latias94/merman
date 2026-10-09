@@ -2099,12 +2099,13 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
 #[test]
 fn flowchart_diagram_padding_zero_keeps_zero_user_padding() {
     let default = render_flowchart_svg_from_text(
-        r#"flowchart TB
+        r#"%%{init: {"look": "classic"}}%%
+flowchart TB
 A
 "#,
     );
     let zero = render_flowchart_svg_from_text(
-        r#"%%{init: {"flowchart": {"diagramPadding": 0}}}%%
+        r#"%%{init: {"look": "classic", "flowchart": {"diagramPadding": 0}}}%%
 flowchart TB
 A
 "#,
@@ -2129,10 +2130,47 @@ A
 }
 
 #[test]
+fn flowchart_zero_padding_contains_the_builtin_neo_rect_shadow() {
+    let svg = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "neo", "flowchart": {"diagramPadding": 0}}}%%
+flowchart TB
+A
+"#,
+    );
+    let viewbox = flowchart_svg_viewbox_values(&svg);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("node"))
+        .unwrap();
+    let translation = node
+        .attribute("transform")
+        .unwrap()
+        .strip_prefix("translate(")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap()
+        .split(',')
+        .map(|v| v.parse::<f64>().unwrap())
+        .collect::<Vec<_>>();
+    let rect = node
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    let number = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+    let x = translation[0] + number("x");
+    let y = translation[1] + number("y");
+    // Neo node rectangles use a two-pixel outline and the shared four-pixel translation.
+    assert!(x - 1.0 >= viewbox[0] && y - 1.0 >= viewbox[1]);
+    assert!(x + number("width") + 5.0 <= viewbox[0] + viewbox[2]);
+    assert!(y + number("height") + 5.0 <= viewbox[1] + viewbox[3]);
+}
+
+#[test]
 fn swimlane_small_diagram_padding_tracks_configured_inset() {
     let render = |padding: &str| {
         render_flowchart_svg_from_text(&format!(
-            r#"%%{{init: {{"flowchart": {{"diagramPadding": {padding}}}}}}}%%
+            r#"%%{{init: {{"look": "classic", "flowchart": {{"diagramPadding": {padding}}}}}}}%%
 swimlane-beta LR
 A --> B
 "#,

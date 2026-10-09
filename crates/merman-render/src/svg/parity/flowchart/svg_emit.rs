@@ -442,6 +442,7 @@ pub(super) fn render_flowchart_svg_model(
     let FlowchartViewboxBounds {
         diagram_title,
         title_anchor_x,
+        source_paint_bounds,
         bbox_min_x,
         bbox_min_y,
         bbox_max_x,
@@ -516,6 +517,7 @@ pub(super) fn render_flowchart_svg_model(
         document_ids: &document_ids,
         use_max_width,
         diagram_padding,
+        source_paint_bounds,
         bbox_min_x,
         bbox_min_y,
         bbox_max_x,
@@ -810,9 +812,10 @@ fn push_flowchart_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
+    let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
     let _ = write!(
         out,
-        r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
         document_ids.drop_shadow(),
         flood_color,
         document_ids.drop_shadow_small(),

@@ -11,6 +11,7 @@ pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub document_ids: &'a FlowchartDocumentIds<'a>,
     pub use_max_width: bool,
     pub diagram_padding: f64,
+    pub source_paint_bounds: Option<crate::model::Bounds>,
     pub bbox_min_x: f64,
     pub bbox_min_y: f64,
     pub bbox_max_x: f64,
@@ -31,13 +32,22 @@ pub(super) struct FlowchartSvgDocument<'a> {
 pub(super) fn prepare_flowchart_svg_document(
     request: FlowchartSvgDocumentRequest<'_>,
 ) -> FlowchartSvgDocument<'_> {
-    let root_bounds = flowchart_root_bounds(
+    let mut root_bounds = flowchart_root_bounds(
         request.bbox_min_x,
         request.bbox_min_y,
         request.bbox_max_x,
         request.bbox_max_y,
         request.diagram_padding,
     );
+    if let Some(paint) = request.source_paint_bounds {
+        root_bounds = root_svg::DiagramBounds::from_extents(
+            root_bounds.min_x.min(paint.min_x),
+            root_bounds.min_y.min(paint.min_y),
+            (root_bounds.min_x + root_bounds.width).max(paint.max_x),
+            (root_bounds.min_y + root_bounds.height).max(paint.max_y),
+            0.0,
+        );
+    }
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
     let root_viewport = root_svg::RootViewportContext::new(request.family_id, request.diagram_id);

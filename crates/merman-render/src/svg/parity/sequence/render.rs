@@ -286,6 +286,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         || frame_theme.stroke_width.is_some()
         || keyword_theme.effect.is_some()
         || keyword_theme.stroke_width.is_some();
+    let box_paint_bounds = super::frames::builtin_box_paint_bounds(
+        prepared.box_layouts(),
+        prepared.box_height(),
+        settings.box_margin,
+        effective_config,
+        checkpoints,
+    )?;
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -301,6 +308,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .unwrap_or(0.0)
             / 2.0,
         &[
+            box_paint_bounds.as_ref(),
             actor_shadows.bounds.as_ref(),
             message_paint.bounds.as_ref(),
             note_paint.bounds.as_ref(),
@@ -470,9 +478,10 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         } else {
             "#FFFFFF"
         };
+        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
         let _ = write!(
             out,
-            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
+            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="{offset}" dy="{offset}" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
         );
         out.checkpoint()?;
     }
@@ -711,6 +720,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                         .unwrap_or(0.0)
                         / 2.0,
                     &[
+                        box_paint_bounds.as_ref(),
                         actor_shadows.bounds.as_ref(),
                         message_paint.bounds.as_ref(),
                         note_paint.bounds.as_ref(),
