@@ -13,6 +13,19 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
+`5e5f5cd0a` prepares the actual Dagre/ELK/Swimlane cluster candidates, source
+styles, final paint and title typography in the existing family artifact. Hierarchy
+consumes that candidate inventory; the obsolete cluster theme plan is removed.
+Node selection also reuses the render record's explicit ownership and prepared
+look. First canonical source/title ownership, ordinal selection, emitted evidence
+and ELK final-width Markdown measurement remain intact. All 4,856 renderer tests
+passed (six skipped), strict Clippy passed, and independent candidate, writer and
+resource reviews found no remaining confirmed findings. A new fixture incorrectly
+treated Flowchart duplicate declarations like ER; it was corrected to assert the
+actual canonical model before testing paint and font ownership. New retained
+accounting covers terminal records/strings and shared typography, not whole-heap
+allocation peak. Edge label source interpretation remains active work.
+
 `afedd43e5` makes the existing concrete Flowchart render configuration an
 artifact-owned value. SVG consumers borrow its strings, styles and lists while
 copying scalar settings. The original Agentflow projected inputs, ELK interpolation
@@ -48,8 +61,8 @@ retained bytes do not measure temporary allocation peak.
 
 - U1: Inventory complete; all 35 supported families remain in scope.
 - U2-U4: Most family terminal bindings are committed. Flowchart node source
-  typography reuse is committed. Cluster and edge source interpretation and shared
-  render-configuration ownership remain active work. Removing the adapter alone
+  typography and cluster bindings are committed. Edge source interpretation and
+  final shared ownership audit remain active work. Removing the adapter alone
   does not close these units.
 - U5: Historical authorization gates, orphaned raster acceptance machinery and
   callers are removed. The final executable-call audit found no surviving invocation.
