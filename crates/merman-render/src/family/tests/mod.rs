@@ -19,10 +19,7 @@ use crate::environment::{
 };
 use crate::svg::SvgPipelinePreset;
 use crate::text::{TextMetrics, WrapMode};
-use merman_core::__private::{
-    ThemeCompatibilityPlan, ThemeFamilyCompatibilityOverlayBuilder, install_theme_compatibility,
-    theme_parse_evidence,
-};
+use merman_core::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
 use merman_core::{
     CustomJsonProvenance, CustomJsonRenderModel, Engine, MermaidConfig, ParseOptions,
 };
@@ -736,61 +733,6 @@ fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api(
         Error::MermaidThemeCompatibility {
             family_id: DiagramFamilyId::STATE,
             residual_count: 1,
-        }
-    ));
-}
-
-#[test]
-fn unknown_fallback_contributions_are_always_portability_residuals() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile empty typed theme");
-    let mut overlay = ThemeFamilyCompatibilityOverlayBuilder::new("state", "test.compatibility.");
-    overlay
-        .try_push(
-            "unknown-fallback",
-            MermaidConfig::from_value(json!({
-                "state": {"titleTopMargin": 77}
-            })),
-        )
-        .expect("bounded fallback contribution");
-    let overlay = overlay.finish();
-    let plan = ThemeCompatibilityPlan::try_new(
-        *theme.recipe_fingerprint().as_bytes(),
-        MermaidConfig::empty_object(),
-        move |family, _control| Ok(Ok((family == "state").then(|| overlay.clone()))),
-    )
-    .expect("bounded compatibility plan");
-    let parsed = install_theme_compatibility(Engine::new(), &plan)
-        .parse_diagram_for_render_model_sync(
-            "stateDiagram-v2\nReady --> Done\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .expect("State source should produce a render model");
-    assert_eq!(
-        parsed.metadata().effective_config.as_value()["state"]["titleTopMargin"],
-        json!(77)
-    );
-    assert_eq!(
-        theme_parse_evidence(parsed.metadata()).fallback_contribution_count(),
-        1
-    );
-    let session = crate::environment::RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(&theme)
-        .expect("begin strict portable session");
-
-    let error = match prepare(parsed, &LayoutOptions::default(), session) {
-        Ok(_) => panic!("unknown fallback config must remain an explicit residual"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        Error::LegacyFamilyThemeCompatibility {
-            family_id: DiagramFamilyId::STATE,
-            residual_count: 1,
-            ..
         }
     ));
 }
@@ -8884,10 +8826,9 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
             "themeVariables": {"darkMode": false}
         })),
     ] {
-        let plan = ThemeCompatibilityPlan::try_new(
+        let plan = ThemeCompatibilityPlan::try_without_family_overlays(
             *theme.recipe_fingerprint().as_bytes(),
             compatibility,
-            |_family, _control| Ok(Ok(None)),
         )
         .expect("bounded compatibility config");
         let parsed = install_theme_compatibility(Engine::new(), &plan)

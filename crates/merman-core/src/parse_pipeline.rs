@@ -259,28 +259,8 @@ impl OperationConfigBuilder {
             &application,
             control,
         )?;
-        let fallback_overlay = match &engine.fallback_post_detection_config_overlay {
-            #[cfg(test)]
-            Some(crate::FallbackPostDetectionConfigOverlay::Static(overlay)) => {
-                Some(std::sync::Arc::clone(overlay))
-            }
-            Some(crate::FallbackPostDetectionConfigOverlay::Provider(provider)) => {
-                control.checkpoint()?;
-                let resolved_overlay = provider.overlay_for_family(family, control)?;
-                control.checkpoint()?;
-                match resolved_overlay {
-                    Ok(overlay) => overlay,
-                    Err(error) => {
-                        return Ok(Err(crate::InternalFailure::from_config_overlay_error(
-                            error,
-                        )
-                        .into()));
-                    }
-                }
-            }
-            None => None,
-        };
-        if let Some(overlay) = fallback_overlay {
+        #[cfg(test)]
+        if let Some(overlay) = &engine.fallback_post_detection_config_overlay {
             overlay.apply_family_controlled_in_lane(
                 family,
                 &engine.fallback_overlay_explicit_config,

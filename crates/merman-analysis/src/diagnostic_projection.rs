@@ -580,24 +580,10 @@ mod tests {
     }
 
     #[test]
-    fn config_overlay_failures_are_internal_without_source_ownership() {
-        let plan = merman_core::__private::ThemeCompatibilityPlan::try_new(
-            [0x5a; 32],
-            merman_core::MermaidConfig::empty_object(),
-            |family, _control| {
-                Ok(Err(
-                    merman_core::__private::ThemeCompatibilityOverlayError::provider_failure(
-                        family,
-                        "duplicate compatibility assignment",
-                    ),
-                ))
-            },
-        )
-        .expect("fixture compatibility plan");
-        let error =
-            merman_core::__private::install_theme_compatibility(merman_core::Engine::new(), &plan)
-                .parse_metadata_sync("classDiagram\nA <|-- B\n")
-                .expect_err("fixture provider must fail");
+    fn internal_failures_have_no_source_ownership() {
+        let error = merman_core::Error::Internal(merman_core::InternalFailure::new(
+            "class subsystem failure",
+        ));
         let projection = core_error_candidate(&error, &SourceMap::new("classDiagram\nA <|-- B\n"));
 
         let diagnostic = projection.candidate.materialize(DiagnosticSeverity::Error);

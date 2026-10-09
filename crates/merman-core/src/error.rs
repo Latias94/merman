@@ -4,9 +4,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// An internal engine subsystem failed without assigning blame to authored Mermaid input.
 ///
-/// Concrete provider and contribution types remain implementation details. Callers can classify
-/// the stable [`Error::Internal`] variant while treating the human-readable message as diagnostic
-/// context.
+/// Callers can classify the stable [`Error::Internal`] variant while treating the human-readable
+/// message as diagnostic context.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct InternalFailure {
@@ -18,11 +17,10 @@ impl InternalFailure {
         &self.message
     }
 
-    pub(crate) fn from_config_overlay_error(
-        error: crate::config::PostDetectionConfigOverlayProviderError,
-    ) -> Self {
+    /// Creates an internal subsystem failure without attributing it to authored input.
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
-            message: error.to_string(),
+            message: message.into(),
         }
     }
 }

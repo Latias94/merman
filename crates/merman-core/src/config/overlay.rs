@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(test)]
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -10,15 +11,21 @@ use super::{MermaidConfig, PostDetectionDefaultPaths, ThemeCompatibilityState};
 
 const MAX_OVERLAY_FAMILIES: usize = 64;
 const MAX_FAMILY_NAME_BYTES: usize = 64;
+#[cfg(test)]
 const MAX_CONTRIBUTIONS_PER_FAMILY: usize = 128;
+#[cfg(test)]
 const MAX_CONTRIBUTION_ID_BYTES: usize = 128;
+#[cfg(test)]
 const MAX_ASSIGNMENTS_PER_CONTRIBUTION: usize = 512;
 const MAX_ASSIGNMENTS_PER_FAMILY: usize = 1024;
 const MAX_ASSIGNMENTS_PER_OVERLAY: usize = 4096;
 const MAX_ASSIGNMENT_DEPTH: usize = 16;
 const MAX_ASSIGNMENT_KEY_BYTES: usize = 128;
+#[cfg(test)]
 const MAX_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
+#[cfg(test)]
 const MAX_RETAINED_BYTES_PER_FAMILY: usize = 3 * 1024 * 1024;
+#[cfg(test)]
 const MAX_RETAINED_BYTES_PER_OVERLAY: usize = 4 * 1024 * 1024;
 
 pub(super) fn normalize_post_detection_default_paths(
@@ -147,6 +154,7 @@ impl ConfigOverlayProvenance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigOverlayLane {
     Host,
+    #[cfg(test)]
     Fallback,
 }
 
@@ -154,9 +162,11 @@ pub(crate) enum ConfigOverlayLane {
 pub(crate) struct ConfigOverlayContribution {
     opaque_id: Arc<str>,
     assignments: Arc<[ConfigOverlayAssignment]>,
+    #[cfg(test)]
     retained_bytes: usize,
 }
 
+#[cfg(test)]
 impl ConfigOverlayContribution {
     pub(crate) fn new(
         opaque_id: impl Into<String>,
@@ -201,12 +211,6 @@ impl ConfigOverlayContribution {
         &self.opaque_id
     }
 
-    pub(crate) fn assignments(&self) -> impl ExactSizeIterator<Item = (&str, &Value)> + '_ {
-        self.assignments
-            .iter()
-            .map(|assignment| (assignment.path.as_ref(), assignment.value.as_ref()))
-    }
-
     fn assignment_count(&self) -> usize {
         self.assignments.len()
     }
@@ -215,33 +219,23 @@ impl ConfigOverlayContribution {
 #[derive(Debug, Clone, Default)]
 struct FamilyConfigOverlay {
     contributions: Vec<ConfigOverlayContribution>,
+    #[cfg(test)]
     assignment_count: usize,
+    #[cfg(test)]
     retained_bytes: usize,
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PostDetectionConfigOverlay {
     families: BTreeMap<String, FamilyConfigOverlay>,
+    #[cfg(test)]
     assignment_count: usize,
+    #[cfg(test)]
     retained_bytes: usize,
 }
 
-/// Lazily supplies one bounded fallback overlay after the final render family is known.
-///
-/// Providers are called at most once per parse operation and only for the selected family. The
-/// returned overlay is still applied by Merman, so host precedence, resource limits, provenance,
-/// and cancellation semantics remain owned by the core pipeline.
-pub(crate) trait PostDetectionConfigOverlayProvider: std::fmt::Debug + Send + Sync {
-    fn overlay_for_family(
-        &self,
-        family: &str,
-        control: &OperationControl,
-    ) -> OperationControlResult<
-        Result<Option<Arc<PostDetectionConfigOverlay>>, PostDetectionConfigOverlayProviderError>,
-    >;
-}
-
 impl PostDetectionConfigOverlay {
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
         Self::default()
     }
@@ -256,6 +250,7 @@ impl PostDetectionConfigOverlay {
         Ok(self)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_push_family_contribution(
         &mut self,
         family: impl Into<String>,
@@ -360,6 +355,7 @@ impl PostDetectionConfigOverlay {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.families
             .values()
@@ -523,7 +519,10 @@ impl ConfigOverlayApplication {
 
     pub(crate) fn finalize(&self, effective_config: &MermaidConfig) -> ConfigOverlayProvenance {
         let mut surviving_host = Vec::new();
+        #[cfg(test)]
         let mut surviving_fallback = Vec::new();
+        #[cfg(not(test))]
+        let surviving_fallback = Vec::new();
         for contribution in &self.contributions {
             let surviving_assignment_paths = contribution
                 .assignments
@@ -539,6 +538,7 @@ impl ConfigOverlayApplication {
             }
             let surviving = match contribution.lane {
                 ConfigOverlayLane::Host => &mut surviving_host,
+                #[cfg(test)]
                 ConfigOverlayLane::Fallback => &mut surviving_fallback,
             };
             record_surviving_contribution(
@@ -620,6 +620,7 @@ struct ConfigOverlayAssignment {
     value: Arc<Value>,
 }
 
+#[cfg(test)]
 impl ConfigOverlayAssignment {
     fn retained_bytes(&self) -> usize {
         size_of::<Self>() + self.path.len() + scalar_retained_bytes(&self.value)
@@ -630,12 +631,17 @@ impl ConfigOverlayAssignment {
 pub(crate) enum ConfigOverlayField {
     Family,
     Families,
+    #[cfg(test)]
     ContributionId,
+    #[cfg(test)]
     Contributions,
     Assignments,
+    #[cfg(test)]
     RetainedBytes,
+    #[cfg(test)]
     Patch,
     AssignmentPath,
+    #[cfg(test)]
     AssignmentValue,
 }
 
@@ -644,12 +650,17 @@ impl ConfigOverlayField {
         match self {
             Self::Family => "family",
             Self::Families => "families",
+            #[cfg(test)]
             Self::ContributionId => "contribution_id",
+            #[cfg(test)]
             Self::Contributions => "contributions",
             Self::Assignments => "assignments",
+            #[cfg(test)]
             Self::RetainedBytes => "retained_bytes",
+            #[cfg(test)]
             Self::Patch => "patch",
             Self::AssignmentPath => "assignment_path",
+            #[cfg(test)]
             Self::AssignmentValue => "assignment_value",
         }
     }
@@ -667,20 +678,15 @@ pub(crate) enum ConfigOverlayError {
     InvalidValue { field: ConfigOverlayField },
     #[error("config overlay field `{field}` exceeds its implementation limit")]
     LimitExceeded { field: ConfigOverlayField },
+    #[cfg(test)]
     #[error("config overlay patch must contain at least one scalar assignment")]
     EmptyPatch,
+    #[cfg(test)]
     #[error("duplicate config overlay contribution `{opaque_id}` for family `{family}`")]
     DuplicateContributionId { family: String, opaque_id: String },
+    #[cfg(test)]
     #[error("duplicate config overlay assignment `{path}` for family `{family}`")]
     DuplicateAssignment { family: String, path: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum PostDetectionConfigOverlayProviderError {
-    #[error(transparent)]
-    Overlay(#[from] ConfigOverlayError),
-    #[error("config overlay provider failed for family `{family}`: {message}")]
-    Provider { family: String, message: String },
 }
 
 fn validate_name(
@@ -698,6 +704,7 @@ fn validate_name(
     Ok(())
 }
 
+#[cfg(test)]
 fn flatten_patch(value: &Value) -> Result<Vec<ConfigOverlayAssignment>, ConfigOverlayError> {
     let Value::Object(root) = value else {
         return Err(ConfigOverlayError::InvalidValue {
@@ -724,6 +731,7 @@ fn validate_assignment_key(key: &str) -> Result<(), ConfigOverlayError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn flatten_object<'a>(
     object: &'a serde_json::Map<String, Value>,
     path: &mut Vec<&'a str>,
@@ -759,6 +767,7 @@ fn flatten_object<'a>(
     Ok(())
 }
 
+#[cfg(test)]
 fn push_assignment(
     path: &[&str],
     value: Value,
@@ -784,6 +793,7 @@ fn push_assignment(
     Ok(())
 }
 
+#[cfg(test)]
 fn conflicting_assignment_path(
     existing: &ConfigOverlayContribution,
     candidate: &ConfigOverlayContribution,
@@ -845,11 +855,13 @@ fn dotted_paths_overlap(left: &str, right: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('.'))
 }
 
+#[cfg(test)]
 fn is_render_family_selector_path(path: &str) -> bool {
     path.split('.')
         .any(|segment| matches!(segment, "layout" | "defaultRenderer"))
 }
 
+#[cfg(test)]
 fn scalar_retained_bytes(value: &Value) -> usize {
     match value {
         Value::String(value) => value.len(),

@@ -51,9 +51,9 @@ pub mod utils;
 mod yaml_config;
 
 pub use config::MermaidConfig;
+use config::PostDetectionConfigOverlay;
 #[cfg(test)]
 use config::{ConfigOverlayProvenance, ThemeParseBinding};
-use config::{PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider};
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
@@ -89,12 +89,10 @@ pub use preprocess::{
 };
 pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 
-/// Workspace-internal compatibility seam used while typed family adapters replace the legacy
-/// Mermaid config bridge.
+/// Workspace-internal compiled theme binding and Mermaid ownership evidence.
 ///
 /// This module is intentionally outside Merman's supported API. Its opaque plans and evidence
-/// keep the temporary overlay graph, provider trait, contribution identifiers, and parse binding
-/// private to `merman-core`.
+/// keep normalized recipe identity and parse binding private to `merman-core`.
 #[doc(hidden)]
 pub mod __private {
     use std::collections::BTreeMap;
@@ -102,15 +100,10 @@ pub mod __private {
     use std::sync::Arc;
 
     use crate::config::{
-        ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
-        FrozenThemeCompatibilityField, PostDetectionConfigOverlay,
-        PostDetectionConfigOverlayProvider, PostDetectionConfigOverlayProviderError,
+        ConfigOverlayContributionProvenance, FrozenThemeCompatibilityField,
         ThemeCompatibilityFieldKind as ConfigFieldKind, ThemeParseBinding, ThemeParseBindingError,
     };
-    use crate::{
-        Engine, FallbackPostDetectionConfigOverlay, MermaidConfig, OperationControl,
-        OperationControlResult, ParseMetadata,
-    };
+    use crate::{Engine, MermaidConfig, ParseMetadata};
 
     /// Opaque normalized identity for one compiled theme's parse compatibility contract.
     #[derive(Clone, PartialEq, Eq)]
@@ -130,146 +123,10 @@ pub mod __private {
     #[error(transparent)]
     pub struct ThemeCompatibilityPlanError(#[from] ThemeParseBindingError);
 
-    /// Invalid bounded family compatibility contribution.
-    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-    #[error(transparent)]
-    pub struct ThemeCompatibilityOverlayError(PostDetectionConfigOverlayProviderError);
-
-    impl ThemeCompatibilityOverlayError {
-        pub fn provider_failure(family: impl Into<String>, message: impl Into<String>) -> Self {
-            Self(PostDetectionConfigOverlayProviderError::Provider {
-                family: family.into(),
-                message: message.into(),
-            })
-        }
-
-        fn into_provider_error(self) -> PostDetectionConfigOverlayProviderError {
-            self.0
-        }
-    }
-
-    impl From<ConfigOverlayError> for ThemeCompatibilityOverlayError {
-        fn from(error: ConfigOverlayError) -> Self {
-            Self(error.into())
-        }
-    }
-
-    /// Opaque selected-family overlay returned by a lazy compatibility resolver.
-    #[derive(Debug, Clone)]
-    pub struct ThemeFamilyCompatibilityOverlay(Arc<PostDetectionConfigOverlay>);
-
-    impl Default for ThemeFamilyCompatibilityOverlay {
-        fn default() -> Self {
-            Self(Arc::new(PostDetectionConfigOverlay::new()))
-        }
-    }
-
-    impl ThemeFamilyCompatibilityOverlay {
-        pub fn is_empty(&self) -> bool {
-            self.0.is_empty()
-        }
-    }
-
-    /// Normalized contribution identity and assignments admitted by the core overlay owner.
-    ///
-    /// This receipt prevents internal consumers from rebuilding contribution identifiers or
-    /// maintaining a second patch flattener alongside the core admission boundary.
-    #[derive(Debug, Clone)]
-    pub struct ThemeCompatibilityContributionReceipt(ConfigOverlayContribution);
-
-    impl ThemeCompatibilityContributionReceipt {
-        pub fn opaque_id(&self) -> &str {
-            self.0.opaque_id()
-        }
-
-        pub fn assignments(
-            &self,
-        ) -> impl ExactSizeIterator<Item = (&str, &serde_json::Value)> + '_ {
-            self.0.assignments()
-        }
-    }
-
-    /// Bounded builder for one selected family's temporary compatibility contributions.
-    #[derive(Debug)]
-    pub struct ThemeFamilyCompatibilityOverlayBuilder {
-        family: String,
-        contribution_prefix: String,
-        overlay: PostDetectionConfigOverlay,
-    }
-
-    impl ThemeFamilyCompatibilityOverlayBuilder {
-        pub fn new(family: impl Into<String>, contribution_prefix: impl Into<String>) -> Self {
-            Self {
-                family: family.into(),
-                contribution_prefix: contribution_prefix.into(),
-                overlay: PostDetectionConfigOverlay::new(),
-            }
-        }
-
-        pub fn try_push(
-            &mut self,
-            contribution_label: &str,
-            patch: MermaidConfig,
-        ) -> Result<ThemeCompatibilityContributionReceipt, ThemeCompatibilityOverlayError> {
-            let opaque_id = format!(
-                "{}{}.{}",
-                self.contribution_prefix, self.family, contribution_label
-            );
-            let contribution = ConfigOverlayContribution::new(opaque_id, patch)?;
-            let receipt = ThemeCompatibilityContributionReceipt(contribution.clone());
-            self.overlay
-                .try_push_family_contribution(self.family.clone(), contribution)?;
-            Ok(receipt)
-        }
-
-        pub fn finish(self) -> ThemeFamilyCompatibilityOverlay {
-            ThemeFamilyCompatibilityOverlay(Arc::new(self.overlay))
-        }
-    }
-
-    type ThemeCompatibilityResolver = dyn Fn(
-            &str,
-            &OperationControl,
-        ) -> OperationControlResult<
-            Result<Option<ThemeFamilyCompatibilityOverlay>, ThemeCompatibilityOverlayError>,
-        > + Send
-        + Sync;
-
-    struct ThemeCompatibilityProvider {
-        resolver: Arc<ThemeCompatibilityResolver>,
-    }
-
-    impl fmt::Debug for ThemeCompatibilityProvider {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter
-                .debug_struct("ThemeCompatibilityProvider")
-                .finish_non_exhaustive()
-        }
-    }
-
-    impl PostDetectionConfigOverlayProvider for ThemeCompatibilityProvider {
-        fn overlay_for_family(
-            &self,
-            family: &str,
-            control: &OperationControl,
-        ) -> OperationControlResult<
-            Result<
-                Option<Arc<PostDetectionConfigOverlay>>,
-                PostDetectionConfigOverlayProviderError,
-            >,
-        > {
-            let overlay = (self.resolver)(family, control)?;
-            Ok(overlay
-                .map(|overlay| overlay.map(|overlay| overlay.0))
-                .map_err(ThemeCompatibilityOverlayError::into_provider_error))
-        }
-    }
-
     /// Opaque parse/install plan owned by one compiled diagram theme.
     #[derive(Clone)]
     pub struct ThemeCompatibilityPlan {
         recipe: ThemeCompatibilityRecipe,
-        provider: Option<Arc<dyn PostDetectionConfigOverlayProvider>>,
     }
 
     impl fmt::Debug for ThemeCompatibilityPlan {
@@ -282,7 +139,7 @@ pub mod __private {
     }
 
     impl ThemeCompatibilityPlan {
-        /// Builds a parse recipe without a post-detection family overlay provider.
+        /// Builds a bounded parse recipe from compiled Mermaid compatibility input.
         pub fn try_without_family_overlays(
             recipe_identity: [u8; 32],
             compatibility_config: MermaidConfig,
@@ -292,31 +149,6 @@ pub mod __private {
                     recipe_identity,
                     compatibility_config,
                 )?),
-                provider: None,
-            })
-        }
-
-        pub fn try_new(
-            recipe_identity: [u8; 32],
-            compatibility_config: MermaidConfig,
-            resolver: impl Fn(
-                &str,
-                &OperationControl,
-            ) -> OperationControlResult<
-                Result<Option<ThemeFamilyCompatibilityOverlay>, ThemeCompatibilityOverlayError>,
-            > + Send
-            + Sync
-            + 'static,
-        ) -> Result<Self, ThemeCompatibilityPlanError> {
-            let recipe = ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
-                recipe_identity,
-                compatibility_config,
-            )?);
-            Ok(Self {
-                recipe,
-                provider: Some(Arc::new(ThemeCompatibilityProvider {
-                    resolver: Arc::new(resolver),
-                })),
             })
         }
 
@@ -357,10 +189,10 @@ pub mod __private {
             plan.recipe.0.clone(),
         ));
         engine.rebuild_site_config();
-        engine.fallback_post_detection_config_overlay = plan
-            .provider
-            .as_ref()
-            .map(|provider| FallbackPostDetectionConfigOverlay::Provider(Arc::clone(provider)));
+        #[cfg(test)]
+        {
+            engine.fallback_post_detection_config_overlay = None;
+        }
         engine
     }
 
@@ -880,13 +712,6 @@ impl ParseMetadata {
 /// An engine owns detector/parser registries and a site-level Mermaid configuration. It is cheap
 /// to clone when callers need per-request option variants.
 #[derive(Debug, Clone)]
-enum FallbackPostDetectionConfigOverlay {
-    #[cfg(test)]
-    Static(std::sync::Arc<PostDetectionConfigOverlay>),
-    Provider(std::sync::Arc<dyn PostDetectionConfigOverlayProvider>),
-}
-
-#[derive(Debug, Clone)]
 pub struct Engine {
     registry: DetectorRegistry,
     diagram_registry: DiagramRegistry,
@@ -898,7 +723,8 @@ pub struct Engine {
     // Keep the overlay graph finite by giving each owner exactly one bounded lane. The host lane
     // is evaluated first; the theme compatibility lane can only fill paths the host did not own.
     post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
-    fallback_post_detection_config_overlay: Option<FallbackPostDetectionConfigOverlay>,
+    #[cfg(test)]
+    fallback_post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
     default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     runtime_policy: runtime::RuntimePolicy,
 }
@@ -917,6 +743,7 @@ impl Default for Engine {
             theme_compatibility_config: None,
             fallback_overlay_explicit_config: MermaidConfig::empty_object(),
             post_detection_config_overlay: None,
+            #[cfg(test)]
             fallback_post_detection_config_overlay: None,
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
@@ -1034,20 +861,8 @@ impl Engine {
         mut self,
         overlay: PostDetectionConfigOverlay,
     ) -> Self {
-        self.fallback_post_detection_config_overlay = (!overlay.is_empty())
-            .then(|| FallbackPostDetectionConfigOverlay::Static(std::sync::Arc::new(overlay)));
-        self
-    }
-
-    /// Replaces the static fallback lane with a family-lazy provider.
-    #[cfg(test)]
-    pub(crate) fn with_fallback_post_detection_config_overlay_provider(
-        mut self,
-        provider: impl PostDetectionConfigOverlayProvider + 'static,
-    ) -> Self {
-        self.fallback_post_detection_config_overlay = Some(
-            FallbackPostDetectionConfigOverlay::Provider(std::sync::Arc::new(provider)),
-        );
+        self.fallback_post_detection_config_overlay =
+            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
         self
     }
 

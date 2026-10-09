@@ -1,13 +1,11 @@
 use crate::config::{
     ConfigOverlayContribution, ConfigOverlayError, ConfigOverlayField, PostDetectionConfigOverlay,
-    PostDetectionConfigOverlayProvider, PostDetectionConfigOverlayProviderError, ThemeParseBinding,
+    ThemeParseBinding,
 };
 use crate::*;
 use futures::executor::block_on;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 use std::fmt::Write;
-use std::sync::{Arc, Mutex};
 
 fn test_detector_always_matches(_text: &str, _config: &mut MermaidConfig) -> bool {
     true
@@ -370,70 +368,6 @@ fn family_overlay(
         .unwrap()
 }
 
-#[derive(Debug)]
-struct RecordingOverlayProvider {
-    calls: Arc<Mutex<Vec<String>>>,
-    overlays: BTreeMap<String, Arc<PostDetectionConfigOverlay>>,
-}
-
-impl RecordingOverlayProvider {
-    fn new(
-        calls: Arc<Mutex<Vec<String>>>,
-        overlays: impl IntoIterator<Item = (&'static str, PostDetectionConfigOverlay)>,
-    ) -> Self {
-        Self {
-            calls,
-            overlays: overlays
-                .into_iter()
-                .map(|(family, overlay)| (family.to_string(), Arc::new(overlay)))
-                .collect(),
-        }
-    }
-}
-
-impl PostDetectionConfigOverlayProvider for RecordingOverlayProvider {
-    fn overlay_for_family(
-        &self,
-        family: &str,
-        control: &OperationControl,
-    ) -> OperationControlResult<
-        std::result::Result<
-            Option<Arc<PostDetectionConfigOverlay>>,
-            PostDetectionConfigOverlayProviderError,
-        >,
-    > {
-        control.checkpoint()?;
-        self.calls.lock().unwrap().push(family.to_string());
-        Ok(Ok(self.overlays.get(family).cloned()))
-    }
-}
-
-#[derive(Debug)]
-struct FailingOverlayProvider {
-    cancel_before_failure: bool,
-}
-
-impl PostDetectionConfigOverlayProvider for FailingOverlayProvider {
-    fn overlay_for_family(
-        &self,
-        family: &str,
-        control: &OperationControl,
-    ) -> OperationControlResult<
-        std::result::Result<
-            Option<Arc<PostDetectionConfigOverlay>>,
-            PostDetectionConfigOverlayProviderError,
-        >,
-    > {
-        if self.cancel_before_failure {
-            control.cancel();
-        }
-        Ok(Err(PostDetectionConfigOverlayProviderError::Provider {
-            family: family.to_string(),
-            message: "synthetic compatibility failure".to_string(),
-        }))
-    }
-}
-
 #[test]
 fn post_detection_overlay_is_family_local_for_detected_and_known_type_parses() {
     let overlay = flowchart_overlay("flowchart.nodeSpacing", json!(91));
@@ -651,49 +585,11 @@ fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan 
 }
 
 #[test]
-fn installing_provider_free_theme_removes_previous_family_overlay_provider() {
-    use crate::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    let calls = Arc::new(AtomicUsize::new(0));
-    let recorded_calls = Arc::clone(&calls);
-    let previous = ThemeCompatibilityPlan::try_new(
-        [0x19; 32],
-        MermaidConfig::from_value(json!({"theme": "dark"})),
-        move |_, control| {
-            control.checkpoint()?;
-            recorded_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(Ok(None))
-        },
-    )
-    .unwrap();
-    let engine = install_theme_compatibility(Engine::new(), &previous);
-    engine.parse_metadata_sync("gitGraph\ncommit").unwrap();
-    assert!(calls.load(Ordering::SeqCst) > 0);
-
-    calls.store(0, Ordering::SeqCst);
-    let replacement = node_default_plan(json!({"theme": "base"}));
-    let engine = install_theme_compatibility(engine, &replacement);
-    assert!(engine.fallback_post_detection_config_overlay.is_none());
-    let parsed = engine.parse_metadata_sync("gitGraph\ncommit").unwrap();
-    assert_eq!(calls.load(Ordering::SeqCst), 0);
-    assert_eq!(parsed.effective_config.get_str("theme"), Some("base"));
-    assert_eq!(
-        crate::__private::config_post_detection_default_blocked(
-            &parsed.effective_config,
-            "themeVariables.primaryColor",
-        ),
-        Some(false),
-    );
-}
-
-#[test]
 fn post_detection_default_requests_are_normalized_and_part_of_the_parse_contract() {
     let make_plan = || {
-        crate::__private::ThemeCompatibilityPlan::try_new(
+        crate::__private::ThemeCompatibilityPlan::try_without_family_overlays(
             [0x5a; 32],
             MermaidConfig::empty_object(),
-            |_, _| Ok(Ok(None)),
         )
         .unwrap()
     };
@@ -1738,189 +1634,6 @@ fn host_overlay_has_priority_without_replacing_theme_fallback() {
         !metadata
             .config_overlay_provenance()
             .contains("legacy.flowchart.node-spacing")
-    );
-}
-
-#[test]
-fn fallback_provider_is_called_once_only_for_the_final_render_family() {
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    let provider = RecordingOverlayProvider::new(
-        Arc::clone(&calls),
-        [
-            (
-                "flowchart",
-                family_overlay(
-                    "flowchart",
-                    "provider.flowchart.spacing",
-                    "flowchart.nodeSpacing",
-                    json!(41),
-                ),
-            ),
-            (
-                "swimlane",
-                family_overlay(
-                    "swimlane",
-                    "provider.swimlane.spacing",
-                    "flowchart.nodeSpacing",
-                    json!(81),
-                ),
-            ),
-        ],
-    );
-    let metadata = Engine::new()
-        .with_fallback_post_detection_config_overlay_provider(provider)
-        .parse_metadata_sync("%%{init: {\"layout\": \"swimlane\"}}%%\nflowchart TD\nA-->B")
-        .expect("parse flowchart routed to the swimlane renderer");
-
-    assert_eq!(calls.lock().unwrap().as_slice(), ["swimlane"]);
-    assert_eq!(
-        metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(81)
-    );
-    assert!(
-        metadata
-            .config_overlay_provenance()
-            .fallback_contribution_ids()
-            .eq(["provider.swimlane.spacing"])
-    );
-}
-
-#[test]
-fn fallback_provider_failure_surfaces_as_an_internal_error() {
-    let error = Engine::new()
-        .with_fallback_post_detection_config_overlay_provider(FailingOverlayProvider {
-            cancel_before_failure: false,
-        })
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect_err("provider failure must not become an empty overlay");
-
-    assert!(matches!(error, Error::Internal(_)));
-    assert_eq!(
-        error.to_string(),
-        "config overlay provider failed for family `flowchart`: synthetic compatibility failure"
-    );
-}
-
-#[test]
-fn cancellation_wins_when_a_fallback_provider_also_reports_failure() {
-    let control = OperationControl::new();
-    let error = Engine::new()
-        .with_fallback_post_detection_config_overlay_provider(FailingOverlayProvider {
-            cancel_before_failure: true,
-        })
-        .parse_diagram_for_render_model_controlled_sync(
-            "flowchart TD\nA-->B",
-            ParseOptions::strict(),
-            &control,
-        )
-        .expect_err("provider-triggered cancellation must remain the outer error");
-
-    assert_eq!(error.reason, CancelReason::Requested);
-}
-
-#[test]
-fn host_overlay_keeps_priority_over_a_lazy_fallback_provider() {
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    let provider = RecordingOverlayProvider::new(
-        Arc::clone(&calls),
-        [(
-            "flowchart",
-            family_overlay(
-                "flowchart",
-                "provider.flowchart.spacing",
-                "flowchart.nodeSpacing",
-                json!(91),
-            ),
-        )],
-    );
-    let metadata = Engine::new()
-        .with_post_detection_config_overlay(family_overlay(
-            "flowchart",
-            "host.flowchart.spacing",
-            "flowchart.nodeSpacing",
-            json!(50),
-        ))
-        .with_fallback_post_detection_config_overlay_provider(provider)
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse flowchart with host and provider overlays");
-
-    assert_eq!(calls.lock().unwrap().as_slice(), ["flowchart"]);
-    assert_eq!(
-        metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(50)
-    );
-    assert!(
-        metadata
-            .config_overlay_provenance()
-            .contains("host.flowchart.spacing")
-    );
-    assert!(
-        metadata
-            .config_overlay_provenance()
-            .fallback_contribution_ids()
-            .next()
-            .is_none()
-    );
-}
-
-#[test]
-fn static_and_provider_fallback_installers_replace_the_same_lane() {
-    let provider_calls = Arc::new(Mutex::new(Vec::new()));
-    let provider = RecordingOverlayProvider::new(
-        Arc::clone(&provider_calls),
-        [(
-            "flowchart",
-            family_overlay(
-                "flowchart",
-                "provider.flowchart.spacing",
-                "flowchart.nodeSpacing",
-                json!(81),
-            ),
-        )],
-    );
-    let provider_wins = Engine::new()
-        .with_fallback_post_detection_config_overlay(family_overlay(
-            "flowchart",
-            "static.flowchart.spacing",
-            "flowchart.nodeSpacing",
-            json!(71),
-        ))
-        .with_fallback_post_detection_config_overlay_provider(provider)
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("provider replaces static fallback");
-    assert_eq!(provider_calls.lock().unwrap().as_slice(), ["flowchart"]);
-    assert_eq!(
-        provider_wins.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(81)
-    );
-
-    let replaced_provider_calls = Arc::new(Mutex::new(Vec::new()));
-    let replaced_provider = RecordingOverlayProvider::new(
-        Arc::clone(&replaced_provider_calls),
-        [(
-            "flowchart",
-            family_overlay(
-                "flowchart",
-                "provider.flowchart.spacing",
-                "flowchart.nodeSpacing",
-                json!(91),
-            ),
-        )],
-    );
-    let static_wins = Engine::new()
-        .with_fallback_post_detection_config_overlay_provider(replaced_provider)
-        .with_fallback_post_detection_config_overlay(family_overlay(
-            "flowchart",
-            "static.flowchart.spacing",
-            "flowchart.nodeSpacing",
-            json!(61),
-        ))
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("static fallback replaces provider");
-    assert!(replaced_provider_calls.lock().unwrap().is_empty());
-    assert_eq!(
-        static_wins.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(61)
     );
 }
 

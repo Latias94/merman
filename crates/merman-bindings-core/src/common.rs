@@ -3547,23 +3547,9 @@ mod tests {
     }
 
     #[test]
-    fn config_overlay_failures_remain_internal_across_binding_payloads() {
-        let plan = merman::__private::ThemeCompatibilityPlan::try_new(
-            [0x5a; 32],
-            merman::MermaidConfig::empty_object(),
-            |family, _control| {
-                Ok(Err(
-                    merman::__private::ThemeCompatibilityOverlayError::provider_failure(
-                        family,
-                        "fixture compatibility provider failure",
-                    ),
-                ))
-            },
-        )
-        .expect("fixture compatibility plan");
-        let error = merman::__private::install_theme_compatibility(merman::Engine::new(), &plan)
-            .parse_metadata_sync("flowchart TD\nA-->B\n")
-            .expect_err("fixture provider must fail");
+    fn internal_failures_remain_internal_across_binding_payloads() {
+        let error =
+            merman::Error::Internal(merman::InternalFailure::new("fixture subsystem failure"));
         let error = core_error(error);
 
         assert_eq!(error.status(), BindingStatus::InternalError);

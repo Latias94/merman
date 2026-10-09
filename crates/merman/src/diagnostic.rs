@@ -501,24 +501,10 @@ mod tests {
     }
 
     #[test]
-    fn config_overlay_projection_is_safe_and_classified() {
-        let plan = merman_core::__private::ThemeCompatibilityPlan::try_new(
-            [0x5a; 32],
-            merman_core::MermaidConfig::empty_object(),
-            |family, _control| {
-                Ok(Err(
-                    merman_core::__private::ThemeCompatibilityOverlayError::provider_failure(
-                        format!("{family}\u{1b}"),
-                        "failure\u{7}",
-                    ),
-                ))
-            },
-        )
-        .expect("fixture compatibility plan");
-        let error =
-            merman_core::__private::install_theme_compatibility(merman_core::Engine::new(), &plan)
-                .parse_metadata_sync("flowchart TD\nA-->B\n")
-                .expect_err("fixture provider must fail");
+    fn internal_failure_projection_is_safe_and_classified() {
+        let error = merman_core::Error::Internal(merman_core::InternalFailure::new(
+            "flowchart\u{1b}: failure\u{7}",
+        ));
         let diagnostic = TerminalDiagnostic::from(error);
         let details = diagnostic.terminal_diagnostic_details();
 

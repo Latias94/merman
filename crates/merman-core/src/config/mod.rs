@@ -2,12 +2,13 @@ mod overlay;
 
 pub(crate) use overlay::ConfigOverlayApplication;
 #[cfg(test)]
+pub(crate) use overlay::ConfigOverlayContribution;
+#[cfg(test)]
 pub(crate) use overlay::ConfigOverlayField;
 pub(crate) use overlay::ConfigOverlayLane;
 pub(crate) use overlay::{
-    ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
-    ConfigOverlayProvenance, PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider,
-    PostDetectionConfigOverlayProviderError,
+    ConfigOverlayContributionProvenance, ConfigOverlayError, ConfigOverlayProvenance,
+    PostDetectionConfigOverlay,
 };
 
 use crate::{OperationControl, OperationControlResult};
