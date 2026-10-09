@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 mod config;
+mod css_binding;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod relation_paint;
@@ -27,6 +28,7 @@ mod text_paint;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
+pub(crate) use css_binding::RequirementCssBinding;
 pub(crate) use relation_paint::RequirementRelationPaintPlan;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use text_paint::{
@@ -171,21 +173,18 @@ impl RequirementPreparedArtifact {
 
     pub(crate) fn label_measurements_for_render_with_typography<'a>(
         &self,
-        effective_config: &Value,
         measurer: &'a dyn TextMeasurer,
-        font_family_override: Option<&str>,
-        font_size_override: Option<f64>,
+        binding: &RequirementCssBinding,
     ) -> RequirementRenderLabelMeasurements<'a> {
-        let settings = RequirementConfigView::new(effective_config)
-            .layout_settings_with_resolved_typography(font_family_override, font_size_override);
+        let settings = &binding.layout;
         let reuse_prepared = self
             .measurement_binding
             .as_ref()
-            .is_some_and(|binding| binding.matches(&settings, measurer));
+            .is_some_and(|binding| binding.matches(settings, measurer));
 
         RequirementRenderLabelMeasurements {
             measurer,
-            styles: (!reuse_prepared).then(|| requirement_measurement_styles(&settings)),
+            styles: (!reuse_prepared).then(|| requirement_measurement_styles(settings)),
             reuse_prepared,
         }
     }
@@ -715,12 +714,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = std::sync::Arc::new(OperationWorkMeter::new(resource_limits));
+    let binding = RequirementCssBinding::resolve(effective_config, None, None, None, None);
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
         effective_config,
         text_measurer,
-        None,
-        None,
+        &binding,
         &work_meter,
         #[cfg(feature = "layout-elk")]
         merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
@@ -732,8 +731,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    font_family_override: Option<&str>,
-    font_size_override: Option<f64>,
+    css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<RequirementPreparedArtifact> {
@@ -751,10 +749,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
         normalize_dir(&model.direction)
     };
 
-    let cfg = RequirementConfigView::new(effective_config)
-        .layout_settings_with_resolved_typography(font_family_override, font_size_override);
-    let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(&cfg, text_measurer);
-    let styles = requirement_measurement_styles(&cfg);
+    let cfg = &css_binding.layout;
+    let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(cfg, text_measurer);
+    let styles = requirement_measurement_styles(cfg);
 
     let padding = 20.0;
     let gap = 20.0;

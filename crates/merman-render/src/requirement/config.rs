@@ -57,6 +57,7 @@ impl<'a> RequirementConfigView<'a> {
         settings
     }
 
+    #[cfg(test)]
     pub(crate) fn render_settings(&self) -> RequirementRenderSettings<'a> {
         RequirementRenderSettings {
             html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
@@ -81,19 +82,31 @@ impl<'a> RequirementConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings_with_resolved_typography(
+    pub(crate) fn render_settings_with_binding(
         &self,
-        resolved_font_family: Option<&str>,
-        resolved_font_size_px: Option<f64>,
+        binding: &super::RequirementCssBinding,
     ) -> RequirementRenderSettings<'a> {
-        let mut settings = self.render_settings();
-        if let Some(font_family) = resolved_font_family {
-            settings.font_family = font_family.to_owned();
+        RequirementRenderSettings {
+            html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
+            edge_html_labels: config_effective_html_labels(self.effective_config),
+            body_text_start: self.effective_config.get("layout").and_then(Value::as_str)
+                == Some("elk"),
+            look: config_diagram_look(self.effective_config),
+            viewport_padding: DEFAULT_VIEWPORT_PADDING,
+            use_max_width: self
+                .requirement_bool("useMaxWidth")
+                .unwrap_or(DEFAULT_USE_MAX_WIDTH),
+            hand_drawn_seed: self
+                .effective_config
+                .get("handDrawnSeed")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
+            title_top_margin: self
+                .config_f64(&["state", "titleTopMargin"])
+                .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
+            font_family: binding.layout.font_family.clone(),
+            font_size: binding.layout.font_size,
         }
-        if let Some(font_size_px) = resolved_font_size_px {
-            settings.font_size = font_size_px.max(1.0);
-        }
-        settings
     }
 
     fn config_f64(&self, path: &[&str]) -> Option<f64> {

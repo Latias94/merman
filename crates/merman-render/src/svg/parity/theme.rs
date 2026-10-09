@@ -130,66 +130,6 @@ pub(super) struct StateDiagramTheme {
     pub(super) drop_shadow: String,
 }
 
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-treemap")]
-pub(crate) struct TreemapTheme {
-    pub(crate) title_color: String,
-    pub(crate) label_color: String,
-    pub(crate) value_color: String,
-    pub(crate) section_stroke_color: String,
-    pub(crate) section_stroke_width: String,
-    pub(crate) section_fill_color: String,
-    pub(crate) leaf_stroke_color: String,
-    pub(crate) leaf_stroke_width: String,
-    pub(crate) leaf_fill_color: String,
-    pub(crate) label_font_size: String,
-    pub(crate) value_font_size: String,
-    pub(crate) title_font_size: String,
-    pub(crate) color_scale: Vec<String>,
-    pub(crate) color_scale_peer: Vec<String>,
-    pub(crate) color_scale_label: Vec<String>,
-    text_color: String,
-}
-
-#[cfg(feature = "diagram-treemap")]
-impl TreemapTheme {
-    pub(crate) fn readable_leaf_label_fill(
-        &self,
-        leaf_fill: &str,
-        leaf_rect_style: &str,
-        leaf_label_fill: String,
-    ) -> String {
-        if css_color_is_transparent(leaf_fill)
-            && !style_has_non_empty_decl(leaf_rect_style, "fill")
-            && css_color_is_white_like(&leaf_label_fill)
-        {
-            self.text_color.clone()
-        } else {
-            leaf_label_fill
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "diagram-event-modeling")]
-pub(crate) struct EventModelingTheme {
-    pub(crate) text_color: String,
-    pub(crate) ui_fill: String,
-    pub(crate) ui_stroke: String,
-    pub(crate) processor_fill: String,
-    pub(crate) processor_stroke: String,
-    pub(crate) read_model_fill: String,
-    pub(crate) read_model_stroke: String,
-    pub(crate) command_fill: String,
-    pub(crate) command_stroke: String,
-    pub(crate) event_fill: String,
-    pub(crate) event_stroke: String,
-    pub(crate) swimlane_background_fill: String,
-    pub(crate) swimlane_background_stroke: String,
-    pub(crate) relation_stroke: String,
-    pub(crate) arrowhead_fill: String,
-}
-
 #[cfg(feature = "diagram-radar")]
 pub(crate) fn radar_default_series_color(index: usize) -> &'static str {
     default_c_scale(index)

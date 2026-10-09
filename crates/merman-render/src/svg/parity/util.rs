@@ -49,7 +49,7 @@ pub(super) fn write_style_attribute<'a>(
         .map(|()| style)
 }
 
-pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
+pub(super) use crate::config::{config_diagram_look, config_f64};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;

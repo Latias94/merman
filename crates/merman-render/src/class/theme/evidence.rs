@@ -316,10 +316,11 @@ impl ClassThemeEvidenceRecorder {
                             FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeRuleFacet::StrokeWidth,
                         ) => {
-                            if plan.stroke_width_is_clear_for(rule_index) {
+                            if plan.relation_width().is_clear_for(rule_index) {
                                 observation.residual =
                                     Some(FamilyThemeResidualReason::UnsupportedGeometry);
-                            } else if let Some((winner, _)) = plan.typed_stroke_width_emission() {
+                            } else if let Some((winner, _)) = plan.relation_width().typed_emission()
+                            {
                                 if winner != rule_index {
                                     observation.incomplete = true;
                                 } else if receipt

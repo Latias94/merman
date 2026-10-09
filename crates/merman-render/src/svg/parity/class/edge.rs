@@ -211,13 +211,14 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         } else {
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
-        let relation_stroke_width = relation.and(ctx.relation_theme.paint_stroke_width());
+        let width_binding = ctx.relation_theme.relation_width();
+        let relation_stroke_width = relation.and(width_binding.paint_width());
         let typed_stroke = if relation.is_some() || is_note_edge {
             ctx.relation_theme.typed_stroke()
         } else {
             None
         };
-        let typed_stroke_width = relation.and(ctx.relation_theme.typed_stroke_width());
+        let typed_stroke_width = relation.and(width_binding.terminal_css());
         let stroke_outset = relation_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
         let start_marker_name =
             relation.and_then(|relation| class_marker_name(relation.relation.type1, true));
@@ -486,11 +487,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
             let _ = write!(&mut terminal_style, "stroke:{stroke} !important;");
         }
         if let Some(width) = typed_stroke_width {
-            let _ = write!(
-                &mut terminal_style,
-                "stroke-width:{}px !important",
-                fmt(f64::from(width)),
-            );
+            let _ = write!(&mut terminal_style, "stroke-width:{width} !important");
         }
         let _ = write!(out, r#" style="{}""#, escape_attr_display(&terminal_style));
         out.push_str("/>");

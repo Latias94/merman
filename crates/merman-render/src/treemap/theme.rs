@@ -163,6 +163,7 @@ impl TreemapResolvedTextStyle {
 /// while measuring those same terminals through `getComputedTextLength()`.
 #[derive(Debug)]
 pub(crate) struct TreemapTypographyThemePlan {
+    css: super::css_binding::TreemapCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     text_fill: Option<DirectStaticPaint>,
     text_rules: Box<[(usize, TreemapRuleObservation)]>,
@@ -179,11 +180,22 @@ pub(crate) struct TreemapTypographyThemePlan {
 }
 
 impl TreemapTypographyThemePlan {
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         layout: &TreemapDiagramLayout,
         work_meter: std::sync::Arc<OperationWorkMeter>,
+    ) -> crate::Result<Self> {
+        Self::resolve_with_title_fill(theme, effective_config, layout, work_meter, None)
+    }
+
+    pub(crate) fn resolve_with_title_fill(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        layout: &TreemapDiagramLayout,
+        work_meter: std::sync::Arc<OperationWorkMeter>,
+        title_fill: Option<&str>,
     ) -> crate::Result<Self> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -364,7 +376,23 @@ impl TreemapTypographyThemePlan {
             .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
         retained_reservation.reconcile_downward(retained_bytes);
 
+        let mut css = super::css_binding::TreemapCssBinding::new(
+            effective_config.as_value(),
+            inherited_font_stack.font_family_css(),
+        )?;
+        if let Some(fill) = title_fill {
+            css.title_color = fill.to_owned();
+        }
+        if let Some(fill) = text_fill.as_ref() {
+            if !label_config_owns_text_fill {
+                css.label_color = fill.css().to_owned();
+            }
+            if !value_config_owns_text_fill {
+                css.value_color = fill.css().to_owned();
+            }
+        }
         Ok(Self {
+            css,
             inherited_font_stack,
             text_fill,
             text_rules: text_rules.into_iter().collect(),
@@ -382,7 +410,11 @@ impl TreemapTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.css.common.font_family()
+    }
+
+    pub(crate) fn css_binding(&self) -> &super::css_binding::TreemapCssBinding {
+        &self.css
     }
 
     pub(crate) fn label_text_fill_css(&self) -> Option<&str> {

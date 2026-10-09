@@ -412,7 +412,6 @@ fn write_treemap_leaf_group_open(
 
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
-    effective_config: &serde_json::Value,
     title_theme: &crate::treemap::TreemapTitleThemePlan,
     typography_theme: &crate::treemap::TreemapTypographyThemePlan,
     options: &SvgExecution<'_>,
@@ -625,7 +624,7 @@ pub(crate) fn render_treemap_diagram_svg(
 
     let diagram_id = options.diagram_id_or("treemap");
 
-    let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
+    let theme = typography_theme.css_binding();
     let typed_label_text_fill = typography_theme.label_text_fill_css();
     let typed_value_text_fill = typography_theme.value_text_fill_css();
 
@@ -836,11 +835,7 @@ pub(crate) fn render_treemap_diagram_svg(
     let (css, title_css_emission, typography_css_emission) =
         super::super::css::treemap_css_with_title_fill_and_font_family(
             diagram_id,
-            effective_config,
-            Some(typography_theme.font_family_css()),
-            title_theme.fill_css(),
-            typography_theme.label_text_fill_css(),
-            typography_theme.value_text_fill_css(),
+            typography_theme,
         )?;
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(title_css_emission.class(), title_css_emission.fill());
@@ -1857,14 +1852,8 @@ mod tests {
             std::sync::Arc::clone(session.work_meter()),
         )
         .unwrap();
-        let svg = render_treemap_diagram_svg(
-            &layout,
-            config.as_value(),
-            &title_theme,
-            &typography_theme,
-            &execution,
-        )
-        .unwrap();
+        let svg = render_treemap_diagram_svg(&layout, &title_theme, &typography_theme, &execution)
+            .unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(

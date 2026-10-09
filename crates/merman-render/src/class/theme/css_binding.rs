@@ -12,7 +12,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) node_default_fill: String,
     pub(crate) node_default_stroke: String,
     pub(crate) node_border: String,
-    pub(crate) stroke_width: String,
     pub(crate) edge_label_background: String,
     pub(crate) note_fill: String,
     pub(crate) note_stroke: String,
@@ -87,7 +86,6 @@ mod tests {
         let binding = ClassCssThemeBinding::resolve(&config);
         assert_eq!(binding.class_text, "var(--class-text)");
         assert_eq!(binding.main_bkg, "color(display-p3 1 0 0)");
-        assert_eq!(binding.stroke_width, "calculated");
         assert_eq!(binding.note_fill, "none");
         assert_eq!(binding.palette_look, "handDrawn");
         assert_eq!(
@@ -169,11 +167,6 @@ impl ClassCssThemeBinding {
             node_default_fill: token("mainBkg", &token("primaryColor", "#ECECFF")),
             node_default_stroke: token("nodeBorder", &token("primaryBorderColor", "#9370DB")),
             node_border: token("nodeBorder", "#9370DB"),
-            stroke_width: crate::config::config_css_number_or_string(
-                config,
-                &["themeVariables", "strokeWidth"],
-            )
-            .unwrap_or_else(|| "1".into()),
             edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             note_fill: token("noteBkgColor", "#fff5ad"),
             note_stroke: token("noteBorderColor", "#aaaa33"),

@@ -11,13 +11,6 @@ fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
 }
 
-fn requirement_theme_color_limit(effective_config: &serde_json::Value) -> usize {
-    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .filter(|value| value.is_finite())
-        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
-        .unwrap_or(12)
-}
-
 fn requirement_color_indices(
     model: &RequirementDiagramRenderModel,
 ) -> std::collections::HashMap<String, usize> {
@@ -101,14 +94,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
-    let font_family_override = paint_theme.font_family_override();
-    let font_size_override = paint_theme.font_size_override();
-    let label_measurements = prepared.label_measurements_for_render_with_typography(
-        effective_config,
-        measurer,
-        font_family_override,
-        font_size_override,
-    );
+    let label_measurements =
+        prepared.label_measurements_for_render_with_typography(measurer, paint_theme.css());
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
         let sanitized = requirement_label_source(raw, sanitize_config);
@@ -341,14 +328,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     let diagram_id = options.diagram_id_or("requirement");
     let render_settings = crate::requirement::RequirementConfigView::new(effective_config)
-        .render_settings_with_resolved_typography(font_family_override, font_size_override);
+        .render_settings_with_binding(paint_theme.css());
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
-    let theme = SvgTheme::new(effective_config);
-    let border_colors = theme.string_array("borderColorArray");
-    let background_colors = theme.string_array("bkgColorArray");
-    let theme_color_limit = requirement_theme_color_limit(effective_config);
+    let binding = paint_theme.css();
+    let border_colors = &binding.border_colors;
+    let background_colors = &binding.background_colors;
+    let theme_color_limit = binding.theme_color_limit;
     let color_indices = requirement_color_indices(model);
     let has_diagram_id = !diagram_id.semantic_str().is_empty();
 
@@ -363,14 +350,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(|n| (n.name.as_str(), n))
         .collect();
 
-    let font_family = Some(
-        font_family_override
-            .unwrap_or(render_settings.font_family.as_str())
-            .to_owned(),
-    );
+    let font_family = Some(render_settings.font_family.clone());
     let font_size = render_settings.font_size;
-    let default_fill_color = theme.color("mainBkg", "#ECECFF");
-    let default_stroke_color = theme.color("nodeBorder", "#9370DB");
+    let default_fill_color = &binding.default_fill;
+    let default_stroke_color = &binding.default_stroke;
     let hand_drawn_seed = options.rough_randomness(
         render_settings.hand_drawn_seed,
         "render.requirement.roughjs",
@@ -639,19 +622,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let mut text_paint_receipt = paint_theme
         .text_paint()
         .begin_terminal_receipt(expected_text_terminals, options.work_meter())?;
-    let mut css_emission = super::super::css::requirement_css_with_relation_paint_and_text(
-        diagram_id,
-        effective_config,
-        font_family_override,
-        paint_theme.font_size_override_css(),
-        relation_paint.and_then(|plan| plan.typed_color()),
-        text_paint_receipt.as_mut(),
-    );
+    let mut css_emission =
+        super::css::write_requirement_css(diagram_id, binding, text_paint_receipt.as_mut());
     let color_css = requirement_color_css(
         diagram_id,
         look,
-        &border_colors,
-        &background_colors,
+        border_colors,
+        background_colors,
         theme_color_limit,
     );
     insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
@@ -674,16 +651,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
         ""
     };
     let marker_stroke = if look == "neo" {
-        let width = effective_config
-            .pointer("/themeVariables/strokeWidth")
-            .map(|value| {
-                value
-                    .as_str()
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| value.to_string())
-            })
-            .unwrap_or_else(|| "undefined".to_owned());
-        format!(r#" stroke-width="{}""#, escape_xml(&width))
+        let width = &binding.marker_stroke_width;
+        format!(r#" stroke-width="{}""#, escape_xml(width))
     } else {
         String::new()
     };
@@ -1045,7 +1014,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         options.checkpoint_emit()?;
         let color_id_attr = color_indices
             .get(n.id.as_str())
-            .and_then(|index| requirement_color_id(&border_colors, *index))
+            .and_then(|index| requirement_color_id(border_colors, *index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
             .unwrap_or_default();
 
@@ -1077,25 +1046,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let fill_color = fill_override
             .as_deref()
             .or_else(|| typed_fill.map(|(_, fill)| fill))
-            .unwrap_or(&default_fill_color);
+            .unwrap_or(default_fill_color);
         let stroke_color = stroke_override
             .as_deref()
             .or_else(|| typed_stroke.map(|(_, stroke)| stroke))
-            .unwrap_or(&default_stroke_color);
+            .unwrap_or(default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
-        let source_path_style = if look != "handDrawn"
-            && !node_styles.is_empty()
-            && (!border_colors.is_empty()
-                || config_string(
-                    effective_config,
-                    &["themeVariables", "requirementEdgeLabelBackground"],
-                )
-                .is_some_and(|value| !value.is_empty()))
-        {
-            node_styles.as_str()
-        } else {
-            ""
-        };
+        let source_path_style =
+            if look != "handDrawn" && !node_styles.is_empty() && binding.source_path_style_active {
+                node_styles.as_str()
+            } else {
+                ""
+            };
         let mut fill_style_declaration = source_path_style.to_owned();
         if fill_override.is_some() || typed_fill.is_some() {
             if !fill_style_declaration.is_empty() {
@@ -1664,20 +1626,28 @@ mod tests {
                 "THEME_COLOR_LIMIT": 3
             }
         });
-        assert_eq!(super::requirement_theme_color_limit(&config), 3);
-
-        let mut merged = crate::svg::parity::css::requirement_css_with_typography(
-            "requirement-colors",
-            &config,
+        let core_config = merman_core::MermaidConfig::from_value(config.clone());
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
             None,
+            &core_config,
+            &model,
             None,
+            &meter,
         )
-        .css;
+        .unwrap();
+        let binding = plan.css();
+        assert_eq!(binding.theme_color_limit, 3);
+
+        let mut merged =
+            super::super::css::write_requirement_css("requirement-colors", binding, None).css;
         let generated = super::requirement_color_css(
             "requirement-colors",
             "classic",
-            &super::SvgTheme::new(&config).string_array("borderColorArray"),
-            &super::SvgTheme::new(&config).string_array("bkgColorArray"),
+            &binding.border_colors,
+            &binding.background_colors,
             3,
         );
         super::insert_requirement_color_css(&mut merged, "requirement-colors", &generated);

@@ -56,7 +56,7 @@ struct EventModelingTextRuleObservation {
 /// Final Event Modeling text styling shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct EventModelingTextThemePlan {
-    typed_fill: Option<DirectStaticPaint>,
+    css_binding: super::EventModelingCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Option<Box<str>>,
     typed_font_size_requested: bool,
@@ -68,9 +68,10 @@ pub(crate) struct EventModelingTextThemePlan {
 }
 
 impl EventModelingTextThemePlan {
-    pub(crate) fn resolve(
+    pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+        mut css_binding: super::EventModelingCssBinding,
         layout: &EventModelingDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
@@ -84,6 +85,7 @@ impl EventModelingTextThemePlan {
             )
             .map(String::into_boxed_str);
             return Ok(Self::baseline_from_occurrences(
+                css_binding,
                 occurrences,
                 inherited_font_stack,
                 configured_font_size_css,
@@ -275,8 +277,11 @@ impl EventModelingTextThemePlan {
             .map(String::into_boxed_str)
         };
 
+        if let Some(fill) = typed_fill {
+            css_binding.text_color = fill.css().to_owned();
+        }
         Ok(Self {
-            typed_fill,
+            css_binding,
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested: typed_font_size,
@@ -289,6 +294,7 @@ impl EventModelingTextThemePlan {
     }
 
     fn baseline_from_occurrences(
+        css_binding: super::EventModelingCssBinding,
         occurrences: EventModelingTextOccurrences,
         inherited_font_stack: InheritedFontStackPlan,
         font_size_css: Option<Box<str>>,
@@ -296,7 +302,7 @@ impl EventModelingTextThemePlan {
         typed_font_size_active: bool,
     ) -> Self {
         Self {
-            typed_fill: None,
+            css_binding,
             inherited_font_stack,
             font_size_css,
             typed_font_size_requested,
@@ -308,19 +314,14 @@ impl EventModelingTextThemePlan {
         }
     }
 
-    pub(crate) fn terminal_fill<'a>(&'a self, configured_fill: &'a str) -> &'a str {
-        self.typed_fill
-            .as_ref()
-            .map_or(configured_fill, DirectStaticPaint::css)
+    pub(crate) fn css_binding(&self) -> &super::EventModelingCssBinding {
+        &self.css_binding
     }
 
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        configured_fill: &str,
-    ) -> EventModelingTextThemeReceipt {
+    pub(crate) fn begin_terminal_receipt(&self) -> EventModelingTextThemeReceipt {
         EventModelingTextThemeReceipt::new(
             self.occurrences,
-            self.terminal_fill(configured_fill),
+            &self.css_binding.text_color,
             self.inherited_font_stack.font_family_css(),
             self.font_size_css.as_deref(),
         )
@@ -454,6 +455,32 @@ impl EventModelingTextThemeReceipt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn baseline_text_receipt_consumes_prepared_raw_paint_and_font_tokens() {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "textColor": "var(--text)", "fontFamily": "Fira Sans", "fontSize": "1.5em"
+            }
+        }));
+        let binding = super::super::EventModelingCssBinding::resolve(config.as_value());
+        let layout = super::super::layout_eventmodeling_diagram_typed_with_binding(
+            &merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel::default(),
+            &binding,
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .expect("empty Event Modeling layout");
+        let work = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let plan = EventModelingTextThemePlan::resolve_with_binding(
+            None, &config, binding, &layout, &work,
+        )
+        .expect("prepared baseline text");
+        let mut receipt = plan.begin_terminal_receipt();
+        let css = write_receipt_stylesheet(&mut receipt);
+        assert!(css.contains("fill: var(--text); color: var(--text);"));
+        assert!(css.contains("font-family: Fira Sans; font-size: 1.5em;"));
+        assert!(plan.record_terminal(receipt));
+    }
 
     fn write_receipt_stylesheet(receipt: &mut EventModelingTextThemeReceipt) -> String {
         let mut stylesheet = String::new();

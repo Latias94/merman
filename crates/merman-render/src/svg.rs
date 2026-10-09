@@ -44,7 +44,10 @@ pub(crate) use parity::BaseEdgeMarkerKind;
     feature = "diagram-quadrant-chart",
     feature = "diagram-journey",
     feature = "diagram-timeline",
-    feature = "diagram-kanban"
+    feature = "diagram-kanban",
+    feature = "diagram-treemap",
+    feature = "diagram-requirement",
+    feature = "diagram-er"
 ))]
 pub(crate) use parity::PreparedCommonCss;
 mod pipeline;

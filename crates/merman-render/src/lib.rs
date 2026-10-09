@@ -240,15 +240,6 @@ pub mod swimlane;
     )
 )]
 pub mod text;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod theme;
 mod theme_route_cutover;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;

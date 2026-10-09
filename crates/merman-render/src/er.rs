@@ -24,7 +24,7 @@ pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
-    ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan, ErEntityThemeReceipt,
+    ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntityThemePlan, ErEntityThemeReceipt,
     ErRelationTerminalExpectation, compile_er_subgraph_source_style, subgraph_svg_text_facts,
 };
 

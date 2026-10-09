@@ -1,4 +1,4 @@
-use crate::diagram_theme::{CanvasPaint, ResolvedThemeStyle, Specified};
+use crate::diagram_theme::{CanvasPaint, ResolvedStyleProperty, ResolvedThemeStyle, Specified};
 
 use super::terminal::ExpectedPaint;
 
@@ -26,6 +26,7 @@ pub(super) struct ClassPaintBinding {
     config_origin: Option<&'static str>,
     action: ClassPaintAction,
     typed: Option<ExpectedPaint>,
+    selected_property: Option<ResolvedStyleProperty>,
 }
 
 impl ClassPaintBinding {
@@ -58,6 +59,11 @@ impl ClassPaintBinding {
         } else {
             style.fill_resolution()
         };
+        self.selected_property = Some(if stroke {
+            ResolvedStyleProperty::Stroke
+        } else {
+            ResolvedStyleProperty::Fill
+        });
         self.action = resolution
             .winner()
             .map_or(ClassPaintAction::Inherit, |origin| {
@@ -88,6 +94,15 @@ impl ClassPaintBinding {
 
     pub(super) fn typed(&self) -> Option<&ExpectedPaint> {
         self.typed.as_ref()
+    }
+
+    pub(super) fn stroke_receipt(&self) -> Option<super::terminal::ExpectedStroke> {
+        let typed = self.typed()?;
+        Some(super::terminal::ExpectedStroke {
+            rule_index: typed.rule_index,
+            property: self.selected_property?,
+            css: typed.css.clone(),
+        })
     }
 
     pub(super) fn css(&self) -> &str {

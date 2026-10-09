@@ -7,7 +7,6 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     layout: &EventModelingDiagramLayout,
     model: &EventModelingDiagramRenderModel,
     text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
-    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("eventmodeling");
@@ -23,8 +22,8 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         .filter(|description| !description.trim().is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
-    let mut text_theme_receipt = text_theme.begin_terminal_receipt(&theme.text_color);
+    let theme = text_theme.css_binding();
+    let mut text_theme_receipt = text_theme.begin_terminal_receipt();
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,

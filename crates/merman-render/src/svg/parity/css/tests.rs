@@ -1,6 +1,15 @@
 use super::*;
 use std::collections::BTreeMap;
 
+fn er_binding(config: &serde_json::Value) -> crate::er::ErCssBinding {
+    let config = merman_core::MermaidConfig::from_value(config.clone());
+    crate::er::ErCssBinding::resolve(
+        config.as_value(),
+        &crate::family::InheritedFontStackPlan::resolve_property_local(None, &config),
+        &crate::er::ErBaseFontSizePlan::resolve(None, &config),
+    )
+}
+
 fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
 where
     I: SvgDiagramIdValue,
@@ -93,7 +102,7 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         ));
     }
 
-    let er = er_css_with_resolved_typography("diag", &cfg, None, None)
+    let er = er_css_with_resolved_typography("diag", &er_binding(&cfg))
         .expect("valid ER theme colors")
         .css;
     assert_fragments_in_order(
@@ -167,7 +176,7 @@ fn explicit_empty_root_font_omits_the_rule_without_changing_theme_font() {
         });
         for css in [
             info_css_with_config("diag", &config),
-            er_css_with_resolved_typography("diag", &config, None, None)
+            er_css_with_resolved_typography("diag", &er_binding(&config))
                 .unwrap()
                 .css,
         ] {
@@ -185,7 +194,7 @@ fn shared_and_er_css_keep_theme_font_separate_from_root_custom_property() {
     });
     for css in [
         info_css_with_config("diag", &config),
-        er_css_with_resolved_typography("diag", &config, None, None)
+        er_css_with_resolved_typography("diag", &er_binding(&config))
             .unwrap()
             .css,
     ] {
@@ -395,7 +404,7 @@ fn er_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = er_css_with_resolved_typography("er", &cfg, None, None)
+    let css = er_css_with_resolved_typography("er", &er_binding(&cfg))
         .expect("valid ER theme colors")
         .css;
 
@@ -428,13 +437,11 @@ fn er_css_honors_mermaid_11_15_theme_options() {
 fn er_css_rejects_unsupported_tertiary_color() {
     let error = er_css_with_resolved_typography(
         "er",
-        &serde_json::json!({
+        &er_binding(&serde_json::json!({
             "themeVariables": {
                 "tertiaryColor": "not-a-css-color"
             }
-        }),
-        None,
-        None,
+        })),
     )
     .expect_err("unsupported khroma color must fail stylesheet generation");
 
@@ -526,46 +533,4 @@ fn treemap_css_honors_mermaid_11_15_style_options() {
     assert!(css.contains("#tm .treemapLabel{fill:#555555;font-size:13px;}"));
     assert!(css.contains("#tm .treemapValue{fill:#666666;font-size:11px;}"));
     assert!(css.contains("#tm .treemapTitle{fill:#777777;font-size:15px;}"));
-}
-
-#[test]
-fn requirement_css_honors_mermaid_11_15_theme_options() {
-    let cfg = serde_json::json!({
-        "look": "neo",
-        "themeVariables": {
-            "fontFamily": "\"ibm plex sans\", arial, sans-serif",
-            "fontSize": "18px",
-            "textColor": "#101010",
-            "nodeTextColor": "#111111",
-            "relationColor": "#222222",
-            "lineColor": "#333333",
-            "requirementBackground": "#444444",
-            "requirementBorderColor": "#555555",
-            "requirementBorderSize": 2,
-            "requirementTextColor": "#666666",
-            "relationLabelBackground": "#777777",
-            "relationLabelColor": "#888888",
-            "edgeLabelBackground": "#999999",
-            "requirementEdgeLabelBackground": "#aaaaaa",
-            "nodeBorder": "#bbbbbb",
-            "strokeWidth": 3
-        }
-    });
-
-    let css = requirement_css_with_typography("req", &cfg, None, None).css;
-
-    assert!(css.contains(r#"#req marker{fill:#222222;stroke:#222222;}"#));
-    assert!(css.contains(r#"#req marker.cross{stroke:#333333;}"#));
-    assert!(
-        css.contains(
-            r#"#req .reqBox{fill:#444444;fill-opacity:1.0;stroke:#555555;stroke-width:2;}"#
-        )
-    );
-    assert!(css.contains(r#"#req .reqTitle,#req .reqLabel{fill:#666666;}"#));
-    assert!(css.contains(r#"#req .reqLabelBox{fill:#777777;fill-opacity:1.0;}"#));
-    assert!(css.contains(r#"#req .relationshipLine{stroke:#222222;stroke-width:3;}"#));
-    assert!(css.contains(r#"#req .relationshipLabel{fill:#888888;}"#));
-    assert!(css.contains(r#"#req .edgeLabel .label rect{fill:#999999;}"#));
-    assert!(css.contains(r#"#req .labelBkg{background-color:#aaaaaa;}"#));
-    assert!(css.contains(r#"#req [data-look="neo"].node path{stroke:#bbbbbb;stroke-width:3px;}"#));
 }

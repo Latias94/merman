@@ -445,7 +445,7 @@ pub(crate) struct PreparedCommonCss {
 }
 
 impl PreparedCommonCss {
-    #[cfg(feature = "diagram-class")]
+    #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
     pub(crate) fn bind(
         effective_config: &serde_json::Value,
         font_family: &str,
@@ -470,7 +470,9 @@ impl PreparedCommonCss {
         feature = "diagram-quadrant-chart",
         feature = "diagram-journey",
         feature = "diagram-timeline",
-        feature = "diagram-kanban"
+        feature = "diagram-kanban",
+        feature = "diagram-treemap",
+        feature = "diagram-requirement"
     ))]
     pub(crate) fn font_family(&self) -> &str {
         &self.font_family
@@ -480,18 +482,23 @@ impl PreparedCommonCss {
         feature = "diagram-pie",
         feature = "diagram-timeline",
         feature = "diagram-kanban",
-        feature = "diagram-gantt"
+        feature = "diagram-gantt",
+        feature = "diagram-requirement"
     ))]
     pub(crate) fn text_color(&self) -> &str {
         &self.text_color
     }
 
-    #[cfg(any(feature = "diagram-journey", feature = "diagram-kanban"))]
+    #[cfg(any(
+        feature = "diagram-journey",
+        feature = "diagram-kanban",
+        feature = "diagram-requirement"
+    ))]
     pub(crate) fn font_size_css(&self) -> &str {
         &self.font_size_css
     }
 
-    #[cfg(feature = "diagram-journey")]
+    #[cfg(any(feature = "diagram-journey", feature = "diagram-requirement"))]
     pub(crate) fn line_color(&self) -> &str {
         &self.line_color
     }
@@ -499,7 +506,8 @@ impl PreparedCommonCss {
     #[cfg(any(
         feature = "diagram-journey",
         feature = "diagram-timeline",
-        feature = "diagram-kanban"
+        feature = "diagram-kanban",
+        feature = "diagram-requirement"
     ))]
     pub(crate) fn with_text_color(mut self, text_color: &str) -> Self {
         self.text_color = text_color.to_owned();
@@ -958,182 +966,6 @@ where
     architecture_css_parts_with_config(diagram_id, effective_config).css
 }
 
-/// Values emitted by the Requirement stylesheet writer for terminal evidence.
-#[derive(Debug)]
-pub(super) struct RequirementCssEmission {
-    pub(super) css: String,
-    font_family: Box<str>,
-    font_size: Box<str>,
-    typed_relation_color: Option<(usize, Box<str>)>,
-}
-
-impl RequirementCssEmission {
-    pub(super) fn font_family(&self) -> &str {
-        &self.font_family
-    }
-
-    pub(super) fn font_size(&self) -> &str {
-        &self.font_size
-    }
-
-    pub(super) fn typed_relation_color(&self) -> Option<(usize, &str)> {
-        self.typed_relation_color
-            .as_ref()
-            .map(|(index, color)| (*index, color.as_ref()))
-    }
-}
-
-#[cfg(feature = "diagram-requirement")]
-pub(super) fn requirement_css_with_typography<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    resolved_font_size: Option<&str>,
-) -> RequirementCssEmission
-where
-    I: SvgDiagramIdValue,
-{
-    requirement_css_with_relation_paint_and_text(
-        diagram_id,
-        effective_config,
-        resolved_font_family,
-        resolved_font_size,
-        None,
-        None,
-    )
-}
-
-#[cfg(feature = "diagram-requirement")]
-pub(super) fn requirement_css_with_relation_paint_and_text<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    resolved_font_size: Option<&str>,
-    typed_relation_color: Option<(usize, &str)>,
-    mut text_receipt: Option<&mut crate::requirement::RequirementTextPaintReceipt<'_>>,
-) -> RequirementCssEmission
-where
-    I: SvgDiagramIdValue,
-{
-    // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
-    // Keep `:root` last to match upstream fixtures.
-    let id = CssSelectorDiagramId(diagram_id);
-    let parts = match (resolved_font_family, resolved_font_size) {
-        (Some(font_family), Some(font_size)) => info_css_parts_with_resolved_typography(
-            diagram_id,
-            effective_config,
-            font_family,
-            font_size,
-        ),
-        (Some(font_family), None) => {
-            info_css_parts_with_font_family(diagram_id, effective_config, font_family)
-        }
-        (None, Some(font_size)) => {
-            let font_family = crate::config::config_font_family_css(effective_config);
-            info_css_parts_with_resolved_typography(
-                diagram_id,
-                effective_config,
-                &font_family,
-                font_size,
-            )
-        }
-        (None, None) => info_css_parts_with_config(diagram_id, effective_config),
-    };
-    let InfoCssParts {
-        css_prefix,
-        root_rule,
-        font_family,
-        font_size_css: emitted_font_size,
-        text_color,
-        ..
-    } = parts;
-    let mut out = css_prefix;
-    let font_family = font_family.into_boxed_str();
-    let font = font_family.as_ref();
-    let node_text_color = config_string(effective_config, &["themeVariables", "nodeTextColor"])
-        .filter(|color| !color.is_empty())
-        .unwrap_or_else(|| text_color.clone());
-
-    let option = |key: &str, default_value: &str| -> String {
-        crate::config::config_css_number_or_string(effective_config, &["themeVariables", key])
-            .unwrap_or_else(|| default_value.to_string())
-    };
-
-    let relation_color = typed_relation_color
-        .map(|(_, color)| color.to_owned())
-        .unwrap_or_else(|| option("relationColor", "#333333"));
-    let line_color = option("lineColor", "#333333");
-    let font_size = resolved_font_size
-        .map(str::to_owned)
-        .unwrap_or(emitted_font_size);
-    let requirement_background = option("requirementBackground", "#ECECFF");
-    let requirement_border_color =
-        option("requirementBorderColor", "hsl(240, 60%, 86.2745098039%)");
-    let requirement_border_size = option("requirementBorderSize", "1");
-    let requirement_text_color = option("requirementTextColor", "#131300");
-    let relation_label_background = option("relationLabelBackground", "rgba(232,232,232, 0.8)");
-    let relation_label_color = option("relationLabelColor", "black");
-    let edge_label_background = option("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-    let requirement_edge_label_background = config_string(
-        effective_config,
-        &["themeVariables", "requirementEdgeLabelBackground"],
-    )
-    .unwrap_or_else(|| edge_label_background.clone());
-    let node_border = option("nodeBorder", "#9370DB");
-    let look = config_diagram_look(effective_config);
-    let relationship_line_stroke_width = if look.is_neo() {
-        option("strokeWidth", "1")
-    } else {
-        "1px".to_string()
-    };
-    let _ = write!(
-        &mut out,
-        r#"#{} marker{{fill:{};stroke:{};}}#{} marker.cross{{stroke:{};}}"#,
-        id, relation_color, relation_color, id, line_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{id} svg{{font-family:{font};font-size:{font_size}}}#{id} .reqBox{{fill:{requirement_background};fill-opacity:1.0;stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .reqTitle,#{id} .reqLabel{{fill:{requirement_text_color};}}#{id} .reqLabelBox{{fill:{relation_label_background};fill-opacity:1.0;}}#{id} .req-title-line{{stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .relationshipLine{{stroke:{relation_color};stroke-width:{relationship_line_stroke_width};}}#{id} .relationshipLabel{{"#,
-    );
-    let _ = write!(&mut out, "fill:{relation_label_color};");
-    let _ = write!(
-        &mut out,
-        r#"}}#{id} .edgeLabel{{background-color:{edge_label_background};}}#{id} .edgeLabel .label rect{{fill:{edge_label_background};}}#{id} .edgeLabel .label text{{"#,
-    );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        let _ = receipt.write_relation_css(&mut out, &relation_label_color);
-    } else {
-        let _ = write!(&mut out, "fill:{relation_label_color};");
-    }
-    let _ = write!(
-        &mut out,
-        r#"}}#{id} .divider{{stroke:{node_border};stroke-width:1;}}#{id} .label{{font-family:{font};"#,
-    );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        let _ = receipt.write_node_css(&mut out, &node_text_color, false);
-    } else {
-        let _ = write!(&mut out, "color:{node_text_color};");
-    }
-    let _ = write!(&mut out, "}}#{id} .label text,#{id} span{{");
-    if let Some(receipt) = text_receipt {
-        let _ = receipt.write_node_css(&mut out, &node_text_color, true);
-    } else {
-        let _ = write!(&mut out, "fill:{node_text_color};color:{node_text_color};");
-    }
-    let _ = write!(
-        &mut out,
-        "}}#{id} .labelBkg{{background-color:{requirement_edge_label_background};}}"
-    );
-    out.push_str(&root_rule);
-    RequirementCssEmission {
-        css: out,
-        font_family,
-        font_size: font_size.into_boxed_str(),
-        typed_relation_color: typed_relation_color
-            .map(|(index, _)| (index, relation_color.into_boxed_str())),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ErCssEmission {
     pub(super) css: String,
@@ -1144,9 +976,7 @@ pub(super) struct ErCssEmission {
 #[cfg(feature = "diagram-er")]
 pub(super) fn er_css_with_resolved_typography<I>(
     diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    resolved_font_size: Option<&str>,
+    values: &crate::er::ErCssBinding,
 ) -> Result<ErCssEmission>
 where
     I: SvgDiagramIdValue,
@@ -1156,64 +986,22 @@ where
     // Keep `:root` last (matches upstream fixtures).
     let id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
-    let theme = SvgTheme::new(effective_config);
-    let font = resolved_font_family
-        .map(str::to_owned)
-        .unwrap_or_else(|| theme.font_family_css());
-    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
-        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
-    let text_color = theme.color("textColor", "#333");
-    let line_color = theme.color("lineColor", "#333333");
-    let error_bkg = theme.color("errorBkgColor", "#552222");
-    let error_text = theme.color("errorTextColor", "#552222");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let cluster_bkg = theme.color("clusterBkg", &main_bkg);
-    let cluster_border = theme.color("clusterBorder", &node_border);
-    let title_color = theme
-        .optional_color("titleColor")
-        .unwrap_or_else(|| text_color.clone());
-    let node_text_color = theme
-        .optional_color("nodeTextColor")
-        .unwrap_or_else(|| text_color.clone());
-    const DEFAULT_ER_TERTIARY: &str = "hsl(80, 100%, 96.2745098039%)";
-    let tertiary_color = theme.color("tertiaryColor", DEFAULT_ER_TERTIARY);
-    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-    let er_edge_label_background = match theme.theme_name().as_str() {
-        "redux-color" | "redux-dark-color" => theme.optional_color("erEdgeLabelBackground"),
-        _ => None,
-    };
-    let label_background = match er_edge_label_background.clone() {
-        Some(background) => background,
-        None => css_rgba_fade(&tertiary_color, 0.5)?,
-    };
-    let edge_label_background = er_edge_label_background.unwrap_or(edge_label_background);
-    let stroke_width = if theme.look() == "neo" {
-        theme.css_value("strokeWidth", "1px")
-    } else {
-        "1px".to_string()
-    };
-    let font_size_css = resolved_font_size
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{}px", fmt(font_size)));
-    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
+    let font = &values.font_family;
+    let font_size_css = &values.font_size_css;
+    let text_color = &values.text_color;
+    let line_color = &values.line_color;
+    let main_bkg = &values.main_bkg;
+    let node_border = &values.node_border;
+    let cluster_bkg = &values.cluster_bkg;
+    let cluster_border = &values.cluster_border;
+    let title_color = &values.title_color;
+    let node_text_color = &values.node_text_color;
+    let tertiary_color = &values.tertiary_color;
+    let label_background = values.label_background.clone()?;
+    let edge_label_background = &values.edge_label_background;
+    let stroke_width = &values.stroke_width;
     let mut out = String::new();
-    write_mermaid_base_css_prefix(
-        &mut out,
-        id,
-        MermaidBaseCss {
-            font_family: &font,
-            font_size_css: &font_size_css,
-            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
-            text_color: &text_color,
-            line_color: &line_color,
-            error_bkg: &error_bkg,
-            error_text: &error_text,
-        },
-    )
-    .expect("String-backed Mermaid base CSS emission cannot fail");
+    values.common.write_prefix(&mut out, id)?;
     let _ = write!(
         &mut out,
         r#"#{} .entityBox{{fill:{};stroke:{};}}"#,
@@ -1270,30 +1058,18 @@ where
         &mut out,
         r#"#{} [data-look=neo].labelBkg{{background-color:{};}}"#,
         id,
-        css_rgba_fade(&tertiary_color, 0.5)?
+        values.neo_label_background.clone()?
     );
     let _ = write!(
         &mut out,
         r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster-label text{{fill:{};}}"#,
         id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
-    write_mermaid_common_neo_css(
-        &mut out,
-        id,
-        fragment_id,
-        &MermaidCommonNeoCss::new(effective_config),
-    )
-    .expect("String-backed ER neo CSS emission cannot fail");
-    let root_font = resolved_font_family.map_or_else(
-        || crate::config::config_root_font_family_css(effective_config),
-        str::to_owned,
-    );
-    write_mermaid_base_css_root_rule(&mut out, id, &root_font)
-        .expect("String-backed ER root CSS emission cannot fail");
+    values.common.write_root(&mut out, id, fragment_id)?;
     Ok(ErCssEmission {
         css: out,
-        font_family: font.into_boxed_str(),
-        font_size: font_size_css.into_boxed_str(),
+        font_family: font.clone().into_boxed_str(),
+        font_size: font_size_css.clone().into_boxed_str(),
     })
 }
 
@@ -1485,13 +1261,24 @@ where
     )
 }
 
-#[cfg(test)]
-#[cfg(feature = "diagram-treemap")]
+#[cfg(all(test, feature = "diagram-treemap"))]
 pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
 where
     I: SvgDiagramIdValue,
 {
-    treemap_css_inner(diagram_id, effective_config, None, None, None, None).map(|(css, _, _)| css)
+    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    ));
+    let layout = crate::treemap::layout_treemap_diagram_typed_with_work_meter(
+        &merman_core::diagrams::treemap::TreemapDiagramRenderModel::default(),
+        None,
+        config.as_value(),
+        work.as_ref(),
+    )?;
+    let typography =
+        crate::treemap::TreemapTypographyThemePlan::resolve(None, &config, &layout, work)?;
+    treemap_css_with_title_fill_and_font_family(diagram_id, &typography).map(|(css, _, _)| css)
 }
 
 pub(super) struct TreemapTitleCssEmission {
@@ -1512,37 +1299,7 @@ impl TreemapTitleCssEmission {
 #[cfg(feature = "diagram-treemap")]
 pub(super) fn treemap_css_with_title_fill_and_font_family<I>(
     diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    title_fill: Option<&str>,
-    label_text_fill: Option<&str>,
-    value_text_fill: Option<&str>,
-) -> Result<(
-    String,
-    TreemapTitleCssEmission,
-    crate::treemap::TreemapTypographyCssEmission,
-)>
-where
-    I: SvgDiagramIdValue,
-{
-    treemap_css_inner(
-        diagram_id,
-        effective_config,
-        resolved_font_family,
-        title_fill,
-        label_text_fill,
-        value_text_fill,
-    )
-}
-
-#[cfg(feature = "diagram-treemap")]
-fn treemap_css_inner<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-    title_fill: Option<&str>,
-    label_text_fill: Option<&str>,
-    value_text_fill: Option<&str>,
+    typography_theme: &crate::treemap::TreemapTypographyThemePlan,
 ) -> Result<(
     String,
     TreemapTitleCssEmission,
@@ -1554,16 +1311,14 @@ where
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let parts = match resolved_font_family {
-        Some(font_family) => {
-            info_css_parts_with_font_family(diagram_id, effective_config, font_family)
-        }
-        None => info_css_parts_with_config(diagram_id, effective_config),
-    };
-    let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
-    let label_color = label_text_fill.unwrap_or(&theme.label_color);
-    let value_color = value_text_fill.unwrap_or(&theme.value_color);
-    let mut out = parts.css_prefix;
+    let theme = typography_theme.css_binding();
+    let label_color = &theme.label_color;
+    let value_color = &theme.value_color;
+    let mut out = String::new();
+    let base_typography_emitted = theme
+        .common
+        .write_prefix_with_font_emission(&mut out, diagram_id)
+        .map(|_| true)?;
 
     let _ = write!(
         &mut out,
@@ -1584,7 +1339,7 @@ where
         theme.value_font_size
     );
     let title_class = crate::treemap::TREEMAP_TITLE_CLASS;
-    let title_fill = title_fill.unwrap_or(&theme.title_color);
+    let title_fill = theme.title_color.as_str();
     let _ = write!(
         &mut out,
         r#"#{} .{}{{fill:{};font-size:{};}}"#,
@@ -1594,14 +1349,17 @@ where
         class: title_class,
         fill: title_fill.into(),
     };
+    let root_typography_emitted = theme
+        .common
+        .write_root_with_font_emission(&mut out, diagram_id, diagram_id)
+        .map(|_| true)?;
     let typography_emission = crate::treemap::TreemapTypographyCssEmission::new(
-        &parts.font_family,
-        parts.base_typography_emitted,
-        !parts.root_rule.is_empty(),
+        theme.common.font_family(),
+        base_typography_emitted,
+        root_typography_emitted,
         label_color,
         value_color,
     );
-    out.push_str(&parts.root_rule);
     Ok((out, title_emission, typography_emission))
 }
 

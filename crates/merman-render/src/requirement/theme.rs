@@ -63,13 +63,13 @@ impl RequirementDividerEmission {
 /// Requirement box paint resolved once for semantic nodes and shared by SVG emission and evidence.
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
+    css: super::RequirementCssBinding,
     relation_paint: Option<super::RequirementRelationPaintPlan>,
     text_paint: super::RequirementTextPaintPlan,
     node_indices: BTreeMap<String, usize>,
     expectations: Option<Arc<[NodeExpectation]>>,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
-    font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title_present: bool,
@@ -94,17 +94,19 @@ impl RequirementPaintThemePlan {
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
+                css: super::RequirementCssBinding::resolve(
+                    effective_config.as_value(),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
                 relation_paint: None,
                 text_paint,
                 node_indices: BTreeMap::new(),
                 expectations: None,
                 inherited_font_stack,
                 font_size_css: configured_font_size_css,
-                font_size_px: crate::config::config_theme_or_root_font_size_px(
-                    effective_config.as_value(),
-                    16.0,
-                )
-                .max(1.0),
                 typed_font_size_requested: false,
                 typed_font_size_active: false,
                 title_present,
@@ -291,14 +293,23 @@ impl RequirementPaintThemePlan {
             }
         }
 
+        let css = super::RequirementCssBinding::resolve(
+            effective_config.as_value(),
+            inherited_font_stack
+                .typed_font_stack_active()
+                .then_some(inherited_font_stack.font_family_css()),
+            typed_font_size_active.then_some(font_size_css.as_ref()),
+            typed_font_size_active.then_some(font_size_px),
+            relation_paint.as_ref().and_then(|plan| plan.typed_color()),
+        );
         Ok(Self {
+            css,
             relation_paint,
             text_paint,
             node_indices,
             expectations: Some(expectations.into()),
             inherited_font_stack,
             font_size_css,
-            font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
             title_present,
@@ -306,6 +317,10 @@ impl RequirementPaintThemePlan {
             pending,
             terminal_receipt: OnceLock::new(),
         })
+    }
+
+    pub(crate) fn css(&self) -> &super::RequirementCssBinding {
+        &self.css
     }
 
     pub(crate) fn index_for_node_id(&self, node_id: &str) -> Option<usize> {
@@ -346,22 +361,8 @@ impl RequirementPaintThemePlan {
         self.inherited_font_stack.font_family_css()
     }
 
-    pub(crate) fn font_family_override(&self) -> Option<&str> {
-        self.inherited_font_stack
-            .typed_font_stack_active()
-            .then_some(self.font_family_css())
-    }
-
-    pub(crate) fn font_size_override(&self) -> Option<f64> {
-        self.typed_font_size_active.then_some(self.font_size_px)
-    }
-
     pub(crate) fn font_size_css(&self) -> &str {
         &self.font_size_css
-    }
-
-    pub(crate) fn font_size_override_css(&self) -> Option<&str> {
-        self.typed_font_size_active.then_some(self.font_size_css())
     }
 
     pub(crate) fn typography_requested(&self) -> bool {
@@ -882,9 +883,9 @@ mod tests {
             .unwrap();
             assert_eq!(plan.font_family_css(), "Config Sans,Arial");
             assert_eq!(plan.font_size_css(), "24px");
-            assert_eq!(plan.font_size_px, 24.0);
-            assert!(plan.font_family_override().is_none());
-            assert!(plan.font_size_override().is_none());
+            assert_eq!(plan.css().layout.font_size, 24.0);
+            assert!(!plan.inherited_font_stack.typed_font_stack_active());
+            assert!(!plan.typed_font_size_active);
             assert!(plan.node_indices.is_empty(), "node_count={node_count}");
             assert!(plan.expectations.is_none(), "node_count={node_count}");
             assert!(plan.pending.is_empty());

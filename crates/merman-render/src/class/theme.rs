@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
-    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeTarget,
-    ThemeVariant,
+    FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
+    ResolvedStyleProperty, Specified, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, resolve_direct_static_fill, resolve_direct_static_stroke,
@@ -16,6 +15,7 @@ mod evidence;
 mod namespace_title;
 mod node;
 mod paint;
+mod relation_width;
 mod terminal;
 mod text;
 
@@ -24,8 +24,9 @@ pub(crate) use css_binding::ClassCssThemeBinding;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use namespace_title::ClassNamespaceTitleThemePlan;
 use node::ClassNodeThemePlan;
+pub(crate) use relation_width::ClassRelationWidthBinding;
+use terminal::ClassClusterTerminalExpectation;
 pub(crate) use terminal::ClassTerminalReceiptSummary;
-use terminal::{ClassClusterTerminalExpectation, ExpectedStroke};
 pub(crate) use terminal::{
     ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
     ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
@@ -35,32 +36,13 @@ pub(crate) use text::{
     ClassTextThemeReceipt, ClassTypographyCssEmission,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-enum ClassRelationStrokeWidth {
-    #[default]
-    Unspecified,
-    Clear {
-        rule_index: usize,
-    },
-    // Keep Mermaid ownership even when its CSS value cannot be reduced to a finite paint width;
-    // an unmeasurable source value must not accidentally fall back to the typed default.
-    MermaidOwned {
-        paint_width: Option<f32>,
-    },
-    Typed {
-        rule_index: usize,
-        value: f32,
-    },
-}
-
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
 /// Node resolution stays behind the same crate-private handle for existing renderer callers.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassRelationThemePlan {
-    stroke: Option<ExpectedStroke>,
     stroke_binding: paint::ClassPaintBinding,
     note_attachment_indices: Vec<usize>,
-    stroke_width: ClassRelationStrokeWidth,
+    stroke_width: ClassRelationWidthBinding,
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
@@ -79,16 +61,8 @@ impl ClassRelationThemePlan {
         node_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mermaid_owns_stroke_width = merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "themeVariables.strokeWidth",
-        );
-        let mermaid_stroke_width = if mermaid_owns_stroke_width {
-            crate::class::config::ClassConfigView::new(effective_config.as_value())
-                .relation_stroke_width_for_bounds()
-        } else {
-            None
-        };
+        let mut stroke_width = ClassRelationWidthBinding::compatibility(effective_config);
+        let mermaid_owns_stroke_width = stroke_width.config_owned();
         let mut stroke_binding = paint::ClassPaintBinding::compatibility(
             effective_config,
             &["themeVariables.lineColor"],
@@ -103,13 +77,7 @@ impl ClassRelationThemePlan {
         let Some(theme) = theme else {
             return Ok(Self {
                 stroke_binding,
-                stroke_width: if mermaid_owns_stroke_width {
-                    ClassRelationStrokeWidth::MermaidOwned {
-                        paint_width: mermaid_stroke_width,
-                    }
-                } else {
-                    ClassRelationStrokeWidth::Unspecified
-                },
+                stroke_width,
                 node_plan,
                 ..Self::default()
             });
@@ -227,49 +195,38 @@ impl ClassRelationThemePlan {
                 || ordinal_rule_targets.contains(&ThemeTarget::Text),
             work_meter,
         )?;
-        let stroke = typed_stroke_expectation(theme, &style, mermaid_owns_stroke);
         let stroke_is_specified = !matches!(
             style.stroke_resolution().specified(),
             Specified::Unspecified
         );
-        stroke_binding.lower(
-            &style,
-            stroke_is_specified,
-            stroke.as_ref().map(|stroke| terminal::ExpectedPaint {
-                target: ThemeTarget::Edge,
-                rule_index: stroke.rule_index,
-                css: stroke.css.clone(),
-            }),
-        );
-        let typed_stroke_width = style
-            .stroke_width_resolution()
-            .winner()
-            .and_then(|origin| {
-                let rule_index = origin.rule_index();
-                (theme.rule_facet_disposition(rule_index, FamilyThemeRuleFacet::StrokeWidth)
-                    == Some(FamilyThemeDisposition::TypedAdapter))
-                .then_some((rule_index, style.stroke_width_resolution().specified()))
-            })
-            .map_or(
-                ClassRelationStrokeWidth::Unspecified,
-                |(rule_index, specified)| match specified {
-                    Specified::Unspecified => ClassRelationStrokeWidth::Unspecified,
-                    Specified::Clear => ClassRelationStrokeWidth::Clear { rule_index },
-                    Specified::Value(value) => ClassRelationStrokeWidth::Typed {
-                        rule_index,
-                        value: *value,
-                    },
-                },
-            );
-        let stroke_width = if mermaid_owns_stroke_width {
-            ClassRelationStrokeWidth::MermaidOwned {
-                paint_width: mermaid_stroke_width,
-            }
+        let candidate = if mermaid_owns_stroke {
+            None
+        } else if stroke_is_specified {
+            resolve_direct_static_stroke(
+                theme,
+                &style,
+                &[ThemeTarget::Edge],
+                DirectStaticSelectorDomain::Default,
+            )
         } else {
-            typed_stroke_width
-        };
+            resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Edge],
+                DirectStaticSelectorDomain::Default,
+            )
+        }
+        .map(|paint| {
+            let (css, rule_index, _) = paint.into_parts();
+            terminal::ExpectedPaint {
+                target: ThemeTarget::Edge,
+                rule_index,
+                css: css.into_string(),
+            }
+        });
+        stroke_binding.lower(&style, stroke_is_specified, candidate);
+        stroke_width.lower(theme, &style);
         Ok(Self {
-            stroke,
             stroke_binding,
             note_attachment_indices: Vec::new(),
             stroke_width,
@@ -354,26 +311,13 @@ impl ClassRelationThemePlan {
         self
     }
 
-    pub(crate) const fn paint_stroke_width(&self) -> Option<f32> {
-        match self.stroke_width {
-            ClassRelationStrokeWidth::MermaidOwned { paint_width } => paint_width,
-            ClassRelationStrokeWidth::Typed { value, .. } => Some(value),
-            ClassRelationStrokeWidth::Unspecified | ClassRelationStrokeWidth::Clear { .. } => None,
-        }
-    }
-
-    pub(crate) const fn typed_stroke_width(&self) -> Option<f32> {
-        match self.stroke_width {
-            ClassRelationStrokeWidth::Typed { value, .. } => Some(value),
-            ClassRelationStrokeWidth::Unspecified
-            | ClassRelationStrokeWidth::Clear { .. }
-            | ClassRelationStrokeWidth::MermaidOwned { .. } => None,
-        }
+    pub(crate) fn relation_width(&self) -> &ClassRelationWidthBinding {
+        &self.stroke_width
     }
 
     pub(crate) fn typed_stroke(&self) -> Option<(usize, &str)> {
-        self.stroke
-            .as_ref()
+        self.stroke_binding
+            .typed()
             .map(|expected| (expected.rule_index, expected.css.as_str()))
     }
 
@@ -386,12 +330,12 @@ impl ClassRelationThemePlan {
     ) -> ClassRelationThemeReceipt {
         ClassRelationThemeReceipt::new(
             relations,
-            if self.stroke.is_some() {
+            if self.stroke_binding.typed().is_some() {
                 markers
             } else {
                 Vec::new()
             },
-            self.stroke.clone(),
+            self.stroke_binding.stroke_receipt(),
             hand_drawn,
         )
         .with_note_attachments(self.note_attachment_indices.clone())
@@ -409,12 +353,12 @@ impl ClassRelationThemePlan {
     ) -> ClassRelationThemeReceipt {
         ClassRelationThemeReceipt::new_with_clusters(
             relations,
-            if self.stroke.is_some() {
+            if self.stroke_binding.typed().is_some() {
                 markers
             } else {
                 Vec::new()
             },
-            self.stroke.clone(),
+            self.stroke_binding.stroke_receipt(),
             hand_drawn,
             ClassClusterTerminalExpectation {
                 ids: cluster_ids,
@@ -434,24 +378,6 @@ impl ClassRelationThemePlan {
         node_ids: impl IntoIterator<Item = String>,
     ) -> Vec<ClassNodeTerminalExpectation> {
         self.node_plan.resolve_expectations(node_ids)
-    }
-
-    fn typed_stroke_width_emission(&self) -> Option<(usize, f32)> {
-        match self.stroke_width {
-            ClassRelationStrokeWidth::Typed { rule_index, value } => Some((rule_index, value)),
-            ClassRelationStrokeWidth::Unspecified
-            | ClassRelationStrokeWidth::Clear { .. }
-            | ClassRelationStrokeWidth::MermaidOwned { .. } => None,
-        }
-    }
-
-    fn stroke_width_is_clear_for(&self, rule_index: usize) -> bool {
-        matches!(
-            self.stroke_width,
-            ClassRelationStrokeWidth::Clear {
-                rule_index: winner
-            } if winner == rule_index
-        )
     }
 
     fn route_won(
@@ -491,61 +417,126 @@ impl ClassRelationThemePlan {
     }
 }
 
-fn typed_stroke_expectation(
-    theme: &ResolvedDiagramTheme,
-    style: &ResolvedThemeStyle,
-    mermaid_owns_stroke: bool,
-) -> Option<ExpectedStroke> {
-    if mermaid_owns_stroke {
-        return None;
-    }
-    // Class uses fill as a relation paint fallback only when stroke was never specified.
-    // Clear and unsupported stroke values still own the terminal and block that fallback.
-    let (property, paint) = if matches!(
-        style.stroke_resolution().specified(),
-        Specified::Unspecified
-    ) {
-        (
-            ResolvedStyleProperty::Fill,
-            resolve_direct_static_fill(
-                theme,
-                style,
-                &[ThemeTarget::Edge],
-                DirectStaticSelectorDomain::Default,
-            ),
-        )
-    } else {
-        (
-            ResolvedStyleProperty::Stroke,
-            resolve_direct_static_stroke(
-                theme,
-                style,
-                &[ThemeTarget::Edge],
-                DirectStaticSelectorDomain::Default,
-            ),
-        )
-    };
-    let (css, rule_index, _) = paint?.into_parts();
-    Some(ExpectedStroke {
-        rule_index,
-        property,
-        css: css.into_string(),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn relation_width_receipt_requires_every_terminal_checkpoint() {
-        let plan = ClassRelationThemePlan {
-            stroke_width: ClassRelationStrokeWidth::Typed {
-                rule_index: 3,
-                value: 6.0,
-            },
-            ..ClassRelationThemePlan::default()
+    fn relation_stroke_binding_retains_the_fallback_property_and_clear_owner() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch,
         };
+        for clear_stroke in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if clear_stroke {
+                patch.stroke.paint = Specified::Clear;
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
+                ))
+                .unwrap()
+                .resolve(crate::DiagramFamilyId::CLASS);
+            let meter =
+                OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+            let plan = ClassRelationThemePlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::empty_object(),
+                1,
+                0,
+                &meter,
+            )
+            .unwrap();
+            if clear_stroke {
+                assert!(plan.typed_stroke().is_none());
+                assert!(plan.stroke_binding.stroke_receipt().is_none());
+                assert_eq!(plan.stroke_binding.action_rule(), Some(0));
+            } else {
+                assert_eq!(plan.typed_stroke(), Some((0, "#123456")));
+                let receipt = plan.stroke_binding.stroke_receipt().unwrap();
+                assert_eq!(receipt.property, ResolvedStyleProperty::Fill);
+                assert_eq!(receipt.css, plan.stroke_binding.css());
+            }
+            assert_eq!(plan.relation_css_default(), "#333333");
+        }
+    }
+
+    #[test]
+    fn authored_relation_color_preserves_origin_even_for_equal_tokens() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#333333").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::CLASS);
+        let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        for token in ["#333333", "#123456"] {
+            let config = merman_core::Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(
+                    serde_json::json!({"themeVariables":{"lineColor":token}}),
+                ))
+                .parse_metadata_sync("classDiagram\nA --> B\n")
+                .unwrap()
+                .effective_config;
+            let plan =
+                ClassRelationThemePlan::resolve(Some(&theme), &config, 1, 0, &meter).unwrap();
+            assert!(plan.stroke_binding.config_owned());
+            assert_eq!(plan.stroke_binding.css(), token);
+            assert_eq!(plan.relation_css_default(), token);
+            assert_eq!(plan.typed_stroke(), None);
+            assert_eq!(plan.stroke_binding.stroke_receipt(), None);
+        }
+        // Host colors enter the core theme derivation before Class binding. Opaque CSS is
+        // therefore rejected here even though the renderer preserves already prepared tokens.
+        assert!(
+            merman_core::Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(
+                    serde_json::json!({"themeVariables":{"lineColor":"var(--edge)"}}),
+                ))
+                .parse_metadata_sync("classDiagram\nA --> B\n")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn relation_width_receipt_requires_every_terminal_checkpoint() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke_width(6.0).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::CLASS);
+        let work_meter =
+            OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let plan = ClassRelationThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::empty_object(),
+            2,
+            0,
+            &work_meter,
+        )
+        .unwrap();
+        assert_eq!(plan.relation_width().typed_emission(), Some((0, 6.0)));
         let relations = (0..2)
             .map(|index| ClassRelationTerminalExpectation::new(index, None, None))
             .collect();

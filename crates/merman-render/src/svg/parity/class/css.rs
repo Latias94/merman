@@ -69,7 +69,7 @@ pub(super) fn write_class_css(
     let (cluster_bkg, cluster_border) = relation_theme.cluster_css_defaults();
     let title_color = relation_theme.namespace_title_css_default();
     let text_color = theme.text_color.as_str();
-    let stroke_width = theme.stroke_width.as_str();
+    let stroke_width = relation_theme.relation_width().compatibility_css();
     let edge_label_background = theme.edge_label_background.as_str();
 
     let base_font_emission = info_css.write_prefix_with_font_emission(out, diagram_id)?;

@@ -269,7 +269,7 @@ pub(super) struct ErLayoutSettings {
     pub(super) entity_measurement: ErEntityMeasurementSettings,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ErEntityMeasurementSettings {
     pub(crate) html_labels_raw: bool,
     pub(crate) label_wrap_mode: WrapMode,
@@ -279,6 +279,7 @@ pub(crate) struct ErEntityMeasurementSettings {
     pub(crate) wrapping_width_px: i64,
 }
 
+#[derive(Debug)]
 pub(crate) struct ErRenderSettings {
     pub(crate) is_elk_layout: bool,
     pub(crate) diagram_look: String,

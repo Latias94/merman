@@ -28,13 +28,6 @@ fn er_edge_path_d(
     curve_basis_path_d(points)
 }
 
-fn is_er_redux_color_theme(effective_config: &serde_json::Value) -> bool {
-    matches!(
-        SvgTheme::new(effective_config).theme_name().as_str(),
-        "redux-color" | "redux-dark-color"
-    )
-}
-
 fn er_redux_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
 }
@@ -112,18 +105,11 @@ fn write_er_style_with_font_family(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     data_look: &str,
-    effective_config: &serde_json::Value,
+    binding: &crate::er::ErCssBinding,
     border_colors: &[String],
     background_colors: &[String],
-    resolved_font_family: Option<&str>,
-    resolved_font_size: Option<&str>,
 ) -> Result<(String, String)> {
-    let emission = er_css_with_resolved_typography(
-        diagram_id,
-        effective_config,
-        resolved_font_family,
-        resolved_font_size,
-    )?;
+    let emission = er_css_with_resolved_typography(diagram_id, binding)?;
     let css = emission.css;
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
@@ -519,39 +505,15 @@ pub(crate) fn render_er_diagram_svg_model(
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
-    let er_render_settings = crate::er::ErConfigView::new(effective_config)
-        .render_settings_with_resolved_typography(
-            entity_theme.font_family_override_css(),
-            entity_theme.font_size_override(),
-        );
+    let binding = entity_theme.css_binding();
+    let er_render_settings = &binding.render_settings;
     let is_elk_layout = er_render_settings.is_elk_layout;
     let data_look = er_render_settings.diagram_look.as_str();
-    let redux_color_theme = is_er_redux_color_theme(effective_config);
-    let svg_theme = SvgTheme::new(effective_config);
-    let redux_border_colors = if redux_color_theme {
-        svg_theme.string_array("borderColorArray")
-    } else {
-        Vec::new()
-    };
-    let redux_background_colors = if redux_color_theme {
-        svg_theme.string_array("bkgColorArray")
-    } else {
-        Vec::new()
-    };
+    let redux_border_colors = &binding.redux_border_colors;
+    let redux_background_colors = &binding.redux_background_colors;
     let color_indices = er_color_indices(model);
-
-    // Mermaid's computed theme variables are not currently present in `effective_config`.
-    // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
-    let _stroke = theme_token(effective_config, "lineColor", "#333333");
-    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = theme_token(effective_config, "mainBkg", "#ECECFF");
-    let _tertiary = theme_token(
-        effective_config,
-        "tertiaryColor",
-        "hsl(80, 100%, 96.2745098039%)",
-    );
-    let text_color = theme_token(effective_config, "textColor", "#333333");
-    let _node_text_color = theme_token(effective_config, "nodeTextColor", &text_color);
+    let node_border = &binding.node_border;
+    let main_bkg = &binding.main_bkg;
     let font_family = er_render_settings.font_family.clone();
     let font_size = er_render_settings.font_size;
     let title_top_margin = er_render_settings.title_top_margin;
@@ -821,11 +783,9 @@ pub(crate) fn render_er_diagram_svg_model(
         &mut out,
         diagram_id.semantic_str(),
         data_look,
-        effective_config,
-        &redux_border_colors,
-        &redux_background_colors,
-        entity_theme.font_family_override_css(),
-        entity_theme.font_size_override_css(),
+        binding,
+        redux_border_colors,
+        redux_background_colors,
     )?;
     entity_theme_receipt
         .record_typography_css_emission_with_font_size(&emitted_font_family, &emitted_font_size);
@@ -873,12 +833,9 @@ pub(crate) fn render_er_diagram_svg_model(
     }
 
     let neo_marker = data_look == "neo";
-    let neo_stroke_width = config_f64_css_px(effective_config, &["themeVariables", "strokeWidth"])
-        .filter(|value| value.is_finite())
-        .unwrap_or(1.0)
-        .max(0.0);
+    let neo_stroke_width = binding.neo_marker_stroke_width;
     let neo_stroke_width = fmt(neo_stroke_width).to_string();
-    let neo_main_bkg = escape_attr(&main_bkg);
+    let neo_main_bkg = escape_attr(main_bkg);
 
     for (suffix, class, ref_x, ref_y, width, height, classic_content) in [
         (
@@ -1516,7 +1473,7 @@ pub(crate) fn render_er_diagram_svg_model(
         };
         let color_id_attr = color_indices
             .get(entity.id.as_str())
-            .and_then(|index| er_redux_color_id(&redux_border_colors, *index))
+            .and_then(|index| er_redux_color_id(redux_border_colors, *index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
             .unwrap_or_default();
         let _ = write!(
@@ -1684,7 +1641,7 @@ pub(crate) fn render_er_diagram_svg_model(
         // Mermaid 12 applies authored Redux styles to every table path. Other themes
         // preserve row fills while carrying all authored stroke properties to both paths.
         let redux_styles = matches!(
-            svg_theme.theme_name().as_str(),
+            binding.theme_name.as_str(),
             "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
         );
         let mut override_decls = Vec::new();
@@ -1834,8 +1791,8 @@ pub(crate) fn render_er_diagram_svg_model(
         let paint_emission = er_entity_paint_emission(typed_fill, typed_stroke);
 
         // Row rectangles
-        let odd_fill = svg_theme.optional_color("rowOdd");
-        let even_fill = svg_theme.optional_color("rowEven");
+        let odd_fill = binding.row_odd.as_deref();
+        let even_fill = binding.row_even.as_deref();
         let even_row_override_style_attr = if rect_style_decls.is_empty() {
             override_style_attr.clone()
         } else {
@@ -1860,11 +1817,7 @@ pub(crate) fn render_er_diagram_svg_model(
             } else {
                 "row-rect-even"
             };
-            let row_fill = if is_odd {
-                odd_fill.as_deref()
-            } else {
-                even_fill.as_deref()
-            };
+            let row_fill = if is_odd { odd_fill } else { even_fill };
             let _ = write!(
                 &mut out,
                 r#"<g {} class="{}">"#,
@@ -1903,7 +1856,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
                 rough_rect_border_path_d(&hand_drawn_seed, box_x0, y0, box_x1, y1),
-                escape_xml(&node_border),
+                escape_xml(node_border),
                 stroke_width_attr,
                 row_override_style_attr
             );
@@ -2346,7 +2299,7 @@ pub(crate) fn render_er_diagram_svg_model(
     out.push_str("</g>\n</g>\n");
     out.checkpoint()?;
 
-    push_er_gradient(&mut out, diagram_id.semantic_str(), effective_config)?;
+    push_er_gradient(&mut out, diagram_id.semantic_str(), binding)?;
 
     if let Some(title) = diagram_title {
         // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.
@@ -2377,7 +2330,7 @@ pub(crate) fn render_er_diagram_svg_model(
         entity_theme_receipt.record_diagram_title_paint(title, &title_style);
     }
 
-    push_er_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config)?;
+    push_er_shadow_defs(&mut out, diagram_id.semantic_str(), binding)?;
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
@@ -2392,14 +2345,9 @@ pub(crate) fn render_er_diagram_svg_model(
 fn push_er_shadow_defs(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config_value: &serde_json::Value,
+    binding: &crate::er::ErCssBinding,
 ) -> Result<()> {
-    let flood_color = effective_config_value
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
+    let flood_color = binding.shadow_flood;
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
@@ -2411,32 +2359,14 @@ fn push_er_shadow_defs(
 fn push_er_gradient(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config_value: &serde_json::Value,
+    binding: &crate::er::ErCssBinding,
 ) -> Result<()> {
-    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
+    let Some((gradient_start, gradient_stop)) = &binding.gradient else {
         return Ok(());
-    }
+    };
 
-    let gradient_start =
-        config_string(effective_config_value, &["themeVariables", "gradientStart"])
-            .or_else(|| {
-                config_string(
-                    effective_config_value,
-                    &["themeVariables", "primaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config_value,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
+    let gradient_start = escape_xml(gradient_start);
+    let gradient_stop = escape_xml(gradient_stop);
     let _ = write!(
         out,
         r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
@@ -2594,11 +2524,18 @@ mod tests {
                 "THEME_COLOR_LIMIT": 2
             }
         });
-        let theme = super::SvgTheme::new(&config);
-        let borders = theme.string_array("borderColorArray");
-        let backgrounds = theme.string_array("bkgColorArray");
+        let fonts = crate::family::InheritedFontStackPlan::resolve_property_local(
+            None,
+            &merman_core::MermaidConfig::from_value(config.clone()),
+        );
+        let size = crate::er::ErBaseFontSizePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::from_value(config.clone()),
+        );
+        let theme = crate::er::ErCssBinding::resolve(&config, &fonts, &size);
+        let borders = &theme.redux_border_colors;
+        let backgrounds = &theme.redux_background_colors;
 
-        assert!(super::is_er_redux_color_theme(&config));
         assert_eq!(
             super::er_redux_color_id(&borders, 0).as_deref(),
             Some("color-0")
@@ -2634,11 +2571,9 @@ mod tests {
             &mut merged,
             "er",
             "classic",
-            &config,
+            &theme,
             &borders,
             &backgrounds,
-            None,
-            None,
         )
         .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();

@@ -12,6 +12,7 @@ pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
 pub(crate) const TREEMAP_TITLE_CLASS: &str = "treemapTitle";
 
 mod config;
+mod css_binding;
 mod theme;
 
 use config::TreemapConfigView;

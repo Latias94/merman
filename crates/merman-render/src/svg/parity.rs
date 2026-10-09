@@ -61,7 +61,10 @@ mod css;
     feature = "diagram-quadrant-chart",
     feature = "diagram-journey",
     feature = "diagram-timeline",
-    feature = "diagram-kanban"
+    feature = "diagram-kanban",
+    feature = "diagram-treemap",
+    feature = "diagram-requirement",
+    feature = "diagram-er"
 ))]
 pub(crate) use css::PreparedCommonCss;
 #[cfg_attr(
@@ -351,12 +354,11 @@ use theme::MermaidThemeAdapter;
     )
 )]
 use util::{
-    SvgTheme, config_bool, config_diagram_look, config_f64, config_f64_css_px, config_string,
-    css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
-    escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into,
-    fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
-    scoped_svg_url, theme_token,
+    SvgTheme, config_bool, config_diagram_look, config_f64, config_string, css_rgba_fade,
+    decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_attr_into,
+    escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path,
+    fmt_path_into, fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
+    normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
 };
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
@@ -1498,7 +1500,6 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
             artifact.pair().layout(),
-            effective_config_value,
             artifact.title_theme(),
             artifact.typography_theme(),
             options,
@@ -1588,7 +1589,6 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.text_theme(),
-                effective_config_value,
                 options,
             )
         }

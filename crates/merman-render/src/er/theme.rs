@@ -13,7 +13,9 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod css_binding;
 mod terminal;
+pub(crate) use css_binding::ErCssBinding;
 
 use terminal::{
     EntityExpectation, ErTableRowTerminalId, ErTextTerminalId, ExpectedPaint,
@@ -316,6 +318,7 @@ fn last_source_style_value<'a>(
 /// theme evidence.
 #[derive(Debug)]
 pub(crate) struct ErEntityThemePlan {
+    css_binding: css_binding::ErCssBinding,
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
@@ -361,6 +364,11 @@ impl ErEntityThemePlan {
             .enumerate()
             .map(|(index, entity)| (entity.id.clone(), index))
             .collect::<BTreeMap<_, _>>();
+        let css_binding = css_binding::ErCssBinding::resolve(
+            effective_config.as_value(),
+            &inherited_font_stack,
+            &base_font_size,
+        );
         let entity_count = model.entities.len();
         let entity_source_styles = model
             .entities
@@ -369,6 +377,7 @@ impl ErEntityThemePlan {
             .collect::<Vec<_>>();
         let Some(theme) = theme else {
             return Ok(Self {
+                css_binding,
                 entity_indices,
                 entity_source_styles,
                 inherited_font_stack,
@@ -832,6 +841,7 @@ impl ErEntityThemePlan {
         }
 
         Ok(Self {
+            css_binding,
             entity_indices,
             entity_source_styles,
             inherited_font_stack,
@@ -860,10 +870,8 @@ impl ErEntityThemePlan {
         self.entity_indices.get(entity_id).copied()
     }
 
-    pub(crate) fn font_family_override_css(&self) -> Option<&str> {
-        self.inherited_font_stack
-            .typed_font_stack_active()
-            .then(|| self.font_family_css())
+    pub(crate) fn css_binding(&self) -> &css_binding::ErCssBinding {
+        &self.css_binding
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -872,16 +880,6 @@ impl ErEntityThemePlan {
 
     pub(crate) fn font_size_css(&self) -> &str {
         self.base_font_size.font_size_css()
-    }
-
-    pub(crate) fn font_size_override(&self) -> Option<f64> {
-        self.base_font_size.layout_override_px()
-    }
-
-    pub(crate) fn font_size_override_css(&self) -> Option<&str> {
-        self.base_font_size
-            .typed_active()
-            .then_some(self.font_size_css())
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {

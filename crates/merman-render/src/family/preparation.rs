@@ -801,11 +801,12 @@ fn prepare_treemap_family(
         layout.title.as_deref(),
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
+    let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve_with_title_fill(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
         execution.work_meter(),
+        title_theme.fill_css(),
     )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
@@ -1077,8 +1078,7 @@ fn prepare_requirement_family(
             &model,
             meta.effective_config.as_value(),
             execution.text_measurer(),
-            paint_theme.font_family_override(),
-            paint_theme.font_size_override(),
+            paint_theme.css(),
             &execution.work_meter(),
             #[cfg(feature = "layout-elk")]
             execution.elk_operation_seed(),
@@ -1258,14 +1258,17 @@ fn prepare_eventmodeling_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::eventmodeling::layout_eventmodeling_diagram_typed(
+    let css_binding =
+        crate::eventmodeling::EventModelingCssBinding::resolve(meta.effective_config.as_value());
+    let layout = crate::eventmodeling::layout_eventmodeling_diagram_typed_with_binding(
         &model,
-        meta.effective_config.as_value(),
+        &css_binding,
         execution.text_measurer(),
     )?;
-    let text_theme = crate::eventmodeling::EventModelingTextThemePlan::resolve(
+    let text_theme = crate::eventmodeling::EventModelingTextThemePlan::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
+        css_binding,
         &layout,
         execution.work_meter_ref(),
     )?;
