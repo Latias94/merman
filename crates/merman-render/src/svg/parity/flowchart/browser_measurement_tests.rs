@@ -219,6 +219,33 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             execution.work_meter(),
         )
         .expect("prepared theme");
+        let render_config = super::render_config::prepare_flowchart_render_config(
+            &model,
+            &metadata.effective_config,
+            &prepared_theme.compatibility,
+            layout.uses_elk_adapter_dom,
+            sidecar.base_typography(),
+            sidecar.edge_label_padding(),
+        );
+        let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &metadata.effective_config,
+            false,
+            execution.work_meter(),
+        )
+        .expect("edge style plan")
+        .with_resolved_stroke_widths(
+            &model,
+            &Default::default(),
+            &metadata.effective_config,
+            &prepared_theme.compatibility,
+            execution.work_meter(),
+        )
+        .expect("prepared stroke widths")
+        .with_typography_work_meter(std::sync::Arc::clone(session.work_meter()));
+        edge_style_plan
+            .bind_terminal_typography(&render_config.text_style, false)
+            .expect("terminal edge typography");
         let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
@@ -227,27 +254,13 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             None,
             &metadata.effective_config,
             &prepared_theme,
-            &super::render_config::prepare_flowchart_render_config(
-                &model,
-                &metadata.effective_config,
-                &prepared_theme.compatibility,
-                layout.uses_elk_adapter_dom,
-                sidecar.base_typography(),
-                sidecar.edge_label_padding(),
-            ),
+            &render_config,
             session.work_meter(),
         )
         .expect("prepared nodes");
         let svg = render_flowchart_svg_model(
             FlowchartSvgModelRequest {
-                render_config: &super::render_config::prepare_flowchart_render_config(
-                    &model,
-                    &metadata.effective_config,
-                    &prepared_theme.compatibility,
-                    layout.uses_elk_adapter_dom,
-                    sidecar.base_typography(),
-                    sidecar.edge_label_padding(),
-                ),
+                render_config: &render_config,
                 prepared_theme: &prepared_theme,
                 prepared_nodes: &prepared_nodes,
                 layout: &layout,
@@ -261,21 +274,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 effect_evidence: &Default::default(),
                 expected_effect_applications: &Default::default(),
                 edge_theme: &Default::default(),
-                edge_style_plan: &FlowchartEdgeStylePlan::prepare_for_model(
-                    &model,
-                    &metadata.effective_config,
-                    false,
-                    execution.work_meter(),
-                )
-                .expect("edge style plan")
-                .with_resolved_stroke_widths(
-                    &model,
-                    &Default::default(),
-                    &metadata.effective_config,
-                    &prepared_theme.compatibility,
-                    execution.work_meter(),
-                )
-                .expect("prepared stroke widths"),
+                edge_style_plan: &edge_style_plan,
                 svg_label_sidecar: &sidecar,
             },
             &execution,

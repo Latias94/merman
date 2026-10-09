@@ -84,30 +84,6 @@ impl FlowchartNodeRenderCommon<'_> {
     }
 }
 
-fn flowchart_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
-    let mut node_decls: Vec<String> = Vec::new();
-    let mut text_decls: Vec<String> = Vec::new();
-
-    for raw in inline_styles {
-        for decl in crate::flowchart::flowchart_split_mermaid_style_decls(raw) {
-            let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(decl) else {
-                continue;
-            };
-            if is_text_style_key(key) {
-                text_decls.push(format!("{key}:{value}"));
-            } else {
-                node_decls.push(format!("{key}:{value} !important"));
-            }
-        }
-    }
-
-    if node_decls.is_empty() {
-        text_decls.join(";")
-    } else {
-        node_decls.join(";")
-    }
-}
-
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a> {
     pub text: &'a str,
     pub label_type: &'a str,
@@ -238,7 +214,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let typed_font_stack_selected = selection.typed_font_stack_selected;
     let typed_font_size_selected = selection.typed_font_size_selected;
     let typed_label_fill = selection.typed_label_fill.as_deref();
-    let rough_group_style = flowchart_hand_drawn_shape_group_style(node_styles);
     let fill_color = selection.fill.as_str();
     let stroke_color = selection.stroke.as_str();
     let stroke_width = selection.stroke_width;
@@ -283,7 +258,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             .as_ref()
             .map_or("", |(_, _, _, attr)| attr.as_str()),
         theme_style: &selection.theme_style,
-        rough_group_style: &rough_group_style,
+        rough_group_style: &prepared.rough_group_style,
         fill_color,
         stroke_color,
         stroke_width,

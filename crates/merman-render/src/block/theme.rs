@@ -453,6 +453,16 @@ pub(crate) struct BlockTypographyReceipt {
 }
 
 impl BlockTypographyThemePlan {
+    pub(crate) fn prepare_class_definitions(
+        &mut self,
+        definitions: &indexmap::IndexMap<
+            String,
+            merman_core::diagrams::block::BlockClassDefRenderModel,
+        >,
+    ) {
+        self.css_binding.prepare_class_definitions(definitions);
+    }
+
     pub(crate) fn css_binding(&self) -> &BlockCssThemeBinding {
         &self.css_binding
     }

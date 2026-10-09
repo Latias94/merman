@@ -340,7 +340,7 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use style::{is_text_style_key, parse_style_decl};
+use style::is_text_style_key;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

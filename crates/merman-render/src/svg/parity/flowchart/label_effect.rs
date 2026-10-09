@@ -260,9 +260,12 @@ impl FlowchartLabelEffects {
                     .model
                     .edge_label_for_render(edge.key.semantic_index(), edge.edge)
                     .unwrap_or_default();
-                let text_style = weights.apply_cow(
+                if crate::flowchart::flowchart_label_is_empty_for_render(raw) {
+                    continue;
+                }
+                let text_style = weights.apply(
                     ThemeTarget::EdgeLabel,
-                    source.effective_edge_label_text_style(ctx.text_style),
+                    ctx.edge_style_plan.terminal_label_text_style(edge.key)?,
                 );
                 let (bounds, translation) = if ctx.edge_html_labels {
                     let content = ctx

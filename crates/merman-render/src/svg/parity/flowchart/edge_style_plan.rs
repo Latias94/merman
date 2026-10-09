@@ -1,7 +1,55 @@
 //! Operation-local Flowchart edge source-style plan.
 
 use super::*;
+use std::cell::OnceCell;
 use std::sync::Arc;
+
+#[derive(Debug)]
+struct PreparedEdgeLabelTypography {
+    base: crate::text::TextStyle,
+    style: crate::text::TextStyle,
+    _reservation: Option<crate::resources::PreparedTextRetainedReservation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EdgeLabelTypographyPurpose {
+    Ordinary,
+    SwimlaneLabelRect,
+}
+
+impl PreparedEdgeLabelTypography {
+    fn matches_base(&self, base: &crate::text::TextStyle) -> bool {
+        self.base.font_family == base.font_family
+            && self.base.font_size.to_bits() == base.font_size.to_bits()
+            && self.base.font_weight == base.font_weight
+            && self.base.font_style == base.font_style
+    }
+
+    fn new(
+        base: &crate::text::TextStyle,
+        style: crate::text::TextStyle,
+        work: Option<&Arc<crate::resources::OperationWorkMeter>>,
+    ) -> crate::Result<Self> {
+        let mut retained = std::mem::size_of::<Self>();
+        for typography in [base, &style] {
+            for value in [
+                &typography.font_family,
+                &typography.font_weight,
+                &typography.font_style,
+            ] {
+                retained = retained.saturating_add(value.as_ref().map_or(0, String::len));
+            }
+        }
+        let reservation = work
+            .map(|work| work.reserve_prepared_text_retained_bytes(retained))
+            .transpose()?;
+        Ok(Self {
+            base: base.clone(),
+            style,
+            _reservation: reservation,
+        })
+    }
+}
 
 #[derive(Debug)]
 struct FlowchartEdgeStyleArtifact {
@@ -13,6 +61,10 @@ struct FlowchartEdgeStyleArtifact {
 
 #[derive(Debug, Clone)]
 struct PreparedEdgeStyles {
+    has_label: bool,
+    typography_purpose: EdgeLabelTypographyPurpose,
+    layout_typography: OnceCell<Arc<PreparedEdgeLabelTypography>>,
+    terminal_typography: OnceCell<Arc<PreparedEdgeLabelTypography>>,
     artifact: Arc<FlowchartEdgeStyleArtifact>,
     animation: FlowchartEdgeAnimationResolution,
     swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
@@ -21,6 +73,7 @@ struct PreparedEdgeStyles {
 
 #[derive(Debug)]
 pub(crate) struct FlowchartEdgeStylePlan {
+    typography_work: Option<Arc<crate::resources::OperationWorkMeter>>,
     #[cfg(test)]
     edges: FxHashMap<String, PreparedEdgeStyles>,
     edge_occurrences: Vec<PreparedEdgeStyles>,
@@ -183,6 +236,16 @@ impl FlowchartEdgeStylePlan {
                 None
             };
             let prepared = PreparedEdgeStyles {
+                has_label: edge.label.as_deref().is_some_and(|label| {
+                    !crate::flowchart::flowchart_label_is_empty_for_render(label)
+                }),
+                typography_purpose: if swimlane {
+                    EdgeLabelTypographyPurpose::SwimlaneLabelRect
+                } else {
+                    EdgeLabelTypographyPurpose::Ordinary
+                },
+                layout_typography: OnceCell::new(),
+                terminal_typography: OnceCell::new(),
                 stroke_width: None,
                 animation: FlowchartEdgeAnimationResolution::resolve(edge, &artifact.emission),
                 artifact,
@@ -194,6 +257,7 @@ impl FlowchartEdgeStylePlan {
         }
 
         Ok(Self {
+            typography_work: None,
             #[cfg(test)]
             edges: prepared_edges,
             edge_occurrences: prepared_edge_occurrences,
@@ -369,13 +433,28 @@ impl FlowchartEdgeStylePlan {
     }
 
     pub(crate) fn edge_label_text_style_for<'a>(
-        &self,
+        &'a self,
         key: crate::flowchart::FlowchartEdgeKey,
         base: &'a crate::text::TextStyle,
     ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
-        Ok(self
+        let mut resolved = self
             .edge_for(key)?
-            .effective_edge_label_text_style_with_provenance(base))
+            .effective_edge_label_text_style_with_provenance(base);
+        self.record_layout_typography(
+            key,
+            base,
+            resolved.as_ref(),
+            EdgeLabelTypographyPurpose::Ordinary,
+        )?;
+        let prepared = self
+            .occurrence(key)?
+            .layout_typography
+            .get()
+            .expect("recorded layout typography");
+        if prepared.matches_base(base) {
+            resolved.style = std::borrow::Cow::Borrowed(&prepared.style);
+        }
+        Ok(resolved)
     }
 
     #[cfg(test)]
@@ -393,16 +472,119 @@ impl FlowchartEdgeStylePlan {
     }
 
     pub(crate) fn swimlane_edge_label_text_style_for<'a>(
-        &self,
+        &'a self,
         key: crate::flowchart::FlowchartEdgeKey,
         base: &'a crate::text::TextStyle,
     ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
-        let Some(styles) = self.occurrence(key)?.swimlane_label.as_deref() else {
-            return Ok(crate::flowchart::FlowchartTextStyleResolution::borrowed(
-                base,
-            ));
+        let mut resolved = match self.occurrence(key)?.swimlane_label.as_deref() {
+            Some(styles) => styles.effective_edge_label_text_style_with_provenance(base),
+            None => crate::flowchart::FlowchartTextStyleResolution::borrowed(base),
         };
-        Ok(styles.effective_edge_label_text_style_with_provenance(base))
+        self.record_layout_typography(
+            key,
+            base,
+            resolved.as_ref(),
+            EdgeLabelTypographyPurpose::SwimlaneLabelRect,
+        )?;
+        let prepared = self
+            .occurrence(key)?
+            .layout_typography
+            .get()
+            .expect("recorded layout typography");
+        if prepared.matches_base(base) {
+            resolved.style = std::borrow::Cow::Borrowed(&prepared.style);
+        }
+        Ok(resolved)
+    }
+
+    pub(crate) fn with_typography_work_meter(
+        mut self,
+        work: Arc<crate::resources::OperationWorkMeter>,
+    ) -> Self {
+        self.typography_work = Some(work);
+        self
+    }
+
+    fn record_layout_typography(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        base: &crate::text::TextStyle,
+        style: &crate::text::TextStyle,
+        purpose: EdgeLabelTypographyPurpose,
+    ) -> crate::Result<()> {
+        let occurrence = self.occurrence(key)?;
+        debug_assert_eq!(occurrence.typography_purpose, purpose);
+        let slot = &occurrence.layout_typography;
+        if slot.get().is_some() {
+            return Ok(());
+        }
+        let prepared =
+            PreparedEdgeLabelTypography::new(base, style.clone(), self.typography_work.as_ref())?;
+        let _ = slot.set(Arc::new(prepared));
+        Ok(())
+    }
+
+    pub(crate) fn bind_terminal_typography(
+        &self,
+        base: &crate::text::TextStyle,
+        swimlane: bool,
+    ) -> crate::Result<()> {
+        for occurrence in &self.edge_occurrences {
+            if !occurrence.has_label && occurrence.layout_typography.get().is_none() {
+                continue;
+            }
+            debug_assert_eq!(
+                occurrence.typography_purpose == EdgeLabelTypographyPurpose::SwimlaneLabelRect,
+                swimlane
+            );
+            if let Some(terminal) = occurrence.terminal_typography.get() {
+                debug_assert!(terminal.matches_base(base));
+                continue;
+            }
+            let terminal = if let Some(layout) = occurrence
+                .layout_typography
+                .get()
+                .filter(|layout| layout.matches_base(base))
+            {
+                Arc::clone(layout)
+            } else {
+                let style = if swimlane {
+                    occurrence.swimlane_label.as_deref().map_or_else(
+                        || base.clone(),
+                        |source| source.effective_edge_label_text_style(base).into_owned(),
+                    )
+                } else {
+                    occurrence
+                        .artifact
+                        .emission
+                        .effective_edge_label_text_style(base)
+                        .into_owned()
+                };
+                Arc::new(PreparedEdgeLabelTypography::new(
+                    base,
+                    style,
+                    self.typography_work.as_ref(),
+                )?)
+            };
+            let _ = occurrence.terminal_typography.set(terminal);
+        }
+        Ok(())
+    }
+
+    pub(in crate::svg::parity::flowchart) fn terminal_label_text_style(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<&crate::text::TextStyle> {
+        self.occurrence(key)?
+            .terminal_typography
+            .get()
+            .map(|prepared| &prepared.style)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing prepared Flowchart edge typography for {}",
+                    key.semantic_index()
+                ),
+            })
     }
 
     #[cfg(test)]
@@ -448,7 +630,7 @@ mod tests {
             id: id.to_string(),
             from: "A".to_string(),
             to: "B".to_string(),
-            label: None,
+            label: Some("label".to_owned()),
             label_type: None,
             edge_type: Some("arrow_point".to_string()),
             arrow: "normal".to_string(),
@@ -543,6 +725,145 @@ mod tests {
                 .edge_marker_color(false),
             Some("#2563eb")
         );
+    }
+
+    #[test]
+    fn terminal_typography_reuses_producer_and_keeps_html_base_variant() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let edges = [
+            edge("duplicate", &[], &["font-size:150%"]),
+            edge("duplicate", &[], &["font-size:200%"]),
+        ];
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, false, &work)
+                .unwrap()
+                .with_typography_work_meter(Arc::clone(&work));
+        let layout_base = crate::text::TextStyle {
+            font_size: 20.0,
+            ..Default::default()
+        };
+        let key0 = crate::flowchart::FlowchartEdgeKey::new(0);
+        let key1 = crate::flowchart::FlowchartEdgeKey::new(1);
+        let measured0 = plan.edge_label_text_style_for(key0, &layout_base).unwrap();
+        let measured1 = plan.edge_label_text_style_for(key1, &layout_base).unwrap();
+        assert_eq!(measured0.as_ref().font_size, 30.0);
+        assert_eq!(measured1.as_ref().font_size, 40.0);
+        let probe_base = crate::text::TextStyle {
+            font_size: 16.0,
+            ..Default::default()
+        };
+        let probe = plan.edge_label_text_style_for(key0, &probe_base).unwrap();
+        assert_eq!(probe.as_ref().font_size, 24.0);
+        drop(probe);
+        let retained = work.prepared_text_retained_bytes();
+        plan.bind_terminal_typography(&layout_base, false).unwrap();
+        assert_eq!(work.prepared_text_retained_bytes(), retained);
+        assert!(std::ptr::eq(
+            measured0.as_ref(),
+            plan.terminal_label_text_style(key0).unwrap()
+        ));
+        drop(measured0);
+        drop(measured1);
+        drop(plan);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, false, &work)
+                .unwrap()
+                .with_typography_work_meter(Arc::clone(&work));
+        plan.edge_label_text_style_for(key0, &layout_base).unwrap();
+        let render_base = crate::text::TextStyle {
+            font_size: 16.0,
+            ..Default::default()
+        };
+        plan.bind_terminal_typography(&render_base, false).unwrap();
+        assert_eq!(
+            plan.terminal_label_text_style(key0).unwrap().font_size,
+            24.0
+        );
+        assert_eq!(
+            plan.occurrence(key0)
+                .unwrap()
+                .layout_typography
+                .get()
+                .unwrap()
+                .style
+                .font_size,
+            30.0
+        );
+        drop(plan);
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn swimlane_terminal_typography_keeps_first_label_rect_declaration() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let edges = [edge("edge", &[], &["font-size:150%", "font-size:200%"])];
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, true, &work)
+                .unwrap()
+                .with_typography_work_meter(Arc::clone(&work));
+        let base = crate::text::TextStyle {
+            font_size: 20.0,
+            ..Default::default()
+        };
+        let key = crate::flowchart::FlowchartEdgeKey::new(0);
+        let measured = plan.swimlane_edge_label_text_style_for(key, &base).unwrap();
+        assert_eq!(measured.as_ref().font_size, 30.0);
+        plan.bind_terminal_typography(&base, true).unwrap();
+        assert!(std::ptr::eq(
+            measured.as_ref(),
+            plan.terminal_label_text_style(key).unwrap()
+        ));
+    }
+
+    #[test]
+    fn edge_typography_obeys_retained_limit_without_svg_sidecar() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                .unwrap(),
+        ));
+        let edges = [edge("edge", &[], &["font-family:CallerFont"])];
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, false, &work)
+                .unwrap()
+                .with_typography_work_meter(Arc::clone(&work));
+        let base = crate::text::TextStyle::default();
+        let result =
+            plan.edge_label_text_style_for(crate::flowchart::FlowchartEdgeKey::new(0), &base);
+        assert!(
+            matches!(result, Err(crate::Error::ResourceLimitExceeded(ref error))
+            if error.limit == "max_prepared_text_retained_bytes")
+        );
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn empty_edge_does_not_reserve_terminal_typography() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let work = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                .unwrap(),
+        ));
+        let mut empty = edge("empty", &[], &["font-family:CallerFont"]);
+        empty.label = None;
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &[empty], &[], false, false, &work)
+                .unwrap()
+                .with_typography_work_meter(Arc::clone(&work));
+        plan.bind_terminal_typography(&crate::text::TextStyle::default(), false)
+            .unwrap();
+        assert!(plan.edge_occurrences[0].terminal_typography.get().is_none());
+        assert_eq!(work.prepared_text_retained_bytes(), 0);
     }
 
     #[test]

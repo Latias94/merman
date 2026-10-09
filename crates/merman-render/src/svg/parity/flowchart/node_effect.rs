@@ -15,6 +15,7 @@ pub(super) struct PreparedNodeTerminal {
     pub(super) source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
     pub(super) style: FlowchartNodeThemeStyle,
     pub(super) source: FlowchartCompiledStyles,
+    pub(super) rough_group_style: String,
     pub(super) selection: PreparedNodeSelection,
 }
 
@@ -231,12 +232,72 @@ impl PreparedNodeTerminal {
         let source =
             flowchart_compile_node_styles(class_defs, source_styles.0, source_styles.1, &[]);
         let selection = PreparedNodeSelection::prepare(inputs, &source, &style);
+        let rough_group_style = if inputs.look.is_hand_drawn() {
+            prepare_hand_drawn_shape_group_style(source_styles.1)
+        } else {
+            String::new()
+        };
         Ok(Self {
             source_text_style,
             style,
             source,
+            rough_group_style,
             selection,
         })
+    }
+}
+
+fn prepare_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
+    let mut node_decls: Vec<String> = Vec::new();
+    let mut text_decls: Vec<String> = Vec::new();
+
+    for raw in inline_styles {
+        for decl in crate::flowchart::flowchart_split_mermaid_style_decls(raw) {
+            let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(decl) else {
+                continue;
+            };
+            if is_text_style_key(key) {
+                text_decls.push(format!("{key}:{value}"));
+            } else {
+                node_decls.push(format!("{key}:{value} !important"));
+            }
+        }
+    }
+
+    if node_decls.is_empty() {
+        text_decls.join(";")
+    } else {
+        node_decls.join(";")
+    }
+}
+
+#[cfg(test)]
+mod rough_group_style_tests {
+    use super::prepare_hand_drawn_shape_group_style;
+
+    #[test]
+    fn shape_declarations_keep_source_order_and_original_priority_suffix() {
+        let source = [
+            "font-size:19px,fill:#112233,stroke:#445566 !important".to_owned(),
+            "fill:#aabbcc".to_owned(),
+        ];
+        assert_eq!(
+            prepare_hand_drawn_shape_group_style(&source),
+            "fill:#112233 !important;stroke:#445566 !important !important;fill:#aabbcc !important"
+        );
+    }
+
+    #[test]
+    fn text_fallback_preserves_priority_and_rejects_unsafe_source_values() {
+        let source = [
+            "color:#112233 !important,font-size:19px".to_owned(),
+            "fill:red;</style><svg>".to_owned(),
+            "background:url(javascript:alert(1))".to_owned(),
+        ];
+        assert_eq!(
+            prepare_hand_drawn_shape_group_style(&source),
+            "color:#112233 !important;font-size:19px"
+        );
     }
 }
 

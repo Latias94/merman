@@ -502,42 +502,38 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
     }
 
-    fn important_declarations(styles: &[String]) -> impl Iterator<Item = (&str, &str)> {
-        styles.iter().filter_map(|style| parse_style_decl(style))
-    }
-
     fn write_block_class_css(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
-        class_defs: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
+        theme: &crate::block::BlockCssThemeBinding,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
-        for class_def in class_defs.values() {
+        fn declarations(values: &[(String, String)]) -> impl Iterator<Item = (&str, &str)> {
+            values
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str()))
+        }
+        for class_def in &theme.class_definitions {
             options.checkpoint_emit()?;
             let class = escape_xml(&class_def.id);
-            let mut shape_declarations = important_declarations(&class_def.styles);
+            let mut shape_declarations = declarations(&class_def.shape);
             if let Some((key, value)) = shape_declarations.next() {
                 let _ = write!(out, r#"#{diagram_id} .{}&gt;*{{"#, class.as_str());
                 out.checkpoint()?;
 
-                let mut parsed_shape_declarations = vec![(key, value)];
                 write_important_declaration(out, key, value)?;
                 for (key, value) in shape_declarations {
                     write_important_declaration(out, key, value)?;
-                    parsed_shape_declarations.push((key, value));
                 }
 
                 let _ = write!(out, r#"}}#{diagram_id} .{} span{{"#, class.as_str());
                 out.checkpoint()?;
-                write_important_declarations(out, parsed_shape_declarations)?;
+                write_important_declarations(out, declarations(&class_def.shape))?;
                 out.push('}');
                 out.checkpoint()?;
             }
 
-            let mut text_declarations = important_declarations(&class_def.text_styles);
+            let mut text_declarations = declarations(&class_def.text);
             if let Some((key, value)) = text_declarations.next() {
                 let _ = write!(out, r#"#{diagram_id} .{} tspan{{"#, class.as_str());
                 out.checkpoint()?;
@@ -561,10 +557,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id: SvgDiagramId<'_>,
         typography_theme: &'a BlockTypographyThemePlan,
         label_background_theme: &BlockLabelBackgroundPlan,
-        class_defs: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
         options: &SvgExecution<'_>,
     ) -> Result<BlockCssEmission<'a>> {
         let theme = typography_theme.css_binding();
@@ -677,7 +669,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             &theme.root_font_family,
         );
         out.checkpoint()?;
-        write_block_class_css(out, diagram_id, class_defs, options)?;
+        write_block_class_css(out, diagram_id, theme, options)?;
         Ok(BlockCssEmission {
             font_family_css: font_family,
             font_size_css,
@@ -752,7 +744,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id,
         typography_theme,
         label_background_theme,
-        &model.class_defs,
         options,
     )?;
     label_background_theme.record_stylesheet();

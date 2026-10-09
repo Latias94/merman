@@ -1,7 +1,15 @@
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
+pub(crate) struct BlockClassCssDeclarations {
+    pub(crate) id: String,
+    pub(crate) shape: Vec<(String, String)>,
+    pub(crate) text: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct BlockCssThemeBinding {
+    pub(crate) class_definitions: Vec<BlockClassCssDeclarations>,
     pub(crate) look_defs: crate::svg::PreparedLookDefs,
     pub(crate) text_color: String,
     pub(crate) node_text_color: String,
@@ -24,6 +32,30 @@ pub(crate) struct BlockCssThemeBinding {
 }
 
 impl BlockCssThemeBinding {
+    pub(crate) fn prepare_class_definitions(
+        &mut self,
+        definitions: &indexmap::IndexMap<
+            String,
+            merman_core::diagrams::block::BlockClassDefRenderModel,
+        >,
+    ) {
+        let declarations = |styles: &[String]| {
+            styles
+                .iter()
+                .filter_map(|style| crate::mermaid_style::parse_safe_style_decl(style))
+                .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                .collect()
+        };
+        self.class_definitions = definitions
+            .values()
+            .map(|definition| BlockClassCssDeclarations {
+                id: definition.id.clone(),
+                shape: declarations(&definition.styles),
+                text: declarations(&definition.text_styles),
+            })
+            .collect();
+    }
+
     pub(crate) fn resolve(config: &Value) -> crate::Result<Self> {
         let token = |key: &str, fallback: &str| {
             crate::config::config_string(config, &["themeVariables", key])
@@ -112,6 +144,7 @@ impl BlockCssThemeBinding {
             Vec::new()
         };
         Ok(Self {
+            class_definitions: Vec::new(),
             look_defs: crate::svg::PreparedLookDefs::new(config),
             text_color,
             node_text_color,
@@ -142,6 +175,33 @@ impl BlockCssThemeBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn class_declarations_preserve_duplicates_order_and_safe_source_spelling() {
+        let mut definition = merman_core::diagrams::block::BlockClassDefRenderModel::default();
+        definition.id = "branded".into();
+        definition.styles = vec![
+            "fill:red".into(),
+            "stroke:var(--border)".into(),
+            "fill:blue !important".into(),
+            "fill:red;stroke:black".into(),
+        ];
+        definition.text_styles = vec!["COLOR:currentColor".into()];
+        let definitions = indexmap::IndexMap::from([("branded".into(), definition)]);
+        let mut binding = BlockCssThemeBinding::resolve(&serde_json::json!({})).unwrap();
+        binding.prepare_class_definitions(&definitions);
+        let class = &binding.class_definitions[0];
+        assert_eq!(class.id, "branded");
+        assert_eq!(
+            class.shape,
+            vec![
+                ("fill".into(), "red".into()),
+                ("stroke".into(), "var(--border)".into()),
+                ("fill".into(), "blue !important".into()),
+            ]
+        );
+        assert_eq!(class.text, vec![("COLOR".into(), "currentColor".into())]);
+    }
 
     #[test]
     fn raw_defaults_and_nonfinite_width_do_not_fabricate_native_values() {

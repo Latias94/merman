@@ -45,13 +45,15 @@ fn prepare_flowchart_artifact<L>(
     )?;
     let edge_theme =
         crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
-    let edge_style_plan = edge_style_plan.with_resolved_stroke_widths(
-        &semantic,
-        &edge_theme,
-        effective_config,
-        &prepared_theme.compatibility,
-        work_meter.as_ref(),
-    )?;
+    let edge_style_plan = edge_style_plan
+        .with_typography_work_meter(Arc::clone(&work_meter))
+        .with_resolved_stroke_widths(
+            &semantic,
+            &edge_theme,
+            effective_config,
+            &prepared_theme.compatibility,
+            work_meter.as_ref(),
+        )?;
     let base_typography =
         crate::flowchart::FlowchartBaseTypographyPlan::resolve(resolved_theme, effective_config);
     let svg_label_sidecar = svg_label_preparation.0.then(|| {
@@ -95,6 +97,13 @@ fn prepare_flowchart_artifact<L>(
         svg_label_sidecar.base_typography(),
         svg_label_sidecar.edge_label_padding(),
     );
+    edge_style_plan.bind_terminal_typography(
+        &render_config.text_style,
+        matches!(
+            layout_view(&layout),
+            crate::svg::FlowchartNodeLayoutView::Swimlane(_)
+        ),
+    )?;
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
         &render_context,
@@ -198,10 +207,11 @@ fn prepare_block_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let typography_theme = crate::block::BlockTypographyThemePlan::resolve(
+    let mut typography_theme = crate::block::BlockTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
     )?;
+    typography_theme.prepare_class_definitions(&model.class_defs);
     let label_background_theme = crate::block::BlockLabelBackgroundPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

@@ -97,11 +97,12 @@ fn render_block_direct_with_edge_theme(
     let execution =
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
-    let typography_theme = BlockTypographyThemePlan::resolve(
+    let mut typography_theme = BlockTypographyThemePlan::resolve(
         None,
         &merman_core::MermaidConfig::from_value(effective_config.clone()),
     )
     .unwrap();
+    typography_theme.prepare_class_definitions(&model.class_defs);
 
     let labels = crate::block::BlockNodeLabelPaintPlan::resolve(
         None,
@@ -158,6 +159,16 @@ fn render_block_direct_with_edge_theme(
         &typography_theme,
         &execution,
     )
+}
+
+#[test]
+fn block_prepared_class_css_keeps_shape_and_span_declaration_order() {
+    let rendered =
+        render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .expect("render prepared Block class CSS");
+    let svg = rendered.as_str();
+    assert!(svg.contains(" .branded&gt;*{fill:#696!important;stroke:#333!important;}"));
+    assert!(svg.contains(" .branded span{fill:#696!important;stroke:#333!important;}"));
 }
 
 #[test]
