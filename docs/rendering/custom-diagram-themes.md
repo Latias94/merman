@@ -1,7 +1,9 @@
 # Create, Customize, and Share Diagram Themes
 
-This guide describes the unpublished `v0.8.0-alpha.7` source contract. It does not claim that
-published alpha.6 packages implement this API. Examples assume an initialized SVG-capable runtime.
+This guide describes the current theme source branch and its experimental version-1 authoring
+contract. Use a matching runtime artifact that exposes theme authoring and catalog operations;
+a package version alone does not establish channel availability or feature support. Examples
+assume an initialized SVG-capable runtime.
 
 ## Edit and share in the Playground
 

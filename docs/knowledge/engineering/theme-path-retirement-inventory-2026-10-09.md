@@ -1,12 +1,20 @@
 # Theme path retirement inventory
 
-This inventory records current source owners for the approved unified theme lowering refactor. It is not a runtime registry or an executable retirement ledger. Public Mermaid input, ordered core derivation, source filtering, and configuration serialization remain supported.
+Status: initial planning snapshot, captured October 9, 2026, before the family cutovers.
+
+This inventory records the initial source owners and work partition for the approved unified
+theme lowering refactor. Its file lists and obligations describe that starting point, not the
+current implementation or executable CI gates. Removed paths remain below as historical evidence.
+See the [retirement gate removal record](verification/2026-10-09-theme-retirement-gate-removal.md)
+for the deleted migration authority, and the [theme guide](../../rendering/custom-diagram-themes.md)
+for current user interfaces. Public Mermaid input, ordered core derivation, source filtering,
+and configuration serialization remain supported.
 
 ## Visual readers
 
 Lower family compatibility input once; remove consumers and reader definitions after complete family cutover.
 
-Current reference files: 36. Counts describe files, not semantic routes.
+Initial reference files: 36. Counts describe files, not semantic routes.
 
 - `crates/merman-render/src/eventmodeling.rs`
 - `crates/merman-render/src/quadrantchart.rs`
@@ -49,7 +57,7 @@ Current reference files: 36. Counts describe files, not semantic routes.
 
 Retire private authorization, callers, tests and release wiring together; preserve compact historical evidence.
 
-Current reference files: 8. Counts describe files, not semantic routes.
+Initial reference files: 8. Counts describe files, not semantic routes.
 
 - `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs`
 - `crates/merman-render/src/diagram_theme/legacy_projection_retirement.rs`
@@ -64,7 +72,7 @@ Current reference files: 8. Counts describe files, not semantic routes.
 
 Transfer property ownership semantics to binding; delete compensating default-path override only after equivalent behavior exists.
 
-Current reference files: 9. Counts describe files, not semantic routes.
+Initial reference files: 9. Counts describe files, not semantic routes.
 
 - `crates/merman-core/src/config/mod.rs`
 - `crates/merman-core/src/config/overlay.rs`
@@ -97,16 +105,16 @@ Repository caller inspection distinguishes the retired provider path from live o
 - TreeView's fallback contribution query has no production producer after lazy-provider retirement. Remove that query with its obsolete evidence closure.
 - Diagnostic fixtures in the facade, analysis and bindings must continue to test internal-error sanitization through a supported error constructor after provider fixtures retire.
 
-## Current CI owners
+## CI owners at plan capture
 
-The Ubuntu `build-test` job in `.github/workflows/ci.yml` runs full-workspace nextest, architecture doctests, private theme acceptance, preset qualification, native export, theme authoring and Flowchart geometry/effects. Pull-request host runners separately execute the historical retirement integration target. U5 must remove that obsolete host target and update step descriptions together with the test deletion.
+At plan capture, the Ubuntu `build-test` job in `.github/workflows/ci.yml` ran full-workspace nextest, architecture doctests, private theme acceptance, preset qualification, native export, theme authoring and Flowchart geometry/effects. Pull-request host runners separately executed the historical retirement integration target. U5 subsequently removed that obsolete host target with its test and release wiring; consult the removal record above rather than restoring this initial gate list.
 
 Tests named `block_title_legacy_projection`, `class_edge_label_background_legacy_projection` and `flowchart_marker_legacy_projection` protect current emitted paint and precedence behavior; a historical filename alone does not authorize deleting those assertions. Font admission, FFI consumers, release-mode evidence rejection and the published acceptance boundary protect independent current contracts.
 
 This inventory is source-backed planning evidence, not a claim that any CI or Cargo check has passed for the refactor.
 
-## Complete family partition
+## Initial complete family partition
 
 The source of truth is all 35 variants of `RenderFamilyKind`, including C4 and Treemap. U3 owns Class, C4, Gantt, Pie, Kanban, Timeline, Journey, QuadrantChart, Venn, Radar, XYChart, TreeView and Treemap (13). U4 owns Flowchart, Swimlane, Agentflow, Sequence, State, Mindmap, ER, Block, Requirement, EventModeling, Ishikawa, Architecture, GitGraph, Sankey, Railroad, Error, Info, Cynefin, Wardley, Zenuml, Packet and Usecase (22). These sets are disjoint and cover the source enum.
 
-Typed preparation plans already exist for many families, but that alone does not establish a terminal cutover: common CSS and several family writers still independently read effective configuration. Class is the first bounded preparation unit; its initial raw CSS binding and static paint cache do not yet remove typed/source ownership branches or the shared Info CSS reader. The remaining families retain their migration obligations.
+At plan capture, typed preparation plans existed for many families, but that alone did not establish a terminal cutover: common CSS and several family writers still independently read effective configuration. Class was the first bounded preparation unit; its initial raw CSS binding and static paint cache did not yet remove typed/source ownership branches or the shared Info CSS reader. This paragraph records the initial obligations, not the completion status of subsequent family cutovers.

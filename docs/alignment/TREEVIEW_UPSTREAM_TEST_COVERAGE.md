@@ -52,9 +52,12 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - CLI coverage exercises the local Iconify JSON loader through `SvgRenderOptions` into TreeView;
     renderer code performs no filesystem, package-manager, or network access
   - theme roles `iconColor`, `descriptionColor`, `highlightBg`, and `highlightStroke` are covered by
-    renderer-local `MermaidThemeAdapter` tests; structured `DiagramTheme` consumption and
-    config-pipeline admission for those newer theme fields remain tracked separately from TreeView
-    parser/model parity
+    the prepared TreeView terminal binding tests in `tree_view/theme/css_binding.rs`;
+    `tree_view/theme.rs` reconciles typed paint with per-property source/site configuration
+    ownership before layout and SVG consume that binding. These checks preserve raw fallback and
+    ownership semantics; they do not establish structured support for every target/property or
+    qualify an export. Query the runtime's theme support for the requested target separately from
+    TreeView parser/model parity.
 
 ## Fixture Coverage
 

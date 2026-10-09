@@ -1,10 +1,21 @@
 # Diagram Theme Coverage
 
-This is a migration snapshot, not a stable support contract. It distinguishes a direct typed
-consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
+This is a historical migration snapshot, not a current support contract or CI checklist.
+The dated sections record their inspected revisions, including routes and authorization files
+that have since been removed. They distinguish a direct typed consumer, an executable legacy
+compatibility route at that revision, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Retirement and verification boundaries: 2026-10-08
+For current interfaces and target-specific admission, use the
+[theme guide](custom-diagram-themes.md) and the runtime's support discovery. For bounded preset
+evidence, use [preset qualification](preset-qualification.md). The
+[October 9 retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+documents removal of the executable KTD23 witness, historical authorization manifests and
+their CI/release commands. None of the historical counts below is a current release gate.
+
+## Historical retirement and verification boundaries: 2026-10-08
+
+The following describes the October 8 migration stage before that final retirement:
 
 The executable test-only bridge/cache, overlay builder, and parse harness have been removed.
 `legacy_family_theme_bridge.rs` now contains only final route observations and retirement tests;
@@ -187,7 +198,8 @@ attest a packaged CLI. The commit identifies the tested source, not a moving HEA
 Earlier C6 runtime and preset qualification sub-gates also passed 4/4.
 The earlier optimized renderer regression for family/bridge evidence paths passed 213/213.
 
-The source inventories, not this summary, authorize rendering and retirement:
+At the recorded migration revision, the following source inventories authorized rendering and
+retirement. Deleted paths identify historical owners, not current commands or required files:
 
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
@@ -744,7 +756,12 @@ family tests and matrix classification. They do not yet constitute an independen
 bridge-removal authorization. The current route/dispatch inventory is deliberately only an
 inventory: it does not observe provider removal or close all release gates.
 
-## Retirement and Verification Rules
+## Historical Retirement Rules
+
+These rules governed the migration described above. The final deletion is recorded in the
+October 9 retirement record; restoring the retired bridge or authorization is not a current
+verification requirement. Terminal correctness, source/config precedence and narrow comparator
+normalization remain current concerns.
 
 - Do not delete the bridge while any executable Legacy route remains. Typed writers must preserve
   the intended behavior; an intentionally removed behavior needs an explicit Unsupported boundary
@@ -760,16 +777,23 @@ inventory: it does not observe provider removal or close all release gates.
   postprocessors, host-dependent measurement, and browser behavior retain explicit evidence grades.
 - Keep comparator normalization narrow and non-semantic; document residuals instead of hiding them.
 
-Focused checks live in `merman-render` support-manifest/matrix/bridge unit tests and family SVG
-tests, plus `merman-theme-acceptance` cutover and retirement tests. KTD17 library tests require
-the `png` feature; running that crate with no default features alone does not exercise them.
-Bridge inventory changes also require the `legacy_projection_retirement` integration target,
-whose frozen counts and digests are independent of the renderer library tests:
+## Current Verification Owners
+
+Current checks belong to renderer support-discovery and mechanism-matrix tests, family layout/SVG
+tests, native admission tests, and public authoring/qualification consumers. The independent
+acceptance crate retains actual Block title, Class label-background and Flowchart marker terminal
+and pixel checks. Their historical `legacy_projection` filenames do not make their behavior
+obsolete. The frozen `legacy_projection_retirement` and `route_cutover_runtime` targets have
+been removed and must not be selected or restored as current gates.
+
+For the retained acceptance behavior and bounded preset checks:
 
 ```sh
 python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
   --no-default-features --features png,layout-cytoscape \
-  --test legacy_projection_retirement --test route_cutover_runtime
+  --test block_title_legacy_projection --test class_edge_label_background_legacy_projection \
+  --test flowchart_marker_legacy_projection --test preset_qualification \
+  --test cyberpunk_public_preset
 ```
 
 The semantic baseline is pinned by `docs/adr/0001-upstream-baseline.md` and

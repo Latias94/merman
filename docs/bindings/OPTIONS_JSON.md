@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-10-05
+Last updated: 2026-10-09
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -149,11 +149,11 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `3` | Options-schema version. Published alpha.6 uses version `2`; the unreleased compiled-theme grammar uses version `3` and rejects earlier versions. Omitting the field selects the current grammar; durable integrations should send `3` explicitly. |
+| `version` | integer | `3` | Current options-schema version. Earlier versions are rejected. Omitting the field selects the current grammar; durable integrations should send `3` explicitly and use a matching runtime artifact. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `theme` | object or null | none | Experimental complete compiled diagram theme: exactly one `preset` or `spec`. |
+| `theme` | object or null | none | Experimental compiled diagram theme: an exact `preset`/`spec` selection or a version-1 recipe envelope. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -292,11 +292,36 @@ support do not trigger fallback.
 
 ## Diagram Theme
 
-The unreleased top-level `theme` field is an experimental closed selection for one complete
-compiled diagram theme. It must be `null` or an object containing exactly one of `preset` and `spec`.
-`{}`, both members, and a null `preset`/`spec` payload are rejected. A successful compilation
-validates the bounded recipe and reports its requirements; it is not proof of the unfinished
-cross-family, cross-target portability matrix.
+The top-level `theme` field selects one complete compiled diagram theme. Its authoring contract
+is experimental; use a runtime artifact that exposes the matching theme operations. It accepts:
+
+- `null`, to clear a compiled theme;
+- an object containing exactly one of `preset` and `spec`;
+- a version-1 `ThemeRecipeV1` envelope, with `schema_version: 1`, `kind: "definition"` or
+  `kind: "complete_spec"`, and the corresponding `definition` or `complete_spec` payload.
+
+`{}`, simultaneous `preset` and `spec`, null selection payloads, and mixtures of recipe and
+selection members are rejected. Recipe versions and payload fields are validated in Rust.
+A successful compilation validates the bounded recipe and reports its requirements; it does
+not qualify every diagram family or export target.
+
+A downloaded recipe is passed directly as the `theme` value, without adding a `recipe` wrapper:
+
+```json
+{
+  "version": 3,
+  "theme": {
+    "schema_version": 1,
+    "kind": "complete_spec",
+    "complete_spec": {
+      "mermaid": { "theme": "base" }
+    }
+  }
+}
+```
+
+See [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-themes.md)
+for exporting presets, authoring definitions, and importing saved recipes.
 
 `theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value
@@ -398,7 +423,7 @@ output policy do not belong in `theme.spec.mermaid`; use their explicit owners i
 
 Theme selection is not part of the generic request deep merge. For a reusable engine, omitted
 `theme` inherits the constructor's compiled value, `theme: null` clears it, and a request
-`preset` or `spec` replaces it as one complete value. Requests cannot raise the constructor's
+selection or recipe replaces it as one complete value. Requests cannot raise the constructor's
 theme admission or resource policies.
 
 Bounded Mermaid behavior overrides belong at top-level `site_config`; output choices belong under

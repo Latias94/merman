@@ -2,7 +2,29 @@
 
 - Status: accepted
 - Date: 2026-06-03
-- Last amended: 2026-08-27
+- Last amended: 2026-10-09
+
+## Amendment: Prepared Family Bindings
+
+The October 9, 2026 theme-path refactor retires the temporary compatibility bridge and the
+shared `SvgTheme`/`MermaidThemeAdapter` visual readers described by the earlier migration.
+Family bindings now own Mermaid compatibility values, including requests without a compiled
+theme, rather than repeating visual JSON lookups. The remaining retirement work moves final
+typed/source property selection into each family's existing preparation artifact. Some bindings
+require measured layout identities; their preparation boundary follows layout and precedes SVG
+emission. Removal of the shared reader does not by itself establish that every family has
+completed that final selection migration.
+
+Mermaid `theme` and `themeVariables` input, ordered core derivation, and source/site precedence
+remain supported. Raw CSS tokens retain their emission semantics; optional native interpretation,
+measurement, resource admission and evidence retain their separate contracts. A prepared binding
+does not make an unsupported typed target portable. Mermaid look/layout and output policy remain
+independent owners. The temporary bridge and raw reader allowance in decision 5 below records
+the earlier migration stage, not a current extension point.
+
+Current user interfaces are documented by the [theme guide](../rendering/custom-diagram-themes.md);
+the [retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+preserves the removed authorization's historical evidence. The original decision follows.
 
 ## Context
 
