@@ -13,7 +13,16 @@ execution: code
 
 The goal is active. Partial family migrations do not satisfy the final definition of done.
 
-The latest frozen code batch is `803ef3512`. Flowchart node source typography
+`afedd43e5` makes the existing concrete Flowchart render configuration an
+artifact-owned value. SVG consumers borrow its strings, styles and lists while
+copying scalar settings. The original Agentflow projected inputs, ELK interpolation
+and disabled-sidecar fallback remain intact. Independent review found no confirmed
+regression; 203 affected integration tests, strict all-feature CLI Clippy and
+format/diff checks passed. Cluster source bindings and edge typography still need
+their separate cutovers. Performance harness contract tests also passed (121 tests);
+this validates the measurement tool, not a renderer performance result.
+
+The preceding frozen code batch is `803ef3512`. Flowchart node source typography
 is shared through the existing label sidecar across labels, shapes, bounds and
 intersection consumers. HTML/Markdown/opaque paths retain the same projection;
 disabled label preparation uses one metered fallback. Review found and corrected
