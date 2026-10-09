@@ -54,6 +54,8 @@ mod class;
     )
 )]
 mod css;
+#[cfg(any(feature = "diagram-class", feature = "diagram-pie"))]
+pub(crate) use css::PreparedCommonCss;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -275,7 +277,7 @@ use css::gantt_css_with_overrides;
 #[cfg(feature = "diagram-xychart")]
 use css::push_xychart_css;
 #[cfg(feature = "diagram-pie")]
-use css::write_pie_css_with_theme_overrides_and_font_family;
+use css::write_pie_css;
 #[cfg(feature = "diagram-sankey")]
 use css::write_sankey_css_with_font_family;
 #[cfg_attr(

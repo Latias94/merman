@@ -19,6 +19,9 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod css_binding;
+pub(crate) use css_binding::PieCssBinding;
+
 const MERMAID_PIE_PALETTE_SIZE: usize = 12;
 const PIE_SLICE_CLASS: &str = "pieCircle";
 const PIE_OUTER_CIRCLE_CLASS: &str = "pieOuterCircle";
@@ -99,6 +102,7 @@ struct PieTerminalEvidence {
 /// Resolves Pie theme surfaces once for layout, SVG emission, and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct PieThemePlan {
+    css: PieCssBinding,
     label_indices: HashMap<String, usize>,
     section_paint_indices: Vec<usize>,
     paints: Vec<PieSlicePaint>,
@@ -120,24 +124,31 @@ impl PieThemePlan {
         effective_config: &serde_json::Value,
     ) -> Self {
         let effective_config = MermaidConfig::from_value(effective_config.clone());
-        Self::baseline_with_config(model, &effective_config)
+        Self::baseline_with_config(model, &effective_config, None)
     }
 
     fn baseline_with_config(
         model: &PieDiagramRenderModel,
         effective_config: &MermaidConfig,
+        theme: Option<&ResolvedDiagramTheme>,
     ) -> Self {
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let css = PieCssBinding::new(
+            effective_config.as_value(),
+            inherited_font_stack
+                .typography_requested()
+                .then_some(inherited_font_stack.font_family_css()),
+        );
         let mut plan = Self {
+            css,
             label_indices: HashMap::new(),
             section_paint_indices: Vec::with_capacity(model.sections.len()),
             paints: Vec::new(),
             stroke: None,
             title_fill: None,
             text_fill: None,
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                None,
-                effective_config,
-            ),
+            inherited_font_stack,
             title_present: false,
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
@@ -175,10 +186,8 @@ impl PieThemePlan {
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline_with_config(model, effective_config);
+        let mut plan = Self::baseline_with_config(model, effective_config, theme);
         plan.title_present = title.is_some_and(|title| !title.trim().is_empty());
-        plan.inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -188,7 +197,29 @@ impl PieThemePlan {
         plan.resolve_rules(model, effective_config, theme, work_meter)?;
         plan.resolve_title_rules(effective_config, theme, title, work_meter)?;
         plan.resolve_text_rules(effective_config, theme, model.sections.len(), work_meter)?;
+        plan.bind_css_winners();
         Ok(plan)
+    }
+
+    fn bind_css_winners(&mut self) {
+        if let Some(stroke) = self.stroke.as_ref() {
+            if stroke.slice_site {
+                self.css.slice_stroke.bind_typed(&stroke.css);
+            }
+            if stroke.outer_site {
+                self.css.outer_stroke.bind_typed(&stroke.css);
+            }
+        }
+        if let Some(fill) = self.title_fill.as_ref() {
+            self.css.title_text_color = fill.css.to_string();
+        }
+        if let Some(fill) = self.text_fill.as_ref() {
+            self.css.section_text_color = fill.css.to_string();
+        }
+    }
+
+    pub(crate) fn css_binding(&self) -> &PieCssBinding {
+        &self.css
     }
 
     fn resolve_palette(
@@ -1430,6 +1461,60 @@ mod tests {
     use crate::resources::RenderResourcePolicy;
     use merman_core::diagrams::pie::PieRenderSection;
     use serde_json::json;
+
+    #[test]
+    fn bound_css_preserves_raw_values_and_color_fallbacks_without_typed_theme() {
+        let plan = PieThemePlan::baseline(
+            &PieDiagramRenderModel::default(),
+            &json!({"themeVariables": {
+                "textColor": "var(--section-color)",
+                "taskTextDarkColor": "currentColor",
+                "pieStrokeWidth": 3,
+                "pieOuterStrokeWidth": "calc(1px + 1em)",
+                "pieOpacity": 0.4,
+                "pieTitleTextSize": "1.5em"
+            }}),
+        );
+        let css = plan.css_binding();
+        assert_eq!(css.title_text_color, "currentColor");
+        assert_eq!(css.legend_text_color, "currentColor");
+        assert_eq!(css.section_text_color, "var(--section-color)");
+        assert_eq!(css.slice_stroke_width, "3");
+        assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
+        assert_eq!(css.slice_opacity, "0.4");
+        assert_eq!(css.title_text_size, "1.5em");
+        assert_eq!(css.title_measurement_style().font_size, 25.0);
+        assert_eq!(css.legend_measurement_style().font_size, 17.0);
+    }
+
+    #[test]
+    fn bound_typed_stroke_keeps_baseline_for_absent_slice_surfaces() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
+                    )),
+                ),
+            )
+            .expect("compile stroke")
+            .resolve(DiagramFamilyId::PIE);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = PieThemePlan::resolve(
+            &PieDiagramRenderModel::default(),
+            &MermaidConfig::from_value(json!({})),
+            Some(&theme),
+            &meter,
+        )
+        .expect("resolve stroke");
+        let css = plan.css_binding();
+        assert_eq!(css.slice_stroke.css(true), "#123456");
+        assert_eq!(css.outer_stroke.css(true), "#123456");
+        assert_eq!(css.slice_stroke.css(false), "black");
+        assert_eq!(css.outer_stroke.css(false), "black");
+    }
 
     fn resolved_slice_palette(colors: &[&str]) -> ResolvedDiagramTheme {
         let palette = OrdinalPalette::new(

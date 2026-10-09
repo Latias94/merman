@@ -212,6 +212,7 @@ fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
     }
 }
 
+#[derive(Debug)]
 struct MermaidCommonNeoCss {
     node_border: String,
     use_gradient: bool,
@@ -410,7 +411,7 @@ pub(super) fn info_css_into_with_font_family<I>(out: &mut String, diagram_id: I,
 where
     I: SvgDiagramIdValue,
 {
-    let values = InfoCssValues::new(&serde_json::Value::Null, Some(font_family));
+    let values = PreparedCommonCss::new(&serde_json::Value::Null, Some(font_family));
     values
         .write_all(
             out,
@@ -430,7 +431,8 @@ pub(super) struct InfoCssParts {
     pub(super) line_color: String,
 }
 
-struct InfoCssValues {
+#[derive(Debug)]
+pub(crate) struct PreparedCommonCss {
     font_family: String,
     root_font_family: String,
     font_size_css: String,
@@ -442,8 +444,39 @@ struct InfoCssValues {
     neo: MermaidCommonNeoCss,
 }
 
-impl InfoCssValues {
-    fn new(effective_config: &serde_json::Value, resolved_font_family: Option<&str>) -> Self {
+impl PreparedCommonCss {
+    #[cfg(feature = "diagram-class")]
+    pub(crate) fn bind(
+        effective_config: &serde_json::Value,
+        font_family: &str,
+        font_size_css: &str,
+        typed_font_stack_active: bool,
+    ) -> Self {
+        let mut values = Self::with_resolved_typography(
+            effective_config,
+            normalize_css_font_family(font_family),
+            font_size_css.to_owned(),
+        );
+        if !typed_font_stack_active {
+            values.root_font_family = crate::config::config_root_font_family_css(effective_config);
+        }
+        values
+    }
+
+    #[cfg(any(feature = "diagram-class", feature = "diagram-pie"))]
+    pub(crate) fn font_family(&self) -> &str {
+        &self.font_family
+    }
+
+    #[cfg(feature = "diagram-pie")]
+    pub(crate) fn text_color(&self) -> &str {
+        &self.text_color
+    }
+
+    pub(crate) fn new(
+        effective_config: &serde_json::Value,
+        resolved_font_family: Option<&str>,
+    ) -> Self {
         let font_family = resolved_font_family.map_or_else(
             || crate::config::config_font_family_css(effective_config),
             str::to_owned,
@@ -488,7 +521,7 @@ impl InfoCssValues {
             .map(drop)
     }
 
-    fn write_prefix_with_font_emission<I>(
+    pub(super) fn write_prefix_with_font_emission<I>(
         &self,
         out: &mut impl SvgOutput,
         selector_id: I,
@@ -525,7 +558,7 @@ impl InfoCssValues {
             .map(drop)
     }
 
-    fn write_root_with_font_emission<SelectorId, FragmentId>(
+    pub(super) fn write_root_with_font_emission<SelectorId, FragmentId>(
         &self,
         out: &mut impl SvgOutput,
         selector_id: SelectorId,
@@ -559,13 +592,13 @@ impl InfoCssValues {
 }
 
 pub(super) struct InfoCssWriter {
-    values: InfoCssValues,
+    values: PreparedCommonCss,
 }
 
 impl InfoCssWriter {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
         Self {
-            values: InfoCssValues::new(effective_config, None),
+            values: PreparedCommonCss::new(effective_config, None),
         }
     }
 
@@ -575,21 +608,12 @@ impl InfoCssWriter {
         font_size_css: &str,
     ) -> Self {
         Self {
-            values: InfoCssValues::with_resolved_typography(
+            values: PreparedCommonCss::with_resolved_typography(
                 effective_config,
                 font_family.to_string(),
                 font_size_css.to_string(),
             ),
         }
-    }
-
-    pub(super) fn font_family(&self) -> &str {
-        &self.values.font_family
-    }
-
-    pub(super) fn with_root_font_family(mut self, font_family: &str) -> Self {
-        self.values.root_font_family = font_family.to_owned();
-        self
     }
 
     pub(super) fn with_text_color(mut self, text_color: &str) -> Self {
@@ -608,32 +632,6 @@ impl InfoCssWriter {
     {
         info_css_parts_from_values(diagram_id, self.values)
     }
-
-    pub(super) fn write_prefix<I>(
-        &self,
-        out: &mut impl SvgOutput,
-        selector_id: I,
-    ) -> Result<MermaidBaseFontCssEmission<'_>>
-    where
-        I: Copy + std::fmt::Display,
-    {
-        self.values
-            .write_prefix_with_font_emission(out, selector_id)
-    }
-
-    pub(super) fn write_root<SelectorId, FragmentId>(
-        &self,
-        out: &mut impl SvgOutput,
-        selector_id: SelectorId,
-        fragment_id: FragmentId,
-    ) -> Result<MermaidRootVariableFontCssEmission<'_>>
-    where
-        SelectorId: Copy + std::fmt::Display,
-        FragmentId: Copy + std::fmt::Display,
-    {
-        self.values
-            .write_root_with_font_emission(out, selector_id, fragment_id)
-    }
 }
 
 pub(super) fn info_css_parts_with_config<I>(
@@ -643,7 +641,7 @@ pub(super) fn info_css_parts_with_config<I>(
 where
     I: Copy + std::fmt::Display,
 {
-    let values = InfoCssValues::new(effective_config, None);
+    let values = PreparedCommonCss::new(effective_config, None);
     info_css_parts_from_values(diagram_id, values)
 }
 
@@ -655,7 +653,7 @@ pub(super) fn info_css_parts_with_font_family<I>(
 where
     I: Copy + std::fmt::Display,
 {
-    let values = InfoCssValues::new(effective_config, Some(font_family));
+    let values = PreparedCommonCss::new(effective_config, Some(font_family));
     info_css_parts_from_values(diagram_id, values)
 }
 
@@ -668,7 +666,7 @@ pub(super) fn info_css_parts_with_resolved_typography<I>(
 where
     I: Copy + std::fmt::Display,
 {
-    let values = InfoCssValues::with_resolved_typography(
+    let values = PreparedCommonCss::with_resolved_typography(
         effective_config,
         font_family.to_string(),
         font_size_css.to_string(),
@@ -676,7 +674,7 @@ where
     info_css_parts_from_values(diagram_id, values)
 }
 
-fn info_css_parts_from_values<I>(diagram_id: I, values: InfoCssValues) -> InfoCssParts
+fn info_css_parts_from_values<I>(diagram_id: I, values: PreparedCommonCss) -> InfoCssParts
 where
     I: Copy + std::fmt::Display,
 {
@@ -737,7 +735,7 @@ pub(super) fn write_info_css_with_font_family<I>(
 where
     I: SvgDiagramIdValue,
 {
-    let values = InfoCssValues::new(effective_config, Some(font_family));
+    let values = PreparedCommonCss::new(effective_config, Some(font_family));
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     values.write_prefix(out, selector_id)?;
@@ -1255,31 +1253,6 @@ where
     })
 }
 
-#[cfg(feature = "diagram-pie")]
-fn pie_theme_option(
-    effective_config: &serde_json::Value,
-    key: &str,
-    default_value: &str,
-) -> String {
-    SvgTheme::new(effective_config).css_value(key, default_value)
-}
-
-#[cfg(feature = "diagram-pie")]
-pub(super) struct PieCss {
-    info: InfoCssValues,
-    pie_stroke_color: String,
-    pie_stroke_width: String,
-    pie_opacity: String,
-    pie_outer_stroke_color: String,
-    pie_outer_stroke_width: String,
-    pie_title_text_size: String,
-    pie_title_text_color: String,
-    pie_section_text_size: String,
-    pie_section_text_color: String,
-    pie_legend_text_size: String,
-    pie_legend_text_color: String,
-}
-
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.
 #[derive(Debug, Default)]
 pub(super) struct PieCssEmission {
@@ -1313,129 +1286,67 @@ impl PieCssEmission {
 }
 
 #[cfg(feature = "diagram-pie")]
-impl PieCss {
-    fn with_theme_overrides_and_font_family(
-        effective_config: &serde_json::Value,
-        slice_stroke: Option<&str>,
-        outer_stroke: Option<&str>,
-        title_fill: Option<&str>,
-        section_text_fill: Option<&str>,
-        font_family: Option<&str>,
-    ) -> Self {
-        let info = InfoCssValues::new(effective_config, font_family);
-        let theme = SvgTheme::new(effective_config);
-        let task_text_dark_color = theme.color("taskTextDarkColor", "black");
-        let pie_title_text_color = title_fill
-            .map(str::to_owned)
-            .unwrap_or_else(|| theme.color("pieTitleTextColor", task_text_dark_color.as_str()));
-        let pie_section_text_color = section_text_fill
-            .map(str::to_owned)
-            .unwrap_or_else(|| theme.color("pieSectionTextColor", info.text_color.as_str()));
-        let pie_legend_text_color =
-            theme.color("pieLegendTextColor", task_text_dark_color.as_str());
-
-        Self {
-            info,
-            pie_stroke_color: slice_stroke
-                .map(str::to_owned)
-                .unwrap_or_else(|| pie_theme_option(effective_config, "pieStrokeColor", "black")),
-            pie_stroke_width: pie_theme_option(effective_config, "pieStrokeWidth", "2px"),
-            pie_opacity: pie_theme_option(effective_config, "pieOpacity", "0.7"),
-            pie_outer_stroke_color: outer_stroke.map(str::to_owned).unwrap_or_else(|| {
-                pie_theme_option(effective_config, "pieOuterStrokeColor", "black")
-            }),
-            pie_outer_stroke_width: pie_theme_option(
-                effective_config,
-                "pieOuterStrokeWidth",
-                "2px",
-            ),
-            pie_title_text_size: pie_theme_option(effective_config, "pieTitleTextSize", "25px"),
-            pie_title_text_color,
-            pie_section_text_size: pie_theme_option(effective_config, "pieSectionTextSize", "17px"),
-            pie_section_text_color,
-            pie_legend_text_size: pie_theme_option(effective_config, "pieLegendTextSize", "17px"),
-            pie_legend_text_color,
-        }
-    }
-
-    pub(super) fn write_for_normalized_id<I>(
-        &self,
-        out: &mut impl SvgOutput,
-        diagram_id: I,
-    ) -> Result<()>
-    where
-        I: SvgDiagramIdValue,
-    {
-        let selector_id = CssSelectorDiagramId(diagram_id);
-        let fragment_id = FragmentDiagramId(diagram_id);
-        self.info.write_prefix(out, selector_id)?;
-        let id = selector_id;
-        let _ = write!(
-            out,
-            r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .{}{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
-            id,
-            self.pie_stroke_color,
-            self.pie_stroke_width,
-            self.pie_opacity,
-            id,
-            id,
-            id,
-            self.pie_outer_stroke_color,
-            self.pie_outer_stroke_width,
-            id,
-            crate::pie::PIE_TITLE_CLASS,
-            self.pie_title_text_size,
-            self.pie_title_text_color,
-            self.info.font_family,
-            id,
-            self.info.font_family,
-            self.pie_section_text_color,
-            self.pie_section_text_size,
-            id,
-            self.pie_legend_text_color,
-            self.info.font_family,
-            self.pie_legend_text_size
-        );
-        out.checkpoint()?;
-        self.info.write_root(out, selector_id, fragment_id)
-    }
-}
-
-#[cfg(feature = "diagram-pie")]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
-pub(super) fn write_pie_css_with_theme_overrides_and_font_family<I>(
+pub(super) fn write_pie_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    effective_config: &serde_json::Value,
-    slice_stroke: Option<&str>,
-    outer_stroke: Option<&str>,
-    title_fill: Option<&str>,
-    section_text_fill: Option<&str>,
-    font_family: Option<&str>,
+    paint_plan: &crate::pie::PieThemePlan,
+    slices_present: bool,
 ) -> Result<PieCssEmission>
 where
     I: SvgDiagramIdValue,
 {
-    let plan = PieCss::with_theme_overrides_and_font_family(
-        effective_config,
-        slice_stroke,
-        outer_stroke,
-        title_fill,
-        section_text_fill,
-        font_family,
+    let values = paint_plan.css_binding();
+    let selector_id = CssSelectorDiagramId(diagram_id);
+    let fragment_id = FragmentDiagramId(diagram_id);
+    values.common.write_prefix(out, selector_id)?;
+    let id = selector_id;
+    let _ = write!(
+        out,
+        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .{}{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+        id,
+        values.slice_stroke.css(slices_present),
+        values.slice_stroke_width,
+        values.slice_opacity,
+        id,
+        id,
+        id,
+        values.outer_stroke.css(slices_present),
+        values.outer_stroke_width,
+        id,
+        crate::pie::PIE_TITLE_CLASS,
+        values.title_text_size,
+        values.title_text_color,
+        values.common.font_family(),
+        id,
+        values.common.font_family(),
+        values.section_text_color,
+        values.section_text_size,
+        id,
+        values.legend_text_color,
+        values.common.font_family(),
+        values.legend_text_size
     );
+    out.checkpoint()?;
+    values.common.write_root(out, selector_id, fragment_id)?;
     let emission = PieCssEmission {
-        slice_stroke: slice_stroke.map(|_| plan.pie_stroke_color.clone().into_boxed_str()),
-        outer_stroke: outer_stroke.map(|_| plan.pie_outer_stroke_color.clone().into_boxed_str()),
-        title_fill: title_fill.map(|_| plan.pie_title_text_color.clone().into_boxed_str()),
-        section_text_fill: section_text_fill
-            .map(|_| plan.pie_section_text_color.clone().into_boxed_str()),
-        font_family: font_family.map(|_| plan.info.font_family.clone().into_boxed_str()),
+        slice_stroke: paint_plan
+            .slice_stroke_css()
+            .filter(|_| slices_present)
+            .map(|_| values.slice_stroke.css(true).into()),
+        outer_stroke: paint_plan
+            .outer_stroke_css()
+            .filter(|_| slices_present)
+            .map(|_| values.outer_stroke.css(true).into()),
+        title_fill: paint_plan
+            .title_fill_css()
+            .map(|_| values.title_text_color.clone().into()),
+        section_text_fill: paint_plan
+            .text_fill_css()
+            .map(|_| values.section_text_color.clone().into()),
+        font_family: paint_plan
+            .typography_requested()
+            .then(|| values.common.font_family().into()),
     };
-    plan.write_for_normalized_id(out, diagram_id)?;
     Ok(emission)
 }
 
@@ -1485,7 +1396,7 @@ where
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let mut values = InfoCssValues::new(effective_config, font_family_css);
+    let mut values = PreparedCommonCss::new(effective_config, font_family_css);
     if let Some(text_fill_css) = text_fill_css {
         values.text_color = text_fill_css.to_owned();
     }

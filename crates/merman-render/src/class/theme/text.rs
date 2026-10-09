@@ -22,6 +22,7 @@ const CARDINALITY_SLOT_COUNT: usize = 4;
 #[derive(Debug)]
 pub(crate) struct ClassTextThemePlan {
     css_binding: super::ClassCssThemeBinding,
+    common_css: crate::svg::PreparedCommonCss,
     inherited_font_stack: InheritedFontStackPlan,
     text_rules: BTreeMap<usize, Option<ThemeCapability>>,
     fully_shadowed_text_rules: BTreeSet<usize>,
@@ -296,6 +297,12 @@ impl ClassTextThemePlan {
         };
         Self {
             css_binding: super::ClassCssThemeBinding::resolve(effective_config.as_value()),
+            common_css: crate::svg::PreparedCommonCss::bind(
+                effective_config.as_value(),
+                &stylesheet_font_family_css,
+                &font_size_css,
+                inherited_font_stack.typed_font_stack_active(),
+            ),
             text_rules,
             fully_shadowed_text_rules: shadowed
                 .into_iter()
@@ -323,6 +330,9 @@ impl ClassTextThemePlan {
     }
     pub(crate) fn css_binding(&self) -> &super::ClassCssThemeBinding {
         &self.css_binding
+    }
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
     }
     pub(crate) fn note_paint(&self) -> Option<&ClassTextPaint> {
         self.note_paint.as_ref()
@@ -367,10 +377,6 @@ impl ClassTextThemePlan {
 
     pub(crate) fn layout_font_family_css(&self) -> &str {
         &self.layout_font_family_css
-    }
-
-    pub(crate) fn typed_font_stack_active(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_active()
     }
 
     pub(crate) fn stylesheet_font_family_css(&self) -> &str {

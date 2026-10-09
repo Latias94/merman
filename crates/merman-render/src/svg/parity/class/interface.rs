@@ -3,7 +3,7 @@ use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
-use super::label::{class_html_div_style, class_math_html_label, class_node_label_style};
+use super::label::{class_html_div_style, class_math_html_label};
 use super::node::ClassNodeRenderPosition;
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
@@ -18,7 +18,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
-    pub theme_expectation: &'a crate::class::ClassNodeTerminalExpectation,
+    pub visual_binding: &'a super::node_binding::ClassInterfaceVisualBinding,
     pub emit: ClassEmitCheckpoint<'a>,
 }
 
@@ -67,11 +67,10 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
     let top = -h / 2.0;
-    let label_source_owned = crate::class::class_text_is_math_only(label_text.as_ref());
-    let label_fill_verified = !crate::math::contains_delimited_math(label_text.as_ref());
-    let emitted_label_fill = ctx.theme_expectation.typed_label_fill(label_source_owned);
+    let binding = ctx.visual_binding;
+    let emitted_label_fill = binding.emitted_label_fill();
     let container_style = "opacity:0; !important";
-    let label_style = class_node_label_style("", emitted_label_fill.as_ref().map(|(_, css)| *css));
+    let label_style = &binding.label_style;
     let label_style_attr = if !label_style.is_empty() {
         format!(r#" style="{}""#, escape_attr_display(&label_style))
     } else {
@@ -158,17 +157,17 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             crate::class::ClassNodePaintTerminalEmission::not_applicable(),
             crate::class::ClassNodePaintTerminalEmission::not_applicable(),
             crate::class::ClassNodePaintTerminalEmission::new(
-                label_source_owned,
+                binding.source_owned,
                 emitted_label_fill,
-                &label_style,
+                label_style,
             )
-            .with_terminal_verified(label_fill_verified),
+            .with_terminal_verified(binding.verified),
         ),
         typography: (if math_html.is_some() {
             crate::class::ClassTextTerminalFacts::unverified_text(label_text.as_ref())
         } else {
             crate::class::ClassTextTerminalFacts::inherited_text(label_text.as_ref())
         })
-        .with_paint(emitted_label_fill, &label_style),
+        .with_paint(emitted_label_fill, label_style),
     })
 }

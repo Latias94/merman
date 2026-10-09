@@ -278,17 +278,11 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         .flatten();
     let title_fill = paint_plan.title_fill_css();
     let text_fill = paint_plan.text_fill_css();
-    let css_emission = write_pie_css_with_theme_overrides_and_font_family(
+    let css_emission = write_pie_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
-        slice_stroke,
-        outer_stroke,
-        title_fill,
-        text_fill,
-        paint_plan
-            .typography_requested()
-            .then_some(paint_plan.font_family_css()),
+        paint_plan,
+        !layout.slices.is_empty(),
     )?;
     if let Some(receipt) = paint_receipt.as_mut() {
         if paint_plan.typography_requested() {

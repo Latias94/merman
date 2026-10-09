@@ -62,8 +62,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
                 .iter()
                 .map(|interface| interface.id.clone()),
         ),
-        options.work_meter(),
-    )?;
+    );
     if let Some(receipt) = typography_receipt.as_mut() {
         typography_theme.bind_paint_expectations(
             receipt,
@@ -76,6 +75,35 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         .iter()
         .map(|expectation| (expectation.id(), expectation))
         .collect::<FxHashMap<_, _>>();
+    let mut node_visual_bindings = FxHashMap::default();
+    for (id, node) in &model.classes {
+        emit.checkpoint()?;
+        let expectation = node_expectations_by_id
+            .get(id.as_str())
+            .expect("prepared Class node theme owner");
+        node_visual_bindings.insert(
+            id.as_str(),
+            super::node_binding::ClassNodeVisualBinding::lower(
+                node,
+                expectation,
+                typography_theme,
+                settings.diagram_use_html_labels,
+            )?,
+        );
+    }
+    let mut interface_visual_bindings = FxHashMap::default();
+    for interface in &model.interfaces {
+        emit.checkpoint()?;
+        let expectation = node_expectations_by_id
+            .get(interface.id.as_str())
+            .expect("prepared Class interface theme owner");
+        interface_visual_bindings.insert(
+            interface.id.as_str(),
+            super::node_binding::ClassInterfaceVisualBinding::lower(interface, expectation),
+        );
+    }
+    let node_visual_bindings = std::cell::RefCell::new(node_visual_bindings);
+    let interface_visual_bindings = std::cell::RefCell::new(interface_visual_bindings);
     let relation_expectations = model
         .relations
         .iter()
@@ -138,7 +166,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let typography_css_emission = write_class_css(
         &mut out,
         diagram_id.semantic_str(),
-        effective_config,
         typography_theme,
         typography_receipt.is_some(),
     )?;
@@ -283,7 +310,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         measurer,
         mermaid_config,
         math_renderer: options.math_renderer(),
-        node_theme_expectations: &node_expectations_by_id,
+        node_visual_bindings: &node_visual_bindings,
+        interface_visual_bindings: &interface_visual_bindings,
         typography_theme,
         content_tx,
         content_ty,

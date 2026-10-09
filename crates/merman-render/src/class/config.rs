@@ -186,18 +186,6 @@ impl<'a> ClassConfigView<'a> {
         self.class_bool("hideEmptyMembersBox").unwrap_or(false)
     }
 
-    pub(crate) fn default_node_fill(&self) -> String {
-        self.theme_string("mainBkg")
-            .or_else(|| self.theme_string("primaryColor"))
-            .unwrap_or_else(|| "#ECECFF".to_string())
-    }
-
-    pub(crate) fn default_node_stroke(&self) -> String {
-        self.theme_string("nodeBorder")
-            .or_else(|| self.theme_string("primaryBorderColor"))
-            .unwrap_or_else(|| "#9370DB".to_string())
-    }
-
     pub(crate) fn relation_stroke_width_for_bounds(&self) -> Option<f32> {
         config_f64_css_px(self.effective_config, &["themeVariables", "strokeWidth"])
             .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
@@ -403,8 +391,6 @@ mod tests {
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.render_class_padding(), 12.0);
         assert_eq!(config.render_viewport_padding(), 20.0);
-        assert_eq!(config.default_node_fill(), "#112233");
-        assert_eq!(config.default_node_stroke(), "#445566");
         assert_eq!(
             config.render_text_style(24.0).font_family.as_deref(),
             Some("Theme Sans")

@@ -6,7 +6,7 @@ where
     I: SvgDiagramIdValue,
 {
     let mut out = String::new();
-    InfoCssValues::new(effective_config, None)
+    PreparedCommonCss::new(effective_config, None)
         .write_all(
             &mut out,
             CssSelectorDiagramId(diagram_id),
@@ -356,10 +356,11 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
     });
 
     let mut css = String::new();
-    write_pie_css_with_theme_overrides_and_font_family(
-        &mut css, "pie", &cfg, None, None, None, None, None,
-    )
-    .unwrap();
+    let paint_plan = crate::pie::PieThemePlan::baseline(
+        &merman_core::diagrams::pie::PieDiagramRenderModel::default(),
+        &cfg,
+    );
+    write_pie_css(&mut css, "pie", &paint_plan, false).unwrap();
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
     assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));

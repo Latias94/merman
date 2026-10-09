@@ -153,8 +153,7 @@ impl ClassNodeThemePlan {
     pub(super) fn resolve_expectations(
         &self,
         node_ids: impl IntoIterator<Item = String>,
-        _work_meter: &OperationWorkMeter,
-    ) -> Result<Vec<ClassNodeTerminalExpectation>, OperationWorkError> {
+    ) -> Vec<ClassNodeTerminalExpectation> {
         node_ids
             .into_iter()
             .enumerate()
@@ -201,15 +200,11 @@ impl ClassNodeThemePlan {
         }
     }
 
-    fn resolve_expectation(
-        &self,
-        id: String,
-        ordinal: usize,
-    ) -> Result<ClassNodeTerminalExpectation, OperationWorkError> {
+    fn resolve_expectation(&self, id: String, ordinal: usize) -> ClassNodeTerminalExpectation {
         if let Some(paints) = self.ordinal_paints.get(ordinal.saturating_sub(1)) {
-            return Ok(paints.expectation(id));
+            return paints.expectation(id);
         }
-        Ok(self.static_paints.expectation(id))
+        self.static_paints.expectation(id)
     }
 
     fn terminal_paints(
@@ -355,9 +350,7 @@ mod tests {
         )
         .unwrap();
         let preparation_work = meter.used();
-        let expectations = plan
-            .resolve_node_expectations(["Alpha".into(), "Beta".into()], &meter)
-            .unwrap();
+        let expectations = plan.resolve_node_expectations(["Alpha".into(), "Beta".into()]);
         assert_eq!(meter.used(), preparation_work);
         for expectation in expectations {
             assert_eq!(expectation.typed_fill(false), Some((0, "#123456")));
@@ -403,9 +396,8 @@ mod tests {
         .expect("resolve Class ordinal node plan");
         let work_after_plan = meter.used();
 
-        let expectations = plan
-            .resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()], &meter)
-            .expect("bind cached Class ordinal node paints");
+        let expectations =
+            plan.resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()]);
 
         assert_eq!(meter.used(), work_after_plan);
         assert_eq!(expectations[0].typed_fill(false), None);
@@ -439,9 +431,8 @@ mod tests {
         let config = merman_core::MermaidConfig::default();
         let plan = ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter).unwrap();
         let work_after_plan = meter.used();
-        let expectations = plan
-            .resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()], &meter)
-            .unwrap();
+        let expectations =
+            plan.resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()]);
         assert_eq!(meter.used(), work_after_plan);
         assert_eq!(expectations[0].typed_label_fill(false), None);
         assert_eq!(

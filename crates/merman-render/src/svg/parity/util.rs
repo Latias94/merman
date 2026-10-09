@@ -59,19 +59,7 @@ pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<St
     cur.as_str().map(|s| s.to_string())
 }
 
-pub(super) fn json_bool(v: &serde_json::Value) -> Option<bool> {
-    v.as_bool()
-        .or_else(|| v.as_i64().map(|n| n != 0))
-        .or_else(|| v.as_u64().map(|n| n != 0))
-        .or_else(|| {
-            v.as_str()
-                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
-                    "true" | "yes" | "on" | "1" => Some(true),
-                    "false" | "no" | "off" | "0" => Some(false),
-                    _ => None,
-                })
-        })
-}
+pub(super) use crate::config::json_bool;
 
 pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;

@@ -10,8 +10,6 @@ pub(super) struct ClassRenderSettings {
     pub(super) text_style: TextStyle,
     pub(super) viewport_padding: f64,
     pub(super) hide_empty_members_box: bool,
-    pub(super) default_node_fill: String,
-    pub(super) default_node_stroke: String,
     pub(super) security_level_loose: bool,
     pub(super) look: String,
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
@@ -36,8 +34,6 @@ impl ClassRenderSettings {
         let line_height = text_style.font_size * 1.5;
         let viewport_padding = config.render_viewport_padding();
         let hide_empty_members_box = config.hide_empty_members_box();
-        let default_node_fill = config.default_node_fill();
-        let default_node_stroke = config.default_node_stroke();
         let security_level_loose = effective_config
             .get("securityLevel")
             .and_then(serde_json::Value::as_str)
@@ -53,8 +49,6 @@ impl ClassRenderSettings {
             text_style,
             viewport_padding,
             hide_empty_members_box,
-            default_node_fill,
-            default_node_stroke,
             security_level_loose,
             look,
             hand_drawn_seed,

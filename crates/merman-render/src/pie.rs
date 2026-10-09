@@ -1,6 +1,6 @@
 use crate::Result;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::TextMeasurer;
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
@@ -176,18 +176,8 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
         });
     }
 
-    let legend_style = TextStyle {
-        font_family: Some(paint_plan.font_family_css().to_owned()),
-        font_size: 17.0,
-        font_weight: None,
-        font_style: None,
-    };
-    let title_style = TextStyle {
-        font_family: Some(paint_plan.font_family_css().to_owned()),
-        font_size: 25.0,
-        font_weight: None,
-        font_style: None,
-    };
+    let legend_style = paint_plan.css_binding().legend_measurement_style();
+    let title_style = paint_plan.css_binding().title_measurement_style();
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
         let label = if model.show_data {

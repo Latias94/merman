@@ -758,15 +758,9 @@ mod paint_emission_tests {
             plan.bind_paint_expectations(&mut receipt, &[], None, note.then_some("note"));
             let mut css = String::new();
             receipt.record_css_emission(
-                super::super::css::write_class_css(
-                    &mut css,
-                    "receipt-test",
-                    parsed.metadata().effective_config.as_value(),
-                    &plan,
-                    true,
-                )
-                .unwrap()
-                .unwrap(),
+                super::super::css::write_class_css(&mut css, "receipt-test", &plan, true)
+                    .unwrap()
+                    .unwrap(),
             );
             let mut svg = String::new();
             let emitted = match channel {

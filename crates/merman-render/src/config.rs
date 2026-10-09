@@ -49,6 +49,20 @@ pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
+pub(crate) fn json_bool(v: &Value) -> Option<bool> {
+    v.as_bool()
+        .or_else(|| v.as_i64().map(|n| n != 0))
+        .or_else(|| v.as_u64().map(|n| n != 0))
+        .or_else(|| {
+            v.as_str()
+                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
+                    "true" | "yes" | "on" | "1" => Some(true),
+                    "false" | "no" | "off" | "0" => Some(false),
+                    _ => None,
+                })
+        })
+}
+
 // Theme overrides retain their JSON types; source drawing guards use JavaScript truthiness.
 pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
     match value {

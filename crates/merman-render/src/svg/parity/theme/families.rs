@@ -515,33 +515,6 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
-    #[cfg(feature = "diagram-class")]
-    pub(in crate::svg::parity) fn class_diagram(&self) -> ClassDiagramTheme {
-        let class_text = self.raw.color(
-            "classText",
-            &self
-                .raw
-                .color("primaryTextColor", self.common.text_color.as_str()),
-        );
-
-        ClassDiagramTheme {
-            common: self.common.clone(),
-            class_text: class_text.clone(),
-            note_text: self.raw.color("noteTextColor", "#333"),
-            class_group_text: self
-                .raw
-                .optional_color("nodeBorder")
-                .unwrap_or_else(|| class_text.clone()),
-            title_color: self.raw.color("titleColor", "#333"),
-            text_color: self.raw.color("textColor", class_text.as_str()),
-            main_bkg: self.raw.color("mainBkg", "#ECECFF"),
-            node_border: self.raw.color("nodeBorder", "#9370DB"),
-            cluster_bkg: self.raw.color("clusterBkg", "#ffffde"),
-            cluster_border: self.raw.color("clusterBorder", "#aaaa33"),
-            stroke_width: self.raw.css_value("strokeWidth", "1"),
-        }
-    }
-
     #[cfg(feature = "diagram-sequence")]
     pub(in crate::svg::parity) fn sequence_diagram(&self) -> SequenceDiagramTheme {
         let actor_border = self.raw.color("actorBorder", "#9370DB");

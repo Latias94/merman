@@ -385,9 +385,8 @@ impl ClassRelationThemePlan {
     pub(crate) fn resolve_node_expectations(
         &self,
         node_ids: impl IntoIterator<Item = String>,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Vec<ClassNodeTerminalExpectation>, OperationWorkError> {
-        self.node_plan.resolve_expectations(node_ids, work_meter)
+    ) -> Vec<ClassNodeTerminalExpectation> {
+        self.node_plan.resolve_expectations(node_ids)
     }
 
     fn typed_stroke_width_emission(&self) -> Option<(usize, f32)> {

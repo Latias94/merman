@@ -52,26 +52,12 @@ fn write_class_palette_css(
 pub(super) fn write_class_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
     typography_theme: &crate::class::ClassTextThemePlan,
     seal_typography_emission: bool,
 ) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
     let theme = typography_theme.css_binding();
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let resolved_font_family =
-        normalize_css_font_family(typography_theme.stylesheet_font_family_css());
-    let info_css = super::super::css::InfoCssWriter::with_resolved_typography(
-        effective_config,
-        resolved_font_family.as_str(),
-        typography_theme.font_size_css(),
-    );
-    let info_css = if typography_theme.typed_font_stack_active() {
-        info_css
-    } else {
-        info_css.with_root_font_family(&crate::config::config_root_font_family_css(
-            effective_config,
-        ))
-    };
+    let info_css = typography_theme.common_css();
     let font_family = info_css.font_family();
     let class_text = theme.class_text.as_str();
     let note_text = theme.note_text.as_str();
@@ -86,7 +72,7 @@ pub(super) fn write_class_css(
     let stroke_width = theme.stroke_width.as_str();
     let edge_label_background = theme.edge_label_background.as_str();
 
-    let base_font_emission = info_css.write_prefix(out, diagram_id)?;
+    let base_font_emission = info_css.write_prefix_with_font_emission(out, diagram_id)?;
     write_class_palette_css(out, &id, theme)?;
 
     let _ = write!(
@@ -192,7 +178,7 @@ pub(super) fn write_class_css(
 
     write_class_icon_css(out, &id);
     out.checkpoint()?;
-    let root_font_emission = info_css.write_root(out, diagram_id, diagram_id)?;
+    let root_font_emission = info_css.write_root_with_font_emission(out, diagram_id, diagram_id)?;
 
     Ok(seal_typography_emission.then(|| {
         crate::class::ClassTypographyCssEmission::from_successful_writes(
@@ -270,14 +256,12 @@ mod tests {
 
     #[test]
     fn class_css_emission_requires_every_writer_checkpoint() {
-        let config = serde_json::json!({});
         let mermaid_config = merman_core::MermaidConfig::default();
         let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
         let mut successful = CheckpointSink::default();
         let emission = write_class_css(
             &mut successful,
             "class-css-receipt",
-            &config,
             &typography_theme,
             true,
         )
@@ -286,14 +270,9 @@ mod tests {
 
         for checkpoint in 1..=successful.checkpoint_count {
             let mut rejecting = CheckpointSink::rejecting(checkpoint);
-            let error = write_class_css(
-                &mut rejecting,
-                "class-css-receipt",
-                &config,
-                &typography_theme,
-                true,
-            )
-            .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
+            let error =
+                write_class_css(&mut rejecting, "class-css-receipt", &typography_theme, true)
+                    .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
             assert!(matches!(error, crate::Error::InvalidModel { .. }));
         }
     }

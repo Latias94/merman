@@ -11,6 +11,8 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) main_bkg: String,
+    pub(crate) node_default_fill: String,
+    pub(crate) node_default_stroke: String,
     pub(crate) node_border: String,
     pub(crate) cluster_bkg: String,
     pub(crate) cluster_border: String,
@@ -26,6 +28,51 @@ pub(crate) struct ClassCssThemeBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gradient_binding_preserves_mermaid_boolean_coercion() {
+        for (value, expected) in [
+            (serde_json::json!(true), true),
+            (serde_json::json!(false), false),
+            (serde_json::json!("true"), true),
+            (serde_json::json!("false"), false),
+            (serde_json::json!(" ON "), true),
+            (serde_json::json!(1), true),
+            (serde_json::json!(0), false),
+            (serde_json::json!(-1), true),
+            (serde_json::json!("unknown"), false),
+        ] {
+            let binding = ClassCssThemeBinding::resolve(&serde_json::json!({
+                "themeVariables": {"useGradient": value}
+            }));
+            assert_eq!(binding.use_gradient, expected);
+        }
+    }
+
+    #[test]
+    fn node_defaults_preserve_primary_fallback_without_changing_css_defaults() {
+        let fallback = ClassCssThemeBinding::resolve(&serde_json::json!({
+            "themeVariables": {
+                "primaryColor": "#112233",
+                "primaryBorderColor": "#445566"
+            }
+        }));
+        assert_eq!(fallback.node_default_fill, "#112233");
+        assert_eq!(fallback.node_default_stroke, "#445566");
+        assert_eq!(fallback.main_bkg, "#ECECFF");
+        assert_eq!(fallback.node_border, "#9370DB");
+
+        let explicit = ClassCssThemeBinding::resolve(&serde_json::json!({
+            "themeVariables": {
+                "mainBkg": "var(--fill)",
+                "nodeBorder": "none",
+                "primaryColor": "#112233",
+                "primaryBorderColor": "#445566"
+            }
+        }));
+        assert_eq!(explicit.node_default_fill, "var(--fill)");
+        assert_eq!(explicit.node_default_stroke, "none");
+    }
 
     #[test]
     fn browser_tokens_and_palette_spelling_survive_binding() {
@@ -125,6 +172,8 @@ impl ClassCssThemeBinding {
             text_color: token("textColor", &class_text),
             line_color: token("lineColor", "#333333"),
             main_bkg: token("mainBkg", "#ECECFF"),
+            node_default_fill: token("mainBkg", &token("primaryColor", "#ECECFF")),
+            node_default_stroke: token("nodeBorder", &token("primaryBorderColor", "#9370DB")),
             node_border: token("nodeBorder", "#9370DB"),
             cluster_bkg: token("clusterBkg", "#ffffde"),
             cluster_border: token("clusterBorder", "#aaaa33"),
@@ -138,7 +187,8 @@ impl ClassCssThemeBinding {
             note_stroke: token("noteBorderColor", "#aaaa33"),
             palette,
             palette_look,
-            use_gradient: crate::config::config_bool(config, &["themeVariables", "useGradient"])
+            use_gradient: crate::config::value_at(config, &["themeVariables", "useGradient"])
+                .and_then(crate::config::json_bool)
                 .unwrap_or(false),
         }
     }

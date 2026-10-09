@@ -54,22 +54,6 @@ pub(super) struct NodeDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "diagram-class")]
-pub(super) struct ClassDiagramTheme {
-    pub(super) common: CommonCssTheme,
-    pub(super) class_text: String,
-    pub(super) note_text: String,
-    pub(super) class_group_text: String,
-    pub(super) title_color: String,
-    pub(super) text_color: String,
-    pub(super) main_bkg: String,
-    pub(super) node_border: String,
-    pub(super) cluster_bkg: String,
-    pub(super) cluster_border: String,
-    pub(super) stroke_width: String,
-}
-
-#[derive(Debug, Clone)]
 #[cfg(feature = "diagram-sequence")]
 pub(super) struct SequenceDiagramTheme {
     pub(super) common: CommonCssTheme,
