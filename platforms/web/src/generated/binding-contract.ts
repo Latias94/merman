@@ -2,7 +2,8 @@
 // Sources: typed registries in merman-bindings-core. Do not edit directly.
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1 as const;
-export const BINDING_OPTIONS_SCHEMA_VERSION = 2 as const;
+export const WEB_TRANSPORT_API_VERSION = 5 as const;
+export const BINDING_OPTIONS_SCHEMA_VERSION = 3 as const;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$" as const;
@@ -127,15 +128,15 @@ export const METADATA_SPECS = [
     "required_capability_id": "analysis"
   },
   {
-    "id": "presentation-catalog",
-    "required_capability_id": null
-  },
-  {
     "id": "supported-diagrams",
     "required_capability_id": null
   },
   {
     "id": "supported-themes",
+    "required_capability_id": null
+  },
+  {
+    "id": "theme-catalog",
     "required_capability_id": null
   }
 ] as const;
@@ -204,12 +205,6 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
-    "id": "presentation",
-    "always_available": false,
-    "any_capability_ids": [],
-    "requires_svg_pipeline": true
-  },
-  {
     "id": "raster",
     "always_available": false,
     "any_capability_ids": [
@@ -238,6 +233,12 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "svg",
+    "always_available": false,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
+  },
+  {
+    "id": "theme",
     "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true

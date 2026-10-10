@@ -5,11 +5,68 @@ use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, Layo
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
-use std::borrow::Cow;
 
 mod cluster;
 
 pub(super) use cluster::render_swimlane_cluster;
+
+#[derive(Debug, Clone)]
+pub(super) struct SwimlaneTerminalGeometry {
+    pub width: f64,
+    pub height: f64,
+    pub title_band_width: f64,
+    pub title_band_height: f64,
+    pub title_label: LayoutLabel,
+}
+
+pub(super) fn swimlane_terminal_geometry(
+    lane: &crate::model::SwimlaneLaneLayout,
+    direction: crate::model::SwimlaneDirection,
+) -> SwimlaneTerminalGeometry {
+    let label_width = lane.title_label_width.max(0.0);
+    let label_height = lane.title_label_height.max(0.0);
+    let padding = lane.padding.max(0.0);
+    let is_lr = direction == crate::model::SwimlaneDirection::Lr;
+    let title_padding_y = if is_lr { 4.0 } else { 0.0 };
+    let desired_title_size = label_height + 2.0 * title_padding_y;
+    let width =
+        lane.width
+            .max(label_width + padding)
+            .max(if is_lr { desired_title_size } else { 0.0 });
+    let height = lane.height.max(0.0);
+    let lane_top = lane.y - height / 2.0;
+
+    if is_lr {
+        let title_band_width = desired_title_size;
+        SwimlaneTerminalGeometry {
+            width,
+            height,
+            title_band_width,
+            title_band_height: height,
+            title_label: LayoutLabel {
+                x: lane.x - width / 2.0 + title_band_width / 2.0,
+                y: lane.y,
+                width: label_height,
+                height: label_width,
+            },
+        }
+    } else {
+        let content_top = lane.content_top.unwrap_or(lane_top + height / 3.0);
+        let title_band_height = desired_title_size.min((content_top - lane_top).max(0.0));
+        SwimlaneTerminalGeometry {
+            width,
+            height,
+            title_band_width: width,
+            title_band_height,
+            title_label: LayoutLabel {
+                x: lane.x,
+                y: lane_top + title_band_height / 2.0,
+                width: label_width,
+                height: label_height,
+            },
+        }
+    }
+}
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
@@ -30,8 +87,15 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
-            presentation_policy: None,
             svg_label_sidecar: artifact.svg_label_sidecar(),
+            theme_evidence: artifact.theme_evidence(),
+            effect_evidence: artifact.effect_evidence(),
+            expected_effect_applications: artifact.expected_effect_applications(),
+            edge_style_plan: artifact.edge_style_plan(),
+            edge_theme: artifact.edge_theme(),
+            prepared_theme: artifact.prepared_theme(),
+            prepared_nodes: artifact.prepared_nodes(),
+            render_config: artifact.render_config(),
         },
         options,
         edge_paint_geometry,
@@ -98,30 +162,27 @@ fn adapt_swimlane_layout(
             }
         })
         .collect();
-
     let clusters = layout
         .lanes
         .iter()
-        .map(|lane| LayoutCluster {
-            id: lane.id.clone(),
-            x: lane.x,
-            y: lane.y,
-            width: lane.width,
-            height: lane.height,
-            diff: 0.0,
-            offset_y: 0.0,
-            title: lane.title.clone(),
-            title_label: LayoutLabel {
+        .map(|lane| {
+            let geometry = swimlane_terminal_geometry(lane, layout.direction);
+            LayoutCluster {
+                id: lane.id.clone(),
                 x: lane.x,
                 y: lane.y,
-                width: 0.0,
-                height: 0.0,
-            },
-            requested_dir: lane.requested_dir.clone(),
-            effective_dir: layout.direction.as_str().to_string(),
-            padding: lane.padding,
-            title_margin_top: 0.0,
-            title_margin_bottom: 0.0,
+                width: geometry.width,
+                height: geometry.height,
+                diff: 0.0,
+                offset_y: 0.0,
+                title: lane.title.clone(),
+                title_label: geometry.title_label,
+                requested_dir: lane.requested_dir.clone(),
+                effective_dir: layout.direction.as_str().to_string(),
+                padding: lane.padding,
+                title_margin_top: 0.0,
+                title_margin_bottom: 0.0,
+            }
         })
         .collect();
 
@@ -139,6 +200,7 @@ fn adapt_swimlane_layout(
     FlowchartLayout {
         nodes,
         edges,
+        edge_owners: layout.edge_owners.clone(),
         clusters,
         bounds: layout.bounds.clone(),
         dom_node_order_by_root,
@@ -147,25 +209,29 @@ fn adapt_swimlane_layout(
 }
 
 pub(super) fn apply_swimlane_edge_curves<'a>(
-    render_edges: &mut [Cow<'a, crate::flowchart::FlowEdge>],
+    render_edges: &mut [super::render_input::FlowchartRenderEdge<'a>],
     layout: &SwimlaneLayout,
 ) {
-    let curve_by_id: FxHashMap<&str, &str> = layout
+    let curve_by_owner: FxHashMap<crate::flowchart::FlowchartEdgeKey, &str> = layout
         .edges
         .iter()
-        .map(|edge| (edge.id.as_str(), edge.curve.as_str()))
+        .zip(layout.edge_owners.iter())
+        .map(|(edge, owner)| (owner, edge.curve.as_str()))
         .collect();
     for edge in render_edges {
-        let Some(curve) = curve_by_id.get(edge.as_ref().id.as_str()).copied() else {
+        let Some(curve) = curve_by_owner.get(&edge.key).copied() else {
             continue;
         };
-        edge.to_mut().interpolate = Some(curve.to_string());
+        edge.edge.to_mut().interpolate = Some(curve.to_string());
     }
 }
 
 pub(super) fn apply_line_hops_to_edge_geometries(
-    edge_path_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-    render_edges: &[Cow<'_, crate::flowchart::FlowEdge>],
+    edge_path_cache: &mut FxHashMap<
+        crate::flowchart::FlowchartEdgeKey,
+        FlowchartEdgePathCacheEntry,
+    >,
+    render_edges: &[super::render_input::FlowchartRenderEdge<'_>],
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
     uses_elk_adapter_dom: bool,
@@ -190,6 +256,8 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     };
 
     struct OwnedLineHopEdge<'a> {
+        key: crate::flowchart::FlowchartEdgeKey,
+        adapter_id: String,
         semantic: &'a crate::flowchart::FlowEdge,
         points: Vec<crate::model::LayoutPoint>,
         arrow_type_start: Option<&'static str>,
@@ -200,20 +268,28 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .iter()
         .filter_map(|edge| {
             edge_path_cache
-                .get(edge.as_ref().id.as_str())
+                .get(&edge.key)
                 .map(|entry| entry.geom.data_points.len().saturating_add(1))
         })
         .fold(0usize, usize::saturating_add);
     work_meter.charge(clone_work_units)?;
 
+    let transport_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
+        render_edges
+            .iter()
+            .map(|edge| (edge.key, edge.edge.as_ref())),
+    );
     let owned_edges: Vec<_> = render_edges
         .iter()
         .filter_map(|edge| {
-            let semantic = edge.as_ref();
-            let cache_entry = edge_path_cache.get(semantic.id.as_str())?;
+            let semantic = edge.edge.as_ref();
+            let cache_entry = edge_path_cache.get(&edge.key)?;
+            let adapter_id = transport_plan.id(edge.key)?.to_string();
             let (arrow_type_start, arrow_type_end) =
                 super::edge_geom::arrow_types_for_edge(semantic.edge_type.as_deref());
             Some(OwnedLineHopEdge {
+                key: edge.key,
+                adapter_id,
                 semantic,
                 points: cache_entry.geom.data_points.clone(),
                 arrow_type_start,
@@ -221,10 +297,14 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             })
         })
         .collect();
+    let edge_key_by_id: FxHashMap<&str, crate::flowchart::FlowchartEdgeKey> = owned_edges
+        .iter()
+        .map(|edge| (edge.adapter_id.as_str(), edge.key))
+        .collect();
     let edges: Vec<_> = owned_edges
         .iter()
         .map(|edge| LineHopEdge {
-            id: edge.semantic.id.as_str(),
+            id: edge.adapter_id.as_str(),
             points: &edge.points,
             curve: if uses_elk_adapter_dom {
                 Some("rounded")
@@ -257,7 +337,10 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         {
             continue;
         }
-        let Some(cache_entry) = edge_path_cache.get_mut(path.edge_id) else {
+        let Some(key) = edge_key_by_id.get(path.edge_id).copied() else {
+            continue;
+        };
+        let Some(cache_entry) = edge_path_cache.get_mut(&key) else {
             continue;
         };
         cache_entry.geom.d = path.path;
@@ -268,21 +351,32 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     Ok(())
 }
 
-pub(super) fn swimlane_css(
-    diagram_id: super::super::SvgDiagramId<'_>,
-    effective_config: &merman_core::MermaidConfig,
-) -> String {
-    let theme = PresentationTheme::new(effective_config.as_value()).node_diagram();
-    format!(
-        r#"#{id} .swimlane.cluster rect{{stroke:{border}!important;}}#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
-        id = diagram_id,
-        border = theme.cluster_border,
-    )
+pub(super) fn write_swimlane_css<DiagramId>(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    diagram_id: DiagramId,
+) where
+    DiagramId: crate::svg::parity::SvgDiagramIdValue,
+{
+    let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
+    let _ = write!(
+        out,
+        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
+
+    #[test]
+    fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
+        let mut css = String::new();
+        write_swimlane_css(&mut css, "seq:prod.v1");
+
+        assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
+        assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));
+    }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
         crate::model::LayoutPoint { x, y }
@@ -353,20 +447,32 @@ mod tests {
     }
 
     #[test]
-    fn line_hops_post_process_final_cached_geometry_without_changing_data_points() {
-        let render_edges: Vec<Cow<'static, crate::flowchart::FlowEdge>> = vec![
-            Cow::Owned(semantic_edge("vertical")),
-            Cow::Owned(semantic_edge("horizontal")),
+    fn line_hops_keep_duplicate_raw_ids_bound_to_their_occurrence_keys() {
+        let mut vertical = semantic_edge("duplicate");
+        vertical.from = "vertical-from".to_string();
+        vertical.to = "vertical-to".to_string();
+        let mut horizontal = semantic_edge("duplicate");
+        horizontal.from = "horizontal-from".to_string();
+        horizontal.to = "horizontal-to".to_string();
+        let render_edges = vec![
+            super::super::render_input::FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(0),
+                edge: std::borrow::Cow::Owned(vertical),
+            },
+            super::super::render_input::FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(1),
+                edge: std::borrow::Cow::Owned(horizontal),
+            },
         ];
         let vertical_points = vec![point(0.0, -10.0), point(0.0, 10.0)];
         let horizontal_points = vec![point(-10.0, 0.0), point(10.0, 0.0)];
         let mut cache = FxHashMap::default();
         cache.insert(
-            render_edges[0].id.as_str(),
+            render_edges[0].key,
             cache_entry("M0,-10L0,10", "vertical-points", vertical_points.clone()),
         );
         cache.insert(
-            render_edges[1].id.as_str(),
+            render_edges[1].key,
             cache_entry(
                 "M-10,0L10,0",
                 "horizontal-points",
@@ -387,14 +493,14 @@ mod tests {
         .expect("apply line hops");
         assert_eq!(work_meter.used(), 17);
 
-        let vertical = &cache["vertical"].geom;
+        let vertical = &cache[&render_edges[0].key].geom;
         assert!(!vertical.line_hop_applied);
         assert_eq!(vertical.d, "M0,-10L0,10");
         assert_points_eq(&vertical.data_points, &vertical_points);
         assert_points_eq(&vertical.label_path_points, &vertical_points);
         assert_eq!(vertical.data_points_b64, "vertical-points");
 
-        let horizontal = &cache["horizontal"].geom;
+        let horizontal = &cache[&render_edges[1].key].geom;
         assert!(horizontal.line_hop_applied);
         assert!(horizontal.d.contains("A6,6 0 0 1"), "{}", horizontal.d);
         assert_points_eq(&horizontal.data_points, &horizontal_points);
@@ -415,15 +521,21 @@ mod tests {
     fn clamped_crossing_still_rewrites_cached_paths_and_styles() {
         for uses_elk_adapter_dom in [false, true] {
             for mode in [serde_json::json!(true), serde_json::json!("gap")] {
-                let render_edges: Vec<Cow<'static, crate::flowchart::FlowEdge>> = vec![
-                    Cow::Owned(semantic_edge("vertical")),
-                    Cow::Owned(semantic_edge("horizontal")),
-                ];
+                let render_edges = ["vertical", "horizontal"]
+                    .into_iter()
+                    .enumerate()
+                    .map(
+                        |(index, id)| super::super::render_input::FlowchartRenderEdge {
+                            key: crate::flowchart::FlowchartEdgeKey::new(index),
+                            edge: Cow::Owned(semantic_edge(id)),
+                        },
+                    )
+                    .collect::<Vec<_>>();
                 let vertical_points = vec![point(0.0005, -1.0), point(0.0005, 1.0)];
                 let horizontal_points = vec![point(0.0, 0.0), point(10.0, 0.0)];
                 let mut cache = FxHashMap::default();
                 cache.insert(
-                    render_edges[0].id.as_str(),
+                    render_edges[0].key,
                     cache_entry(
                         "M0.0005,-1L0.0005,1",
                         "vertical-points",
@@ -431,7 +543,7 @@ mod tests {
                     ),
                 );
                 cache.insert(
-                    render_edges[1].id.as_str(),
+                    render_edges[1].key,
                     cache_entry("M0,0L10,0", "horizontal-points", horizontal_points.clone()),
                 );
                 let work_meter = crate::resources::OperationWorkMeter::new(
@@ -448,8 +560,8 @@ mod tests {
                     uses_elk_adapter_dom,
                 )
                 .unwrap();
-                let vertical = &cache["vertical"].geom;
-                let horizontal = &cache["horizontal"].geom;
+                let vertical = &cache[&render_edges[0].key].geom;
+                let horizontal = &cache[&render_edges[1].key].geom;
                 assert!(!vertical.line_hop_applied);
                 assert!(
                     horizontal.line_hop_applied,
@@ -480,13 +592,19 @@ mod tests {
 
     #[test]
     fn disabled_line_hops_leave_cached_geometry_untouched() {
-        let render_edges: Vec<Cow<'static, crate::flowchart::FlowEdge>> = vec![
-            Cow::Owned(semantic_edge("vertical")),
-            Cow::Owned(semantic_edge("horizontal")),
+        let render_edges = vec![
+            super::super::render_input::FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(0),
+                edge: std::borrow::Cow::Owned(semantic_edge("vertical")),
+            },
+            super::super::render_input::FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(1),
+                edge: std::borrow::Cow::Owned(semantic_edge("horizontal")),
+            },
         ];
         let mut cache = FxHashMap::default();
         cache.insert(
-            render_edges[0].id.as_str(),
+            render_edges[0].key,
             cache_entry(
                 "M0,-10L0,10",
                 "vertical-points",
@@ -494,7 +612,7 @@ mod tests {
             ),
         );
         cache.insert(
-            render_edges[1].id.as_str(),
+            render_edges[1].key,
             cache_entry(
                 "M-10,0L10,0",
                 "horizontal-points",
@@ -511,8 +629,8 @@ mod tests {
         apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter, false)
             .expect("disabled line hops");
 
-        assert_eq!(cache["horizontal"].geom.d, "M-10,0L10,0");
-        assert!(!cache["horizontal"].geom.line_hop_applied);
+        assert_eq!(cache[&render_edges[1].key].geom.d, "M-10,0L10,0");
+        assert!(!cache[&render_edges[1].key].geom.line_hop_applied);
         assert_eq!(work_meter.used(), 0);
     }
 }

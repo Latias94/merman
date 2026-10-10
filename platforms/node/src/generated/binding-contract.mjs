@@ -2,7 +2,7 @@
 // Sources: typed registries in merman-bindings-core. Do not edit directly.
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1;
-export const BINDING_OPTIONS_SCHEMA_VERSION = 2;
+export const BINDING_OPTIONS_SCHEMA_VERSION = 3;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$";
@@ -143,6 +143,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
     },
     {
       "name": "output_plan",
+      "json_type": "object",
+      "required": false,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
+      "name": "theme_execution_evidence",
       "json_type": "object",
       "required": false,
       "integer_width_bits": null,
@@ -418,14 +425,89 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       ]
     }
   ],
+  "theme_execution_evidence_versions": [
+    {
+      "version": 1,
+      "fields": [
+        {
+          "name": "version",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 32,
+          "open_value": false
+        },
+        {
+          "name": "family_id",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "theme_status",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "output_mutated",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "target_kind",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "target_status",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "target_reason_ids",
+          "json_type": "array",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "font_source",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "diagnostics",
+          "json_type": "array",
+          "required": false,
+          "integer_width_bits": null,
+          "open_value": true
+        }
+      ],
+      "max_id_utf8_bytes": 128,
+      "max_target_reason_ids": 32,
+      "target_reason_ids_unique": true
+    }
+  ],
   "additional_fields_policy": "preserve",
   "unknown_output_plan_policy": "preserve",
+  "unknown_theme_execution_evidence_policy": "preserve",
   "original_json_policy": "preserve-exact-bytes"
 };
 
 export const BINDING_OPERATION_EXPECTATIONS = [
   {
     "operation_id": "analysis-facts-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -441,6 +523,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "analysis-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -456,6 +539,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "ascii",
+    "maturity": "stable",
     "output_id": "ascii",
     "media_type": "text/plain; charset=utf-8",
     "metadata_schema_version": 1,
@@ -470,7 +554,24 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
+    "operation_id": "describe-theme-support-json",
+    "maturity": "alpha",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
     "operation_id": "document-analysis-facts-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -486,6 +587,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "document-analysis-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -501,6 +603,23 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "edge-geometry-json",
+    "maturity": "stable",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
+    "operation_id": "export-theme-preset-json",
+    "maturity": "alpha",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -516,6 +635,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "jpeg",
+    "maturity": "stable",
     "output_id": "jpeg",
     "media_type": "image/jpeg",
     "metadata_schema_version": 1,
@@ -533,6 +653,23 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "layout-json",
+    "maturity": "stable",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
+    "operation_id": "materialize-theme-json",
+    "maturity": "alpha",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -548,6 +685,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "pdf",
+    "maturity": "stable",
     "output_id": "pdf",
     "media_type": "application/pdf",
     "metadata_schema_version": 1,
@@ -565,6 +703,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "png",
+    "maturity": "stable",
     "output_id": "png",
     "media_type": "image/png",
     "metadata_schema_version": 1,
@@ -582,6 +721,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "semantic-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -592,6 +732,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "svg",
+    "maturity": "stable",
     "output_id": "svg",
     "media_type": "image/svg+xml",
     "metadata_schema_version": 1,
@@ -607,6 +748,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "svg-plan-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -622,6 +764,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "validation-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -662,15 +805,15 @@ export const METADATA_SPECS = [
     "required_capability_id": "analysis"
   },
   {
-    "id": "presentation-catalog",
-    "required_capability_id": null
-  },
-  {
     "id": "supported-diagrams",
     "required_capability_id": null
   },
   {
     "id": "supported-themes",
+    "required_capability_id": null
+  },
+  {
+    "id": "theme-catalog",
     "required_capability_id": null
   }
 ];
@@ -739,12 +882,6 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
-    "id": "presentation",
-    "always_available": false,
-    "any_capability_ids": [],
-    "requires_svg_pipeline": true
-  },
-  {
     "id": "raster",
     "always_available": false,
     "any_capability_ids": [
@@ -773,6 +910,12 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "svg",
+    "always_available": false,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
+  },
+  {
+    "id": "theme",
     "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true

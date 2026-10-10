@@ -152,6 +152,171 @@ class C1["Class 1 with text label"]:::styleClass
 }
 
 #[test]
+fn class_style_precedence_facts_follow_applied_actions() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "cssClass \"Missing\" accent\n",
+                "classDef accent fill:red\n",
+                "cssClass \"User\" accent\n",
+                "style User fill:red\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(_) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let facts = parsed
+        .class_style_precedence_facts()
+        .expect("class style precedence facts");
+    assert!(!facts.assignment_before_definition_copy());
+    assert!(facts.definition_before_assignment_no_backfill());
+    let witness = facts
+        .definition_before_assignment_no_backfill_witness()
+        .expect("no-backfill witness");
+    assert_eq!(witness.class_name(), "accent");
+    assert_eq!(witness.target(), "User");
+    assert_eq!(witness.styles(), ["fill:red"]);
+    assert!(witness.earlier_style_event_ordinal() < witness.later_style_event_ordinal());
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "cssClass \"User\" accent\n",
+                "classDef accent fill:red\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(_) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let facts = parsed
+        .class_style_precedence_facts()
+        .expect("class style precedence facts");
+    assert!(facts.assignment_before_definition_copy());
+    assert!(!facts.definition_before_assignment_no_backfill());
+    let witness = facts
+        .assignment_before_definition_copy_witness()
+        .expect("copy witness");
+    assert_eq!(witness.class_name(), "accent");
+    assert_eq!(witness.target(), "User");
+    assert_eq!(witness.styles(), ["fill:red"]);
+    assert!(witness.earlier_style_event_ordinal() < witness.later_style_event_ordinal());
+}
+
+#[test]
+fn class_style_facts_stay_outside_the_serialized_model() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "cssClass \"User\" accent\n",
+                "classDef accent fill:red\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(model) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let encoded = serde_json::to_value(model).expect("class model serializes");
+    let decoded: crate::models::class_diagram::ClassDiagram =
+        serde_json::from_value(encoded).expect("class model deserializes");
+    assert_eq!(model, &decoded);
+    assert!(
+        parsed
+            .class_style_precedence_facts()
+            .and_then(|facts| facts.assignment_before_definition_copy_witness())
+            .is_some()
+    );
+}
+
+#[test]
+fn class_style_precedence_facts_require_paint_declarations() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "cssClass \"User\" accent\n",
+                "classDef accent font-size:24px,font-weight:bold,text-decoration:underline\n",
+                "cssClass \"User\" accent\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(_) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let facts = parsed
+        .class_style_precedence_facts()
+        .expect("class style precedence facts");
+    assert!(!facts.assignment_before_definition_copy());
+    assert!(!facts.definition_before_assignment_no_backfill());
+}
+
+#[test]
+fn class_style_precedence_facts_ignore_interaction_classes() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "click User href \"https://example.com\"\n",
+                "classDef clickable fill:red\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(_) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let facts = parsed
+        .class_style_precedence_facts()
+        .expect("class style precedence facts");
+    assert!(!facts.assignment_before_definition_copy());
+    assert!(!facts.definition_before_assignment_no_backfill());
+}
+
+#[test]
+fn class_style_precedence_facts_ignore_repeated_assignments() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            concat!(
+                "classDiagram\n",
+                "class User\n",
+                "cssClass \"User\" accent\n",
+                "classDef accent fill:red\n",
+                "cssClass \"User\" accent\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("class render model");
+    let RenderSemanticModel::Class(_) = parsed.model() else {
+        panic!("expected ClassDiagram render model");
+    };
+    let facts = parsed
+        .class_style_precedence_facts()
+        .expect("class style precedence facts");
+    assert!(facts.assignment_before_definition_copy());
+    assert!(!facts.definition_before_assignment_no_backfill());
+}
+
+#[test]
 fn parse_diagram_class_namespace_and_generic_methods() {
     let engine = Engine::new();
     let text = r#"classDiagram

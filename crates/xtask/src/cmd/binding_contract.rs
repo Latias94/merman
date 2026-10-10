@@ -12,8 +12,8 @@ use merman_bindings_core::{
     RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
     RuntimeConstructorResourceLimit, RuntimeOutputContract, RuntimePolicyExposure,
     TEXT_MEASUREMENT_PROTOCOL_VERSION, TargetKey, TextMeasurementProviderKey,
-    ValidatedArtifactContract, binding_operation_expectations, operation_metadata_contract,
-    runtime_constructor_resource_limits,
+    ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION, binding_operation_expectations,
+    operation_metadata_contract, runtime_constructor_resource_limits,
 };
 use serde::Serialize;
 use std::fmt::Write as _;
@@ -30,7 +30,10 @@ const PYTHON_OUTPUT: &str = "platforms/python/merman/src/merman/_binding_contrac
 const KOTLIN_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt";
 const DART_OUTPUT: &str = "platforms/flutter/lib/src/generated/binding_contract.dart";
 const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
     OperationKey::LayoutJson,
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -43,8 +46,11 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::Ascii,
     OperationKey::DocumentAnalysisFactsJson,
     OperationKey::DocumentAnalysisJson,
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
     OperationKey::EdgeGeometryJson,
     OperationKey::LayoutJson,
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -108,6 +114,7 @@ struct TransportExposureProjection {
 #[derive(Serialize)]
 struct OperationExpectationProjection {
     operation_id: &'static str,
+    maturity: &'static str,
     output_id: Option<&'static str>,
     media_type: &'static str,
     metadata_schema_version: u32,
@@ -235,6 +242,7 @@ fn operation_expectation_projections() -> Vec<OperationExpectationProjection> {
         .iter()
         .map(|expectation| OperationExpectationProjection {
             operation_id: expectation.operation_id(),
+            maturity: expectation.maturity(),
             output_id: expectation.output_id(),
             media_type: expectation.media_type(),
             metadata_schema_version: expectation.metadata_schema_version(),
@@ -352,14 +360,16 @@ fn render_node_wire_contract_json() -> String {
             },
             response: NodeDocumentLimitsProjection {
                 max_utf8_bytes: 26 * megabyte,
-                max_depth: 8,
+                // Version-tuple diagnostics nest supported tuples inside the error envelope.
+                max_depth: 9,
                 max_members: 32,
                 max_tokens: 128,
                 max_string_utf8_bytes: 16 * megabyte,
             },
             error: NodeDocumentLimitsProjection {
-                max_utf8_bytes: 256 * 1024,
-                max_depth: 8,
+                // Two 64 KiB fields can each expand sixfold as JSON escapes, plus envelope bytes.
+                max_utf8_bytes: megabyte,
+                max_depth: 9,
                 max_members: 32,
                 max_tokens: 128,
                 max_string_utf8_bytes: 64 * 1024,
@@ -642,6 +652,12 @@ fn render_web_typescript() -> String {
     .unwrap();
     writeln!(
         out,
+        "export const WEB_TRANSPORT_API_VERSION = {} as const;",
+        WEB_TRANSPORT_API_VERSION
+    )
+    .unwrap();
+    writeln!(
+        out,
         "export const BINDING_OPTIONS_SCHEMA_VERSION = {BINDING_OPTIONS_SCHEMA_VERSION} as const;"
     )
     .unwrap();
@@ -793,6 +809,24 @@ fn render_kotlin() -> String {
         "internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = {TEXT_MEASUREMENT_PROTOCOL_VERSION}\n"
     )
     .unwrap();
+    writeln!(
+        out,
+        "internal const val MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = {:?}",
+        TextMeasurementProviderKey::Deterministic.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "internal const val MERMAN_HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID: String = {:?}",
+        TextMeasurementProviderKey::HostCallback.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "internal val MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf({})\n",
+        kotlin_string_arguments(&projections.provider_ids)
+    )
+    .unwrap();
 
     out.push_str(
         "internal data class MermanBindingCapabilitySpec(\n    val id: String,\n    val implicationIds: List<String>,\n)\n\n",
@@ -813,10 +847,10 @@ fn render_kotlin() -> String {
         "internal data class MermanBindingConstructorServiceSpec(\n    val id: String,\n    val requiresSvgPipeline: Boolean,\n    val providedTextMeasurementProviderIds: Set<String>,\n    val resourceLimits: List<MermanBindingConstructorResourceLimitSpec>,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n)\n\n",
+        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val maturity: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n    val compiledPrerequisiteIds: Set<String>,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingArtifactExpectation(\n    val capabilityIds: List<String>,\n    val outputIds: List<String>,\n    val systemAdapterIds: List<String>,\n    val operationIds: List<String>,\n    val metadataIds: List<String>,\n)\n\n",
+        "internal data class MermanBindingArtifactExpectation(\n    val capabilityIds: List<String>,\n    val outputIds: List<String>,\n    val systemAdapterIds: List<String>,\n    val operationIds: List<String>,\n    val metadataIds: List<String>,\n    val textMeasurementProviderIds: List<String>,\n)\n\n",
     );
 
     out.push_str("internal object MermanBindingOperationId {\n");
@@ -955,13 +989,15 @@ fn render_kotlin() -> String {
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         writeln!(
             out,
-            "    MermanBindingOperationExpectation({:?}, {}, {:?}, {}, {}, {}),",
+            "    MermanBindingOperationExpectation({:?}, {:?}, {}, {:?}, {}, {}, {}, setOf({})),",
             expectation.operation_id,
+            expectation.maturity,
             output,
             expectation.media_type,
             expectation.metadata_schema_version,
             expectation.requires_uri,
             availability,
+            kotlin_string_arguments(&expectation.compiled_prerequisite_ids),
         )
         .unwrap();
     }
@@ -969,12 +1005,13 @@ fn render_kotlin() -> String {
 
     writeln!(
         out,
-        "internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(\n    capabilityIds = listOf({}),\n    outputIds = listOf({}),\n    systemAdapterIds = listOf({}),\n    operationIds = listOf({}),\n    metadataIds = listOf({}),\n)\n",
+        "internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(\n    capabilityIds = listOf({}),\n    outputIds = listOf({}),\n    systemAdapterIds = listOf({}),\n    operationIds = listOf({}),\n    metadataIds = listOf({}),\n    textMeasurementProviderIds = listOf({}),\n)\n",
         kotlin_string_arguments(&android_artifact.capability_ids),
         kotlin_string_arguments(&android_artifact.output_ids),
         kotlin_string_arguments(&android_artifact.system_adapter_ids),
         kotlin_string_arguments(&android_artifact.operation_ids),
         kotlin_string_arguments(&android_artifact.metadata_ids),
+        kotlin_string_arguments(&android_artifact.text_measurement_provider_ids),
     )
     .unwrap();
     out.push_str(
@@ -1202,6 +1239,23 @@ fn render_dart() -> String {
     .unwrap();
     writeln!(
         out,
+        "const String mermanDeterministicTextMeasurementProviderId = {:?};",
+        TextMeasurementProviderKey::Deterministic.id()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "const String mermanHostCallbackTextMeasurementProviderId = {:?};",
+        TextMeasurementProviderKey::HostCallback.id()
+    )
+    .unwrap();
+    out.push_str("const Set<String> mermanTextMeasurementProviderIds = <String>{\n");
+    for provider_id in &projections.provider_ids {
+        writeln!(out, "  {provider_id:?},").unwrap();
+    }
+    out.push_str("};\n");
+    writeln!(
+        out,
         "const String mermanHostTextMeasurementConstructorServiceId =\n    {:?};",
         ConstructorServiceKey::HostTextMeasurement.id()
     )
@@ -1309,19 +1363,23 @@ final class MermanBindingConstructorServiceSpec {
 final class MermanBindingOperationExpectation {
   const MermanBindingOperationExpectation({
     required this.operationId,
+    required this.maturity,
     required this.outputId,
     required this.mediaType,
     required this.metadataSchemaVersion,
     required this.requiresUri,
     required this.availabilityCapabilityId,
+    required this.compiledPrerequisiteIds,
   });
 
   final String operationId;
+  final String maturity;
   final String? outputId;
   final String mediaType;
   final int metadataSchemaVersion;
   final bool requiresUri;
   final String? availabilityCapabilityId;
+  final Set<String> compiledPrerequisiteIds;
 }
 
 "#,
@@ -1449,6 +1507,7 @@ final class MermanBindingOperationExpectation {
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         out.push_str("  MermanBindingOperationExpectation(\n");
         writeln!(out, "    operationId: {:?},", expectation.operation_id).unwrap();
+        writeln!(out, "    maturity: {:?},", expectation.maturity).unwrap();
         let output = expectation
             .output_id
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
@@ -1462,6 +1521,12 @@ final class MermanBindingOperationExpectation {
         .unwrap();
         writeln!(out, "    requiresUri: {},", expectation.requires_uri).unwrap();
         writeln!(out, "    availabilityCapabilityId: {availability},").unwrap();
+        write_dart_string_set_argument(
+            &mut out,
+            "    ",
+            "compiledPrerequisiteIds",
+            &expectation.compiled_prerequisite_ids,
+        );
         out.push_str("  ),\n");
     }
     out.push_str("];\n\n");
@@ -1707,6 +1772,7 @@ fn render_python() -> String {
     for spec in &operation_expectations {
         out.push_str("    {\n");
         writeln!(out, "        \"operation_id\": {:?},", spec.operation_id).unwrap();
+        writeln!(out, "        \"maturity\": {:?},", spec.maturity).unwrap();
         match spec.availability_capability_id {
             Some(id) => writeln!(out, "        \"availability_capability_id\": {id:?},").unwrap(),
             None => out.push_str("        \"availability_capability_id\": None,\n"),
@@ -2020,6 +2086,7 @@ mod tests {
         let generated = render_node_javascript();
         assert!(generated.contains("BINDING_OPERATION_METADATA_CONTRACT"));
         assert!(generated.contains("BINDING_OPERATION_EXPECTATIONS"));
+        assert!(generated.contains("\"maturity\": \"alpha\""));
         assert!(generated.contains("CAPABILITY_SPECS"));
         assert!(generated.contains("implication_ids"));
         assert!(generated.contains("RUNTIME_CATALOG_IDENTIFIER_PATTERN"));
@@ -2055,6 +2122,7 @@ mod tests {
         assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
         assert!(generated.contains("REQUIRED_PAYLOAD_SCHEMA_VERSIONS"));
         assert!(generated.contains("BINDING_OPERATION_RELATION_SPECS"));
+        assert!(generated.contains("\"maturity\": \"alpha\""));
         assert!(generated.contains("METADATA_SPECS"));
         assert!(generated.contains("BINDING_OPTION_GROUP_SPECS"));
         assert!(generated.contains("CONSTRUCTOR_SERVICE_SPECS"));
@@ -2102,6 +2170,21 @@ mod tests {
         assert!(kotlin.contains("\"ascii\" -> MermanAsciiOutputPlan("));
         assert!(kotlin.contains("MermanUnknownOutputPlan"));
         assert!(kotlin.contains("MERMAN_BINDING_OPERATION_EXPECTATIONS"));
+        assert!(kotlin.contains("val maturity: String"));
+        assert!(kotlin.contains("val compiledPrerequisiteIds: Set<String>"));
+        assert!(kotlin.contains("setOf(\"svg\")"));
+        assert!(kotlin.contains(
+            "MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = \"deterministic\""
+        ));
+        assert!(kotlin.contains(
+            "MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf(\"deterministic\", \"host-callback\")"
+        ));
+        assert!(kotlin.contains("val textMeasurementProviderIds: List<String>"));
+        assert!(
+            kotlin.contains(
+                "textMeasurementProviderIds = listOf(\"deterministic\", \"host-callback\")"
+            )
+        );
         assert!(kotlin.contains("MermanBindingMetadataId"));
         assert!(
             kotlin
@@ -2114,6 +2197,13 @@ mod tests {
         assert!(dart.contains("'ascii' => MermanAsciiOutputPlan("));
         assert!(dart.contains("MermanUnknownOutputPlan"));
         assert!(dart.contains("mermanBindingOperationExpectations"));
+        assert!(dart.contains("final String maturity;"));
+        assert!(dart.contains("final Set<String> compiledPrerequisiteIds;"));
+        assert!(dart.contains("compiledPrerequisiteIds: <String>{\n      \"svg\","));
+        assert!(dart.contains(
+            "const String mermanDeterministicTextMeasurementProviderId = \"deterministic\";"
+        ));
+        assert!(dart.contains("const Set<String> mermanTextMeasurementProviderIds"));
         assert!(dart.contains("abstract final class MermanBindingMetadataId"));
         assert!(dart.contains("static const String supportedDiagrams = \"supported-diagrams\";"));
         assert!(dart.contains(
@@ -2159,7 +2249,7 @@ mod tests {
     fn shared_operation_projection_consumes_the_complete_typed_matrix() {
         let projection = shared_operation_contract_projection();
         assert_eq!(projection.schema_version, 1);
-        assert_eq!(projection.operation_expectations.len(), 14);
+        assert_eq!(projection.operation_expectations.len(), 17);
         assert_eq!(
             projection.operation_metadata_contract,
             operation_metadata_contract()

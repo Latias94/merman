@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
-use crate::model::ArchitectureCytoscapeServiceBounds;
+use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
 
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
@@ -42,29 +42,11 @@ fn architecture_cached_service_child_bounds<'a>(
     Some(cached)
 }
 
-fn architecture_svg_output_capacity<M: ArchitectureModelAccess>(
-    model: &M,
-    css_len: usize,
-    a11y_len: usize,
-) -> usize {
-    let service_count = model.services().count();
-    let junction_count = model.junctions().count();
-    let group_count = model.groups_len();
-    let edge_count = model.edges_len();
-    1024usize
-        .saturating_add(css_len)
-        .saturating_add(a11y_len)
-        .saturating_add(service_count.saturating_mul(900))
-        .saturating_add(junction_count.saturating_mul(180))
-        .saturating_add(group_count.saturating_mul(700))
-        .saturating_add(edge_count.saturating_mul(650))
-}
-
 struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
-    effective_config: &'a serde_json::Value,
     sanitize_config: &'a merman_core::MermaidConfig,
+    group_theme: &'a crate::architecture::ArchitectureGroupThemePlan,
     options: &'a SvgExecution<'a>,
 }
 
@@ -78,6 +60,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
+    group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let timing = options.timing();
@@ -88,8 +71,8 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         ArchitectureRenderRequest {
             layout,
             model,
-            effective_config: effective_config.as_value(),
             sanitize_config: effective_config,
+            group_theme,
             options,
         },
         ArchitectureTimingState {
@@ -107,8 +90,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let ArchitectureRenderRequest {
         layout,
         model,
-        effective_config,
         sanitize_config,
+        group_theme,
         options,
     } = req;
     let ArchitectureTimingState {
@@ -122,7 +105,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let diagram_id = options.diagram_id_or("architecture");
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
     checkpoints.checkpoint()?;
-    let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
+    let settings =
+        ArchitectureRenderSettings::from_prepared(diagram_id, group_theme.typography_theme());
     checkpoints.checkpoint()?;
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;
@@ -132,6 +116,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
+    let mut typography_theme_receipt = group_theme.typography_theme().begin_terminal_receipt();
+    if let Some(receipt) = typography_theme_receipt.as_mut() {
+        receipt.record_css_emission(&settings.typography_css_emission);
+    }
 
     let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
     checkpoints.checkpoint()?;
@@ -291,15 +279,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
-    let mut out = String::with_capacity(architecture_svg_output_capacity(
-        model,
-        settings.css.len(),
-        a11y.nodes.len(),
-    ));
-    let root_viewport = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Architecture,
-        diagram_id,
-    );
+    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let root_viewport =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id)
+            .with_resource_policy(options.resource_policy());
     let root_document = begin_architecture_document(
         &mut out,
         &root_viewport,
@@ -309,6 +292,46 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         use_max_width,
     )?;
     checkpoints.checkpoint()?;
+    let edge_stroke = group_theme.edge_stroke();
+    let edge_inline_style = edge_stroke.map(|(_, stroke)| format!("stroke:{stroke};"));
+    let mut surface_theme_receipt = group_theme.begin_surface_terminal_receipt(
+        model.services().enumerate().map(|(index, service)| {
+            crate::architecture::ArchitectureServiceTerminal {
+                index,
+                id: service.id,
+                has_background: service.icon.is_none() && service.icon_text.is_none(),
+                has_title: service.title.is_some_and(|title| !title.trim().is_empty()),
+                has_icon_text: service.icon.is_none()
+                    && service
+                        .icon_text
+                        .is_some_and(|text| !text.trim().is_empty()),
+            }
+        }),
+        model.groups().enumerate().map(|(index, group)| {
+            crate::architecture::ArchitectureGroupTerminal {
+                index,
+                id: group.id,
+                has_title: group.title.is_some_and(|title| !title.trim().is_empty()),
+            }
+        }),
+        model.edges().enumerate().map(|(index, edge)| {
+            crate::architecture::ArchitectureEdgeTerminal {
+                index,
+                lhs_id: edge.lhs_id,
+                rhs_id: edge.rhs_id,
+                has_label: edge.title.is_some_and(|title| !title.trim().is_empty()),
+                has_lhs_arrow: edge.lhs_into == Some(true),
+                has_rhs_arrow: edge.rhs_into == Some(true),
+            }
+        }),
+        options.work_meter(),
+    )?;
+    let mut edge_theme_receipt = group_theme.begin_edge_terminal_receipt(
+        model
+            .edges()
+            .enumerate()
+            .map(|(edge_index, edge)| (edge_index, edge.lhs_id, edge.rhs_id)),
+    );
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -321,12 +344,19 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
+            edge_stroke,
+            edge_inline_style: edge_inline_style.as_deref(),
+            terminal_receipt: edge_theme_receipt.as_mut(),
+            surface_theme_receipt: surface_theme_receipt.as_mut(),
+            typography_theme_receipt: typography_theme_receipt.as_mut(),
             checkpoints,
         };
         push_architecture_edges(&mut edge_render_ctx)?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
+    let mut group_theme_receipt = group_theme.begin_terminal_receipt();
     {
         let mut node_render_ctx = ArchitectureNodeRenderContext {
             out: &mut out,
@@ -342,17 +372,25 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             service_icon_scope_prefix: None,
             group_icon_scope_prefix: None,
             content_bounds: &mut content_bounds,
+            surface_theme_receipt: surface_theme_receipt.as_mut(),
+            typography_theme_receipt: typography_theme_receipt.as_mut(),
             checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
-        push_architecture_groups(&mut node_render_ctx, &group_rects)?;
+        push_architecture_groups(
+            &mut node_render_ctx,
+            &group_rects,
+            group_theme.inline_style(),
+            group_theme_receipt.as_mut(),
+        )?;
     }
 
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
+    out.checkpoint()?;
 
-    let rooted_svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
-        out,
+    let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+        out: &mut out,
         root_viewport: &root_viewport,
         root_document,
         content_bounds,
@@ -363,6 +401,28 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         is_empty,
         trust_content_bounds: options.icon_registry().is_none(),
     })?;
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = group_theme_receipt {
+        let _ = group_theme.record_terminal(receipt);
+    }
+    if edge_theme_receipt.is_some_and(|receipt| !group_theme.record_edge_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture edge stroke receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if surface_theme_receipt.is_some_and(|receipt| !group_theme.record_surface_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture surface theme receipt did not match the terminal SVG"
+                .to_string(),
+        });
+    }
+    if typography_theme_receipt
+        .is_some_and(|receipt| !group_theme.typography_theme().record_terminal(receipt))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture typography receipt did not match the terminal SVG".to_string(),
+        });
+    }
 
     drop(_g_render_svg);
 

@@ -14,6 +14,20 @@ prerelease component such as `0.8.0-alpha.5`, `0.8.0-beta.1`, or `0.8.0-rc.1` us
 channel. Do not describe the project or a `0.x` release as alpha solely because its major version
 is zero.
 
+## Contract version baseline
+
+Version a public API, ABI, or serialized format against its latest published contract, including
+prereleases. Keep a new, unpublished contract at version 1. Consolidate incompatible changes
+within one unreleased development cycle into a single next contract version; commits and merge
+repairs do not each allocate another version. A compatible change need not bump the contract.
+Package versions follow their own SemVer and channel rules.
+
+Before consolidation, check the owning registry, release tag, and separately distributed artifacts.
+Do not reuse a version that has already shipped. Regenerate and verify matching bindings together;
+use source identities and content digests to distinguish unpublished build artifacts.
+Migration batch IDs and historical evidence revisions identify past observations, not public
+compatibility versions. Preserve their identity and references rather than relabeling old evidence.
+
 ## Release Workflows
 
 | Workflow | Publishes | Channel |
@@ -228,11 +242,24 @@ The gate discovers workspace members and validates their inherited package versi
 
 `cargo check --locked` is not sufficient evidence for a prerelease. The release gates also create
 fresh consumers without a copied lockfile and compile the candidate graph plus the previous facade
-against candidate sibling packages when both versions are on the same Cargo compatibility line. A
+against candidate sibling packages with both `ascii` and `svg` enabled when both versions are on the
+same Cargo compatibility line. These features exercise the facade/core and facade/renderer boundaries;
+this check does not replace the complete release feature and artifact matrix. A
 failure in that same-line previous-facade lane means the release must restore compatibility or start
 a new release line; do not rely on downstream lockfiles to hide the mixed graph. Published registry
 tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this
 repository after publication; the next release must carry the corrected manifest and pass this gate.
+
+The maintainer accepted one bounded exception on 2026-09-16: published alpha.6 consumers
+can break when resolving alpha.7 siblings. For precisely `--version 0.8.0-alpha.7
+--previous-version 0.8.0-alpha.6`, add `--accept-alpha6-transition`. Candidate compilation remains
+mandatory; the old/new lane is explicitly reported as **NOT VERIFIED, known incompatible**,
+not as a compatibility pass. Without that flag the checker still reproduces and rejects the
+mixed graph. Both release workflows select the flag only for this exact pair. It cannot apply
+to alpha.8, another previous version, or a first-release run. See the recorded decision in
+[PUBLISH_ORDER.md](PUBLISH_ORDER.md); alpha.7 exact sibling requirements prevent future mixing
+but cannot repair the published alpha.6 manifest. Do not use `--allow-missing-previous` for this
+transition. All other same-line releases retain the rule above.
 
 The prerelease compatibility gate is admission control for a new version. A backfill of an
 immutable prerelease that was published before this gate existed may use the original tag and the
@@ -319,6 +346,17 @@ is used for downloaded release tools, staged release artifacts, and immutable re
 extra hashes. pub.dev uses a member-level content comparison because Dart rewrites tar metadata.
 Platform GitHub Release asset uploads fail closed on an existing name, and Tree-sitter native
 prebuild recovery stays within the same workflow run.
+
+The formal Release's final Linux CLI archive must also pass
+[scoped preset qualification](../rendering/preset-qualification.md) and fresh replay before the
+release verification gate passes. Its Flowchart/State/Sequence system-font observations remain
+in a private workflow artifact. The gate attaches only the public
+`merman-cli-x86_64-unknown-linux-gnu.preset-catalog.json` companion to a new publication bundle,
+binding it to the source and final archive and recording its digest and size in
+`release-verification.json`. Registry candidate, attestation and publishing jobs verify that this
+companion is present before consuming the final bundle. The original archives are not repacked.
+Shared Rust/SDK catalogs remain alpha with empty qualification scope; this archive observation
+does not qualify other targets, font installations or arbitrary source text.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
@@ -479,9 +517,8 @@ release artifacts. The exact dependency gate admits `json5`, `lol_html`, and `ur
 pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
-plugin ABI 2, independently from native ABI 3,
-the closed export surface including
-`analyze_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
+plugin ABI 3, independently from native ABI 3, the closed export surface including `analyze_json`
+and `theme_operation_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
 stripped WASM and provenance manifest; `--skip-wasm-build` is allowed only because it validates the manifest's
 exact artifact profile, package feature bundle, default-feature policy, inputs, tools, versions,
 flags, and artifact digest before package

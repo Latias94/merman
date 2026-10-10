@@ -1917,7 +1917,9 @@ def main(argv: list[str]) -> int:
         cwd=repo_root,
         bench_bin="pipeline",
         package="merman",
-        features="svg",
+        # The pipeline preflight enumerates the ELK fixture even for a filtered run.
+        # Include its declared feature so Criterion discovery remains side-effect free.
+        features="svg,layout-elk",
         toolchain=None,
     )
     mmdr_prepared = prepare_criterion_runner(

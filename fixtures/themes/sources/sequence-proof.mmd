@@ -1,0 +1,11 @@
+sequenceDiagram
+    actor User
+    participant Service
+    User->>Service: Submit request
+    activate Service
+    Note over User,Service: Request accepted
+    loop Poll status
+        Service-->>User: Processing
+    end
+    Service-->>User: Complete
+    deactivate Service

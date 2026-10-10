@@ -9,6 +9,7 @@ if (typeof globalThis.window === "undefined") globalThis.window = {};
 if (typeof globalThis.document === "undefined") globalThis.document = {};
 
 const nativeSessions = [];
+const { WEB_TRANSPORT_API_VERSION } = coreRuntime;
 const coreTestImplementation = {
   getMerman: coreRuntime.getMerman,
   initMerman: coreRuntime.initMerman,
@@ -95,7 +96,7 @@ await webApi.initMerman({
   loader: async () => ({
     default: async () => {},
     packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => 5,
+    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
     runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
     editorSearchDocumentSymbols(source, query, uri, optionsJson) {
@@ -103,7 +104,6 @@ await webApi.initMerman({
     },
   }),
 });
-
 test("a native free failure still seals the browser editor session", () => {
   const session = webApi.createEditorSession("flowchart TD", 1);
   const native = nativeSessions.at(-1);
@@ -115,7 +115,6 @@ test("a native free failure still seals the browser editor session", () => {
   session.dispose();
   assert.equal(native.freeCalls, 1);
 });
-
 test("browser editor session owns one native analyzed document", () => {
   const session = webApi.createEditorSession(
     "flowchart TD\nA-->B",
@@ -218,15 +217,15 @@ function editorCapabilities() {
 const EDITOR_METADATA_IDS = [
   "diagram-family-capabilities",
   "lint-rule-catalog",
-  "presentation-catalog",
   "supported-diagrams",
   "supported-themes",
+  "theme-catalog",
 ];
 const SVG_METADATA_IDS = [
   "diagram-family-capabilities",
-  "presentation-catalog",
   "supported-diagrams",
   "supported-themes",
+  "theme-catalog",
 ];
 const EDITOR_OPTION_GROUP_IDS = [
   "fixed_local_offset_minutes",
@@ -244,11 +243,11 @@ const SVG_OPTION_GROUP_IDS = [
   "fixed_today",
   "layout",
   "parse",
-  "presentation",
   "resources",
   "runtime_policy",
   "site_config",
   "svg",
+  "theme",
   "version",
 ];
 
@@ -267,9 +266,9 @@ function runtimeCatalogFixture({
 } = {}) {
   return {
     schema_version: 1,
-    transport_api_version: 5,
+    transport_api_version: WEB_TRANSPORT_API_VERSION,
     package_version: "0.8.0-alpha.4",
-    options_schema_versions: [2],
+    options_schema_versions: [webApi.BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [
       { id: "binding-result", version: 1 },
     ],
@@ -344,7 +343,9 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         catalog.options_schema_versions = [1];
         return catalog;
       },
-      /does not advertise options schema v2/,
+      new RegExp(
+        `does not advertise options schema v${webApi.BINDING_OPTIONS_SCHEMA_VERSION}`,
+      ),
     ],
     [
       () => {
@@ -753,7 +754,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
       async () => ({
         default: async () => {},
         packageVersion: () => "0.8.0-alpha.4",
-        transportApiVersion: () => 5,
+        transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
         runtimeCatalog: catalog,
       }),
       coreTestImplementation,
@@ -829,7 +830,7 @@ test("runtime catalog accepts unknown future IDs", async () => {
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => futureCatalog,
     }),
     coreTestImplementation,
@@ -837,7 +838,9 @@ test("runtime catalog accepts unknown future IDs", async () => {
   await runtime.initMerman();
 
   const catalog = runtime.runtimeCatalog();
-  assert.deepEqual(catalog.options_schema_versions, [2]);
+  assert.deepEqual(catalog.options_schema_versions, [
+    webApi.BINDING_OPTIONS_SCHEMA_VERSION,
+  ]);
   assert.deepEqual(catalog.payload_schemas, [
     { id: "binding-result", version: 1 },
     { id: "future-payload", version: 9 },
@@ -846,9 +849,9 @@ test("runtime catalog accepts unknown future IDs", async () => {
     "diagram-family-capabilities",
     "future-metadata",
     "lint-rule-catalog",
-    "presentation-catalog",
     "supported-diagrams",
     "supported-themes",
+    "theme-catalog",
   ]);
   assert.deepEqual(catalog.option_group_ids, [
     "fixed_local_offset_minutes",
@@ -903,7 +906,7 @@ test("runtime catalog preserves artifact-selected metadata and service subsets",
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => subsetCatalog,
     }),
     coreTestImplementation,
@@ -925,7 +928,7 @@ test("runtime catalog defaults additive discovery sections for legacy producers"
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => legacyCatalog,
     }),
     coreTestImplementation,
@@ -964,7 +967,7 @@ test("runtime catalog validates constructor service ownership and preserves exte
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => serviceCatalog,
     }),
     coreTestImplementation,
@@ -1005,7 +1008,7 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => pipelineCatalog,
     }),
     coreTestImplementation,
@@ -1076,7 +1079,7 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => catalog,
     }),
     coreTestImplementation,
@@ -1119,6 +1122,24 @@ test("resource options preserve wrapper placement and stricter caller limits", (
       parse: { suppress_errors: true },
       resources,
     },
+  );
+});
+test("resource options preserve a caller profile stricter than the transport ceiling", () => {
+  const ceiling = { profile: "interactive" };
+
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      { resources: { profile: "constrained" } },
+      ceiling,
+    ),
+    { resources: { profile: "constrained" } },
+  );
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      { analysis: { resources: { profile: "constrained" } } },
+      ceiling,
+    ),
+    { analysis: { resources: { profile: "constrained" } } },
   );
 });
 
@@ -1211,7 +1232,7 @@ test("Web transport API version rejects invalid module reports", async () => {
   );
   await assert.rejects(
     () => runtime.initMerman(),
-    /incompatible with Web transport API 5/
+    /invalid Web transport API version/
   );
   assert.equal(runtime.isMermanInitialized(), false);
 });
@@ -1230,9 +1251,27 @@ test("older Web transport API loaders are rejected before publishing a module", 
 
   await assert.rejects(
     () => runtime.initMerman(),
-    /incompatible with Web transport API 5/
+    new RegExp(
+      `Web transport API 3 is incompatible with ${WEB_TRANSPORT_API_VERSION}`,
+    ),
   );
   assert.equal(initialized, true);
   assert.equal(runtime.isMermanInitialized(), false);
   assert.throws(() => runtime.getMerman(), /not initialized/);
+});
+
+test("Web transport API version rejects an older published epoch", async () => {
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION - 1,
+    }),
+    coreTestImplementation,
+  );
+  await assert.rejects(
+    () => runtime.initMerman(),
+    new RegExp(
+      `Web transport API ${WEB_TRANSPORT_API_VERSION - 1} is incompatible with ${WEB_TRANSPORT_API_VERSION}`,
+    ),
+  );
 });

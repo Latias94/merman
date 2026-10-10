@@ -1,5 +1,6 @@
 package io.merman.examples
 
+import io.merman.Merman
 import io.merman.MermanEngine
 import io.merman.MermanEngineServices
 import io.merman.MermanIconPack
@@ -44,6 +45,58 @@ fun runMermanSmoke() {
     }
     check(engine.analyzeJson("flowchart TD\nA --> B").isNotEmpty()) {
         "analysis smoke failed"
+    }
+    val invalidThemeSource = """
+        {"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}
+    """.trimIndent()
+    listOf(
+        "one-shot" to { Merman.execute("materialize-theme-json", invalidThemeSource) },
+        "reusable" to { engine.execute("materialize-theme-json", invalidThemeSource) },
+    ).forEach { (consumer, operation) ->
+        try {
+            operation()
+            error("$consumer accepted an invalid theme definition")
+        } catch (error: io.merman.MermanException) {
+            val details = error.detailsJson ?: error("$consumer lost theme authoring details")
+            val authoring = org.json.JSONObject(details).getJSONObject("theme_authoring")
+            check(
+                error.codeName == "MERMAN_INVALID_ARGUMENT" &&
+                    authoring.getInt("schema_version") == 1 &&
+                    authoring.getJSONArray("diagnostics").getJSONObject(0).let { diagnostic ->
+                        diagnostic.getString("code") == "theme-authoring.invalid-token-value" &&
+                            diagnostic.getString("path") == "/styles/0/style/typography/font_stack"
+                    },
+            ) {
+                "$consumer lost structured theme authoring diagnostics"
+            }
+        }
+    }
+    val encodedBudgetOptions = """
+        {"resources":{"profile":"constrained","limits":{"max_theme_encoded_bytes":1}}}
+    """.trimIndent()
+    listOf(
+        "one-shot-budget" to {
+            Merman.execute("materialize-theme-json", "{}", encodedBudgetOptions)
+        },
+        "reusable-budget" to {
+            engine.execute("materialize-theme-json", "{}", encodedBudgetOptions)
+        },
+    ).forEach { (consumer, operation) ->
+        try {
+            operation()
+            error("$consumer accepted a theme input over its encoded-byte budget")
+        } catch (error: io.merman.MermanException) {
+            val resource = error.resourceDetails ?: error("$consumer lost resource details")
+            check(
+                error.codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED" &&
+                    resource.limitId == "max_theme_encoded_bytes" &&
+                    resource.phase == "theme_input" &&
+                    resource.max == 1L && resource.actual >= 2L &&
+                    org.json.JSONObject(error.detailsJson ?: "{}").has("theme_authoring"),
+            ) {
+                "$consumer used the wrong admission path for theme resource limits"
+            }
+        }
     }
     listOf(
         "png" to { engine.renderPng("flowchart TD\nA --> B") },

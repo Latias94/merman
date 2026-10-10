@@ -15,6 +15,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readBuildReceipt } from "../scripts/build-receipt.mjs";
+import { resolveCandidateRuntimeContract } from "../scripts/build-candidate.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
   computeCorpusDigest,
@@ -40,6 +41,7 @@ import {
 } from "../../../scripts/npm-command.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   BINDING_OPTION_GROUP_SPECS,
   METADATA_SPECS,
 } from "../src/generated/binding-contract.mjs";
@@ -112,11 +114,11 @@ const CORPUS_CASES = [
   { path: "b.mmd", source: "invalid" },
 ];
 const BINDING_OPTIONS = {
-  version: 2,
+  version: BINDING_OPTIONS_SCHEMA_VERSION,
   runtime_policy: "deterministic",
   resources: { profile: "trusted-native" },
 };
-const OPERATION_OPTIONS = { version: 2 };
+const OPERATION_OPTIONS = { version: BINDING_OPTIONS_SCHEMA_VERSION };
 const CORPUS_DIGEST = computeCorpusDigest(CORPUS_CASES);
 const COMPARISON_INPUT_DIGEST = computeInputDigest({
   corpusDigest: CORPUS_DIGEST,
@@ -184,11 +186,12 @@ const CAPABILITY_RECIPE = {
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
+const CANDIDATE_RUNTIME_CONTRACT = resolveCandidateRuntimeContract();
 const RUNTIME_CATALOG = {
   schema_version: 1,
   transport_api_version: 1,
   package_version: PACKAGE_VERSION,
-  options_schema_versions: [2],
+  options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
   payload_schemas: [
     { id: "binding-result", version: 1 },
     { id: "operation-metadata", version: 1 },
@@ -200,7 +203,7 @@ const RUNTIME_CATALOG = {
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
     output_ids: ["svg"],
-    operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+    operation_ids: CANDIDATE_RUNTIME_CONTRACT.operationIds,
     system_adapter_ids: [],
     text_measurement: {
       protocol_version: 1,
@@ -458,12 +461,8 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
       mode: "shutdown",
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
-      bindingOptions: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operationOptions: { version: 2 },
+      bindingOptions: BINDING_OPTIONS,
+      operationOptions: OPERATION_OPTIONS,
     }),
   );
   const result = spawnSync(
@@ -512,12 +511,8 @@ test("cold latency uses the declared successful workload, not the leading corpus
       mode: "cold",
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
-      bindingOptions: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operationOptions: { version: 2 },
+      bindingOptions: BINDING_OPTIONS,
+      operationOptions: OPERATION_OPTIONS,
       workload: WORKLOADS.cold_svg,
     }),
   );
@@ -708,7 +703,13 @@ function candidate(id) {
       ],
     },
     error_behavior: {
-      unknown_operation: { kind: "unknown-operation", capability_id: null },
+      unknown_operation: {
+        kind: "public-api-rejected",
+        capability_id: null,
+        code_name: null,
+        error_name: "RangeError",
+        message: "operation id `bitmap` is not callable through this SDK version.",
+      },
       missing_capability: { kind: "missing-capability", capability_id: "png" },
       text_measurement_callback_rejected: true,
     },
@@ -1279,11 +1280,8 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const phantomRuntimeOperation = structuredClone(receipt);
-  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.splice(
-    1,
-    0,
-    "phantom-json",
-  );
+  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.push("phantom-json");
+  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.sort();
   phantomRuntimeOperation.runtime.catalog_digest = digestJson(
     phantomRuntimeOperation.runtime.catalog,
   );
@@ -1357,12 +1355,8 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -1375,6 +1369,14 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
     () => validateComparisonReportContract(report),
     /trusted corpus manifest/i,
   );
+
+  const targetScopedCatalog = structuredClone(report);
+  const targetScopedCatalogDigest = `sha256:${"7".repeat(64)}`;
+  targetScopedCatalog.candidates[1].build_receipt.runtime_catalog_digest =
+    targetScopedCatalogDigest;
+  targetScopedCatalog.candidates[1].footprint.runtime_probe.runtime_catalog_digest =
+    targetScopedCatalogDigest;
+  assert.deepEqual(validateComparisonReport(targetScopedCatalog), targetScopedCatalog);
 
   const oldSchema = structuredClone(report);
   oldSchema.schema_version = 2;
@@ -1863,12 +1865,8 @@ test("the report cannot announce a winner without complete target evidence", () 
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -2001,12 +1999,8 @@ test("a rejected report records no selected transport", () => {
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,

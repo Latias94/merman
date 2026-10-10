@@ -1,7 +1,5 @@
 use crate::Result;
-use crate::config::{
-    config_bool as cfg_bool, config_f64 as cfg_f64, config_f64_css_px, config_string as cfg_string,
-};
+use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64, config_string as cfg_string};
 use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
@@ -11,10 +9,39 @@ use merman_core::diagrams::git_graph::{
 };
 use std::collections::HashMap;
 
+mod css_binding;
+mod theme;
+
+pub(crate) use css_binding::GitGraphCssBinding;
+
+pub(crate) use theme::{
+    GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
+    GitGraphNodePaintCss, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt,
+    GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphStaticPaintPlan,
+    GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
+    gitgraph_tags_in_output_order, palette_slot,
+};
+
+pub(crate) fn resolve_gitgraph_title<'a>(
+    model: &'a GitGraphRenderModel,
+    metadata_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            metadata_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
-const THEME_COLOR_LIMIT: usize = 8;
+const THEME_COLOR_LIMIT: usize = GITGRAPH_PALETTE_SLOT_COUNT;
 pub(crate) const REDUX_BRANCH_LABEL_PADDING_Y: f64 = 12.0;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
@@ -23,6 +50,17 @@ pub(crate) fn gitgraph_theme_is_redux_geometry(theme: &str) -> bool {
     matches!(
         theme.trim(),
         "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+    )
+}
+
+/// Whether Mermaid's GitGraph color-generated theme branch owns the commit-label background.
+///
+/// These themes deliberately emit a transparent label rectangle even when
+/// `commitLabelBackground` has a configured value.
+pub(crate) fn gitgraph_theme_uses_color_gen(theme: &str) -> bool {
+    matches!(
+        theme.trim(),
+        "redux" | "redux-dark" | "redux-color" | "redux-dark-color" | "neo" | "neo-dark"
     )
 }
 
@@ -549,6 +587,7 @@ fn draw_arrow(
 pub(crate) fn layout_gitgraph_diagram_typed(
     model: &GitGraphRenderModel,
     effective_config: &serde_json::Value,
+    typography_theme: &GitGraphTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<GitGraphDiagramLayout> {
     let _ = model.diagram_type.as_str();
@@ -574,22 +613,9 @@ pub(crate) fn layout_gitgraph_diagram_typed(
         .is_some_and(gitgraph_theme_is_redux_geometry);
 
     // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
-    // `drawText(...)` nodes inherit Mermaid's global font config.
-    let font_family = cfg_string(effective_config, &["fontFamily"])
-        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .unwrap_or(16.0)
-        .max(1.0);
-
-    let label_style = TextStyle {
-        font_family: Some(font_family),
-        font_size,
-        font_weight: None,
-        font_style: None,
-    };
+    // `drawText(...)` nodes inherit Mermaid's global font config. Preparation resolves that
+    // inheritance once so layout and the terminal stylesheet cannot diverge.
+    let label_style = typography_theme.branch_label_style();
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
     let mut branch_pos: HashMap<&str, f64> = HashMap::new();
@@ -823,7 +849,12 @@ pub(crate) fn layout_gitgraph_diagram_typed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+    };
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::MermaidConfig;
     use merman_core::diagrams::git_graph::{
         GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
     };
@@ -844,6 +875,31 @@ mod tests {
         }
     }
 
+    fn typography_plan(config: &serde_json::Value) -> GitGraphTypographyThemePlan {
+        GitGraphTypographyThemePlan::resolve(None, &MermaidConfig::from_value(config.clone()))
+    }
+
+    fn direct_typography_plan(
+        config: &serde_json::Value,
+        font_family: &str,
+        font_size_px: f32,
+    ) -> GitGraphTypographyThemePlan {
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single(font_family).expect("valid GitGraph font stack"))
+            .with_font_size_px(font_size_px)
+            .expect("valid GitGraph font size");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
+            ))
+            .expect("compile GitGraph typography")
+            .resolve(DiagramFamilyId::GIT_GRAPH);
+        GitGraphTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(config.clone()),
+        )
+    }
+
     #[test]
     fn font_size_ignores_top_level_font_size() {
         let cfg = json!({
@@ -853,12 +909,7 @@ mod tests {
             },
         });
 
-        assert_eq!(
-            config_f64_css_px(&cfg, &["themeVariables", "fontSize"])
-                .unwrap_or(16.0)
-                .max(1.0),
-            16.0
-        );
+        assert_eq!(typography_plan(&cfg).branch_label_style().font_size, 16.0);
     }
 
     #[test]
@@ -870,12 +921,7 @@ mod tests {
             },
         });
 
-        assert_eq!(
-            config_f64_css_px(&cfg, &["themeVariables", "fontSize"])
-                .unwrap_or(16.0)
-                .max(1.0),
-            24.0
-        );
+        assert_eq!(typography_plan(&cfg).branch_label_style().font_size, 24.0);
     }
 
     #[test]
@@ -920,6 +966,56 @@ mod tests {
     }
 
     #[test]
+    fn layout_measures_every_branch_with_the_resolved_typography_plan() {
+        #[derive(Default)]
+        struct RecordingMeasurer {
+            calls: RefCell<Vec<(String, TextStyle)>>,
+        }
+
+        impl TextMeasurer for RecordingMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                self.calls
+                    .borrow_mut()
+                    .push((text.to_string(), style.clone()));
+                crate::text::TextMetrics {
+                    width: 42.0,
+                    height: 17.0,
+                    line_count: 1,
+                }
+            }
+        }
+
+        let model = GitGraphRenderModel {
+            diagram_type: "gitGraph".to_string(),
+            branches: vec![GitGraphBranchRenderModel {
+                name: "main".to_string(),
+            }],
+            commits: Vec::new(),
+            current_branch: "main".to_string(),
+            direction: "LR".to_string(),
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            warning_facts: Vec::new(),
+        };
+        let config = json!({});
+        let typography = direct_typography_plan(&config, "GitGraphMeasure", 23.0);
+        let measurer = RecordingMeasurer::default();
+
+        let layout = layout_gitgraph_diagram_typed(&model, &config, &typography, &measurer)
+            .expect("layout GitGraph with direct typography");
+
+        assert_eq!(layout.branches.len(), 1);
+        let calls = measurer.calls.borrow();
+        assert!(!calls.is_empty());
+        assert!(calls.iter().all(|(text, style)| {
+            text == "main"
+                && style.font_family.as_deref() == Some("GitGraphMeasure")
+                && style.font_size == 23.0
+        }));
+    }
+
+    #[test]
     fn lr_layout_uses_mermaid_11_16_branch_spine_geometry() {
         let measurer = DeterministicTextMeasurer::default();
 
@@ -944,7 +1040,9 @@ mod tests {
                 }
             });
 
-            let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+            let typography = typography_plan(&cfg);
+            let layout =
+                layout_gitgraph_diagram_typed(&model, &cfg, &typography, &measurer).unwrap();
 
             assert_eq!(layout.commits[0].y, expected_y, "theme={theme}");
             assert_eq!(layout.commits[1].y, expected_y, "theme={theme}");
@@ -983,7 +1081,8 @@ mod tests {
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
         let measurer = DeterministicTextMeasurer::default();
-        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+        let typography = typography_plan(&cfg);
+        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &typography, &measurer).unwrap();
 
         let x_by_id = layout
             .commits
@@ -1029,7 +1128,8 @@ mod tests {
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
         let measurer = DeterministicTextMeasurer::default();
-        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+        let typography = typography_plan(&cfg);
+        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &typography, &measurer).unwrap();
 
         let y_by_id = layout
             .commits

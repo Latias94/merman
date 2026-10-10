@@ -1,0 +1,786 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "classification": "diagnostic_attribution",
+  "production_changes": false,
+  "prior_checkpoint": "theme_main_integration_2026-10-06.json",
+  "source": {
+    "base": {
+      "revision": "733fd2fa711cb25cf6d1d94f5797fff424f52d51",
+      "lock_sha256": "eaa36281cd139be2af65494d4bd9e26c3a8db120021853930194eadfcfa48ab5",
+      "clean_checkout": true,
+      "benchmark_executable_sha256": "a2958f868416ad813df4e2607932d0ff0704aea3d877fc848b1e570175d114e6"
+    },
+    "head": {
+      "revision": "5c40e66679755fd0339653737cf5e55f596092cd",
+      "lock_sha256": "4941348855bcbd5f33da6f45ce4a4ea66675a6492bcd6965ebbfbe0c3debdd7b",
+      "clean_checkout": true,
+      "benchmark_executable_sha256": "bd54f29de9a160627a32fd5ab4665d29de4072358fb37e23700e40a23add0157"
+    }
+  },
+  "host": {
+    "cpu": "Apple M4 Pro",
+    "memory_bytes": 51539607552,
+    "os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+  },
+  "profiling": {
+    "settings": {
+      "tool": "macOS sample",
+      "interval_ms": 1,
+      "duration_seconds": 10,
+      "criterion_profile_seconds": 15,
+      "cases": [
+        "parse/class_medium",
+        "render/class_medium",
+        "render/mindmap_medium",
+        "end_to_end/class_medium",
+        "end_to_end/mindmap_medium"
+      ],
+      "order": [
+        "base",
+        "head"
+      ],
+      "purpose": "Exclusive exact-stage frozen benchmark profiling avoids rebuilds. Profiler percentages are not timing confirmation."
+    },
+    "executables": {
+      "base": {
+        "bytes": 28216240,
+        "sha256": "a2958f868416ad813df4e2607932d0ff0704aea3d877fc848b1e570175d114e6"
+      },
+      "head": {
+        "bytes": 34953968,
+        "sha256": "bd54f29de9a160627a32fd5ab4665d29de4072358fb37e23700e40a23add0157"
+      }
+    },
+    "method": "Inclusive matching frames, suppress nested matches within each category; categories overlap and must not be summed. Criterion render profiles include preparation setup outside its timer.",
+    "rows": [
+      {
+        "side": "base",
+        "benchmark": "end_to_end/class_medium",
+        "main_thread_samples": 7257,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 783,
+            "percent_main_thread": 10.79
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 693,
+            "percent_main_thread": 9.55
+          },
+          "apply_theme_defaults": {
+            "samples": 133,
+            "percent_main_thread": 1.83
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 531,
+            "percent_main_thread": 7.32
+          },
+          "render_class": {
+            "samples": 3357,
+            "percent_main_thread": 46.26
+          },
+          "construct_class_semantic_source": {
+            "samples": 679,
+            "percent_main_thread": 9.36
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 2686,
+            "percent_main_thread": 37.01
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "base",
+        "benchmark": "end_to_end/mindmap_medium",
+        "main_thread_samples": 7214,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 2944,
+            "percent_main_thread": 40.81
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 2875,
+            "percent_main_thread": 39.85
+          },
+          "apply_theme_defaults": {
+            "samples": 1411,
+            "percent_main_thread": 19.56
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 1397,
+            "percent_main_thread": 19.37
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 1789,
+            "percent_main_thread": 24.8
+          },
+          "render_mindmap_diagram_svg_model_with_config": {
+            "samples": 1727,
+            "percent_main_thread": 23.94
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "base",
+        "benchmark": "parse/class_medium",
+        "main_thread_samples": 8293,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 3735,
+            "percent_main_thread": 45.04
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 3247,
+            "percent_main_thread": 39.15
+          },
+          "apply_theme_defaults": {
+            "samples": 406,
+            "percent_main_thread": 4.9
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 2693,
+            "percent_main_thread": 32.47
+          },
+          "render_class": {
+            "samples": 3519,
+            "percent_main_thread": 42.43
+          },
+          "construct_class_semantic_source": {
+            "samples": 3353,
+            "percent_main_thread": 40.43
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "base",
+        "benchmark": "render/class_medium",
+        "main_thread_samples": 7918,
+        "inclusive_categories_non_additive": {
+          "render_class": {
+            "samples": 3571,
+            "percent_main_thread": 45.1
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 3610,
+            "percent_main_thread": 45.59
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "base",
+        "benchmark": "render/mindmap_medium",
+        "main_thread_samples": 7838,
+        "inclusive_categories_non_additive": {
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 3804,
+            "percent_main_thread": 48.53
+          },
+          "render_mindmap_diagram_svg_model_with_config": {
+            "samples": 3663,
+            "percent_main_thread": 46.73
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "head",
+        "benchmark": "end_to_end/class_medium",
+        "main_thread_samples": 7260,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 1661,
+            "percent_main_thread": 22.88
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 1626,
+            "percent_main_thread": 22.4
+          },
+          "materialize_selected_theme": {
+            "samples": 732,
+            "percent_main_thread": 10.08
+          },
+          "apply_theme_defaults": {
+            "samples": 441,
+            "percent_main_thread": 6.07
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 1246,
+            "percent_main_thread": 17.16
+          },
+          "render_class": {
+            "samples": 1870,
+            "percent_main_thread": 25.76
+          },
+          "construct_class_semantic_source": {
+            "samples": 378,
+            "percent_main_thread": 5.21
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 1898,
+            "percent_main_thread": 26.14
+          },
+          "partition_prepared_text_label_ids": {
+            "samples": 394,
+            "percent_main_thread": 5.43
+          },
+          "sha2::": {
+            "samples": 315,
+            "percent_main_thread": 4.34
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "head",
+        "benchmark": "end_to_end/mindmap_medium",
+        "main_thread_samples": 7287,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 1636,
+            "percent_main_thread": 22.45
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 1600,
+            "percent_main_thread": 21.96
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 1555,
+            "percent_main_thread": 21.34
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 1961,
+            "percent_main_thread": 26.91
+          },
+          "partition_prepared_text_label_ids": {
+            "samples": 661,
+            "percent_main_thread": 9.07
+          },
+          "sha2::": {
+            "samples": 519,
+            "percent_main_thread": 7.12
+          },
+          "render_mindmap_diagram_svg_model_with_config": {
+            "samples": 1242,
+            "percent_main_thread": 17.04
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "head",
+        "benchmark": "parse/class_medium",
+        "main_thread_samples": 7945,
+        "inclusive_categories_non_additive": {
+          "preprocess_with_directive_recovery_controlled": {
+            "samples": 6252,
+            "percent_main_thread": 78.69
+          },
+          "finish_preprocessed_controlled": {
+            "samples": 6071,
+            "percent_main_thread": 76.41
+          },
+          "materialize_selected_theme": {
+            "samples": 2806,
+            "percent_main_thread": 35.32
+          },
+          "apply_theme_defaults": {
+            "samples": 1560,
+            "percent_main_thread": 19.63
+          },
+          "clone_value_nonrecursive_controlled": {
+            "samples": 4725,
+            "percent_main_thread": 59.47
+          },
+          "render_class": {
+            "samples": 1266,
+            "percent_main_thread": 15.93
+          },
+          "construct_class_semantic_source": {
+            "samples": 1213,
+            "percent_main_thread": 15.27
+          },
+          "parse_model_in_context": {
+            "samples": 7527,
+            "percent_main_thread": 94.74
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "head",
+        "benchmark": "render/class_medium",
+        "main_thread_samples": 7973,
+        "inclusive_categories_non_additive": {
+          "render_class": {
+            "samples": 3045,
+            "percent_main_thread": 38.19
+          },
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 3928,
+            "percent_main_thread": 49.27
+          },
+          "partition_prepared_text_label_ids": {
+            "samples": 822,
+            "percent_main_thread": 10.31
+          }
+        },
+        "output_receipt_verified": true
+      },
+      {
+        "side": "head",
+        "benchmark": "render/mindmap_medium",
+        "main_thread_samples": 7292,
+        "inclusive_categories_non_additive": {
+          "FamilyRenderArtifact::render_svg": {
+            "samples": 4396,
+            "percent_main_thread": 60.29
+          },
+          "partition_prepared_text_label_ids": {
+            "samples": 1434,
+            "percent_main_thread": 19.67
+          },
+          "render_mindmap_diagram_svg_model_with_config": {
+            "samples": 2824,
+            "percent_main_thread": 38.73
+          }
+        },
+        "output_receipt_verified": true
+      }
+    ]
+  },
+  "size": {
+    "recipe": {
+      "package": "merman-cli",
+      "manifest": "crates/merman-cli/Cargo.toml",
+      "profile": "dist",
+      "default_features": false,
+      "features": [
+        "all-diagrams",
+        "analysis",
+        "ascii",
+        "icons",
+        "jpeg",
+        "layout-cytoscape",
+        "layout-elk",
+        "markdown",
+        "math",
+        "network-icons",
+        "parallel-markdown",
+        "pdf",
+        "png",
+        "rustdoc",
+        "shell-completions",
+        "svg",
+        "system-clock",
+        "system-random",
+        "system-timezone",
+        "system-timing"
+      ],
+      "target": {
+        "name": "merman-cli",
+        "kinds": [
+          "bin"
+        ],
+        "crate_types": [
+          "bin"
+        ],
+        "required_features": []
+      },
+      "build_target": {
+        "kind": "target-set",
+        "triples": [
+          "aarch64-apple-darwin",
+          "aarch64-unknown-linux-gnu",
+          "x86_64-apple-darwin",
+          "x86_64-pc-windows-msvc",
+          "x86_64-unknown-linux-gnu"
+        ]
+      }
+    },
+    "actual_target": "aarch64-apple-darwin",
+    "profile": {
+      "inherits": "release",
+      "lto": "thin"
+    },
+    "raw": {
+      "base": {
+        "bytes": 45511408,
+        "sha256": "d23eac82c1aa68b480b52c2cdf3b418cab91cea090e2e61a0b007b05745476ce",
+        "gzip_bytes": 18803233
+      },
+      "head": {
+        "bytes": 53462736,
+        "sha256": "034300f5b652a18f120d0d60a626aaf01d7dc3be36cd11b5202b8c014f552628",
+        "gzip_bytes": 22054346
+      }
+    },
+    "strip_local_symbols": {
+      "command": "strip -x <copy>",
+      "results": {
+        "base": {
+          "bytes": 39890048,
+          "gzip_bytes": 17222716,
+          "sha256": "f98dd4668908a0ec17a6aaed455f4f7a9262bc9f1025e28c6d81d17b7c4af54e",
+          "text_bytes": 28615244,
+          "text_sha256": "e8bb4f0dd5cbdaa9c5767fe30730b8431efae3397f47a795f4e3aa19f2db0203",
+          "controls": "version, capabilities, four SVGs equal to unstripped source"
+        },
+        "head": {
+          "bytes": 46613408,
+          "gzip_bytes": 20151446,
+          "sha256": "58ced9cfa74c90e6aa83c55480d7858530bc6595bd2a09c6370506829b9ab59b",
+          "text_bytes": 34082052,
+          "text_sha256": "cef6aef3e4b97321b547b161f7a08791ee4920f98f64a3d7569cf1e46efe9cf8",
+          "controls": "version, capabilities, four SVGs equal to unstripped source"
+        }
+      }
+    },
+    "function_extents": {
+      "method": "LC_FUNCTION_STARTS extents paired with demangled symbols. Assign to a project when exactly one distinct merman namespace occurs in all names at that address; multiple project namespaces are shared_project; all others are no_project_name. Extents include alignment padding.",
+      "caveat": "Not counterfactual removable bytes; inlining, generics, aliases and LTO limit source ownership.",
+      "results": {
+        "base": {
+          "text_bytes": 28615244,
+          "extent_bytes": 28615244,
+          "project_associated": {
+            "no_project_name": 16991512,
+            "shared_project": 7980,
+            "merman_render": 4396772,
+            "merman_core": 3464468,
+            "merman": 36364,
+            "merman_export": 55264,
+            "merman_ascii": 1878576,
+            "merman_analysis": 100480,
+            "merman_cli": 866256,
+            "merman_doc": 24588,
+            "merman_elk_layered": 725692,
+            "merman_layout_elk": 67292
+          }
+        },
+        "head": {
+          "text_bytes": 34082052,
+          "extent_bytes": 34082052,
+          "project_associated": {
+            "no_project_name": 18926592,
+            "merman_render": 7437528,
+            "merman_core": 3619464,
+            "shared_project": 9952,
+            "merman": 100316,
+            "merman_export": 101416,
+            "merman_ascii": 1875580,
+            "merman_analysis": 99412,
+            "merman_theme_contract": 149956,
+            "merman_bindings_core": 14492,
+            "merman_cli": 921992,
+            "merman_doc": 33524,
+            "merman_elk_layered": 725692,
+            "merman_layout_elk": 66136
+          }
+        }
+      },
+      "largest_module_deltas": [
+        {
+          "module": "merman_render::svg",
+          "delta_bytes": 958668
+        },
+        {
+          "module": "generic_or_trait",
+          "delta_bytes": 849280
+        },
+        {
+          "module": "core::ptr",
+          "delta_bytes": 540912
+        },
+        {
+          "module": "alloc::collections",
+          "delta_bytes": 518584
+        },
+        {
+          "module": "core::slice",
+          "delta_bytes": 259960
+        },
+        {
+          "module": "merman_render::diagram_theme",
+          "delta_bytes": 252888
+        },
+        {
+          "module": "merman_render::family",
+          "delta_bytes": 196204
+        },
+        {
+          "module": "merman_render::state",
+          "delta_bytes": 177240
+        },
+        {
+          "module": "merman_render::flowchart",
+          "delta_bytes": 117640
+        },
+        {
+          "module": "merman_render::sequence",
+          "delta_bytes": 106960
+        },
+        {
+          "module": "merman_core::theme",
+          "delta_bytes": 82420
+        },
+        {
+          "module": "merman_render::class",
+          "delta_bytes": 79720
+        },
+        {
+          "module": "merman_render::text",
+          "delta_bytes": 67028
+        },
+        {
+          "module": "indexmap::map",
+          "delta_bytes": 64548
+        },
+        {
+          "module": "serde_json::value",
+          "delta_bytes": 64060
+        }
+      ]
+    },
+    "normal_dependency_feature_delta": {
+      "data-encoding v2.11.1": {
+        "base": "alloc,std",
+        "head": "alloc,default,std"
+      },
+      "merman-bindings-core v0.8.0": {
+        "base": null,
+        "head": "diagram-agentflow,diagram-architecture,diagram-block,diagram-c4,diagram-class,diagram-cynefin,diagram-er,diagram-event-modeling,diagram-flowchart,diagram-gantt,diagram-git-graph,diagram-info,diagram-ishikawa,diagram-journey,diagram-kanban,diagram-mindmap,diagram-packet,diagram-pie,diagram-quadrant-chart,diagram-radar,diagram-railroad,diagram-requirement,diagram-sankey,diagram-sequence,diagram-state,diagram-swimlane,diagram-timeline,diagram-tree-view,diagram-treemap,diagram-usecase,diagram-venn,diagram-wardley,diagram-xychart,diagram-zenuml,svg"
+      },
+      "merman-theme-contract v0.8.0": {
+        "base": null,
+        "head": "default"
+      },
+      "serde_json_canonicalizer v0.3.2": {
+        "base": null,
+        "head": ""
+      }
+    }
+  },
+  "limitations": [
+    "Whole revision comparison, not a theme-only ablation.",
+    "Profiles are inclusive and overlapping; render profiles include untimed preparation.",
+    "No A/A calibration or >=8-pair latency confirmation in this checkpoint.",
+    "Four original end-to-end fixtures remain excluded for output differences.",
+    "Local unsigned macOS ARM64 CLI only; no WASM, Linux or Windows artifact claim."
+  ],
+  "raw_artifact_root": "target/bench/experiments/theme-attribution-2026-10-06",
+  "raw_artifacts": {
+    "base-bench-symbols.txt": {
+      "bytes": 4331736,
+      "sha256": "e80f28778b59737826c4d2b268a04bf38aa74525986692ed40d4175d4c1bd14a"
+    },
+    "base-end_to_end-class_medium.log": {
+      "bytes": 436,
+      "sha256": "72c5de6ca19971e4b3ac0b0f9d6092be65913da36c8b9d3f7ef883e338ff34e7"
+    },
+    "base-end_to_end-class_medium.profiler.log": {
+      "bytes": 358,
+      "sha256": "c37c152e9f9153178b17ec642252cc6cc75df0f1214b7f34f443d8b11e32a7bc"
+    },
+    "base-end_to_end-class_medium.sample.txt": {
+      "bytes": 1961956,
+      "sha256": "ae9b130ed253e0866ee7cb6e08e20cc4e285265ce3d16a69efb272e3f6e47bc6"
+    },
+    "base-end_to_end-mindmap_medium.log": {
+      "bytes": 444,
+      "sha256": "51bd88ff35ddf7d73e89aa07a0d1902354faebaa458cdc3485473636b01f8285"
+    },
+    "base-end_to_end-mindmap_medium.profiler.log": {
+      "bytes": 360,
+      "sha256": "f4ee4e59d688e043b544d6573467429cf769b940e40ae2e816526d1e3fb4630b"
+    },
+    "base-end_to_end-mindmap_medium.sample.txt": {
+      "bytes": 1352727,
+      "sha256": "a490611011212b95160587b8ab9f424d4b340bb79d35ed49e1d9d1e5bd749c11"
+    },
+    "base-function-starts.txt": {
+      "bytes": 725767,
+      "sha256": "393fd0109030882ee4e572bed677de9ccd9f07723e8f8df277dfd9467a9ae5fb"
+    },
+    "base-load-commands.txt": {
+      "bytes": 8601,
+      "sha256": "36eda0918b9b607727d5e6cf897d98f9456375d02b1588bb27870f08f9432304"
+    },
+    "base-normal-features.txt": {
+      "bytes": 42670,
+      "sha256": "eac23a1859eac1e7fe080ae061a8342d5f7d5d7c0b66b3260ae39fee2b0962e2"
+    },
+    "base-parse-class_medium.log": {
+      "bytes": 432,
+      "sha256": "259d74e126723d7d6fb6a03cb31432484e2ec18d88438cee15ebdf72ec1a43bc"
+    },
+    "base-parse-class_medium.profiler.log": {
+      "bytes": 353,
+      "sha256": "3b4fe22930968b6d70ff78413dfff28f025390f3c388f31fa9b818c2c35b1231"
+    },
+    "base-parse-class_medium.sample.txt": {
+      "bytes": 628931,
+      "sha256": "d5c1f2d1507df4a7aa0fe92fdc436573d48a5abd3a296e11753762c62caed75e"
+    },
+    "base-render-class_medium.log": {
+      "bytes": 420,
+      "sha256": "8063b79fc8790a54990f9139410f6d6396b1243ffbbedbe847dd32ce066b4c53"
+    },
+    "base-render-class_medium.profiler.log": {
+      "bytes": 354,
+      "sha256": "6d146a68b3492ac22bd9b1d2c6fe97221742f6fc9d21d8f47ddc4d30c53c532e"
+    },
+    "base-render-class_medium.sample.txt": {
+      "bytes": 1954334,
+      "sha256": "83b96fa50de259d5dcb8286733d5b7f5abdca9e48a6e6fbc5ed9986b25fe08ac"
+    },
+    "base-render-mindmap_medium.log": {
+      "bytes": 428,
+      "sha256": "9b15a47b75f3ba41956765b4a613c462e35be34c262361173ff9d8e55db0a05c"
+    },
+    "base-render-mindmap_medium.profiler.log": {
+      "bytes": 356,
+      "sha256": "0b630a29cd63d39232f65661acee0c18ee923601c09873b0adccd34b0a3062fa"
+    },
+    "base-render-mindmap_medium.sample.txt": {
+      "bytes": 1020586,
+      "sha256": "9c34c6c260b7fe818739c0d3906f00e0d74d8a7fa7e0fa018d7bc8bd2901661c"
+    },
+    "base-sections.txt": {
+      "bytes": 1179,
+      "sha256": "a53c80cdd01772b42696e23984c9b5c9000d57f2d14d4b4daa41be0af615e1be"
+    },
+    "base-symbols.txt": {
+      "bytes": 7226557,
+      "sha256": "97876878f6fb23b1face168ad3e567a6f256b90081ed052adf6a8ae9dec181b4"
+    },
+    "experiment.json": {
+      "bytes": 4013,
+      "sha256": "b4c52c516c370cff10723d2a21ff4ccb22088da11f941a7d0e8ad6da27c00e88"
+    },
+    "feature-delta.json": {
+      "bytes": 874,
+      "sha256": "75e7812fec43d332d1fdba443bc8cf1b3462550527f9c9b649179a5b8dc0e536"
+    },
+    "head-bench-symbols.txt": {
+      "bytes": 5579232,
+      "sha256": "95ac6a18f389578266e23173d9038f3431cf675fd0f4cfb58dd78ff3f039a3dd"
+    },
+    "head-end_to_end-class_medium.log": {
+      "bytes": 436,
+      "sha256": "72c5de6ca19971e4b3ac0b0f9d6092be65913da36c8b9d3f7ef883e338ff34e7"
+    },
+    "head-end_to_end-class_medium.profiler.log": {
+      "bytes": 358,
+      "sha256": "ea51216793503415a3fe1dfdad24455b2500e39bcbe9d56d2a6d52adf352bcae"
+    },
+    "head-end_to_end-class_medium.sample.txt": {
+      "bytes": 1780531,
+      "sha256": "40a734a1033455cac78efe3716687190abf1d55af33cca07de15636bb364f6c7"
+    },
+    "head-end_to_end-mindmap_medium.log": {
+      "bytes": 444,
+      "sha256": "51bd88ff35ddf7d73e89aa07a0d1902354faebaa458cdc3485473636b01f8285"
+    },
+    "head-end_to_end-mindmap_medium.profiler.log": {
+      "bytes": 360,
+      "sha256": "6c7d307d927ac4d84aa3397e46e5812b987d4e73ddf885ea38e97305269c8b32"
+    },
+    "head-end_to_end-mindmap_medium.sample.txt": {
+      "bytes": 984677,
+      "sha256": "52004ecd11c3c969a0c43d0dad0a6341056db30c9ae0a4618c9c3e10f8564117"
+    },
+    "head-function-starts.txt": {
+      "bytes": 855902,
+      "sha256": "251ff9eb1630b9d6241e32345031ffdce676ccc81880708a35cb0e4beb78a50c"
+    },
+    "head-load-commands.txt": {
+      "bytes": 8601,
+      "sha256": "adc243aa41657c8e45f250a474655f531e78ac9f3a04d43be5edafa1a0471cbb"
+    },
+    "head-normal-features.txt": {
+      "bytes": 45083,
+      "sha256": "be4c52f9f1a8681e22548a6c1e5dc0e950f2075a289353b1ee9b2bc63e6fc704"
+    },
+    "head-parse-class_medium.log": {
+      "bytes": 432,
+      "sha256": "259d74e126723d7d6fb6a03cb31432484e2ec18d88438cee15ebdf72ec1a43bc"
+    },
+    "head-parse-class_medium.profiler.log": {
+      "bytes": 353,
+      "sha256": "b687db64ef3b6e1033cd947b231a80938089f568eb91e90721fb2cdd56b38ef3"
+    },
+    "head-parse-class_medium.sample.txt": {
+      "bytes": 653902,
+      "sha256": "1dbb16348d955e5f4730bfd7311885819e7cd206c30db9128ab3585c08cfa79a"
+    },
+    "head-render-class_medium.log": {
+      "bytes": 420,
+      "sha256": "8063b79fc8790a54990f9139410f6d6396b1243ffbbedbe847dd32ce066b4c53"
+    },
+    "head-render-class_medium.profiler.log": {
+      "bytes": 354,
+      "sha256": "a65b964b628118db103d46ead24c498f12ef145f4f598b399d05bf6c363d75da"
+    },
+    "head-render-class_medium.sample.txt": {
+      "bytes": 2105312,
+      "sha256": "75b88f5c3bba99691baa0af6c7b621428e91643d280e304ad2b948dc2482a3da"
+    },
+    "head-render-mindmap_medium.log": {
+      "bytes": 428,
+      "sha256": "9b15a47b75f3ba41956765b4a613c462e35be34c262361173ff9d8e55db0a05c"
+    },
+    "head-render-mindmap_medium.profiler.log": {
+      "bytes": 356,
+      "sha256": "7999a677e00edd865847c0bab5e8212fc5e681befe451caeb1156f8bc3f8c0e3"
+    },
+    "head-render-mindmap_medium.sample.txt": {
+      "bytes": 1030953,
+      "sha256": "3c4f91b2ce7a21526d7d51c0ad94d78a46dc2344961f9995591fbd1eff69a3ce"
+    },
+    "head-sections.txt": {
+      "bytes": 1179,
+      "sha256": "c7411098b155f7678531b05369ef0edef9991847683458be84717abc11972617"
+    },
+    "head-symbols.txt": {
+      "bytes": 8673969,
+      "sha256": "424150022fbf387b3024082f69cd0d065a10062335bf71ed2ceaa2e957ceeafb"
+    },
+    "linkedit-sizes.json": {
+      "bytes": 417,
+      "sha256": "c63ee4236ae8015ca9682d2c673567e45dd19e84a3211a21f8bc7fff1e6e3d4e"
+    },
+    "profile-summary.json": {
+      "bytes": 8764,
+      "sha256": "df612c69d26e5250d25273eea3ec1098ee3351500b15882c4dd1079c0711cdc3"
+    },
+    "profile_cases.py": {
+      "bytes": 1192,
+      "sha256": "f1ee9bad0e164d3def4ab25fc92a61dc474bf1c25010159594ad555e4334f8f0"
+    },
+    "strip-control.json": {
+      "bytes": 689,
+      "sha256": "888fe6e43a1018505c7227c402e2ee4e286e90a8d90cc3ee720f24112233f095"
+    },
+    "strip_control.py": {
+      "bytes": 2307,
+      "sha256": "cfecd645aa9bbe89ed1caae2b6722ec650495071926e898fd48b5bf782f730d6"
+    },
+    "summarize_profiles.py": {
+      "bytes": 2322,
+      "sha256": "49a1146ae90dc9cdc79feab27859fb943304fad56e6f4276af0e2c0e3aaee8a8"
+    },
+    "symbol-sizes.json": {
+      "bytes": 24074446,
+      "sha256": "da873527f66a4ed6d4939bd9d3f8716017c127cc1fdfe5fbae9c46577b9dc298"
+    },
+    "symbol_sizes.py": {
+      "bytes": 2409,
+      "sha256": "dd87621d207a561aeec5b523e80d283faaab500eae28eb613a36a5ac4dd1319a"
+    }
+  }
+}

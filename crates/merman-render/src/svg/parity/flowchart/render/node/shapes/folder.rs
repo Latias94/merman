@@ -1,13 +1,11 @@
 //! Mermaid 11.17 folder/directory flowchart shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
 use super::super::geom::path_from_points;
 use super::super::helpers;
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::roughjs_paths_for_hand_drawn_svg_path;
 
 fn folder_geometry(label_width: f64, label_height: f64, padding: f64) -> (f64, f64, f64) {
     let padding = padding.max(0.0);
@@ -32,7 +30,7 @@ fn folder_points(width: f64, total_height: f64, tab_height: f64) -> Vec<(f64, f6
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -40,6 +38,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -56,26 +55,25 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_folder(
 
     if common.look_is_hand_drawn() {
         let rough_paths = helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_svg_path(
+            roughjs_paths_for_hand_drawn_svg_path(
                 &path_data,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         });
         if let Some((fill_d, stroke_d)) = rough_paths {
             let _ = write!(
                 out,
-                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
+                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
                 escape_attr(common.rough_group_style),
                 escape_attr(&fill_d),
                 escape_attr(common.fill_color),
-                escape_attr(common.style),
                 escape_attr(&stroke_d),
                 escape_attr(common.stroke_color),
                 util::fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
             );
         } else {
             let _ = write!(

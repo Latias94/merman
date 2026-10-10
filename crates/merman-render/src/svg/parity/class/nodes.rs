@@ -2,12 +2,11 @@ use super::super::timing::RenderTiming;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::groups::{
     ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
-    render_class_split_edge_groups,
+    render_class_split_edge_groups, render_class_split_edge_labels, render_class_split_edge_paths,
 };
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
-use super::label::class_apply_inline_styles;
 use super::namespace::{
     ClassNamespaceClusterGroupContext, class_namespace_root_offset,
     render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
@@ -19,9 +18,9 @@ use super::node::{
     render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
-use super::settings::ClassRenderSettings;
 use super::*;
 use super::{ClassSvgInterface, ClassSvgNode, ClassSvgNote};
+use crate::class::ClassRenderConfig;
 use crate::model::{Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRootId, LayoutEdge};
 use crate::{Error, Result};
 use rustc_hash::FxHashMap;
@@ -34,12 +33,16 @@ struct ClassNodeRootOffsets {
     in_namespace_root: bool,
 }
 
-pub(super) struct ClassNodesRenderState<'a> {
-    pub(super) out: &'a mut String,
+#[derive(Default)]
+struct ClassNodeRenderOutcome {
+    theme_emission: Option<crate::class::ClassNodeTerminalEmission>,
+    typography: crate::class::ClassTextTerminalFacts,
+}
+
+pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
+    pub(super) out: &'a mut O,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
-    pub(super) sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    pub(super) borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 pub(super) struct ClassNodesRenderContext<'a> {
@@ -48,29 +51,31 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
-    pub(super) settings: &'a ClassRenderSettings,
-    pub(super) effective_config: &'a serde_json::Value,
+    pub(super) settings: &'a ClassRenderConfig,
+    pub(super) hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub(super) mermaid_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
+    pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
 
-pub(super) fn render_class_render_tree(
-    state: ClassNodesRenderState<'_>,
+pub(super) fn render_class_render_tree<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let layout_nodes_by_id = ctx
         .layout
@@ -112,7 +117,7 @@ pub(super) fn render_class_render_tree(
         parent_origin: (0.0, 0.0),
     }];
     while let Some(frame) = stack.pop() {
-        match frame {
+        let (outcome, typography_node_id) = match frame {
             RenderFrame::Enter {
                 root_id,
                 parent_origin,
@@ -142,6 +147,7 @@ pub(super) fn render_class_render_tree(
                         fmt(origin.0 - parent_origin.0),
                         fmt(origin.1 - parent_origin.1)
                     );
+                    out.checkpoint()?;
                     render_class_namespace_clusters_in_root(
                         out,
                         content_bounds,
@@ -152,6 +158,7 @@ pub(super) fn render_class_render_tree(
                             .map(String::as_str)
                             .collect::<Vec<_>>(),
                         ClassNamespaceClusterGroupContext {
+                            relation_theme: edge_ctx.relation_theme,
                             diagram_id: ctx.diagram_id,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
@@ -159,7 +166,7 @@ pub(super) fn render_class_render_tree(
                             bounds_dy: 0.0,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
-                            mermaid_config: ctx.mermaid_config,
+                            mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                             emit: ctx.emit,
@@ -167,6 +174,8 @@ pub(super) fn render_class_render_tree(
                         namespace_id,
                         origin.0,
                         origin.1,
+                        theme_receipt,
+                        typography_receipt,
                     )?;
                 } else {
                     let clusters = root
@@ -185,6 +194,7 @@ pub(super) fn render_class_render_tree(
                         content_bounds,
                         &clusters,
                         ClassNamespaceClusterGroupContext {
+                            relation_theme: edge_ctx.relation_theme,
                             diagram_id: ctx.diagram_id,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
@@ -192,11 +202,13 @@ pub(super) fn render_class_render_tree(
                             bounds_dy: 0.0,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
-                            mermaid_config: ctx.mermaid_config,
+                            mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                             emit: ctx.emit,
                         },
+                        theme_receipt,
+                        typography_receipt,
                     )?;
                 }
 
@@ -211,17 +223,18 @@ pub(super) fn render_class_render_tree(
                             .clone()
                     })
                     .collect::<Vec<_>>();
-                let split = render_class_split_edges_for_namespace(
+                render_class_split_edges_for_namespace(
+                    out,
                     content_bounds,
                     detail,
                     edge_ctx,
+                    theme_receipt,
                     &edges,
                     origin.0,
                     origin.1,
                     in_namespace_root,
+                    typography_receipt,
                 )?;
-                out.push_str(&split.edge_paths);
-                out.push_str(&split.edge_labels);
                 out.push_str(r#"<g class="nodes">"#);
 
                 stack.push(RenderFrame::Close { in_namespace_root });
@@ -238,50 +251,60 @@ pub(super) fn render_class_render_tree(
                         }),
                     }
                 }
+                (ClassNodeRenderOutcome::default(), None)
             }
             RenderFrame::Node {
                 id,
                 origin,
                 in_namespace_root,
-            } => render_class_node_id(
-                ClassNodesRenderState {
-                    out,
-                    content_bounds,
-                    detail,
-                    sanitize_config,
-                    borrowed_sanitize_config,
-                },
-                ctx,
-                &layout_nodes_by_id,
-                id,
-                ClassNodeRootOffsets {
-                    namespace_root_dx: origin.0,
-                    namespace_root_dy: origin.1,
-                    in_namespace_root,
-                },
-            )?,
+            } => (
+                render_class_node_id(
+                    ClassNodesRenderState {
+                        out,
+                        content_bounds,
+                        detail,
+                    },
+                    ctx,
+                    &layout_nodes_by_id,
+                    id,
+                    ClassNodeRootOffsets {
+                        namespace_root_dx: origin.0,
+                        namespace_root_dy: origin.1,
+                        in_namespace_root,
+                    },
+                )?,
+                Some(id),
+            ),
             RenderFrame::Close { in_namespace_root } => {
                 out.push_str("</g>");
                 if in_namespace_root {
                     out.push_str("</g>");
                 }
+                (ClassNodeRenderOutcome::default(), None)
             }
+        };
+        out.checkpoint()?;
+        if let (Some(receipt), Some(id)) = (typography_receipt.as_mut(), typography_node_id) {
+            receipt.record_node(id, outcome.typography);
+        }
+        if let Some(emission) = outcome.theme_emission {
+            theme_receipt.record_node(emission);
         }
     }
     Ok(())
 }
 
-pub(super) fn render_class_elk_adapter_dom(
-    state: ClassNodesRenderState<'_>,
+pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let layout_nodes_by_id = ctx
         .layout
@@ -320,34 +343,13 @@ pub(super) fn render_class_elk_adapter_dom(
         });
     }
 
-    // Mermaid 12 ELK uses the common layout painter. It inserts one root and four
-    // sibling groups in createGraph.ts order: clusters, edge paths, edge labels, nodes.
-    // Namespace fills must stay behind relation paths and their markers.
-    let edges = root
-        .edge_ids
-        .iter()
-        .map(|id| {
-            edges_by_id
-                .get(id.as_str())
-                .copied()
-                .expect("validated Class ELK render edge")
-                .clone()
-        })
-        .collect::<Vec<_>>();
-    let split = render_class_split_edges_for_namespace(
-        content_bounds,
-        detail,
-        edge_ctx,
-        &edges,
-        0.0,
-        0.0,
-        false,
-    )?;
+    // Mermaid 12 paints clusters before paths so namespace fills cannot cover relations.
     detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
         &ctx.layout.clusters,
         ClassNamespaceClusterGroupContext {
+            relation_theme: edge_ctx.relation_theme,
             diagram_id: ctx.diagram_id,
             content_tx: ctx.content_tx,
             content_ty: ctx.content_ty,
@@ -355,27 +357,47 @@ pub(super) fn render_class_elk_adapter_dom(
             bounds_dy: 0.0,
             use_html_labels: ctx.settings.edge_use_html_labels,
             look: ctx.settings.look.as_str(),
-            mermaid_config: ctx.mermaid_config,
+            mermaid_config: Some(ctx.mermaid_config),
             math_renderer: ctx.math_renderer,
             timing: ctx.timing,
             emit: ctx.emit,
         },
+        theme_receipt,
+        typography_receipt,
     )?;
-    out.push_str(&split.edge_paths);
-    out.push_str(&split.edge_labels);
+
+    let edge_label_centers = render_class_split_edge_paths(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        edge_ctx,
+        0.0,
+        0.0,
+    )?;
+    render_class_split_edge_labels(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        typography_receipt,
+        edge_ctx,
+        0.0,
+        0.0,
+        &edge_label_centers,
+    )?;
 
     out.push_str(r#"<g class="nodes">"#);
+    out.checkpoint()?;
     for item in &root.items {
         let ClassRenderItem::Node(id) = item else {
             unreachable!("Class ELK render root was validated as flat")
         };
-        render_class_node_id(
+        let outcome = render_class_node_id(
             ClassNodesRenderState {
                 out,
                 content_bounds,
                 detail,
-                sanitize_config,
-                borrowed_sanitize_config,
             },
             ctx,
             &layout_nodes_by_id,
@@ -386,8 +408,16 @@ pub(super) fn render_class_elk_adapter_dom(
                 in_namespace_root: false,
             },
         )?;
+        out.checkpoint()?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_node(id, outcome.typography);
+        }
+        if let Some(emission) = outcome.theme_emission {
+            theme_receipt.record_node(emission);
+        }
     }
     out.push_str("</g>");
+    out.checkpoint()?;
     Ok(())
 }
 
@@ -576,15 +606,18 @@ fn validate_class_render_tree(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_class_split_edges_for_namespace(
+fn render_class_split_edges_for_namespace<O: SvgOutput>(
+    out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     edges: &[LayoutEdge],
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
-) -> Result<super::groups::ClassSplitEdgeGroups> {
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+) -> Result<()> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
         missing_section_points: edge_ctx.missing_section_points,
@@ -617,12 +650,17 @@ fn render_class_split_edges_for_namespace(
         timing: edge_ctx.timing,
         uses_elk_adapter_dom: edge_ctx.uses_elk_adapter_dom,
         edge_paths_class: edge_ctx.edge_paths_class,
+        relation_theme: edge_ctx.relation_theme,
+        text_paint: edge_ctx.text_paint,
         emit: edge_ctx.emit,
     };
     render_class_split_edge_groups(
+        out,
         ClassSplitEdgeGroupsRenderState {
             content_bounds,
             detail,
+            theme_receipt,
+            typography_receipt,
         },
         &local_ctx,
         if in_namespace_root { root_dx } else { 0.0 },
@@ -630,19 +668,17 @@ fn render_class_split_edges_for_namespace(
     )
 }
 
-fn render_class_node_id(
-    state: ClassNodesRenderState<'_>,
+fn render_class_node_id<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
     id: &str,
     offsets: ClassNodeRootOffsets,
-) -> Result<()> {
+) -> Result<ClassNodeRenderOutcome> {
     let ClassNodesRenderState {
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let settings = ctx.settings;
 
@@ -675,24 +711,23 @@ fn render_class_node_id(
             ClassNoteRenderState {
                 out,
                 content_bounds,
-                sanitize_config,
-                borrowed_sanitize_config,
             },
             note,
             n,
             position,
             &ClassNoteRenderContext {
                 diagram_id: ctx.diagram_id,
-                effective_config: ctx.effective_config,
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
+                text_style: settings.text_style(),
                 line_height: settings.line_height,
                 use_html_labels: settings.diagram_use_html_labels
                     || crate::math::contains_delimited_math(&note.text),
                 mermaid_config: ctx.mermaid_config,
+                text_paint: ctx.typography_theme.note_paint(),
+                css_binding: ctx.typography_theme.css_binding(),
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
-                hand_drawn_seed: settings.hand_drawn_seed.clone(),
+                hand_drawn_seed: ctx.hand_drawn_seed.clone(),
                 timing: ctx.timing,
                 emit: ctx.emit,
             },
@@ -700,11 +735,15 @@ fn render_class_node_id(
         detail.notes_sanitize += stats.notes_sanitize;
         detail.path_bounds += stats.path_bounds;
         detail.path_bounds_calls += stats.path_bounds_calls;
-        return Ok(());
+        return Ok(ClassNodeRenderOutcome {
+            theme_emission: None,
+            typography: stats.typography,
+        });
     }
 
     if let Some(iface) = ctx.iface_by_id.get(n.id.as_str()).copied() {
-        render_class_interface_node(
+        let binding = ctx.node_visual_plan.interface(n.id.as_str());
+        let result = render_class_interface_node(
             ClassInterfaceRenderState {
                 out,
                 content_bounds,
@@ -715,17 +754,20 @@ fn render_class_node_id(
             &ClassInterfaceRenderContext {
                 diagram_id: ctx.diagram_id,
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
+                text_style: settings.text_style(),
                 use_html_labels: settings.diagram_use_html_labels,
-                wrapping_width: crate::class::config::ClassConfigView::new(ctx.effective_config)
-                    .interface_wrapping_width(),
+                wrapping_width: settings.interface_wrapping_width,
                 look: settings.look.as_str(),
-                mermaid_config: ctx.mermaid_config,
+                mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
+                visual_binding: binding,
                 emit: ctx.emit,
             },
         )?;
-        return Ok(());
+        return Ok(ClassNodeRenderOutcome {
+            theme_emission: Some(result.theme_emission),
+            typography: result.typography,
+        });
     }
 
     let node = ctx
@@ -734,20 +776,20 @@ fn render_class_node_id(
         .copied()
         .expect("validated Class semantic node payload");
 
-    let node_inline_styles = class_apply_inline_styles(node);
-    let node_style_attr = node_inline_styles.style_attr.as_str();
-    let node_fill = node_inline_styles
-        .fill
-        .unwrap_or(settings.default_node_fill.as_str());
-    let node_stroke = node_inline_styles
-        .stroke
-        .unwrap_or(settings.default_node_stroke.as_str());
-    let node_stroke_width = node_inline_styles
-        .stroke_width
-        .unwrap_or("1.3")
-        .trim_end_matches("px")
-        .trim();
-    let node_stroke_dasharray = node_inline_styles.stroke_dasharray.unwrap_or("0 0");
+    let binding = ctx.node_visual_plan.node(n.id.as_str());
+    let node_label_plan = ctx
+        .layout
+        .class_label_plans_by_id
+        .get(n.id.as_str())
+        .map(|plan| plan.as_ref());
+    let node_fill = binding.fill.as_str();
+    let node_stroke = binding.stroke.as_str();
+    let html_node_label_style_attr = &binding.html_label_style;
+    let svg_node_label_style_attr = &binding.svg_label_style;
+    let node_fill_style_attr = &binding.fill_style;
+    let node_stroke_style_attr = &binding.stroke_style;
+    let node_stroke_width = binding.stroke_width.as_str();
+    let node_stroke_dasharray = binding.stroke_dasharray.as_str();
 
     let node_link_open = render_class_node_shell_open(
         out,
@@ -759,7 +801,7 @@ fn render_class_node_id(
             look: settings.look.as_str(),
             security_level_loose: settings.security_level_loose,
             color_index: ctx.class_color_indices.get(n.id.as_str()).copied(),
-            palette_size: super::css::class_palette_size(ctx.effective_config),
+            palette_size: ctx.typography_theme.css_binding().palette.len(),
         },
     )?;
     let basic_container = render_class_node_basic_container(
@@ -772,20 +814,23 @@ fn render_class_node_id(
         position,
         &ClassNodeBasicContainerContext {
             diagram_id: ctx.diagram_id,
-            node_style_attr,
+            node_fill_style_attr: node_fill_style_attr.as_str(),
+            node_stroke_style_attr: node_stroke_style_attr.as_str(),
             node_fill,
             node_stroke,
             node_stroke_width,
             node_stroke_dasharray,
             look: settings.look.as_str(),
-            hand_drawn_seed: settings.hand_drawn_seed.clone(),
+            hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
         },
     );
     detail.path_bounds += basic_container.stats.path_bounds;
     detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
 
-    if settings.diagram_use_html_labels || crate::class::class_node_requires_math(node) {
+    let use_html_labels =
+        settings.diagram_use_html_labels || crate::class::class_node_requires_math(node);
+    if use_html_labels {
         let html_stats = render_class_html_node_body(
             ClassNodeRenderState {
                 out,
@@ -794,25 +839,23 @@ fn render_class_node_id(
             position,
             node,
             basic_container.geometry,
-            ctx.layout
-                .class_label_plans_by_id
-                .get(n.id.as_str())
-                .map(|plan| plan.as_ref()),
+            node_label_plan,
             &ClassHtmlNodeBodyContext {
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
-                html_calc_text_style: &settings.html_calc_text_style,
+                text_style: settings.text_style(),
+                html_calc_text_style: settings.html_calc_text_style(),
                 line_height: settings.line_height,
                 class_padding: settings.class_padding,
-                hide_empty_members_box: settings.hide_empty_members_box,
-                node_style_attr,
+                hide_empty_members_box: settings.hide_empty_members_box(),
+                node_stroke_style_attr: node_stroke_style_attr.as_str(),
+                node_label_style_attr: html_node_label_style_attr.as_str(),
+                node_label_fill: binding.label_fill.as_deref(),
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                use_gradient: config_bool(ctx.effective_config, &["themeVariables", "useGradient"])
-                    .unwrap_or(false),
-                mermaid_config: ctx.mermaid_config,
+                mermaid_config: Some(ctx.mermaid_config),
+                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },
@@ -830,17 +873,17 @@ fn render_class_node_id(
             basic_container.geometry,
             &ClassSvgNodeBodyContext {
                 measurer: ctx.measurer,
-                text_style: &settings.text_style,
-                wrap_probe_font_size: settings.wrap_probe_font_size,
+                text_style: settings.text_style(),
+                wrap_probe_font_size: settings.wrap_probe_font_size(),
                 class_padding: settings.class_padding,
-                hide_empty_members_box: settings.hide_empty_members_box,
-                node_style_attr,
+                hide_empty_members_box: settings.hide_empty_members_box(),
+                node_stroke_style_attr: node_stroke_style_attr.as_str(),
+                node_label_style_attr: svg_node_label_style_attr.as_str(),
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                use_gradient: config_bool(ctx.effective_config, &["themeVariables", "useGradient"])
-                    .unwrap_or(false),
+                use_gradient: ctx.typography_theme.css_binding().look_defs.uses_gradient(),
                 timing: ctx.timing,
             },
         );
@@ -852,5 +895,8 @@ fn render_class_node_id(
     if node_link_open {
         out.push_str("</a>");
     }
-    Ok(())
+    Ok(ClassNodeRenderOutcome {
+        theme_emission: Some(binding.emission.clone()),
+        typography: binding.typography,
+    })
 }

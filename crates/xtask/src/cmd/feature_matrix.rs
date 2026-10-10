@@ -2089,6 +2089,71 @@ mod tests {
     }
 
     #[test]
+    fn public_feature_allowlist_rejects_acceptance_feature_on_every_production_crate() {
+        for name in ["merman", "merman-export", "merman-render"] {
+            let graph = graph(vec![package(
+                name,
+                &[("default", &[]), ("internal-theme-acceptance", &[])],
+            )]);
+            let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+                .iter()
+                .find_map(|(candidate, extras)| (*candidate == name).then_some(*extras))
+                .unwrap();
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("internal-theme-acceptance"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_feature_allowlist_rejects_retired_font_features() {
+        for (name, extras) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
+            let graph = graph(vec![package(
+                name,
+                &[("default", &[]), ("embedded-fonts", &[])],
+            )]);
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(error.to_string().contains("embedded-fonts"), "{error}");
+        }
+    }
+
+    #[test]
+    fn public_feature_allowlist_still_rejects_unknown_features() {
+        let graph = graph(vec![package(
+            "merman-render",
+            &[
+                ("default", &[]),
+                ("internal-theme-acceptance", &[]),
+                ("internal-theme-acceptance-typo", &[]),
+            ],
+        )]);
+        let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+            .iter()
+            .find_map(|(package, extras)| (*package == "merman-render").then_some(*extras))
+            .unwrap();
+
+        let error = graph
+            .validate_public_feature_allowlist("merman-render", extras)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unexpected public Cargo features"),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains("internal-theme-acceptance-typo"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn public_feature_allowlist_rejects_retired_presets() {
         let graph = graph(vec![package(
             "merman-wasm",

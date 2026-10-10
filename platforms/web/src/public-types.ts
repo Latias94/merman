@@ -10,6 +10,7 @@ import type {
   LintRuleSeverity,
   LintRuleTag,
   RuntimeCapabilities,
+  ThemeName,
 } from "./public-catalog.js";
 import type {
   HostTextDirection,
@@ -20,6 +21,7 @@ import type {
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/editor-rename-policy.js";
 import type {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   ResourceOverrideId,
   ResourceLimitId,
   ResourceOptions,
@@ -47,7 +49,9 @@ export interface LayoutOptions {
 }
 
 export interface RenderEnvironmentOptions {
-  text_measurement?: "deterministic";
+  /** Require the renderer's native portability admission; pipeline selection alone is not strict. */
+  theme_portability?: "best-effort" | "require-portable";
+  text_measurement?: "deterministic" | null;
   math_renderer?: "none" | "ratex";
 }
 
@@ -74,37 +78,58 @@ export interface RuntimeCatalog {
   resources: RuntimeResourceContract;
 }
 
-export interface PresentationCatalog {
+export interface ThemeCatalog {
   schema_version: 1;
-  theme_presets: PresentationThemePresetCatalogEntry[];
-  profiles: PresentationProfileCatalogEntry[];
+  structured_spec_available: boolean;
+  supported_output_ids: string[];
+  presets: ThemePresetCatalogEntry[];
+  known_capability_ids: string[];
+  known_text_capability_ids: string[];
+  known_font_container_ids: string[];
+  known_font_source_ids: string[];
+  known_semantic_target_ids: string[];
+  known_variant_ids: string[];
+  resource_limits: ThemeResourceLimitCatalogEntry[];
 }
 
-export interface PresentationThemePresetCatalogEntry {
+export interface ThemePresetCatalogEntry {
   id: string;
+  display_name: string;
   appearance: string;
-  fully_available: boolean;
-  missing_capability_ids: string[];
-}
-
-export interface PresentationProfileCatalogEntry {
-  id: string;
-  fully_available: boolean;
-  missing_capability_ids: string[];
-  aspects: PresentationAspectCatalogEntry[];
-}
-
-export interface PresentationAspectCatalogEntry {
-  id: string;
-  applicability: PresentationAspectApplicability;
-  required_capability_id: string | null;
+  maturity: string;
   available: boolean;
-  missing_capability_ids: string[];
+  availability_reason_ids: string[];
+  /** Curated design scope, independent of technical support or qualification. */
+  family_designs: ThemePresetFamilyDesign[];
+  qualified_cells: ThemePresetQualifiedCell[];
+  license_expression: string;
+  required_attribution: string | null;
+  export_kind: "definition" | "complete_spec";
 }
 
-export interface PresentationAspectApplicability {
-  kind: string;
-  family_id: string | null;
+/** Missing families and unknown treatments are unreviewed; preserve unknown IDs. */
+export interface ThemePresetFamilyDesign {
+  family_id: string;
+  /** Open string: dedicated, base_only, or unreviewed. None grants portability. */
+  treatment: string;
+}
+
+/** Scoped metadata backed by catalog qualification, not an unconditional portability claim. */
+export interface ThemePresetQualifiedCell {
+  family_id: string;
+  output_id: string;
+  /** Scenario and resource conditions. Unknown profiles do not grant usable support. */
+  profile_id: string;
+  /** Open target admission ID; for example `portable` or `host_dependent`. */
+  admission_status: string;
+}
+
+export interface ThemeResourceLimitCatalogEntry {
+  id: string;
+  phase: string;
+  description: string;
+  effective_value: number | null;
+  hard_cap: boolean;
 }
 
 export interface RuntimePayloadSchema {
@@ -201,31 +226,341 @@ export interface RuntimeResourceProfile {
 export interface SvgOptions {
   diagram_id?: string;
   pipeline?: "parity" | "readable" | "resvg-safe";
-  scoped_css?: string;
-  css_override_policy?: "preserve" | "strip-existing-important";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
   viewbox_padding?: number;
   viewBoxPadding?: number;
 }
 
-export type PresentationThemeAppearance = "light" | "dark";
+/** A named preset, direct specification, or shareable recipe. Select exactly one form. */
+export type DiagramThemeSelection =
+  | ({ kind?: never; schema_version?: never; definition?: never; complete_spec?: never } & (
+      | { preset: string; spec?: never }
+      | { preset?: never; spec: DiagramThemeSpec }
+    ))
+  | ThemeRecipeV1;
 
-export interface PresentationThemeOptions {
-  preset?: string;
-  appearance?: PresentationThemeAppearance;
-  font_family?: string;
-  font_size?: string;
-  roles?: Record<string, string>;
-  series_palette?: string[];
+export interface ThemeDefinitionV1 {
+  authoring_schema_version: 1;
+  expansion_version: 1;
+  tokens: ThemeTokensV1;
+  styles?: ThemeStyleEntry[];
 }
 
-export interface PresentationOptions {
-  profile?: string;
-  theme?: PresentationThemeOptions;
+export interface ThemeTokensV1 {
+  canvas?: string;
+  surface?: string;
+  surface_alt?: string;
+  surface_muted?: string;
+  text?: string;
+  border?: string;
+  line?: string;
+  accent?: string;
+  series?: string[];
+  typography?: ThemeAuthoringTypographyV1;
 }
 
-export type MermaidSiteConfig = Record<string, unknown>;
+export interface ThemeAuthoringTypographyV1 {
+  font_stack?: string[];
+  font_size_px?: number;
+  font_weight?: number;
+}
+
+export interface MaterializedThemeWireV1 {
+  schema_version: 1;
+  authoring_schema_version: 1;
+  expansion_version: 1;
+  spec_schema_version: 1;
+  spec: DiagramThemeSpec;
+}
+
+export type ThemeSupportOutputId =
+  | "standalone-svg"
+  | "browser-svg"
+  | "png"
+  | "jpeg"
+  | "pdf"
+  | "ascii"
+  | (string & {});
+
+declare const themeSupportUnknownSubjectKind: unique symbol;
+
+/**
+ * A subject kind not understood by this Web contract revision.
+ *
+ * The brand prevents an incomplete known subject such as `{ kind: "rule" }` from falling through
+ * to the forward-compatible branch. Values decoded from a newer runtime can retain their unknown
+ * kind, while authored known subjects remain checked against their exact required fields.
+ */
+export type ThemeSupportUnknownSubjectKindV1 = string & {
+  readonly [themeSupportUnknownSubjectKind]: "unknown-theme-support-subject";
+};
+
+export type ThemeSupportUnknownSubjectV1 = {
+  kind: ThemeSupportUnknownSubjectKindV1;
+} & Record<string, unknown>;
+
+export type ThemeSupportSubjectV1 =
+  | { kind: "rule"; target: string; facet: string }
+  | { kind: "ordinal-palette"; target: string }
+  | { kind: "base-typography"; property: string }
+  | ThemeSupportUnknownSubjectV1;
+
+export interface ThemeSupportQueryV1 {
+  schema_version: 1;
+  family: string;
+  output: ThemeSupportOutputId;
+  subject: ThemeSupportSubjectV1;
+}
+
+export type ThemeSupportState =
+  | "unconditional"
+  | "conditional"
+  | "not-applicable"
+  | "unsupported"
+  | "unverified";
+
+export interface ThemeCapabilityDescriptorV1 {
+  schema_version: 1;
+  claim_revision: number;
+  query: ThemeSupportQueryV1;
+  state: ThemeSupportState;
+  reason_ids: string[];
+}
+
+export type ThemeCapabilityDescriptor = ThemeCapabilityDescriptorV1;
+
+/**
+ * A versioned theme document that can be saved as JSON and passed directly as options.theme.
+ * A recipe describes authored styles; it does not certify every family or output target.
+ */
+export type ThemeRecipeV1 = {
+  schema_version: 1;
+  preset?: never;
+  spec?: never;
+} & (
+  | { kind: "definition"; definition: ThemeDefinitionV1; complete_spec?: never }
+  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec; definition?: never }
+);
+
+export interface DiagramThemeSpec {
+  mermaid?: MermaidThemeCompatibility;
+  typography?: ThemeTypographySpec;
+  styles?: ThemeStyleEntry[];
+  canvas?: ThemeCanvasSpec;
+  effects?: ThemeEffectEntry[];
+  requirements?: ThemeRequirementsSpec;
+  assets?: ThemeAssetsSpec;
+}
+
+export interface MermaidThemeCompatibility {
+  theme?: ThemeName;
+  dark_mode?: boolean;
+  variables?: Record<string, string | number | boolean>;
+}
+
+export interface ThemeTypographySpec {
+  default?: ThemeTextStyle;
+  families?: Record<string, ThemeTextStyle>;
+}
+
+export interface ThemeTextStyle {
+  font_stack?: string[];
+  font_size_px?: number;
+  font_weight?: number;
+  font_style?: "normal" | "italic" | "oblique";
+  line_height?: ThemeLineHeight;
+  letter_spacing_px?: number;
+  word_spacing_px?: number;
+  transform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  decoration?: "none" | "underline" | "overline" | "line-through";
+  text_align?: "start" | "center" | "end";
+  white_space?: "normal" | "pre" | "no-wrap" | "pre-wrap" | "pre-line";
+  wrap?: "normal" | "break-word" | "anywhere";
+}
+
+export type ThemeLineHeight = "normal" | number | { px: number };
+export type ThemePatch<T> = T | null;
+export type ThemeLength = number | { px: number } | { percent: number };
+export type ThemeInsets =
+  | number
+  | { top: number; right: number; bottom: number; left: number };
+
+export type ThemePaint =
+  | string
+  | { kind: "transparent" }
+  | { kind: "solid"; color: string }
+  | {
+      kind: "linear-gradient";
+      angle_degrees: number;
+      stops: ThemeGradientStop[];
+      repetition?: ThemeLinearGradientRepetition;
+    }
+  | {
+      kind: "radial-gradient";
+      center_x: ThemeLength;
+      center_y: ThemeLength;
+      radius: ThemeLength;
+      stops: ThemeGradientStop[];
+      repetition?: ThemeRadialGradientRepetition;
+    }
+  | {
+      kind: "pattern";
+      pattern: "dots" | "grid" | "stripes";
+      cell_width: number;
+      cell_height: number;
+      foreground: string;
+      background?: string;
+      angle_degrees?: number;
+    };
+
+export type ThemeLinearGradientRepetition =
+  | { kind: "repeating"; period_px: number }
+  | { kind: "tiled"; width_px: number; height_px: number };
+
+export type ThemeRadialGradientRepetition =
+  | { kind: "repeating" }
+  | { kind: "tiled"; width_px: number; height_px: number };
+
+export interface ThemeGradientStop {
+  offset: number;
+  color: string;
+}
+
+export type ThemeStyleEntry = ThemeRuleEntry | ThemeOrdinalPaletteEntry;
+
+export interface ThemeRuleEntry {
+  kind: "rule";
+  target: string;
+  family?: string;
+  variant?: string;
+  ordinal?: { exact: number } | { cycle: { period: number; offset: number } };
+  style: ThemeStylePatch;
+}
+
+export interface ThemeOrdinalPaletteEntry {
+  kind: "ordinal-palette";
+  target: string;
+  colors: string[];
+}
+
+export interface ThemeStylePatch {
+  fill?: ThemePatch<ThemePaint>;
+  opacity?: ThemePatch<number>;
+  fill_opacity?: ThemePatch<number>;
+  stroke?: ThemeStrokePatch;
+  radius?: ThemePatch<number>;
+  padding?: ThemePatch<ThemeInsets>;
+  typography?: ThemeTextStylePatch;
+  effect?: ThemePatch<string>;
+}
+
+export interface ThemeStrokePatch {
+  paint?: ThemePatch<ThemePaint>;
+  width?: ThemePatch<number>;
+  dasharray?: ThemePatch<number[]>;
+  linecap?: ThemePatch<"butt" | "round" | "square">;
+  linejoin?: ThemePatch<"miter" | "round" | "bevel">;
+  opacity?: ThemePatch<number>;
+}
+
+export interface ThemeTextStylePatch {
+  font_stack?: ThemePatch<string[]>;
+  font_size_px?: ThemePatch<number>;
+  font_weight?: ThemePatch<number>;
+  font_style?: ThemePatch<"normal" | "italic" | "oblique">;
+  line_height?: ThemePatch<ThemeLineHeight>;
+  letter_spacing_px?: ThemePatch<number>;
+  word_spacing_px?: ThemePatch<number>;
+  transform?: ThemePatch<"none" | "uppercase" | "lowercase" | "capitalize">;
+  decoration?: ThemePatch<"none" | "underline" | "overline" | "line-through">;
+  text_align?: ThemePatch<"start" | "center" | "end">;
+  white_space?: ThemePatch<"normal" | "pre" | "no-wrap" | "pre-wrap" | "pre-line">;
+  wrap?: ThemePatch<"normal" | "break-word" | "anywhere">;
+}
+
+export interface ThemeCanvasSpec {
+  base?: ThemePaint;
+  layers?: ThemeCanvasLayer[];
+  bleed?: ThemeInsets;
+}
+
+export interface ThemeCanvasLayer {
+  paint: ThemePaint;
+  opacity?: number;
+  blend_mode?: "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "difference";
+  offset_x?: number;
+  offset_y?: number;
+}
+
+export type ThemeEffectEntry = ThemeEffectGraph | ThemeEffectBinding;
+
+export interface ThemeEffectGraph {
+  kind: "graph";
+  id: string;
+  /** Color interpolation for all primitives; defaults to linear-rgb when omitted. */
+  color_space?: "linear-rgb" | "srgb";
+  primitives: ThemeEffectPrimitive[];
+}
+
+export interface ThemeEffectBinding {
+  kind: "binding";
+  target: string;
+  effect_id: string;
+}
+
+export type ThemeEffectInput = "source-graphic" | "previous";
+export type ThemeEffectPrimitive =
+  | {
+      kind: "drop-shadow";
+      input?: ThemeEffectInput;
+      offset_x: number;
+      offset_y: number;
+      blur_radius: number;
+      spread: number;
+      color: string;
+    }
+  | { kind: "gaussian-blur"; input?: ThemeEffectInput; std_deviation: number }
+  | { kind: "color-matrix"; input?: ThemeEffectInput; values: number[] }
+  | {
+      kind: "turbulence";
+      input?: ThemeEffectInput;
+      base_frequency_x: number;
+      base_frequency_y: number;
+      octaves: number;
+      seed: number;
+    }
+  | {
+      kind: "displacement";
+      input?: ThemeEffectInput;
+      map_input: ThemeEffectInput;
+      scale: number;
+    };
+
+export interface ThemeRequirementsSpec {
+  capabilities?: string[];
+  text_capabilities?: string[];
+}
+
+export interface ThemeAssetsSpec {
+  fonts?: ThemeFontAsset[];
+  aliases?: Array<{ alias: string; target: string }>;
+  generic_families?: Array<{ generic: string; target: string }>;
+  available_sources?: Array<"embedded" | "system">;
+  embedding?: "none" | "full-font" | "subset";
+}
+
+export interface ThemeFontAsset {
+  id: string;
+  format: "truetype" | "opentype" | "collection" | "woff2";
+  data_base64: string;
+}
+
+export interface MermaidSiteConfig {
+  [key: string]: unknown;
+  themeCSS?: never;
+  secure?: never;
+}
 
 export interface AnalysisBindingOptions {
   fixed_today?: string;
@@ -260,31 +595,31 @@ export type EditorAnalysisBindingOptions = Omit<
 };
 
 interface BindingVersionOptions {
-  version?: 2;
+  version?: typeof BINDING_OPTIONS_SCHEMA_VERSION;
 }
 
-type NoDirectAnalysisBindingOptions<Options extends AnalysisBindingOptions> = {
+type NoDirectAnalysisBindingOptions<Options extends Omit<AnalysisBindingOptions, "resources">> = {
   [Property in keyof Options]?: never;
 };
 
-type DirectAnalysisBindingRoot<Options extends AnalysisBindingOptions> = Options & {
+type DirectAnalysisBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> = Options & {
   analysis?: never;
   merman?: never;
 };
 
-type AnalysisWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+type AnalysisWrappedBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   NoDirectAnalysisBindingOptions<Options> & {
   analysis: Options;
   merman?: never;
 };
 
-type MermanWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+type MermanWrappedBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   NoDirectAnalysisBindingOptions<Options> & {
   analysis?: never;
   merman: Options;
 };
 
-type AnalysisBindingRoot<Options extends AnalysisBindingOptions> =
+type AnalysisBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   (
     | DirectAnalysisBindingRoot<Options>
     | AnalysisWrappedBindingRoot<Options>
@@ -392,13 +727,59 @@ interface AsciiBindingFields {
 export type AsciiBindingOptions = CommonBindingOptions & AsciiBindingFields;
 
 interface SvgBindingFields {
-  presentation?: PresentationOptions;
+  theme?: DiagramThemeSelection | null;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
+
+export type ThemeResourceLimitId =
+  | "max_theme_encoded_bytes"
+  | "max_theme_base64_bytes"
+  | "max_font_asset_compressed_bytes"
+  | "max_font_asset_decoded_bytes"
+  | "max_font_catalog_decoded_bytes"
+  | "max_font_assets"
+  | "max_font_faces"
+  | "max_font_tables"
+  | "max_font_aliases"
+  | "max_font_decoded_expansion_ratio"
+  | "max_effect_graphs"
+  | "max_effect_primitives_per_graph"
+  | "max_effect_bindings"
+  | "max_effect_offset_magnitude"
+  | "max_effect_filter_region_magnitude"
+  | "max_effect_blur_magnitude"
+  | "max_effect_displacement_scale"
+  | "max_effect_turbulence_octaves";
+
+export interface ThemeAuthoringResourceOptions {
+  profile?: ResourceProfile;
+  limits?: Partial<Record<ThemeResourceLimitId, number>>;
+}
+
+type ThemeAuthoringAnalysisOptions = Omit<AnalysisBindingOptions, "resources"> & {
+  resources?: ThemeAuthoringResourceOptions;
+};
+
+export type ThemeAuthoringOptions = BindingVersionOptions &
+  AnalysisBindingRoot<ThemeAuthoringAnalysisOptions> &
+  CommonBindingFields & SvgBindingFields;
+
+type HostTextMeasurerEnvironmentOptions = Omit<
+  RenderEnvironmentOptions,
+  "text_measurement"
+> & {
+  text_measurement?: never;
+};
+
+export type HostTextMeasurerSvgBindingOptions =
+  CommonBindingOptions &
+  Omit<SvgBindingFields, "environment"> & {
+    environment?: HostTextMeasurerEnvironmentOptions;
+  };
 
 export type BindingOptions = SvgBindingOptions;
 
@@ -675,6 +1056,57 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
 }
 
 /**
+ * An actual render explanation with open identifiers, not a portability certificate.
+ * Rule diagnostics may describe partially applied rules; only `property`, when present, names
+ * a specific property. Source paths are RFC 6901 pointers relative to the named recipe payload
+ * (`definition` or `complete_spec`). Generated defaults and Rust input may have no source paths.
+ */
+export interface ThemeDiagnostic {
+  code: string;
+  subject: string;
+  target?: string | null;
+  property?: string | null;
+  source_document?: string | null;
+  source_paths: string[];
+  generated: boolean;
+}
+
+/** Renderer-owned outcome, with open status/reason IDs for forward-compatible consumers. */
+export interface ThemeExecutionEvidenceV1 {
+  version: 1;
+  family_id: string;
+  theme_status: string;
+  output_mutated: boolean;
+  target_kind: string;
+  target_status: string;
+  target_reason_ids: string[];
+  font_source: string;
+  /** Absent means not supplied. An empty list does not establish portability. */
+  diagnostics?: ThemeDiagnostic[];
+}
+
+/** Unknown versions stay opaque. Never treat an unknown status or version as portable. */
+export type ThemeExecutionEvidence =
+  | ThemeExecutionEvidenceV1
+  | { version: number; [key: string]: unknown };
+
+/** Existing binding metadata for the exact SVG returned by the same execution. */
+export interface SvgRenderMetadata {
+  version: 1;
+  operation_id: "svg";
+  media_type: "image/svg+xml";
+  runtime_policy: string;
+  byte_length: number;
+  theme_execution_evidence: ThemeExecutionEvidence;
+  [key: string]: unknown;
+}
+
+export interface SvgRenderResult {
+  svg: string;
+  metadata: SvgRenderMetadata;
+}
+
+/**
  * Capability plan for one SVG render request.
  *
  * The plan is emitted by the compiled SVG owner before drawing. `ready` is
@@ -684,17 +1116,9 @@ export interface SvgPlanResult {
   schema_version: 1;
   planned_operation_id: "svg";
   diagram_type: string;
-  presentation_profile_id: string | null;
-  presentation_aspects: SvgPlanPresentationAspect[];
   required_capability_ids: string[];
   missing_capability_ids: string[];
   ready: boolean;
-}
-
-export interface SvgPlanPresentationAspect {
-  id: string;
-  state: string;
-  required_capability_id: string | null;
 }
 
 export interface AvailableDiagramDetectionFacts {
@@ -957,6 +1381,12 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  renderSvgResult: (source: string, optionsJson?: string | null) => SvgRenderResult;
+  renderSvgResultWithTextMeasurer?: (
+    source: string,
+    optionsJson: string | null | undefined,
+    measurer: HostTextMeasurer
+  ) => SvgRenderResult;
   edgeGeometryJson: (source: string, optionsJson?: string | null) => string;
   edgeGeometryJsonWithTextMeasurer?: (
     source: string,
@@ -1065,7 +1495,19 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   runtimeCatalog: () => RuntimeCatalog;
-  presentationCatalog: () => PresentationCatalog;
+  themeCatalog: () => ThemeCatalog;
+  materializeTheme: (
+    definitionJson: string,
+    optionsJson?: string | null
+  ) => MaterializedThemeWireV1;
+  describeThemeSupport: (
+    queryJson: string,
+    optionsJson?: string | null
+  ) => ThemeCapabilityDescriptor;
+  exportThemePreset: (
+    presetId: string,
+    optionsJson?: string | null
+  ) => ThemeRecipeV1;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

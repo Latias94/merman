@@ -14,7 +14,7 @@ pub(super) struct ActorManGlyphPlacement<'a> {
 }
 
 pub(super) fn write_actor_man_glyph(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     actor_id: &str,
     actor: &SequenceActor,
     node: &LayoutNode,
@@ -51,16 +51,22 @@ pub(super) fn write_actor_man_glyph(
         r#"<g class="{group_class} {placement_class}" name="{}""#,
         escape_attr(actor_id)
     );
-    if bands.is_none() {
+    let translate_y = if bands.is_none() {
         match actor_type {
-            "boundary" => out.push_str(r#" transform="translate(0,21)""#),
+            "boundary" => {
+                out.push_str(r#" transform="translate(0,21)""#);
+                21.0
+            }
             "entity" => {
                 let offset = if placement.footer { 22 } else { 6 };
                 let _ = write!(out, r#" transform="translate(0, {offset})""#);
+                f64::from(offset)
             }
-            _ => {}
+            _ => 0.0,
         }
-    }
+    } else {
+        0.0
+    };
     if matches!(actor_type, "boundary" | "entity") {
         label_ctx.write_shadow_attr(out);
     }
@@ -180,7 +186,11 @@ pub(super) fn write_actor_man_glyph(
                     _ => 0.0,
                 }
         });
-    label_ctx.write_actor_man(out, cx, label_y, actor)?;
+    let translated_labels = ActorLabelContext {
+        translate_y,
+        ..*label_ctx
+    };
+    translated_labels.write_actor_man(out, cx, label_y, actor)?;
     out.push_str("</g>");
-    Ok(())
+    out.checkpoint()
 }

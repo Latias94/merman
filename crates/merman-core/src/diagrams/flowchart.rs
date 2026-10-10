@@ -15,7 +15,7 @@ use crate::{
 use indexmap::IndexMap;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use serde_json::{Value, json};
-#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::cell::Cell;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use std::collections::{HashMap, HashSet};
@@ -208,7 +208,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     } = scan_flowchart_accessibility_controlled(code, control)?;
     control.checkpoint()?;
     let trace = construct_flowchart_token_trace(&code, control)?;
-    let construction = match parse_flowchart_ast_from_trace(&trace, control)? {
+    let construction = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
             control.checkpoint()?;
@@ -555,9 +555,35 @@ fn prepare_flowchart_shape_data_document(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+const DEFAULT_FLOWCHART_MAX_EDGES: usize = 500;
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn flowchart_edge_budget(meta: &ParseMetadata) -> Cell<usize> {
+    let max_edges = meta
+        .effective_config
+        .as_value()
+        .get("maxEdges")
+        .and_then(Value::as_u64)
+        .map_or(DEFAULT_FLOWCHART_MAX_EDGES, |value| {
+            usize::try_from(value).unwrap_or(usize::MAX)
+        });
+    Cell::new(max_edges)
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpan>) -> LexError {
+    let message = message.into();
+    match span {
+        Some(span) => LexError::with_span(message, span),
+        None => LexError::new(message),
+    }
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
+    let edge_budget = flowchart_edge_budget(meta);
     flowchart_grammar::FlowchartAstParser::new()
-        .parse(Lexer::new(code))
+        .parse(&edge_budget, Lexer::new(code))
         .map_err(|e| {
             Error::diagram_parse_diagnostic(
                 meta.diagram_type.clone(),
@@ -663,11 +689,13 @@ fn construct_flowchart_token_trace(
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn parse_flowchart_ast_from_trace(
     trace: &FlowchartTokenTrace,
+    meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<FlowchartAst, Box<FlowchartAstParseError>>> {
+    let edge_budget = flowchart_edge_budget(meta);
     control.checkpoint()?;
     let parsed = flowchart_grammar::FlowchartAstParser::new()
-        .parse(trace.parser_items(control))
+        .parse(&edge_budget, trace.parser_items(control))
         .map_err(Box::new);
     control.checkpoint()?;
     Ok(parsed)
@@ -1695,7 +1723,7 @@ impl FlowchartSemanticSource {
             match flow_edge_to_model(edge, meta) {
                 Ok((edge, render_label_source)) => {
                     if let Some(source) = render_label_source {
-                        render_label_sources.insert_edge(edge.id.clone(), source);
+                        render_label_sources.insert_edge(index, source);
                     }
                     render_edges.push(edge);
                 }
@@ -2544,12 +2572,13 @@ F -- "&nbsp;" --> G
                 .as_deref()
         };
         let edge_render_label = |from: &str| {
-            let edge = model
+            let (semantic_index, edge) = model
                 .edges
                 .iter()
-                .find(|edge| edge.from == from)
+                .enumerate()
+                .find(|(_, edge)| edge.from == from)
                 .unwrap_or_else(|| panic!("missing edge from {from}"));
-            render_label_sources.edge_label_for_render(edge)
+            render_label_sources.edge_label_for_render(semantic_index, edge)
         };
 
         assert_eq!(node_label("Direct"), "Direct");
@@ -2585,6 +2614,25 @@ F -- "&nbsp;" --> G
         assert_eq!(edge_render_label("D"), Some("&nbsp;MixedEdge&nbsp;"));
         assert_eq!(edge_render_label("E"), Some(""));
         assert_eq!(edge_render_label("F"), Some("&nbsp;"));
+
+        let duplicate_edge_source = r#"flowchart LR
+X L_A_B_0@-->|first &amp; owner| Y
+A -->|second &lt; owner| B
+"#;
+        let (duplicate_edge_model, duplicate_edge_sources) =
+            parse_flowchart_model_with_render_context(duplicate_edge_source, &meta)
+                .expect("duplicate-id edge model");
+        assert_eq!(duplicate_edge_model.edges.len(), 2);
+        assert_eq!(duplicate_edge_model.edges[0].id, "L_A_B_0");
+        assert_eq!(duplicate_edge_model.edges[1].id, "L_A_B_0");
+        assert_eq!(
+            duplicate_edge_sources.edge_label_for_render(0, &duplicate_edge_model.edges[0]),
+            Some("first &amp; owner")
+        );
+        assert_eq!(
+            duplicate_edge_sources.edge_label_for_render(1, &duplicate_edge_model.edges[1]),
+            Some("second &lt; owner")
+        );
 
         let subgraph_source =
             format!("flowchart LR\nsubgraph SG[\"{nbsp}&nbsp;Group&nbsp;{nbsp}\"]\n  H\nend\n");
@@ -2839,6 +2887,65 @@ F -- "&nbsp;" --> G
             semantic_source.into_render_model_controlled(&meta, &render_control),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn grouped_flowchart_edges_respect_configured_max_edges_before_expansion() {
+        let mut meta = flowchart_test_meta("flowchart-v2");
+        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 6}));
+
+        let at_limit = parse_flowchart_ast("flowchart TD\na & b --> c & d & e\n", &meta)
+            .expect("an edge group at maxEdges should parse");
+        let Stmt::Chain { edge_groups, .. } = &at_limit.statements[0] else {
+            panic!("expected grouped edge chain");
+        };
+        assert_eq!(edge_groups[0].len(), 6);
+
+        let over_limit = parse_flowchart_ast("flowchart TD\na & b --> c & d & e & f\n", &meta)
+            .expect_err("an edge group over maxEdges should fail during parsing");
+        assert!(
+            over_limit
+                .to_string()
+                .contains("Flowchart edge limit exceeded")
+        );
+        assert!(over_limit.to_string().contains("maxEdges"));
+    }
+
+    #[test]
+    fn grouped_flowchart_edge_budget_is_shared_across_chains() {
+        let mut meta = flowchart_test_meta("flowchart-v2");
+        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 7}));
+
+        let error = parse_flowchart_ast("flowchart TD\na & b --> c & d\ne & f --> g & h\n", &meta)
+            .expect_err("the shared maxEdges budget should cover every chain");
+        assert!(
+            error
+                .to_string()
+                .contains("only 3 of the maxEdges budget remain")
+        );
+    }
+
+    #[test]
+    fn combined_flowchart_parser_enforces_max_edges_in_the_traced_path() {
+        let mut meta = flowchart_test_meta("flowchart-v2");
+        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 3}));
+        let control = OperationControl::new();
+
+        let parsed = parse_flowchart_json_and_editor_facts(
+            "flowchart TD\na & b --> c & d\n",
+            &meta,
+            &control,
+        )
+        .expect("the controlled parser should return a combined result");
+        let (model, facts, _) = parsed.into_parts();
+        let error = model.expect_err("the traced parser should reject the expanded edge group");
+        assert!(error.to_string().contains("Flowchart edge limit exceeded"));
+        assert!(
+            facts
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("flowchart parser recovered"))
+        );
     }
 
     #[test]

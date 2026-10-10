@@ -3,22 +3,29 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::flowchart::FlowchartModel;
-use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{
+    DiagramFamilyId, Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
+};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
     TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
-use merman_render::model::FlowchartLayout;
-use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+use merman_render::model::{FlowchartLayout, SwimlaneLayout};
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 use std::path::PathBuf;
-#[cfg(feature = "math")]
-use std::sync::Arc;
 
 fn environment_with_measurer<M>(name: &str, measurer: M) -> RenderEnvironment
 where
@@ -67,6 +74,115 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(Engine::new(), text)
 }
 
+fn assert_svg_ids_are_unique(svg: &str) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart-family SVG");
+    let mut ids = std::collections::BTreeSet::new();
+    for id in document
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+    {
+        assert!(ids.insert(id), "duplicate SVG id `{id}`: {svg}");
+    }
+}
+
+fn edge_label_padding_theme(padding: InsetsPx) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_padding(padding),
+            ))),
+        )
+        .expect("compile edge-label padding theme")
+}
+
+fn edge_stroke_width_theme(width: f32) -> DiagramTheme {
+    edge_stroke_width_theme_rule(width, false)
+}
+
+fn explicit_default_edge_stroke_width_theme(width: f32) -> DiagramTheme {
+    edge_stroke_width_theme_rule(width, true)
+}
+
+fn edge_stroke_width_theme_rule(width: f32, explicit_default: bool) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default()
+            .with_stroke_width(width)
+            .expect("valid edge stroke width"),
+    );
+    let rule = if explicit_default {
+        rule.with_variant(ThemeVariant::Default)
+    } else {
+        rule
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile edge stroke-width theme")
+}
+
+fn node_label_fill_theme(family: DiagramFamilyId, color: &str) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid(color).expect("valid Flowchart NodeLabel fill"),
+                        ),
+                    )
+                    .for_family(family),
+                ),
+            ),
+        )
+        .expect("compile Flowchart NodeLabel fill theme")
+}
+
+fn prepare_flowchart_family_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> family::FamilyRenderArtifact {
+    prepare_flowchart_family_with_theme_and_portability(
+        source,
+        theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn prepare_flowchart_family_with_theme_and_portability(
+    source: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> family::FamilyRenderArtifact {
+    prepare_flowchart_family_with_theme_engine_and_portability(
+        source,
+        theme,
+        Engine::new(),
+        portability,
+    )
+}
+
+fn prepare_flowchart_family_with_theme_engine_and_portability(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> family::FamilyRenderArtifact {
+    let parsed = block_on(
+        merman_render::__private::install_parse_compatibility(theme, engine)
+            .parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse themed Flowchart family")
+    .expect("detect themed Flowchart family");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Flowchart session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Flowchart family")
+}
+
 fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(
         Engine::new().with_site_config(MermaidConfig::from_value(
@@ -74,6 +190,114 @@ fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
         )),
         text,
     )
+}
+
+#[test]
+fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
+    for (source, expected) in [
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_deeply_nested_clusters_019.mmd"
+            ),
+            [
+                "l1a", "l1b", "l2a", "l2b", "l3a", "l3b", "l4a", "l4b", "outside", "outside2",
+            ]
+            .as_slice(),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_dir_inherit_vs_local_016.mmd"
+            ),
+            [
+                "t1", "b1", "t2", "b2", "outside1", "outside2", "outside3", "outside4",
+            ]
+            .as_slice(),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_spec_30_possibility_to_style_text_color_of_nodes_and_subgraphs_as_wel_030.mmd"
+            ),
+            ["A", "B", "E", "C", "D"].as_slice(),
+        ),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"layout": "elk"}),
+        ));
+        let svg = render_flowchart_svg_from_text_with_engine(engine, source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let actual = document
+            .descendants()
+            .filter(|node| node.attribute("data-et") == Some("node"))
+            .map(|node| node.attribute("data-id").expect("semantic node identity"))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "ELK paint order for {source}");
+    }
+}
+
+#[test]
+fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
+    let fixtures = [
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_title_margins_extreme_nested_030.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/stress_flowchart_subgraph_title_margins_extreme_nested_030.svg"
+            ),
+            "L_c_Outer_0",
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044.svg"
+            ),
+            "L_Sub_In_0",
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.svg"
+            ),
+            "L_Sub_In_0",
+        ),
+    ];
+    for (source, upstream, edge_id) in fixtures {
+        let svg = render_flowchart_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"layout": "elk"}),
+            )),
+            source,
+        );
+        let endpoints = |svg: &str| {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let edge = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-id") == Some(edge_id)
+                })
+                .expect("ancestor/descendant edge");
+            svgtypes::PathParser::from(edge.attribute("d").unwrap())
+                .map(|segment| match segment.unwrap() {
+                    svgtypes::PathSegment::MoveTo { abs: true, x, y }
+                    | svgtypes::PathSegment::LineTo { abs: true, x, y } => (x, y),
+                    other => panic!("expected a visible straight route, got {other:?}"),
+                })
+                .collect::<Vec<_>>()
+        };
+        let actual = endpoints(&svg);
+        let expected = endpoints(upstream);
+        assert_eq!(actual.len(), 2, "edge {edge_id} must remain visible");
+        assert_ne!(actual[0], actual[1]);
+        assert_eq!(actual.len(), expected.len());
+        for ((actual_x, actual_y), (expected_x, expected_y)) in actual.into_iter().zip(expected) {
+            assert!((actual_x - expected_x).abs() < 0.001);
+            assert!((actual_y - expected_y).abs() < 0.001);
+        }
+    }
 }
 
 fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
@@ -103,6 +327,126 @@ fn render_flowchart_svg_from_text_with_engine_and_policy(
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+fn try_render_flowchart_svg_with_resource_policy(
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Flowchart resource-bound session");
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()))
+            .expect("parse Flowchart resource-bound fixture")
+            .expect("detect Flowchart resource-bound fixture");
+    render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions::default(),
+    )
+}
+
+#[test]
+fn flowchart_families_accept_exact_max_svg_bytes_and_reject_one_byte_less() {
+    for (family, source) in [
+        (
+            "Flowchart",
+            "flowchart TD\nA[Alpha] -->|advance| B[Beta]\nB --> C[Gamma]\n",
+        ),
+        (
+            "Swimlane",
+            "swimlane-beta LR\nA[Alpha] -->|advance| B[Beta]\nB --> C[Gamma]\n",
+        ),
+    ] {
+        let baseline = try_render_flowchart_svg_with_resource_policy(
+            source,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap_or_else(|error| panic!("render the unbounded {family} baseline: {error}"));
+        let exact_bytes = baseline.len();
+        assert!(
+            exact_bytes > 1,
+            "{family} fixture must emit a non-empty SVG"
+        );
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .unwrap_or_else(|error| panic!("valid exact {family} SVG byte ceiling: {error}"));
+        let exact = try_render_flowchart_svg_with_resource_policy(source, exact_policy)
+            .unwrap_or_else(|error| {
+                panic!("exact {family} SVG byte ceiling must succeed: {error}")
+            });
+        assert_eq!(exact.as_bytes(), baseline.as_bytes(), "{family}");
+
+        let below_exact = exact_bytes - 1;
+        let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+            .unwrap_or_else(|error| panic!("valid below-exact {family} SVG ceiling: {error}"));
+        let error = match try_render_flowchart_svg_with_resource_policy(source, below_policy) {
+            Ok(_) => panic!("one byte below the {family} SVG size must fail"),
+            Err(error) => error,
+        };
+        let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected {family} MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling, "{family}");
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput, "{family}");
+        assert_eq!(
+            limit.limit,
+            ResourceLimitId::MaxSvgBytes.as_str(),
+            "{family}"
+        );
+        assert_eq!(limit.max, below_exact, "{family}");
+        assert!(limit.actual > limit.max, "{family}");
+        assert!(
+            limit.explicit_overrides.iter().any(|resource_override| {
+                resource_override.id == ResourceLimitId::MaxSvgBytes
+                    && resource_override.value == below_exact
+            }),
+            "{family}"
+        );
+    }
+}
+
+#[test]
+fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
+    for source in [
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+        concat!(
+            "flowchart TD\n",
+            "  subgraph X[First title]\n    A\n  end\n",
+            "  subgraph X[\"&nbsp;Second title&nbsp;\"]\n    B\n  end\n",
+        ),
+        "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[\"&nbsp;Second title\"]\n    B\n  end\n",
+        "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\n  subgraph X[\"&nbsp;First title\"]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+    ] {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some("X")
+                    && node.attribute("data-et") == Some("cluster")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(clusters.len(), 1, "{svg}");
+        let visible_text = clusters[0]
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(visible_text.contains("First title"), "{svg}");
+        assert!(!visible_text.contains("Second title"), "{svg}");
+    }
 }
 
 #[test]
@@ -264,12 +608,300 @@ fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
     .expect("render svg");
 
     assert!(svg.starts_with(r#"<svg id="flow-root""#));
+    assert!(svg.contains(r#"aria-describedby="flow-root-merman-flowchart-document-a11y-description" aria-labelledby="flow-root-merman-flowchart-document-a11y-title""#));
     assert!(svg.contains(
-        r#"aria-describedby="chart-desc-flow-root" aria-labelledby="chart-title-flow-root""#
+        r#"<title id="flow-root-merman-flowchart-document-a11y-title">Accessible title</title>"#
     ));
-    assert!(svg.contains(r#"<title id="chart-title-flow-root">Accessible title</title>"#));
-    assert!(svg.contains(r#"<desc id="chart-desc-flow-root">Accessible description</desc>"#));
+    assert!(svg.contains(r#"<desc id="flow-root-merman-flowchart-document-a11y-description">Accessible description</desc>"#));
     assert!(!svg.contains(diagram_id));
+}
+
+#[test]
+fn flowchart_accessibility_ids_close_for_title_only_and_description_only() {
+    let render = |source: &str| {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin Flowchart accessibility session");
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse Flowchart accessibility fixture")
+                .expect("detect Flowchart accessibility fixture");
+        render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions {
+                diagram_id: Some("aria.scope:v1".to_string()),
+                ..SvgRenderOptions::default()
+            },
+        )
+        .expect("render Flowchart accessibility fixture")
+    };
+    let scope = "aria-scope-v1-merman-flowchart-document";
+    let title_id = format!("{scope}-a11y-title");
+    let description_id = format!("{scope}-a11y-description");
+
+    let title_svg = render("flowchart TD\naccTitle: Title only\nA --> B\n");
+    let title_document = roxmltree::Document::parse(&title_svg).expect("valid title-only SVG");
+    assert_eq!(
+        title_document.root_element().attribute("aria-labelledby"),
+        Some(title_id.as_str())
+    );
+    assert_eq!(
+        title_document.root_element().attribute("aria-describedby"),
+        None
+    );
+    assert_eq!(
+        title_document
+            .descendants()
+            .find(|node| node.has_tag_name("title"))
+            .and_then(|node| node.attribute("id")),
+        Some(title_id.as_str())
+    );
+
+    let description_svg = render("flowchart TD\naccDescr: Description only\nA --> B\n");
+    let description_document =
+        roxmltree::Document::parse(&description_svg).expect("valid description-only SVG");
+    assert_eq!(
+        description_document
+            .root_element()
+            .attribute("aria-describedby"),
+        Some(description_id.as_str())
+    );
+    assert_eq!(
+        description_document
+            .root_element()
+            .attribute("aria-labelledby"),
+        None
+    );
+    assert_eq!(
+        description_document
+            .descendants()
+            .find(|node| node.has_tag_name("desc"))
+            .and_then(|node| node.attribute("id")),
+        Some(description_id.as_str())
+    );
+}
+
+#[test]
+fn flowchart_shadow_css_references_the_emitted_document_filters() {
+    let source = "flowchart TD\nA --> B\n";
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "dropShadow": "url(#drop-shadow) url(#drop-shadow-small)"
+        }
+    })));
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin Flowchart shadow-closure session");
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
+        .expect("parse Flowchart shadow-closure fixture")
+        .expect("detect Flowchart shadow-closure fixture");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions {
+            diagram_id: Some("shadow.scope:v1".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render Flowchart shadow-closure fixture");
+
+    let scope = "shadow-scope-v1-merman-flowchart-document";
+    let drop_shadow = format!("{scope}-filter-drop-shadow");
+    let drop_shadow_small = format!("{scope}-filter-drop-shadow-small");
+    assert!(svg.contains(&format!(r#"id="{drop_shadow}""#)), "{svg}");
+    assert!(
+        svg.contains(&format!(r#"id="{drop_shadow_small}""#)),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(&format!(
+            "filter:url(#{drop_shadow}) url(#{drop_shadow_small});"
+        )),
+        "{svg}"
+    );
+    assert!(!svg.contains("url(#drop-shadow)"), "{svg}");
+    assert!(!svg.contains("url(#drop-shadow-small)"), "{svg}");
+}
+
+#[test]
+fn flowchart_edge_and_cluster_with_the_same_raw_id_use_distinct_document_ids() {
+    let svg = render_flowchart_svg_from_text("flowchart TD\nsubgraph L_A_B_0\n  A --> B\nend\n");
+
+    assert_svg_ids_are_unique(&svg);
+    assert!(
+        svg.contains(r#"data-id="L_A_B_0" data-et="cluster""#),
+        "{svg}"
+    );
+    assert!(svg.contains(r#"data-et="edge" data-id="L_A_B_0""#), "{svg}");
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_multiple_clusters_have_distinct_document_ids() {
+    let svg = render_flowchart_svg_from_text(
+        "---\nconfig:\n  layout: elk\n---\nflowchart TD\nsubgraph First\n  A\nend\nsubgraph Second\n  B\nend\n",
+    );
+
+    assert_svg_ids_are_unique(&svg);
+    assert_eq!(svg.matches(r#"data-et="cluster""#).count(), 2, "{svg}");
+    assert!(!svg.contains(r#"id="[object Object]""#), "{svg}");
+}
+
+#[test]
+fn swimlane_a11y_and_lane_raw_ids_remain_in_disjoint_namespaces() {
+    let source =
+        "swimlane-beta LR\naccTitle: Accessible title\nsubgraph chart-title-flow-root\n  A\nend\n";
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions {
+            diagram_id: Some("flow-root".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render Swimlane SVG");
+
+    assert_svg_ids_are_unique(&svg);
+    assert!(
+        svg.contains(r#"data-id="chart-title-flow-root" data-et="cluster""#),
+        "{svg}"
+    );
+}
+
+#[test]
+fn swimlane_generated_edge_label_nodes_receive_document_owned_ids() {
+    let svg = render_flowchart_svg_from_text(
+        "swimlane-beta LR\nA labeled@-->|generated label owner| B\n",
+    );
+
+    assert_svg_ids_are_unique(&svg);
+    assert!(
+        svg.contains(r#"data-id="labeled" data-et="edge-label""#),
+        "{svg}"
+    );
+}
+
+#[test]
+fn swimlane_title_foreign_object_reuses_layout_text_metrics() {
+    let source = r#"swimlane-beta TB
+subgraph Lane[Large Lane Title]
+  A[Node]
+end
+classDef huge font-size:40px,font-family:Arial
+class Lane huge
+"#;
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse Swimlane source")
+            .expect("detect Swimlane diagram");
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin Swimlane session"),
+    )
+    .expect("prepare Swimlane artifact");
+    let projection = artifact.layout_json().expect("project Swimlane layout");
+    let layout: SwimlaneLayout =
+        serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
+            .expect("decode Swimlane layout");
+    let lane = layout.lanes.first().expect("prepared Swimlane lane");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Swimlane SVG");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
+    let foreign_object = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "swimlane-label")
+                })
+        })
+        .and_then(|group| {
+            group
+                .children()
+                .find(|node| node.has_tag_name("foreignObject"))
+        })
+        .expect("Swimlane title foreignObject");
+    let width = foreign_object
+        .attribute("width")
+        .expect("title foreignObject width")
+        .parse::<f64>()
+        .expect("numeric title foreignObject width");
+    let height = foreign_object
+        .attribute("height")
+        .expect("title foreignObject height")
+        .parse::<f64>()
+        .expect("numeric title foreignObject height");
+    assert!((width - lane.title_label_width).abs() <= 1.0e-6);
+    assert!((height - lane.title_label_height).abs() <= 1.0e-6);
+
+    let title_rect = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "swimlane-title")
+                })
+        })
+        .expect("Swimlane title rect");
+    let rendered_lane_width = title_rect
+        .attribute("width")
+        .expect("title rect width")
+        .parse::<f64>()
+        .expect("numeric title rect width");
+    assert!(
+        rendered_lane_width >= lane.title_label_width + lane.padding,
+        "rendered lane must contain the prepared title: {}",
+        rendered.svg()
+    );
+
+    let [viewbox_x, _, viewbox_width, _] = flowchart_svg_viewbox_values(rendered.svg());
+    let title_x = title_rect
+        .attribute("x")
+        .expect("title rect x")
+        .parse::<f64>()
+        .expect("numeric title rect x");
+    assert!(
+        viewbox_x <= title_x && viewbox_x + viewbox_width >= title_x + rendered_lane_width,
+        "viewBox must contain the rendered Swimlane title band: {}",
+        rendered.svg()
+    );
+}
+
+#[test]
+fn flowchart_root_gradient_and_same_named_cluster_use_distinct_document_ids() {
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"theme": "base"}}%%
+flowchart TD
+subgraph gradient
+  A
+end
+"##,
+    );
+
+    assert_svg_ids_are_unique(&svg);
+    assert!(
+        svg.contains(r#"data-id="gradient" data-et="cluster""#),
+        "{svg}"
+    );
 }
 
 #[test]
@@ -480,14 +1112,12 @@ end
     );
 
     let node_text = |id: &str| {
-        let id_fragment = format!("-flowchart-{id}-");
         let node = document
             .descendants()
             .find(|node| {
                 node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&id_fragment))
+                    && node.attribute("data-id") == Some(id)
+                    && node.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("missing node {id}"));
         node.descendants()
@@ -517,14 +1147,12 @@ I@{ shape: icon, label: "Plain" }
     );
     let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
 
-    let id_prefix = "merman-flowchart-I-";
     assert!(
         document.descendants().any(|node| {
             node.is_element()
                 && node.tag_name().name() == "g"
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with(id_prefix))
+                && node.attribute("data-id") == Some("I")
+                && node.attribute("data-et") == Some("node")
                 && node.attribute("class") == Some("icon-shape default")
         }),
         "missing source-defined icon frame: {svg}"
@@ -548,15 +1176,13 @@ style C fill:#ff99ff,stroke:#333333,stroke-width:4px
     let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
 
     let node = |node_id: &str| {
-        let id_prefix = format!("merman-flowchart-{node_id}-");
         document
             .descendants()
             .find(|node| {
                 node.is_element()
                     && node.tag_name().name() == "g"
-                    && node
-                        .attribute("id")
-                        .is_some_and(|id| id.starts_with(&id_prefix))
+                    && node.attribute("data-id") == Some(node_id)
+                    && node.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"))
     };
@@ -599,15 +1225,356 @@ style C fill:#ff99ff,stroke:#333333,stroke-width:4px
 }
 
 #[test]
+fn flowchart_hand_drawn_icon_frame_uses_hachure_geometry() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart LR
+I@{ icon: "fa:bell", form: "rounded", label: "Icon" }
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn icon SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("I")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn icon node");
+    assert!(
+        node.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("stroke-width") == Some("4")
+                && element.attribute("stroke-dasharray") == Some("0 0")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn icon frame must emit a non-empty hachure path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_icon_and_image_labels_emit_the_typography_used_for_measurement() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+I@{ icon: "missing:icon", label: "Icon" }
+C@{ icon: "missing:icon", form: "circle", label: "Circle" }
+S@{ icon: "missing:icon", form: "square", label: "Square" }
+M@{ img: "https://mermaid.js.org/favicon.svg", label: "Image", h: 60, constraint: "on" }
+classDef themed font-family:Arial,font-size:28px,font-weight:700,font-style:italic,letter-spacing:2px,color:#123456
+class I,C,S,M themed
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    for node_id in ["I", "C", "S", "M"] {
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some(node_id)
+                    && node.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("missing Flowchart node {node_id}: {svg}"));
+        let label = node
+            .descendants()
+            .find(|child| child.has_tag_name("g") && child.attribute("class") == Some("label"))
+            .unwrap_or_else(|| panic!("missing label for Flowchart node {node_id}: {svg}"));
+        let group_style = label.attribute("style").unwrap_or_default();
+        for declaration in [
+            "font-family:Arial !important",
+            "font-size:28px !important",
+            "font-weight:700 !important",
+            "font-style:italic !important",
+            "letter-spacing:2px !important",
+            "color:#123456 !important",
+        ] {
+            assert!(
+                group_style.contains(declaration),
+                "node {node_id} label must emit {declaration}: {svg}"
+            );
+        }
+
+        let span_style = label
+            .descendants()
+            .find(|child| child.has_tag_name("span"))
+            .and_then(|span| span.attribute("style"))
+            .unwrap_or_default();
+        assert_eq!(span_style, group_style, "node {node_id}: {svg}");
+
+        let label_height = label
+            .descendants()
+            .find(|child| child.has_tag_name("foreignObject"))
+            .and_then(|foreign_object| foreign_object.attribute("height"))
+            .and_then(|height| height.parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("missing label metrics for node {node_id}: {svg}"));
+        assert!(
+            label_height > 28.0,
+            "node {node_id} must be measured with the emitted 28px font: {svg}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_svg_renders_one_logical_self_loop_edge() {
     let svg = render_flowchart_svg_from_text("flowchart TB\nA -->|again| A\n");
 
-    assert_eq!(svg.matches(r#"id="merman-L_A_A_0""#).count(), 1, "{svg}");
+    assert_eq!(
+        svg.matches(r#"id="merman-merman-flowchart-document-edge-0""#)
+            .count(),
+        1,
+        "{svg}"
+    );
     assert!(svg.contains(r#"data-id="L_A_A_0""#), "{svg}");
     assert!(
         !svg.contains("cyclic-special"),
         "Dagre self-loop segments must not leak into the rendered SVG: {svg}"
     );
+}
+
+#[test]
+fn duplicate_flowchart_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+X L_A_B_0@-->|first &amp; owner| Y
+A -->|second &lt; owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both semantic occurrences must render: {svg}"
+    );
+    assert_duplicate_raw_edge_path_dom_identity(&paths, "L_A_B_0", &svg);
+    assert_ne!(
+        paths[0].attribute("d"),
+        paths[1].attribute("d"),
+        "duplicate raw ids must not alias routed geometry"
+    );
+    let styles = paths
+        .iter()
+        .filter_map(|path| path.attribute("style"))
+        .collect::<Vec<_>>();
+    assert!(styles.iter().any(|style| style.contains("stroke:#ef4444")));
+    assert!(styles.iter().any(|style| style.contains("stroke:#2563eb")));
+    let marker_ends = paths
+        .iter()
+        .filter_map(|path| path.attribute("marker-end"))
+        .collect::<Vec<_>>();
+    assert!(marker_ends.iter().any(|marker| marker.contains("__ef4444")));
+    assert!(marker_ends.iter().any(|marker| marker.contains("__2563eb")));
+
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class") == Some("label")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .map(|label| {
+            label
+                .descendants()
+                .filter_map(|node| node.text().filter(|_| node.is_text()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        labels.iter().any(|label| label == "first & owner"),
+        "{labels:?}"
+    );
+    assert!(
+        labels.iter().any(|label| label == "second < owner"),
+        "{labels:?}"
+    );
+}
+
+#[test]
+fn duplicate_flowchart_edge_ids_on_the_same_graphlib_key_keep_the_last_semantic_owner() {
+    let svg = render_flowchart_svg_from_text(
+        r##"---
+config:
+  layout: dagre
+---
+flowchart LR
+A L_A_B_2@-->|first owner| B
+A -->|second owner| B
+A -->|third owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+linkStyle 2 stroke:#16a34a
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "Graphlib must retain one L_A_B_2 owner: {svg}"
+    );
+    let collided = paths
+        .iter()
+        .find(|path| path.attribute("data-id") == Some("L_A_B_2"))
+        .expect("surviving collided edge");
+    let style = collided.attribute("style").unwrap_or_default();
+    assert!(style.contains("stroke:#2563eb"), "{style}");
+    assert!(!style.contains("stroke:#ef4444"), "{style}");
+    assert!(svg.contains("second owner"), "{svg}");
+    assert!(!svg.contains("first owner"), "{svg}");
+}
+
+#[test]
+fn duplicate_flowchart_self_loop_ids_merge_each_semantic_occurrence_independently() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart LR\nX L_A_A_0@-->|first loop| X\nA -->|second loop| A\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_A_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both compact self-loops must survive: {svg}"
+    );
+    assert_ne!(paths[0].attribute("d"), paths[1].attribute("d"));
+    assert!(
+        !svg.contains("cyclic-special"),
+        "helper segments leaked: {svg}"
+    );
+    assert!(svg.contains("first loop"), "{svg}");
+    assert!(svg.contains("second loop"), "{svg}");
+}
+
+fn assert_duplicate_raw_edge_path_dom_identity(
+    paths: &[roxmltree::Node<'_, '_>],
+    raw_id: &str,
+    svg: &str,
+) {
+    assert_eq!(paths.len(), 2, "expected two duplicate-id paths: {svg}");
+    assert!(
+        paths
+            .iter()
+            .all(|path| path.attribute("data-id") == Some(raw_id)),
+        "public data-id must preserve the raw Mermaid id: {svg}"
+    );
+    let first_dom_id = paths[0]
+        .attribute("id")
+        .unwrap_or_else(|| panic!("first duplicate-id path is missing a DOM id: {svg}"));
+    let second_dom_id = paths[1]
+        .attribute("id")
+        .unwrap_or_else(|| panic!("second duplicate-id path is missing a DOM id: {svg}"));
+    assert_ne!(
+        first_dom_id, second_dom_id,
+        "duplicate raw ids must use occurrence-safe DOM ids: {svg}"
+    );
+}
+
+fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart-family SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both semantic occurrences must render: {svg}"
+    );
+    assert_duplicate_raw_edge_path_dom_identity(&paths, "L_A_B_0", svg);
+    assert_ne!(
+        paths[0].attribute("d"),
+        paths[1].attribute("d"),
+        "duplicate raw ids must not alias routed geometry"
+    );
+
+    let occurrence_bindings = paths
+        .iter()
+        .map(|path| {
+            (
+                path.attribute("style").unwrap_or_default(),
+                path.attribute("marker-end").unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(occurrence_bindings.len(), 2);
+    assert!(occurrence_bindings[0].0.contains("stroke:#ef4444"));
+    assert!(occurrence_bindings[0].1.contains("crossEnd"));
+    assert!(occurrence_bindings[1].0.contains("stroke:#2563eb"));
+    assert!(occurrence_bindings[1].1.contains("pointEnd"));
+
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "edgeLabel")
+                })
+        })
+        .map(|label| {
+            label
+                .descendants()
+                .filter_map(|node| node.text().filter(|_| node.is_text()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["first owner", "second owner"], "{svg}");
+}
+
+#[test]
+fn swimlane_duplicate_raw_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"swimlane-beta LR
+X L_A_B_0@--x|first owner| Y
+A -->|second owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
+    );
+
+    assert_duplicate_raw_edge_occurrences_are_isolated(&svg);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_duplicate_raw_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"---
+config:
+  layout: elk
+---
+flowchart LR
+X L_A_B_0@--x|first owner| Y
+A -->|second owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
+    );
+
+    assert_duplicate_raw_edge_occurrences_are_isolated(&svg);
 }
 
 fn flowchart_svg_edge_data_points(
@@ -718,17 +1685,17 @@ fn flowchart_svg_keeps_external_direction_cluster_in_parent_root() {
         "an external edge must keep the directioned cluster in the parent root: {svg}"
     );
     assert_eq!(
-        svg.matches(r#"id="merman-A""#).count(),
+        svg.matches(r#"data-id="A" data-et="cluster""#).count(),
         1,
         "the cluster should render exactly once in the parent root: {svg}"
     );
     assert_eq!(
-        svg.matches(r#"id="merman-flowchart-a-"#).count(),
+        svg.matches(r#"data-id="a" data-et="node""#).count(),
         1,
         "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
     assert_eq!(
-        svg.matches(r#"id="merman-flowchart-b-"#).count(),
+        svg.matches(r#"data-id="b" data-et="node""#).count(),
         1,
         "the cluster's internal node should remain in the SVG DOM: {svg}"
     );
@@ -758,11 +1725,15 @@ fn flowchart_svg_renders_recursive_cluster_self_loop_in_parent_root() {
         "flowchart TB\nsubgraph Outer\n  subgraph Inner\n    x\n  end\n  Inner --> Inner\nend\n",
     );
 
-    let outer_cluster = svg.find(r#"id="merman-Outer""#).expect("Outer cluster");
+    let outer_cluster = svg
+        .find(r#"data-id="Outer" data-et="cluster""#)
+        .expect("Outer cluster");
     let self_loop = svg
         .find(r#"data-id="L_Inner_Inner_0""#)
         .expect("Inner self-loop");
-    let inner_cluster = svg.find(r#"id="merman-Inner""#).expect("Inner cluster");
+    let inner_cluster = svg
+        .find(r#"data-id="Inner" data-et="cluster""#)
+        .expect("Inner cluster");
     assert!(
         outer_cluster < self_loop && self_loop < inner_cluster,
         "a recursive cluster self-loop should render in its parent root: {svg}"
@@ -942,15 +1913,13 @@ fn foreign_object_contract_for_text(svg: &str, text: &str) -> (f64, f64, String,
 
 fn flowchart_node_shape(svg: &str, node_id: &str) -> (String, Option<String>) {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
-    let id_prefix = format!("merman-flowchart-{node_id}-");
     let node = document
         .descendants()
         .find(|node| {
             node.is_element()
                 && node.tag_name().name() == "g"
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with(&id_prefix))
+                && node.attribute("data-id") == Some(node_id)
+                && node.attribute("data-et") == Some("node")
         })
         .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
     let shape = node
@@ -1112,7 +2081,9 @@ fn flowchart_layout_handles_deep_subgraph_chain() {
 
 #[test]
 fn flowchart_svg_handles_deep_subgraph_chain() {
-    const DEPTH: usize = 1200;
+    // Keep the SVG fixture below the backend's f32 coordinate safety ceiling while retaining
+    // enough nesting to exercise the deep-render path.
+    const DEPTH: usize = 1100;
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
     let svg = render_flowchart_svg_from_text_with_engine_and_policy(
@@ -1121,19 +2092,20 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
         RenderResourcePolicy::unbounded_for_trusted_input(),
     );
 
-    assert!(svg.contains(r#"id="merman-flowchart-Leaf-"#));
-    assert!(svg.contains(r#"id="merman-S0""#));
+    assert!(svg.contains(r#"data-id="Leaf" data-et="node""#));
+    assert!(svg.contains(r#"data-id="S0" data-et="cluster""#));
 }
 
 #[test]
 fn flowchart_diagram_padding_zero_keeps_zero_user_padding() {
     let default = render_flowchart_svg_from_text(
-        r#"flowchart TB
+        r#"%%{init: {"look": "classic"}}%%
+flowchart TB
 A
 "#,
     );
     let zero = render_flowchart_svg_from_text(
-        r#"%%{init: {"flowchart": {"diagramPadding": 0}}}%%
+        r#"%%{init: {"look": "classic", "flowchart": {"diagramPadding": 0}}}%%
 flowchart TB
 A
 "#,
@@ -1158,10 +2130,47 @@ A
 }
 
 #[test]
+fn flowchart_zero_padding_contains_the_builtin_neo_rect_shadow() {
+    let svg = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "neo", "flowchart": {"diagramPadding": 0}}}%%
+flowchart TB
+A
+"#,
+    );
+    let viewbox = flowchart_svg_viewbox_values(&svg);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("node"))
+        .unwrap();
+    let translation = node
+        .attribute("transform")
+        .unwrap()
+        .strip_prefix("translate(")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap()
+        .split(',')
+        .map(|v| v.parse::<f64>().unwrap())
+        .collect::<Vec<_>>();
+    let rect = node
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    let number = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+    let x = translation[0] + number("x");
+    let y = translation[1] + number("y");
+    // Neo node rectangles use a two-pixel outline and the shared four-pixel translation.
+    assert!(x - 1.0 >= viewbox[0] && y - 1.0 >= viewbox[1]);
+    assert!(x + number("width") + 5.0 <= viewbox[0] + viewbox[2]);
+    assert!(y + number("height") + 5.0 <= viewbox[1] + viewbox[3]);
+}
+
+#[test]
 fn swimlane_small_diagram_padding_tracks_configured_inset() {
     let render = |padding: &str| {
         render_flowchart_svg_from_text(&format!(
-            r#"%%{{init: {{"flowchart": {{"diagramPadding": {padding}}}}}}}%%
+            r#"%%{{init: {{"look": "classic", "flowchart": {{"diagramPadding": {padding}}}}}}}%%
 swimlane-beta LR
 A --> B
 "#,
@@ -1193,7 +2202,7 @@ end
     );
 
     assert!(
-        svg.contains(r#"<g class="cluster" id="merman-Group" data-look="neo""#),
+        svg.contains(r#"data-id="Group" data-et="cluster" data-look="neo""#),
         "expected flowchart subgraph cluster to propagate configured look: {svg}"
     );
     assert!(
@@ -1283,9 +2292,8 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
         .descendants()
         .find(|node| {
             node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.contains("-flowchart-Security-"))
+                && node.attribute("data-et") == Some("node")
+                && node.attribute("data-id") == Some("Security")
         })
         .expect("Security node");
     let foreign_object = node
@@ -1431,6 +2439,488 @@ flowchart TB
 }
 
 #[test]
+fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths() {
+    let unqualified_theme = edge_stroke_width_theme(2.5);
+    let default_theme = explicit_default_edge_stroke_width_theme(3.25);
+    for (case, source, theme, expected_width) in [
+        (
+            "Flowchart classic unqualified",
+            "flowchart LR\nA --> B\n",
+            &unqualified_theme,
+            2.5,
+        ),
+        (
+            "Flowchart Neo explicit Default",
+            "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\n",
+            &default_theme,
+            3.25,
+        ),
+        (
+            "Swimlane classic explicit Default",
+            "swimlane-beta LR\nA --> B\n",
+            &default_theme,
+            3.25,
+        ),
+    ] {
+        let rendered = prepare_flowchart_family_with_theme(source, theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {case} typed edge stroke width: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid {case} SVG: {error}"));
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap_or_else(|| panic!("{case} terminal edge path: {}", rendered.svg()));
+        let style = edge
+            .attribute("style")
+            .unwrap_or_else(|| panic!("{case} terminal edge style"));
+        assert!(
+            style.contains(&format!("stroke-width:{expected_width}px !important")),
+            "{case}: {style}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn flowchart_default_edge_stroke_keeps_upstream_geometric_viewbox_height() {
+    let svg = render_flowchart_svg_from_text(include_str!(
+        "../../../fixtures/flowchart/upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006.mmd"
+    ));
+    let expected = flowchart_svg_viewbox_values(include_str!(
+        "../../../fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006.svg"
+    ));
+    let actual = flowchart_svg_viewbox_values(&svg);
+    // Width retains browser text-measurement residuals. The default edge stroke must not add
+    // a new vertical extent to the otherwise shared geometric bounds.
+    assert_eq!(actual[1], expected[1]);
+    assert_eq!(actual[3], expected[3]);
+}
+
+#[test]
+fn flowchart_source_stroke_width_does_not_inherit_suppressed_typed_paint_bounds() {
+    let theme = edge_stroke_width_theme(160.0);
+    for backend in ["elk", "dagre"] {
+        let source = format!(
+            "---\nconfig:\n  layout: {backend}\n  flowchart:\n    diagramPadding: 0\n---\nflowchart LR\nA --- B\nlinkStyle 0 stroke-width:7px\n"
+        );
+        let control = render_flowchart_svg_from_text(&source);
+        let themed = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("source stroke width supersedes typed width");
+        assert_eq!(
+            flowchart_svg_viewbox_values(themed.svg()),
+            flowchart_svg_viewbox_values(&control),
+            "{backend}: a suppressed typed stroke must not extend the viewport"
+        );
+        assert!(themed.svg().contains("stroke-width:7px"));
+        assert!(!themed.svg().contains("stroke-width:160px"));
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_relayout() {
+    const STROKE_WIDTH: f32 = 160.0;
+
+    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse control Flowchart family")
+                .expect("detect control Flowchart family");
+        family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("begin control Flowchart session"),
+        )
+        .expect("prepare control Flowchart family")
+    }
+
+    let theme = edge_stroke_width_theme(STROKE_WIDTH);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            "%%{init: {\"flowchart\": {\"diagramPadding\": 0}}}%%\nflowchart LR\nA --- B\n",
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            "%%{init: {\"flowchart\": {\"diagramPadding\": 0}}}%%\nswimlane-beta LR\nA --- B\n",
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let control = prepare_control(source);
+        let control_layout = control
+            .layout_json()
+            .unwrap_or_else(|error| panic!("project control {family_name} layout: {error}"));
+        let control_svg = control
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render control {family_name} SVG: {error}"));
+
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let themed_layout = themed
+            .layout_json()
+            .unwrap_or_else(|error| panic!("project themed {family_name} layout: {error}"));
+        assert_eq!(
+            control_layout["layout"][layout_key], themed_layout["layout"][layout_key],
+            "{family_name} stroke paint must not alter layout geometry"
+        );
+        let themed_svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render themed {family_name} SVG: {error}"));
+
+        let control_viewbox = flowchart_svg_viewbox_values(control_svg.svg());
+        let themed_viewbox = flowchart_svg_viewbox_values(themed_svg.svg());
+        assert!(
+            themed_viewbox[3] + 1.0e-6 >= f64::from(STROKE_WIDTH),
+            "{family_name} viewBox must contain the full {STROKE_WIDTH}px edge stroke; control={control_viewbox:?}, themed={themed_viewbox:?}, svg={}",
+            themed_svg.svg()
+        );
+        assert!(
+            themed_viewbox[3] > control_viewbox[3],
+            "{family_name} paint bounds must expand beyond the unchanged layout bounds; control={control_viewbox:?}, themed={themed_viewbox:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_value() {
+    let theme = edge_stroke_width_theme(2.5);
+    for (case, engine, source, expected_path_style, expected_svg) in [
+        (
+            "linkStyle inline",
+            Engine::new(),
+            "flowchart LR\nA edge@--> B\nlinkStyle 0 stroke-width:7px\n",
+            Some("stroke-width:7px"),
+            None,
+        ),
+        (
+            "assigned classDef",
+            Engine::new(),
+            "flowchart LR\nA edge@--> B\nclassDef wide stroke-width:8px\nclass edge wide\n",
+            Some("stroke-width:8px"),
+            None,
+        ),
+        (
+            "explicit Mermaid config",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"strokeWidth": 9}
+            }))),
+            "flowchart LR\nA --> B\n",
+            None,
+            Some(".edge-thickness-normal{stroke-width:9px;}"),
+        ),
+    ] {
+        let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap_or_else(|error| panic!("render {case} edge stroke-width precedence: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid {case} SVG: {error}"));
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap_or_else(|| panic!("{case} terminal edge path: {}", rendered.svg()));
+        let style = edge.attribute("style").unwrap_or_default();
+        if let Some(expected_path_style) = expected_path_style {
+            assert!(style.contains(expected_path_style), "{case}: {style}");
+        }
+        if let Some(expected_svg) = expected_svg {
+            assert!(
+                rendered.svg().contains(expected_svg),
+                "{case}: {}",
+                rendered.svg()
+            );
+        }
+        assert!(
+            !style.contains("stroke-width:2.5px !important"),
+            "{case}: {style}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_source_label_color_supersedes_typed_fill_without_residual() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nclassDef local color:#22c55e\nA[Alpha]:::local\n",
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n  htmlLabels: false\n---\nflowchart TD\nclassDef local color:#22c55e\nA[Alpha]:::local\n",
+        ),
+    ] {
+        let theme = node_label_fill_theme(family, "#ef4444");
+        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!("source-owned {family} NodeLabel fill must remain portable: {error}")
+            });
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some("A")
+                    && node.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("{family} node A: {}", rendered.svg()));
+        let label_style = node
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "label")
+                    })
+                    && node
+                        .descendants()
+                        .any(|descendant| descendant.text() == Some("Alpha"))
+            })
+            .and_then(|node| node.attribute("style"))
+            .unwrap_or_else(|| panic!("{family} node label style: {}", rendered.svg()));
+        assert!(
+            label_style.contains("color:#22c55e !important"),
+            "{family}: {label_style}"
+        );
+        assert!(!label_style.contains("#ef4444"), "{family}: {label_style}");
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{family}");
+        assert_eq!(evidence.accounted_count(), 1, "{family}");
+        assert_eq!(evidence.applied_count(), 0, "{family}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{family}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{family}");
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner() {
+    struct Case {
+        name: &'static str,
+        config: serde_json::Value,
+        typed_applies: bool,
+    }
+
+    let cases = [
+        Case {
+            name: "default textColor is shadowed by nodeTextColor",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "base textColor is shadowed by nodeTextColor",
+            config: serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "explicit nodeTextColor owns the winner",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {
+                    "nodeTextColor": "#16a34a",
+                    "textColor": "#2563eb"
+                }
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "default primaryTextColor owns derived nodeTextColor",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "base primaryTextColor owns derived nodeTextColor",
+            config: serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "dark primaryTextColor does not own textColor fallback",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "dark nodeTextColor owns the winner",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"nodeTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "dark textColor owns the fallback winner",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+    ];
+
+    for (family, source) in [
+        (DiagramFamilyId::FLOWCHART, "flowchart LR\nA[Alpha]\n"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
+        ),
+    ] {
+        for case in &cases {
+            let theme = node_label_fill_theme(family, "#ef4444");
+            let engine =
+                Engine::new().with_site_config(MermaidConfig::from_value(case.config.clone()));
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{} {family} NodeLabel fill must remain portable: {error}",
+                    case.name
+                )
+            });
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("A")
+                        && node.attribute("data-et") == Some("node")
+                })
+                .unwrap_or_else(|| panic!("{} {family} node A: {}", case.name, rendered.svg()));
+            let label = node
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class").is_some_and(|class| {
+                            class.split_ascii_whitespace().any(|part| part == "label")
+                        })
+                        && node
+                            .descendants()
+                            .any(|descendant| descendant.text() == Some("Alpha"))
+                })
+                .unwrap_or_else(|| panic!("{} {family} node label: {}", case.name, rendered.svg()));
+            let label_style = label.attribute("style").unwrap_or_default();
+            assert_eq!(
+                label_style.contains("fill:#ef4444 !important;color:#ef4444 !important"),
+                case.typed_applies,
+                "{} {family}: {label_style}",
+                case.name
+            );
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{} {family}", case.name);
+            assert_eq!(evidence.accounted_count(), 1, "{} {family}", case.name);
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(case.typed_applies),
+                "{} {family}",
+                case.name
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!case.typed_applies),
+                "{} {family}",
+                case.name
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{} {family}", case.name);
+        }
+    }
+}
+
+#[test]
+fn flowchart_cleared_edge_stroke_width_remains_an_explicit_geometry_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch {
+                    stroke: ThemeStrokePatch {
+                        width: Specified::Clear,
+                        ..ThemeStrokePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ))),
+        )
+        .expect("compile cleared edge stroke-width theme");
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        "flowchart LR\nA --> B\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort cleared edge stroke width");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn flowchart_hand_drawn_edge_stroke_width_is_a_fail_closed_residual() {
+    let theme = edge_stroke_width_theme(2.5);
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort hand-drawn edge stroke width");
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid hand-drawn Flowchart SVG");
+    let style = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .and_then(|node| node.attribute("style"))
+        .expect("hand-drawn terminal edge style");
+    assert!(!style.contains("stroke-width:2.5px !important"), "{style}");
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
 fn flowchart_link_style_stroke_width_overrides_theme_default_edge_width() {
     let svg = render_flowchart_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
@@ -1446,17 +2936,24 @@ flowchart TB
         "expected themeVariables.strokeWidth to remain the default Flowchart edge width: {svg}"
     );
 
-    let edge_start = svg.find(r#"id="merman-L_A_B_0""#).expect("edge path");
-    let edge_end = svg[edge_start..].find("/>").expect("edge path end") + edge_start;
-    let edge_chunk = &svg[edge_start..edge_end];
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-et") == Some("edge")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .expect("edge path");
+    let edge_style = edge.attribute("style").expect("edge path style");
 
     assert!(
-        edge_chunk.contains("stroke-width:7px"),
-        "expected linkStyle stroke-width to stay on the visible Flowchart edge path: {edge_chunk}"
+        edge_style.contains("stroke-width:7px"),
+        "expected linkStyle stroke-width to stay on the visible Flowchart edge path: {edge_style}"
     );
     assert!(
-        edge_chunk.contains("stroke:#abcdef"),
-        "expected linkStyle stroke color to stay on the visible Flowchart edge path: {edge_chunk}"
+        edge_style.contains("stroke:#abcdef"),
+        "expected linkStyle stroke color to stay on the visible Flowchart edge path: {edge_style}"
     );
 }
 
@@ -1464,6 +2961,11 @@ flowchart TB
 fn flowchart_colored_marker_whitespace_follows_security_level() {
     fn marker_path_colors(svg: &str) -> (String, String) {
         let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+        let marker_ids = document
+            .descendants()
+            .filter(|node| node.is_element() && node.tag_name().name() == "marker")
+            .filter_map(|node| node.attribute("id"))
+            .collect::<Vec<_>>();
         let marker = document
             .descendants()
             .find(|node| {
@@ -1473,7 +2975,7 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
                         .attribute("id")
                         .is_some_and(|id| id.ends_with("-pointEnd-margin__orange"))
             })
-            .expect("orange point-end marker");
+            .unwrap_or_else(|| panic!("orange point-end marker; emitted ids: {marker_ids:?}"));
         let path = marker
             .children()
             .find(|node| node.is_element() && node.tag_name().name() == "path")
@@ -1512,6 +3014,219 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
     assert_eq!(
         marker_path_colors(&loose),
         (" orange".to_string(), " orange".to_string())
+    );
+}
+
+#[test]
+fn flowchart_colored_bidirectional_markers_define_every_referenced_variant() {
+    let svg = render_flowchart_svg_from_text(
+        r##"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+flowchart LR
+    A o--o B
+    B <--> C
+    C x--x D
+    linkStyle 0 stroke:#ef4444
+    linkStyle 1 stroke:#22c55e
+    linkStyle 2 stroke:#2563eb
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let marker_ids = document
+        .descendants()
+        .filter(|node| node.has_tag_name("marker"))
+        .filter_map(|node| node.attribute("id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let references = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .flat_map(|node| [node.attribute("marker-start"), node.attribute("marker-end")])
+        .flatten()
+        .map(|reference| {
+            reference
+                .strip_prefix("url(#")
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("local Flowchart marker reference")
+        })
+        .collect::<Vec<_>>();
+
+    for reference in &references {
+        assert!(
+            marker_ids.contains(reference),
+            "missing marker definition for {reference}: {marker_ids:?}"
+        );
+    }
+    for suffix in [
+        "circleStart__ef4444",
+        "circleEnd__ef4444",
+        "pointStart__22c55e",
+        "pointEnd__22c55e",
+        "crossStart__2563eb",
+        "crossEnd__2563eb",
+    ] {
+        assert!(
+            references
+                .iter()
+                .any(|reference| reference.ends_with(suffix)),
+            "missing colored marker reference {suffix}: {references:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_neo_markers_use_margin_geometry_only_for_non_animated_edges() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "neo"}}%%
+flowchart LR
+    A o--o B
+    B animated@==> C
+    C explicit-speed@==> D
+    animated@{ animate: true }
+    explicit-speed@{ animate: false, animation: fast }
+    linkStyle 0 stroke:#ef4444
+    linkStyle 1 stroke:#2563eb
+    linkStyle 2 stroke:#16a34a
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let edge_paths = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(edge_paths.len(), 3, "expected three rendered edges: {svg}");
+
+    let static_edge = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("L_A_B_0"))
+        .expect("static circle edge");
+    assert!(
+        static_edge
+            .attribute("marker-start")
+            .is_some_and(|value| value.ends_with("-circleStart-margin__ef4444)")),
+        "non-animated Neo start marker must use margin geometry: {static_edge:?}"
+    );
+    assert!(
+        static_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-circleEnd-margin__ef4444)")),
+        "non-animated Neo end marker must use margin geometry: {static_edge:?}"
+    );
+    assert!(
+        static_edge
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "non-animated Neo edge must retain the marker mask: {static_edge:?}"
+    );
+
+    let animated_edge = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("animated"))
+        .expect("animated point edge");
+    assert!(
+        animated_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-pointEnd__2563eb)")),
+        "animated Neo marker must retain non-margin geometry: {animated_edge:?}"
+    );
+    assert!(
+        !animated_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.contains("-margin")),
+        "animated Neo marker must not reference a margin variant: {animated_edge:?}"
+    );
+    assert!(
+        !animated_edge
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "animated Neo edge must not receive the non-animated marker mask: {animated_edge:?}"
+    );
+
+    let explicit_speed = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("explicit-speed"))
+        .expect("explicit-speed edge");
+    assert!(
+        explicit_speed.attribute("class").is_some_and(|value| value
+            .split_ascii_whitespace()
+            .any(|class| { class == "edge-animation-fast" })),
+        "explicit animation speed must override animate:false: {explicit_speed:?}"
+    );
+    assert!(
+        explicit_speed
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-pointEnd__16a34a)")),
+        "explicit animation speed must retain non-margin marker geometry: {explicit_speed:?}"
+    );
+    assert!(
+        !explicit_speed
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "explicit animation speed must suppress the non-animated Neo mask: {explicit_speed:?}"
+    );
+
+    for reference in edge_paths
+        .iter()
+        .flat_map(|node| [node.attribute("marker-start"), node.attribute("marker-end")])
+        .flatten()
+    {
+        let id = reference
+            .strip_prefix("url(#")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("local marker reference");
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.has_tag_name("marker") && node.attribute("id") == Some(id) }),
+            "missing Neo marker definition for {id}: {svg}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_colored_marker_id_collisions_follow_actual_root_emission_order() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  theme: default
+  look: classic
+  layout: dagre
+---
+flowchart LR
+    subgraph Nested
+        A --> B
+    end
+    C --> D
+    linkStyle 0 stroke:hsl(-30 100% 50%)
+    linkStyle 1 stroke:hsl(+30 100% 50%)
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let colored_markers = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("marker")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-pointEnd_hsl__30_100__50__"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        colored_markers.len(),
+        1,
+        "sanitized marker IDs must be deduplicated: {svg}"
+    );
+    let path = colored_markers[0]
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("colored point marker path");
+    assert_eq!(
+        path.attribute("stroke"),
+        Some("hsl(+30 100% 50%)"),
+        "the root edge is emitted before the nested root and must own the colliding marker ID"
     );
 }
 
@@ -1592,15 +3307,13 @@ D@{ shape: cloud, label: "same" }
 fn flowchart_cylinder_label_offset_y_follows_security_level() {
     fn cylinder_label_offset(svg: &str, node_id: &str) -> Option<(String, String)> {
         let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
-        let id_prefix = format!("merman-flowchart-{node_id}-");
         let node = document
             .descendants()
             .find(|node| {
                 node.is_element()
                     && node.tag_name().name() == "g"
-                    && node
-                        .attribute("id")
-                        .is_some_and(|id| id.starts_with(&id_prefix))
+                    && node.attribute("data-id") == Some(node_id)
+                    && node.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
         let shape = node
@@ -1681,6 +3394,64 @@ flowchart TD
         ),
         "expected Mermaid redux primaryColor override to derive visible secondary edge-label color: {svg}"
     );
+}
+
+#[test]
+fn flowchart_neo_source_animation_uses_the_parsed_final_css_winner() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "neo"}}%%
+flowchart LR
+    A inline-active@==> B
+    B class-disabled@==> C
+    C custom-token@==> D
+    classDef disabled animation:none
+    classDef token --animation-token:dash
+    class class-disabled disabled
+    class custom-token token
+    linkStyle 0 animation:dash 2s linear
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let edge = |id| {
+        document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-edge") == Some("true")
+                    && node.attribute("data-id") == Some(id)
+            })
+            .unwrap_or_else(|| panic!("missing edge {id}: {svg}"))
+    };
+
+    let inline_active = edge("inline-active");
+    assert!(
+        inline_active
+            .attribute("marker-end")
+            .is_some_and(|value| !value.contains("-margin")),
+        "inline animation must use animated marker geometry: {inline_active:?}"
+    );
+    assert!(
+        !inline_active
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "inline animation must suppress the non-animated Neo mask: {inline_active:?}"
+    );
+
+    for inactive_id in ["class-disabled", "custom-token"] {
+        let inactive = edge(inactive_id);
+        assert!(
+            inactive
+                .attribute("marker-end")
+                .is_some_and(|value| value.contains("-pointEnd-margin")),
+            "inactive edge must use margin marker geometry: {inactive:?}"
+        );
+        assert!(
+            inactive
+                .attribute("style")
+                .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+            "inactive edge must retain the Neo marker mask: {inactive:?}"
+        );
+    }
 }
 
 #[test]
@@ -1841,8 +3612,8 @@ fn flowchart_stadium_path_uses_html_label_font_size_for_fractional_theme_size() 
             .descendants()
             .find(|n| {
                 n.has_tag_name("g")
-                    && n.attribute("id")
-                        .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                    && n.attribute("data-id") == Some("A")
+                    && n.attribute("data-et") == Some("node")
             })
             .and_then(|group| group.descendants().find(|n| n.has_tag_name("path")))
             .and_then(|path| path.attribute("d"))
@@ -1905,9 +3676,8 @@ A@{ shape: folder, label: "src" } --> B@{ shape: directory, label: "include" }
             .descendants()
             .find(|element| {
                 element.has_tag_name("g")
-                    && element
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+                    && element.attribute("data-id") == Some(id)
+                    && element.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("rendered node {id}: {svg}"));
         assert!(
@@ -1963,9 +3733,8 @@ C --> D@{ shape: browser, label: "browser" }
             .descendants()
             .find(|element| {
                 element.has_tag_name("g")
-                    && element
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&format!("-flowchart-{id}-")))
+                    && element.attribute("data-id") == Some(id)
+                    && element.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("rendered node {id}: {svg}"))
     };
@@ -2028,9 +3797,8 @@ C --> D@{ shape: browser, label: "browser" }
             .descendants()
             .find(|element| {
                 element.has_tag_name("g")
-                    && element
-                        .attribute("id")
-                        .is_some_and(|value| value.contains("-flowchart-A-"))
+                    && element.attribute("data-id") == Some("A")
+                    && element.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("handDrawn node for {shape}: {hand_drawn}"));
         assert!(
@@ -2038,6 +3806,582 @@ C --> D@{ shape: browser, label: "browser" }
                 child.has_tag_name("g") && child.attribute("class") == Some("basic label-container")
             }),
             "handDrawn {shape} must retain its shape group: {hand_drawn}"
+        );
+        assert!(
+            node.descendants().any(|child| {
+                child.has_tag_name("path")
+                    && child.attribute("fill") == Some("none")
+                    && child.attribute("stroke-width") == Some("4")
+                    && child.attribute("stroke-dasharray") == Some("0 0")
+            }),
+            "handDrawn {shape} must emit a RoughJS hachure fill sketch: {hand_drawn}"
+        );
+    }
+
+    let folder_source = "%%{init: {\"look\": \"handDrawn\"}}%%\nflowchart TB\nA@{ shape: folder, label: \"folder\" }";
+    let folder_svg = render_flowchart_svg_from_text(folder_source);
+    let folder_document =
+        roxmltree::Document::parse(&folder_svg).expect("valid handDrawn folder SVG");
+    let folder_node = folder_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn folder node");
+    assert!(folder_node.descendants().any(|child| {
+        child.has_tag_name("path")
+            && child.attribute("stroke-width") == Some("4")
+            && child.attribute("stroke-dasharray") == Some("0 0")
+    }));
+}
+
+#[test]
+fn flowchart_object_shape_decorations_keep_theme_border_when_node_stroke_is_overridden() {
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"themeVariables": {"nodeBorder": "#00ff00"}}}%%
+flowchart TB
+A@{ shape: bucket, label: "bucket" } --> B@{ shape: console, label: "console" }
+B --> C@{ shape: browser, label: "browser" }
+style A stroke:#ff0000
+style B stroke:#ff0000
+style C stroke:#ff0000
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed object-shape SVG");
+    let node = |id: &str| {
+        document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element.attribute("data-id") == Some(id)
+                    && element.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"))
+    };
+
+    let bucket = node("A");
+    let bucket_rim = bucket
+        .descendants()
+        .find(|element| element.has_tag_name("ellipse"))
+        .expect("bucket rim");
+    assert_eq!(
+        bucket_rim.attribute("style"),
+        Some("fill:none;stroke:#00ff00;stroke-width:1px")
+    );
+
+    let console = node("B");
+    let console_glyph = console
+        .descendants()
+        .find(|element| element.attribute("class") == Some("console-glyph"))
+        .expect("console glyph");
+    assert_eq!(
+        console_glyph.attribute("style"),
+        Some("font-family:monospace;font-weight:bold;font-size:14px;fill:#00ff00")
+    );
+
+    let browser = node("C");
+    let browser_accent = browser
+        .descendants()
+        .find(|element| element.has_tag_name("line"))
+        .expect("browser toolbar line");
+    assert_eq!(
+        browser_accent.attribute("style"),
+        Some("stroke:#00ff00;stroke-width:1px")
+    );
+    let address_bar = browser
+        .descendants()
+        .find(|element| element.attribute("class") == Some("browser-address-bar"))
+        .expect("browser address bar");
+    assert!(
+        address_bar
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:#00ff00")),
+        "browser address bar must keep the theme border: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_triangle_uses_rough_fill_and_is_deterministic() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg,
+        render_flowchart_svg_from_text(source),
+        "handDrawn triangle output must be deterministic"
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn triangle SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn triangle node");
+    let shape_group = node
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("outer-path")
+        })
+        .expect("handDrawn triangle shape group");
+    let paths: Vec<_> = shape_group
+        .descendants()
+        .filter(|element| element.has_tag_name("path"))
+        .collect();
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#123456")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "triangle must emit a non-empty RoughJS hachure fill path: {svg}"
+    );
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#654321")
+                && path
+                    .attribute("stroke-width")
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .is_some_and(|value| (value - 1.3).abs() <= 1e-6)
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "triangle must emit a non-empty RoughJS outline path: {svg}"
+    );
+
+    let classic_svg = render_flowchart_svg_from_text(
+        r#"flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:#123456,stroke:#654321
+"#,
+    );
+    let classic_document = roxmltree::Document::parse(&classic_svg).expect("valid classic SVG");
+    let classic_node = classic_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("classic triangle node");
+    assert!(
+        classic_node.descendants().any(|path| {
+            path.has_tag_name("path")
+                && path.attribute("fill") == Some("#123456")
+                && path.attribute("stroke") == Some("none")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "classic triangle must retain a solid fill path: {classic_svg}"
+    );
+    assert!(
+        !classic_node.descendants().any(|path| {
+            path.has_tag_name("path") && path.attribute("stroke-width") == Some("4")
+        }),
+        "classic triangle must not use the handDrawn fill sketch: {classic_svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_triangle_preserves_geometry_for_non_hex_colors() {
+    let source = r#"%%{init: {"theme": "default", "look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:red,stroke:blue
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    let hex_svg = render_flowchart_svg_from_text(
+        &source.replace("fill:red,stroke:blue", "fill:#ff0000,stroke:#0000ff"),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn triangle SVG");
+    let hex_document = roxmltree::Document::parse(&hex_svg).expect("valid hex triangle SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn triangle node");
+    let hex_node = hex_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("hex handDrawn triangle node");
+    let geometry = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter(|element| element.has_tag_name("path"))
+            .map(|path| {
+                path.attribute("d")
+                    .expect("triangle path geometry")
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    let paths = geometry(node);
+    assert_eq!(
+        paths,
+        geometry(hex_node),
+        "triangle geometry must be independent of paint tokens"
+    );
+    assert_eq!(
+        paths.len(),
+        2,
+        "triangle must retain fill and outline paths: {svg}"
+    );
+    assert!(paths.iter().all(|path| !path.is_empty()));
+    assert!(
+        node.descendants().any(|path| {
+            path.has_tag_name("path")
+                && path.attribute("stroke") == Some("red")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+        }),
+        "triangle must preserve the named fill on its hachure path: {svg}"
+    );
+    assert!(
+        node.descendants().any(|path| {
+            path.has_tag_name("path")
+                && path.attribute("stroke") == Some("blue")
+                && path
+                    .attribute("stroke-width")
+                    .and_then(|width| width.parse::<f64>().ok())
+                    .is_some_and(|width| (width - 1.3).abs() < 1e-6)
+                && path.attribute("stroke-dasharray") == Some("0 0")
+        }),
+        "triangle must preserve the named stroke on its outline path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_object_shapes_preserve_inline_style_and_geometry_for_non_hex_colors() {
+    let styled = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: browser, label: "browser" }
+style A opacity:0.4,stroke-linecap:round
+"#,
+    );
+    let styled_document = roxmltree::Document::parse(&styled).expect("valid styled handDrawn SVG");
+    let styled_group = styled_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("styled handDrawn browser node");
+    let shape_group = styled_group
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("basic label-container")
+        })
+        .expect("styled browser shape group");
+    let group_style = shape_group.attribute("style").unwrap_or_default();
+    assert!(
+        group_style.contains("opacity:0.4"),
+        "style was not preserved: {styled}"
+    );
+    assert!(
+        group_style.contains("stroke-linecap:round"),
+        "style was not preserved: {styled}"
+    );
+
+    let source = r#"%%{init: {"theme": "default", "look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: person, label: "person" }
+style A fill:red,stroke:blue
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    let hex_svg = render_flowchart_svg_from_text(
+        &source.replace("fill:red,stroke:blue", "fill:#ff0000,stroke:#0000ff"),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn person SVG");
+    let hex_document = roxmltree::Document::parse(&hex_svg).expect("valid hex person SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn person node");
+    let hex_node = hex_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("hex handDrawn person node");
+    let geometry = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter(|element| element.has_tag_name("path"))
+            .map(|path| {
+                path.attribute("d")
+                    .expect("person path geometry")
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    let paths = geometry(node);
+    assert_eq!(
+        paths,
+        geometry(hex_node),
+        "person geometry must be independent of paint tokens"
+    );
+    assert_eq!(
+        paths.len(),
+        4,
+        "person must retain body and head fill and outline paths: {svg}"
+    );
+    assert!(paths.iter().all(|path| !path.is_empty()));
+    assert_eq!(
+        node.descendants()
+            .filter(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("red")
+                    && path.attribute("stroke-width") == Some("4")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+            })
+            .count(),
+        2,
+        "person must preserve the named fill on both body and head hachure paths: {svg}"
+    );
+    assert_eq!(
+        node.descendants()
+            .filter(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("blue")
+                    && path
+                        .attribute("stroke-width")
+                        .and_then(|width| width.parse::<f64>().ok())
+                        .is_some_and(|width| (width - 1.3).abs() < 1e-6)
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+            })
+            .count(),
+        2,
+        "person must preserve the named stroke on both body and head outline paths: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_datastore_uses_rough_fill_and_double_border_lines() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: datastore, label: "Store" }
+style A fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    let repeat = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg, repeat,
+        "handDrawn datastore output must be deterministic"
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn datastore SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn datastore node");
+    let shape_group = node
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("basic label-container")
+        })
+        .expect("handDrawn datastore shape group");
+    let paths: Vec<_> = shape_group
+        .descendants()
+        .filter(|element| element.has_tag_name("path"))
+        .collect();
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#123456")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "datastore must emit a non-empty RoughJS hachure fill path: {svg}"
+    );
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| {
+                path.attribute("stroke") == Some("#654321")
+                    && path.attribute("stroke-width") == Some("1.3")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            })
+            .count(),
+        2,
+        "datastore must emit rough top and bottom border lines: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_datastore_preserves_geometry_for_non_hex_colors() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: datastore, label: "Store" }
+style A fill:red,stroke:blue
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    let hex_svg = render_flowchart_svg_from_text(
+        &source.replace("fill:red,stroke:blue", "fill:#ff0000,stroke:#0000ff"),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn datastore SVG");
+    let hex_document = roxmltree::Document::parse(&hex_svg).expect("valid hex datastore SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn datastore node");
+    let hex_node = hex_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("hex handDrawn datastore node");
+    let geometry = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter(|element| element.has_tag_name("path"))
+            .map(|path| {
+                path.attribute("d")
+                    .expect("datastore path geometry")
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    let paths = geometry(node);
+    assert_eq!(
+        paths,
+        geometry(hex_node),
+        "datastore geometry must be independent of paint tokens"
+    );
+    assert_eq!(
+        paths.len(),
+        3,
+        "datastore must retain fill and both border paths: {svg}"
+    );
+    assert!(paths.iter().all(|path| !path.is_empty()));
+    assert!(
+        node.descendants().any(|path| {
+            path.has_tag_name("path")
+                && path.attribute("stroke") == Some("red")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+        }),
+        "datastore must preserve the named fill on its hachure path: {svg}"
+    );
+    assert_eq!(
+        node.descendants()
+            .filter(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("blue")
+                    && path.attribute("stroke-width") == Some("1.3")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+            })
+            .count(),
+        2,
+        "datastore must preserve the named stroke on its top and bottom border paths: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_extended_shapes_emit_deterministic_hachure_paths() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart TB
+A@{ shape: delay, label: "delay" }
+B@{ shape: bow-rect, label: "bow" }
+C@{ shape: curv-trap, label: "curved" }
+D@{ shape: div-rect, label: "divided" }
+E@{ shape: document, label: "document" }
+F@{ shape: lined-document, label: "lined" }
+G@{ shape: manual-file, label: "manual-file" }
+H@{ shape: manual-input, label: "manual-input" }
+I@{ shape: notch-pent, label: "notched" }
+J@{ shape: odd, label: "odd" }
+K@{ shape: paper-tape, label: "paper" }
+L@{ shape: shaded-process, label: "shaded" }
+M@{ shape: docs, label: "stacked-document" }
+N@{ shape: st-rect, label: "stacked-rectangle" }
+O@{ shape: tag-doc, label: "tagged-document" }
+P@{ shape: tag-rect, label: "tagged-rectangle" }
+Q@{ shape: win-pane, label: "window" }
+R@{ shape: collate, label: "collate" }
+style A fill:#123456,stroke:#654321
+style B fill:#123456,stroke:#654321
+style C fill:#123456,stroke:#654321
+style D fill:#123456,stroke:#654321
+style E fill:#123456,stroke:#654321
+style F fill:#123456,stroke:#654321
+style G fill:#123456,stroke:#654321
+style H fill:#123456,stroke:#654321
+style I fill:#123456,stroke:#654321
+style J fill:#123456,stroke:#654321
+style K fill:#123456,stroke:#654321
+style L fill:#123456,stroke:#654321
+style M fill:#123456,stroke:#654321
+style N fill:#123456,stroke:#654321
+style O fill:#123456,stroke:#654321
+style P fill:#123456,stroke:#654321
+style Q fill:#123456,stroke:#654321
+style R fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg,
+        render_flowchart_svg_from_text(source),
+        "extended handDrawn shape output must be deterministic"
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid extended handDrawn SVG");
+    for id in 'A'..='R' {
+        let id = id.to_string();
+        let node = document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element.attribute("data-id") == Some(id.as_str())
+                    && element.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("missing handDrawn node {id}: {svg}"));
+        assert!(
+            node.descendants().any(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("#123456")
+                    && path.attribute("stroke-width") == Some("4")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            }),
+            "handDrawn node {id} must emit a non-empty hachure fill path: {svg}"
+        );
+        assert!(
+            node.descendants().any(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("#654321")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            }),
+            "handDrawn node {id} must emit a non-empty outline path: {svg}"
         );
     }
 }
@@ -2057,8 +4401,12 @@ one@{ view: collapsed }
 
     let collapsed = document
         .descendants()
-        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-one"))
-        .expect("collapsed subgraph node");
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("one")
+                && node.attribute("data-et") == Some("node")
+        })
+        .unwrap_or_else(|| panic!("collapsed subgraph node: {svg}"));
     assert_eq!(collapsed.attribute("class"), Some("node"));
     assert!(collapsed.children().any(|child| {
         child.has_tag_name("rect")
@@ -2080,9 +4428,8 @@ one@{ view: collapsed }
         assert!(
             !document.descendants().any(|node| {
                 node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+                    && node.attribute("data-id") == Some(hidden_id)
+                    && node.attribute("data-et") == Some("node")
             }),
             "hidden member {hidden_id} must not be emitted: {svg}"
         );
@@ -2096,6 +4443,47 @@ one@{ view: collapsed }
     assert!(
         edge.attribute("d").is_some_and(|path| !path.is_empty()),
         "redirected boundary edge must retain a route: {svg}"
+    );
+
+    let hand_drawn_svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+one@{ view: collapsed }
+"##,
+    );
+    let hand_drawn_document =
+        roxmltree::Document::parse(&hand_drawn_svg).expect("valid handDrawn collapsed SVG");
+    let hand_drawn_collapsed = hand_drawn_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("one")
+                && node.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn collapsed node");
+    assert!(
+        hand_drawn_collapsed.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("stroke") == Some("none")
+                && element.attribute("fill").is_some_and(|fill| fill != "none")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn collapsed group must emit a non-empty solid fill: {hand_drawn_svg}"
+    );
+    assert!(
+        hand_drawn_collapsed.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("fill") == Some("none")
+                && element
+                    .attribute("stroke")
+                    .is_some_and(|stroke| stroke != "none")
+                && element.attribute("stroke-dasharray") == Some("0 0")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn collapsed group must emit a non-empty outline: {hand_drawn_svg}"
     );
 }
 
@@ -2118,17 +4506,14 @@ outer@{ view: collapsed }
     let document = roxmltree::Document::parse(&svg).expect("valid nested collapsed SVG");
     let node_ids = document
         .descendants()
-        .filter(|node| node.has_tag_name("g") && node.attribute("class").is_some())
-        .filter_map(|node| node.attribute("id"))
-        .filter(|id| id.starts_with("merman-") && !id.contains("flowchart-v2"))
+        .filter(|node| node.has_tag_name("g") && node.attribute("data-et") == Some("node"))
+        .filter_map(|node| node.attribute("data-id"))
         .collect::<Vec<_>>();
-    assert!(node_ids.contains(&"merman-outer"), "{svg}");
-    assert!(!node_ids.contains(&"merman-inner"), "{svg}");
+    assert!(node_ids.contains(&"outer"), "{svg}");
+    assert!(!node_ids.contains(&"inner"), "{svg}");
     for hidden_id in ["A", "B", "C"] {
         assert!(
-            !node_ids
-                .iter()
-                .any(|id| id.contains(&format!("-flowchart-{hidden_id}-"))),
+            !node_ids.iter().any(|id| *id == hidden_id),
             "hidden member {hidden_id} must not be emitted: {svg}"
         );
     }
@@ -2156,18 +4541,17 @@ one@{ view: collapsed }
 "#,
     );
     let document = roxmltree::Document::parse(&svg).expect("valid ELK collapsed SVG");
-    assert!(
-        document
-            .descendants()
-            .any(|node| { node.has_tag_name("g") && node.attribute("id") == Some("merman-one") })
-    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("data-id") == Some("one")
+            && node.attribute("data-et") == Some("node")
+    }));
     for hidden_id in ["A", "B"] {
         assert!(
             !document.descendants().any(|node| {
                 node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|id| id.contains(&format!("-flowchart-{hidden_id}-")))
+                    && node.attribute("data-id") == Some(hidden_id)
+                    && node.attribute("data-et") == Some("node")
             }),
             "ELK hidden member {hidden_id} must not be emitted: {svg}"
         );
@@ -2277,7 +4661,7 @@ A --> B
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<linearGradient id="flowchart_theme_gradient-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
+        svg.contains(r#"<linearGradient id="flowchart_theme_gradient-merman-flowchart-document-gradient-root" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
         "expected Mermaid 11.15 root gradient element: {svg}"
     );
     assert!(
@@ -2552,40 +4936,6 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
 }
 
 #[test]
-fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
-    for source in [
-        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
-        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
-        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
-        concat!(
-            "flowchart TD\n",
-            "  subgraph X[First title]\n    A\n  end\n",
-            "  subgraph X[\"&nbsp;Second title&nbsp;\"]\n    B\n  end\n",
-        ),
-    ] {
-        let svg = render_flowchart_svg_from_text(source);
-        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
-        let clusters = document
-            .descendants()
-            .filter(|node| {
-                node.has_tag_name("g")
-                    && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
-                    && node.attribute("class").is_some_and(|class| {
-                        class.split_ascii_whitespace().any(|part| part == "cluster")
-                    })
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(clusters.len(), 1, "{svg}");
-        let visible_text = clusters[0]
-            .descendants()
-            .filter_map(|node| node.text().filter(|_| node.is_text()))
-            .collect::<String>();
-        assert!(visible_text.contains("First title"), "{svg}");
-        assert!(!visible_text.contains("Second title"), "{svg}");
-    }
-}
-
-#[test]
 fn duplicate_subgraph_vertex_css_updates_the_canonical_cluster() {
     let svg = render_flowchart_svg_from_text(concat!(
         "flowchart TD\n",
@@ -2600,7 +4950,8 @@ fn duplicate_subgraph_vertex_css_updates_the_canonical_cluster() {
         .descendants()
         .find(|node| {
             node.has_tag_name("g")
-                && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                && node.attribute("data-id") == Some("X")
+                && node.attribute("data-et") == Some("cluster")
                 && node.attribute("class").is_some_and(|class| {
                     class.split_ascii_whitespace().any(|part| part == "cluster")
                 })
@@ -2639,7 +4990,7 @@ fn duplicate_subgraphs_share_collapsed_metadata_before_and_after_redeclaration()
             let document = roxmltree::Document::parse(&svg).unwrap();
             let groups: Vec<_> = document
                 .descendants()
-                .filter(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-X"))
+                .filter(|node| node.has_tag_name("g") && node.attribute("data-id") == Some("X"))
                 .collect();
             assert_eq!(groups.len(), 1, "{backend}, between={between}: {svg}");
             assert!(
@@ -2653,9 +5004,8 @@ fn duplicate_subgraphs_share_collapsed_metadata_before_and_after_redeclaration()
                 assert!(
                     !document.descendants().any(|node| {
                         node.has_tag_name("g")
-                            && node
-                                .attribute("id")
-                                .is_some_and(|id| id.contains(&format!("-flowchart-{member}-")))
+                            && node.attribute("data-id") == Some(member)
+                            && node.attribute("data-et") == Some("node")
                     }),
                     "{backend}, between={between}: hidden member {member}: {svg}"
                 );
@@ -2705,7 +5055,8 @@ fn flowchart_svg_uses_parser_owned_same_id_group_css_in_statement_order() {
             .descendants()
             .find(|node| {
                 node.has_tag_name("g")
-                    && node.attribute("id").is_some_and(|id| id.ends_with("-G"))
+                    && node.attribute("data-id") == Some("G")
+                    && node.attribute("data-et") == Some("cluster")
                     && node.attribute("class").is_some_and(|class| {
                         class.split_ascii_whitespace().any(|part| part == "cluster")
                     })
@@ -2835,6 +5186,473 @@ A -->|alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu| B
 }
 
 #[test]
+fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content_box() {
+    const PADDING: InsetsPx = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+
+    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse control Flowchart family")
+                .expect("detect control Flowchart family");
+        family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("begin control Flowchart session"),
+        )
+        .expect("prepare control Flowchart family")
+    }
+
+    fn parse_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+        node.attribute(attribute)
+            .unwrap_or_else(|| panic!("missing {attribute} on {}", node.tag_name().name()))
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("numeric {attribute} on {}", node.tag_name().name()))
+    }
+
+    fn parse_translate(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+        let transform = node.attribute("transform").expect("label transform");
+        let values = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("translate transform")
+            .split([',', ' '])
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse::<f64>().expect("numeric translate component"))
+            .collect::<Vec<_>>();
+        assert_eq!(values.len(), 2, "{transform}");
+        (values[0], values[1])
+    }
+
+    fn assert_close(actual: f64, expected: f64, context: &str) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-6,
+            "{context}: expected {expected}, got {actual}"
+        );
+    }
+
+    fn assert_padded_html_label(
+        svg: &str,
+        label_group: roxmltree::Node<'_, '_>,
+        total_width: f64,
+        total_height: f64,
+        content_width: f64,
+        content_height: f64,
+    ) {
+        let outer = label_group.parent().expect("outer edge-label group");
+        let background = outer
+            .children()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("background"))
+            .unwrap_or_else(|| panic!("theme-owned edge-label background: {svg}"));
+        assert_close(
+            parse_number(background, "x"),
+            -total_width / 2.0,
+            "background x",
+        );
+        assert_close(
+            parse_number(background, "y"),
+            -total_height / 2.0,
+            "background y",
+        );
+        assert_close(
+            parse_number(background, "width"),
+            total_width,
+            "background width",
+        );
+        assert_close(
+            parse_number(background, "height"),
+            total_height,
+            "background height",
+        );
+
+        let (content_x, content_y) = parse_translate(label_group);
+        assert_close(
+            content_x,
+            -total_width / 2.0 + f64::from(PADDING.left),
+            "content x",
+        );
+        assert_close(
+            content_y,
+            -total_height / 2.0 + f64::from(PADDING.top),
+            "content y",
+        );
+        let foreign_object = label_group
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .expect("edge-label foreignObject");
+        assert_close(
+            parse_number(foreign_object, "width"),
+            content_width,
+            "content width",
+        );
+        assert_close(
+            parse_number(foreign_object, "height"),
+            content_height,
+            "content height",
+        );
+    }
+
+    let theme = edge_label_padding_theme(PADDING);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            "flowchart LR\nA padded@-->|edge label padding| B\n",
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            "swimlane-beta LR\nA padded@-->|edge label padding| B\n",
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let control = prepare_control(source);
+        let control_projection = control.layout_json().expect("control layout projection");
+        let control_svg = control
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render control SVG");
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let themed_projection = themed.layout_json().expect("themed layout projection");
+        let themed_svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+
+        let (control_width, control_height, themed_width, themed_height) =
+            if layout_key == "FlowchartV2" {
+                let control_layout: FlowchartLayout =
+                    serde_json::from_value(control_projection["layout"][layout_key].clone())
+                        .expect("control Flowchart layout");
+                let themed_layout: FlowchartLayout =
+                    serde_json::from_value(themed_projection["layout"][layout_key].clone())
+                        .expect("themed Flowchart layout");
+                let control_label = control_layout.edges[0]
+                    .label
+                    .as_ref()
+                    .expect("control Flowchart edge label");
+                let themed_label = themed_layout.edges[0]
+                    .label
+                    .as_ref()
+                    .expect("themed Flowchart edge label");
+                (
+                    control_label.width,
+                    control_label.height,
+                    themed_label.width,
+                    themed_label.height,
+                )
+            } else {
+                let control_layout: SwimlaneLayout =
+                    serde_json::from_value(control_projection["layout"][layout_key].clone())
+                        .expect("control Swimlane layout");
+                let themed_layout: SwimlaneLayout =
+                    serde_json::from_value(themed_projection["layout"][layout_key].clone())
+                        .expect("themed Swimlane layout");
+                let control_label = control_layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.is_edge_label)
+                    .expect("control Swimlane edge label");
+                let themed_label = themed_layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.is_edge_label)
+                    .expect("themed Swimlane edge label");
+                (
+                    control_label.label_width,
+                    control_label.label_height,
+                    themed_label.label_width,
+                    themed_label.label_height,
+                )
+            };
+
+        assert_close(
+            themed_width - control_width,
+            f64::from(PADDING.left + PADDING.right),
+            &format!("{family_name} padded layout width"),
+        );
+        assert_close(
+            themed_height - control_height,
+            f64::from(PADDING.top + PADDING.bottom),
+            &format!("{family_name} padded layout height"),
+        );
+
+        let document = roxmltree::Document::parse(themed_svg.svg())
+            .unwrap_or_else(|error| panic!("valid themed {family_name} SVG: {error}"));
+        let label_group = if family_name == "Flowchart" {
+            document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some("padded")
+                })
+                .expect("themed Flowchart label group")
+        } else {
+            let outer = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("padded")
+                        && node.attribute("data-et") == Some("edge-label")
+                })
+                .expect("themed Swimlane edge-label group");
+            outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("class")
+                            .is_some_and(|classes| classes.split_whitespace().any(|c| c == "label"))
+                })
+                .expect("themed Swimlane content label group")
+        };
+        assert_padded_html_label(
+            themed_svg.svg(),
+            label_group,
+            themed_width,
+            themed_height,
+            control_width,
+            control_height,
+        );
+        assert!(!control_svg.svg().contains(r#"class="background" x="#));
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_svg_edge_label_padding_preserves_the_inner_content_box() {
+    const PADDING: InsetsPx = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+
+    fn parse_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+        node.attribute(attribute)
+            .unwrap_or_else(|| panic!("missing {attribute} on {}", node.tag_name().name()))
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("numeric {attribute} on {}", node.tag_name().name()))
+    }
+
+    fn parse_translate(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+        let transform = node.attribute("transform").expect("label transform");
+        let values = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("translate transform")
+            .split([',', ' '])
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse::<f64>().expect("numeric translate component"))
+            .collect::<Vec<_>>();
+        assert_eq!(values.len(), 2, "{transform}");
+        (values[0], values[1])
+    }
+
+    fn assert_close(actual: f64, expected: f64, context: &str) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-6,
+            "{context}: expected {expected}, got {actual}"
+        );
+    }
+
+    let theme = edge_label_padding_theme(PADDING);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A padded@-->|edge label padding| B
+"#,
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+A padded@-->|edge label padding| B
+"#,
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let projection = themed.layout_json().expect("themed layout projection");
+        let (total_width, total_height) = if layout_key == "FlowchartV2" {
+            let layout: FlowchartLayout =
+                serde_json::from_value(projection["layout"][layout_key].clone())
+                    .expect("themed Flowchart layout");
+            let label = layout.edges[0]
+                .label
+                .as_ref()
+                .expect("themed Flowchart edge label");
+            (label.width, label.height)
+        } else {
+            let layout: SwimlaneLayout =
+                serde_json::from_value(projection["layout"][layout_key].clone())
+                    .expect("themed Swimlane layout");
+            let label = layout
+                .nodes
+                .iter()
+                .find(|node| node.is_edge_label)
+                .expect("themed Swimlane edge label");
+            (label.label_width, label.label_height)
+        };
+        let svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+        assert!(
+            !svg.svg().contains("foreignObject"),
+            "{family_name} must keep the SVG-label route: {}",
+            svg.svg()
+        );
+
+        let document = roxmltree::Document::parse(svg.svg())
+            .unwrap_or_else(|error| panic!("valid themed {family_name} SVG: {error}"));
+        let (label_group, background) = if family_name == "Flowchart" {
+            let label_group = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some("padded")
+                })
+                .expect("themed Flowchart SVG label group");
+            let background = label_group
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("background")
+                })
+                .expect("themed Flowchart SVG label background");
+            (label_group, background)
+        } else {
+            let outer = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("padded")
+                        && node.attribute("data-et") == Some("edge-label")
+                })
+                .expect("themed Swimlane SVG edge-label group");
+            let label_group = outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == "label")
+                        })
+                })
+                .expect("themed Swimlane SVG content label group");
+            let background = outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("background")
+                })
+                .expect("themed Swimlane SVG label background");
+            (label_group, background)
+        };
+
+        let (content_x, content_y) = parse_translate(label_group);
+        assert_close(
+            content_x,
+            -total_width / 2.0 + f64::from(PADDING.left),
+            &format!("{family_name} SVG content x"),
+        );
+        assert_close(
+            content_y,
+            -total_height / 2.0 + f64::from(PADDING.top),
+            &format!("{family_name} SVG content y"),
+        );
+        assert_close(
+            parse_number(background, "width"),
+            total_width,
+            &format!("{family_name} SVG background width"),
+        );
+        assert_close(
+            parse_number(background, "height"),
+            total_height,
+            &format!("{family_name} SVG background height"),
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_edge_label_padding_reaches_the_layout_graph_before_routing() {
+    let source = r#"---
+config:
+  layout: elk
+---
+flowchart LR
+A padded@-->|edge label padding| B
+"#;
+    let control_parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse control ELK Flowchart")
+            .expect("detect control ELK Flowchart");
+    let control = family::prepare(
+        control_parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin control ELK session"),
+    )
+    .expect("prepare control ELK Flowchart");
+    let control_projection = control
+        .layout_json()
+        .expect("control ELK layout projection");
+    let control_layout: FlowchartLayout =
+        serde_json::from_value(control_projection["layout"]["FlowchartV2"].clone())
+            .expect("control ELK Flowchart layout");
+
+    let padding = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+    let theme = edge_label_padding_theme(padding);
+    let themed = prepare_flowchart_family_with_theme(source, &theme);
+    let themed_projection = themed.layout_json().expect("themed ELK layout projection");
+    let themed_layout: FlowchartLayout =
+        serde_json::from_value(themed_projection["layout"]["FlowchartV2"].clone())
+            .expect("themed ELK Flowchart layout");
+
+    let control_label = control_layout.edges[0]
+        .label
+        .as_ref()
+        .expect("control ELK edge label");
+    let themed_label = themed_layout.edges[0]
+        .label
+        .as_ref()
+        .expect("themed ELK edge label");
+    assert!(
+        ((themed_label.width - control_label.width) - f64::from(padding.left + padding.right))
+            .abs()
+            <= 1.0e-6,
+        "ELK width: control={control_label:?}, themed={themed_label:?}"
+    );
+    assert!(
+        ((themed_label.height - control_label.height) - f64::from(padding.top + padding.bottom))
+            .abs()
+            <= 1.0e-6,
+        "ELK height: control={control_label:?}, themed={themed_label:?}"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -2956,14 +5774,12 @@ Angle["&lt;Less&lt;"]
     let svg = render_flowchart_svg_from_text(text);
     let document = roxmltree::Document::parse(&svg).expect("valid svg");
     let words_for = |id: &str| {
-        let id_fragment = format!("-flowchart-{id}-");
         let node = document
             .descendants()
             .find(|node| {
                 node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&id_fragment))
+                    && node.attribute("data-id") == Some(id)
+                    && node.attribute("data-et") == Some("node")
             })
             .unwrap_or_else(|| panic!("missing node {id}: {svg}"));
         node.descendants()
@@ -3411,10 +6227,8 @@ fn dagre_flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
         "the top-level empty subgraph node must expand the root bounds: with={viewbox:?}, without={control_viewbox:?}"
     );
     assert!(
-        svg.contains(
-            r#"<g class="node" id="upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015-B""#
-        ),
-        "expected empty subgraph node DOM id to be scoped by the diagram id: {svg}"
+        svg.contains(r#"data-id="B" data-et="node""#),
+        "expected empty subgraph node to retain its semantic owner: {svg}"
     );
 }
 
@@ -3441,8 +6255,8 @@ fn dagre_flowchart_empty_subgraph_node_applies_inline_style() {
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<g class="node" id="merman-Empty""#),
-        "expected empty subgraph to render as a scoped node: {svg}"
+        svg.contains(r#"data-id="Empty" data-et="node""#),
+        "expected empty subgraph to render as a scoped node with its assigned class: {svg}"
     );
     assert!(
         svg.contains(r#"style="fill:#f00 !important;stroke:#00f !important""#),
@@ -3451,6 +6265,143 @@ fn dagre_flowchart_empty_subgraph_node_applies_inline_style() {
     assert!(
         svg.contains(r#"<span class="nodeLabel" style="color:#fff !important">"#),
         "expected empty subgraph inline label style to be applied: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_node_style_preserves_source_css_while_using_canonical_winners() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+style A FILL:#ef4444,stroke:#111827,f\69ll:#22c55e,stroke:#334155
+",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("A")
+                && node.attribute("data-et") == Some("node")
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A: {svg}"));
+    let shape = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    let mut tokens = class.split_ascii_whitespace();
+                    tokens.any(|token| token == "basic")
+                        && class
+                            .split_ascii_whitespace()
+                            .any(|token| token == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A shape: {svg}"));
+
+    assert_eq!(
+        shape.attribute("style"),
+        Some(r"FILL:#ef4444 !important;stroke:#334155 !important;f\69ll:#22c55e !important"),
+        "source CSS spelling and order must survive the no-theme render path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_node_style_routes_label_keys_by_source_identity() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+style A COLOR:#ef4444,color:#22c55e,c\6flor:#2563eb
+",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("A")
+                && node.attribute("data-et") == Some("node")
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A: {svg}"));
+    let shape = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "basic")
+                        && class
+                            .split_ascii_whitespace()
+                            .any(|token| token == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A shape: {svg}"));
+    let label = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "nodeLabel")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A label: {svg}"));
+
+    assert_eq!(
+        shape.attribute("style"),
+        Some(r"COLOR:#ef4444 !important;c\6flor:#2563eb !important"),
+        "only the exact pinned-Mermaid label keys may leave the node style channel: {svg}"
+    );
+    assert_eq!(
+        label.attribute("style"),
+        Some("color:#22c55e !important"),
+        "the exact lowercase label key must retain its source value and position: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classdef_css_uses_cssom_property_cascade_with_safe_values() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+classDef hot FILL:#ef4444,stroke:#111827,f\69ll:#22c55e,filter:url(https://example.com/filter.svg#x)
+class A hot
+",
+    );
+
+    assert!(
+        svg.contains(
+            "#merman .hot&gt;*{stroke:rgb(17, 24, 39)!important;fill:rgb(34, 197, 94)!important;}"
+        ),
+        "generated classDef CSS must use the CSSOM winner identity and order: {svg}"
+    );
+    assert!(
+        !svg.contains("example.com/filter.svg"),
+        "the headless safe-value boundary intentionally remains narrower than browser CSSOM: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classdef_text_styles_preserve_pre_cssom_source_classification() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+classDef hot color:#ef4444,COLOR:#22c55e,--Br\61nd:#f59e0b,--fill-color:#2563eb
+class A hot
+",
+    );
+
+    assert!(
+        svg.contains(
+            "#merman .hot&gt;*{color:rgb(34, 197, 94)!important;--Brand:#f59e0b!important;--fill-color:#2563eb!important;}"
+        ),
+        "generated classDef shape CSS must use CSSOM property identity and spelling: {svg}"
+    );
+    assert!(
+        svg.contains(
+            "#merman .hot tspan{fill:rgb(239, 68, 68)!important;--bgFill-fill:#2563eb!important;}"
+        ),
+        "the tspan rule must come from Mermaid's source-classified lowercase color declaration: {svg}"
     );
 }
 
@@ -3472,7 +6423,8 @@ end
             .descendants()
             .find(|node| {
                 node.has_tag_name("g")
-                    && node.attribute("id") == Some("merman-Empty")
+                    && node.attribute("data-id") == Some("Empty")
+                    && node.attribute("data-et") == Some("node")
                     && node.attribute("class").is_some_and(|class| {
                         class.split_ascii_whitespace().any(|part| part == "node")
                     })
@@ -3760,7 +6712,6 @@ linkStyle 0 font-size:12px,font-style:italic
         .descendants()
         .find(|node| {
             node.has_tag_name("g")
-                && node.attribute("id") == Some("edge-label-A-B-styled")
                 && node.attribute("class").is_some_and(|class| {
                     let classes = class.split_ascii_whitespace().collect::<Vec<_>>();
                     classes.contains(&"label") && classes.contains(&"edgeLabel")
@@ -4000,9 +6951,8 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(
@@ -4039,9 +6989,8 @@ A["value: $$x^2$$"] -->|"Solve: $$\sqrt{2+2}$$"| B[Done]
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(
@@ -4077,9 +7026,8 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(
@@ -4101,6 +7049,712 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         !svg.contains("$$"),
         "expected supported flowchart fixture formulas to replace source delimiters: {svg}"
     );
+}
+
+fn flowchart_title_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let mut styles = ThemeRuleSet::default();
+    for rule in rules {
+        styles = styles.with_rule(rule);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap()
+}
+
+fn flowchart_title_rule(color: &str) -> ThemeRule {
+    ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+    )
+}
+
+#[test]
+fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
+    let baseline = flowchart_title_theme([]);
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  theme: default\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = flowchart_title_rule("#2468ac");
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let render = |theme: &DiagramTheme, engine| {
+                        prepare_flowchart_family_with_theme_engine_and_portability(
+                            &source,
+                            theme,
+                            engine,
+                            ThemePortabilityRequirement::RequirePortable,
+                        )
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("portable cluster title")
+                    };
+                    let typed = render(&theme, Engine::new());
+                    let legacy = render(&baseline, Engine::new().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({ "themeVariables": { "titleColor": "#2468ac", "nodeTextColor": "#333" } })
+                    )));
+                    assert_eq!(
+                        typed.svg(),
+                        legacy.svg(),
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    let evidence =
+                        merman_render::__private::family_evidence(typed.into_completion().report());
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_title_evidence_tracks_cluster_occurrences_and_property_winners() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let source =
+        "flowchart TD\nsubgraph One[First]\nA[Alpha]\nend\nsubgraph Two[Second]\nB[Beta]\nend\n";
+    for (source, rules, not_applicable, residual) in [
+        (
+            "---\ntitle: Diagram title\n---\nflowchart TD\nA[Alpha]\n",
+            vec![flowchart_title_rule("#2468ac")],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![
+                flowchart_title_rule("#2468ac").with_variant(ThemeVariant::Default),
+                flowchart_title_rule("#123456"),
+            ],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(2))],
+            0,
+            1,
+        ),
+        (
+            source,
+            vec![flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(3))],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![
+                flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(1)),
+                flowchart_title_rule("#123456"),
+            ],
+            1,
+            0,
+        ),
+    ] {
+        let theme = flowchart_title_theme(rules);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), not_applicable);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        let strict = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert_eq!(strict.is_err(), residual != 0);
+    }
+}
+
+#[test]
+fn flowchart_title_fill_preserves_configuration_and_html_source_ownership() {
+    for html in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nstyle Group color:#123456\n"
+        );
+        let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
+        for config_owned in [false, true] {
+            let engine = if config_owned {
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({ "themeVariables": { "titleColor": "#abcdef" } }),
+                ))
+            } else {
+                Engine::new()
+            };
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            // SVG cluster labels do not emit the local label_style color; HTML spans do.
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!html && !config_owned)
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(html || config_owned)
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_title_transparency_and_clear_have_distinct_evidence() {
+    let source = "flowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n";
+    for fill in [Specified::Value(CanvasPaint::Transparent), Specified::Clear] {
+        let clear = matches!(fill, Specified::Clear);
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = fill;
+        let theme = flowchart_title_theme([ThemeRule::new(ThemeTarget::Title, patch)]);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        if !clear {
+            assert!(
+                rendered
+                    .svg()
+                    .contains(".cluster-label text{fill:transparent;}")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(!clear));
+        assert_eq!(evidence.theme_residual_count(), usize::from(clear));
+    }
+}
+
+#[test]
+fn flowchart_title_fill_yields_to_assigned_class_tspan_color() {
+    let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
+    for swimlane in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nclassDef ink color:#123456\nstyle Group color:#abcdef\nclass Group ink\n",
+            if swimlane { "  layout: swimlane\n" } else { "" }
+        );
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(
+            rendered
+                .svg()
+                .contains(".ink tspan{fill:rgb(18, 52, 86)!important;}")
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.attribute("class")
+                .is_some_and(|classes| classes.split_whitespace().any(|class| class == "ink"))
+                && node.descendants().any(|child| child.has_tag_name("tspan"))
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_generic_text_fill_has_typed_terminal_evidence() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha] -->|Advance| B[Beta]\nend\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                    );
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("generic text paint must have direct terminal evidence");
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    for label in ["Alpha", "Beta", "Advance", "Group title", "Diagram title"] {
+                        assert!(
+                            document
+                                .descendants()
+                                .filter(|node| node.has_tag_name("text")
+                                    || node.has_tag_name("p")
+                                    || node.has_tag_name("span"))
+                                .any(|node| node
+                                    .descendants()
+                                    .filter(|child| child.is_text())
+                                    .filter_map(|child| child.text())
+                                    .collect::<String>()
+                                    .contains(label)),
+                            "missing {label}: {}",
+                            rendered.svg()
+                        );
+                    }
+                    assert!(rendered.svg().contains("#2468ac"));
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        1,
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_generic_text_fill_shadowed_by_role_winners_is_not_applicable() {
+    let source = "flowchart TD\nA[Alpha]\n";
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        ),
+    ]);
+    let rendered = prepare_flowchart_family_with_theme(source, &theme)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("unused generic fallback must not block strict rendering");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_generic_text_fill_keeps_unconsumed_sibling_and_ordinal_residuals() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let source = "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n";
+    let fill = || CanvasPaint::solid("#2468ac").unwrap();
+    for rules in [
+        vec![ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default()
+                .with_fill(fill())
+                .with_stroke(fill()),
+        )],
+        vec![
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(fill()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::Exact(2)),
+        ],
+    ] {
+        let theme = flowchart_title_theme(rules);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert!(
+            evidence.theme_residual_count() > 0,
+            "unconsumed text facets must remain residual"
+        );
+        let strict = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert!(strict.is_err());
+    }
+}
+
+#[test]
+fn flowchart_generic_text_fill_overwritten_ordinal_is_not_applicable() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::Exact(2)),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    let rendered =
+        prepare_flowchart_family_with_theme("flowchart TD\nA[Alpha] --> B[Beta]\n", &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("fully overwritten ordinal must not block generic text paint");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_generic_text_uses_the_emitted_markdown_edge_color_owner() {
+    let source = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Alpha] -->|`**Advance**`| B[Beta]\nlinkStyle 0 color:#22c55e\n";
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        ),
+    ]);
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        source,
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let edge_label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("edgeLabel"))
+        .expect("edge label");
+    let emitted_source_color = edge_label.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#22c55e"))
+    });
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(
+        evidence.applied_count(),
+        if emitted_source_color { 1 } else { 2 }
+    );
+    assert_eq!(
+        evidence.not_applicable_count(),
+        usize::from(emitted_source_color)
+    );
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_and_swimlane_edge_label_background_fill_has_typed_terminal_evidence() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::EdgeLabelBackground,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                    );
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("edge label background must have direct terminal evidence");
+                    assert!(rendered.svg().contains("#2468ac"));
+                    if swimlane {
+                        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        assert!(doc.descendants().any(|node| node.has_tag_name("rect")
+                            && node.attribute("class") == Some("background")
+                            && ["width", "height"].iter().all(|name| {
+                                node.attribute(*name)
+                                    .and_then(|value| value.parse::<f64>().ok())
+                                    .is_some_and(|value| value > 1.0)
+                            })));
+                    }
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        1,
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_background_unconsumed_sibling_and_ordinal_remain_residual() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    for source in [
+        "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\nB -->|Finish| C[Gamma]\n",
+        "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\nB -->|Finish| C[Gamma]\n",
+    ] {
+        let fill = || CanvasPaint::solid("#2468ac").unwrap();
+        for rules in [
+            vec![
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(fill()),
+                )
+                .with_ordinal(OrdinalSelector::Exact(1)),
+            ],
+            vec![ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_stroke(fill()),
+            )],
+            vec![ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default()
+                    .with_fill(fill())
+                    .with_stroke(fill()),
+            )],
+            vec![
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(fill()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+                )
+                .with_ordinal(OrdinalSelector::Exact(2)),
+            ],
+        ] {
+            let theme = flowchart_title_theme(rules);
+            let rendered = prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert!(evidence.theme_residual_count() > 0, "source={source}");
+            let strict = prepare_flowchart_family_with_theme(source, &theme)
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+            assert!(strict.is_err());
+        }
+    }
+}
+
+#[test]
+fn flowchart_background_requires_a_real_terminal_and_respects_config_owner() {
+    let theme = flowchart_title_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        for (source, engine) in [
+            ("flowchart TD\nA[Alpha] --> B[Beta]\n", Engine::new()),
+            (
+                "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "theme": "base", "themeVariables": {"edgeLabelBackground": "#ac6824"}
+                }))),
+            ),
+        ] {
+            let source = format!("{prefix}{source}");
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0, "source={source}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn flowchart_background_covers_special_node_labels_without_an_edge() {
+    let theme = flowchart_title_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for source in [
+        "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label', form: 'square' }\n",
+        "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label' }\n",
+    ] {
+        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(rendered.svg().contains("labelBkg"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn flowchart_background_overwritten_ordinal_is_not_applicable() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let ordinal = ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+    )
+    .with_ordinal(OrdinalSelector::Exact(1));
+    let winner = ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+    );
+    let theme = flowchart_title_theme([ordinal, winner]);
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        let source = format!("{prefix}flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n");
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("overwritten ordinal must not block the static transparent winner");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn brutalist_preset_emits_ordinal_accents_and_preserves_source_fill() {
+    use merman_render::diagram_theme::ThemePreset;
+
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Brutalist)
+        .expect("compile Brutalist preset");
+    for source_override in [false, true] {
+        let mut source = String::from("---\nconfig:\n  look: classic\n---\nflowchart LR\n");
+        for ordinal in 1..=30 {
+            source.push_str(&format!("N{ordinal}[Node {ordinal}]\n"));
+        }
+        if source_override {
+            source.push_str("style N2 fill:#123456\n");
+        }
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Brutalist ordinal node fills must be portable");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for ordinal in 1..=30 {
+            let id = format!("N{ordinal}");
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some(id.as_str()))
+                .expect("emitted semantic node");
+            let shape = node
+                .descendants()
+                .find(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "label-container")
+                    })
+                })
+                .expect("node shape");
+            let expected = if source_override && ordinal == 2 {
+                "#123456"
+            } else if ordinal % 5 == 0 {
+                "#FF6B35"
+            } else if ordinal % 3 == 0 {
+                "#4ECDC4"
+            } else if ordinal % 2 == 0 {
+                "#FFE66D"
+            } else {
+                "#ffffff"
+            };
+            assert!(
+                shape
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains(&format!("fill:{expected}")),
+                "{id} must emit {expected}; source_override={source_override}: {:?}",
+                shape.attribute("style")
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_family_ordinal_transparent_fill_preserves_other_node_fills() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for family in ["flowchart", "swimlane-beta"] {
+        for ordinal in [
+            OrdinalSelector::Exact(2),
+            OrdinalSelector::Cycle {
+                period: 2,
+                offset: 1,
+            },
+        ] {
+            let theme = flowchart_title_theme([
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                )
+                .with_variant(ThemeVariant::Default)
+                .with_ordinal(ordinal),
+            ]);
+            let source = format!("{family} LR\nA[Alpha] --> B[Beta] --> C[Gamma]\n");
+            let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("ordinal transparent node fills must be portable");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for (id, expected) in [("A", "#123456"), ("B", "none"), ("C", "#123456")] {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("data-id") == Some(id))
+                    .unwrap();
+                let shape = node
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "label-container")
+                        })
+                    })
+                    .unwrap();
+                assert!(
+                    shape
+                        .attribute("style")
+                        .unwrap_or_default()
+                        .contains(&format!("fill:{expected}")),
+                    "{family} {ordinal:?} {id}: {:?}",
+                    shape.attribute("style")
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -4235,15 +7889,9 @@ fn assert_flowchart_fork_join_geometry(backend: &str, source: &str, direction: &
         assert_eq!(node.width, width + 4.0, "{context}: layout width");
         assert_eq!(node.height, height + 4.0, "{context}: layout height");
 
-        let id_fragment = format!("-flowchart-{id}-");
         let group = doc
             .descendants()
-            .find(|node| {
-                node.has_tag_name("g")
-                    && node
-                        .attribute("id")
-                        .is_some_and(|value| value.contains(&id_fragment))
-            })
+            .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(id))
             .unwrap();
         let path = group
             .descendants()
@@ -4379,9 +8027,8 @@ fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
                 .descendants()
                 .find(|node| {
                     node.has_tag_name("g")
-                        && node
-                            .attribute("id")
-                            .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                        && node.attribute("data-id") == Some("A")
+                        && node.attribute("data-et") == Some("node")
                 })
                 .and_then(|group| group.descendants().find(|node| node.has_tag_name("path")))
                 .and_then(|path| path.attribute("d"))

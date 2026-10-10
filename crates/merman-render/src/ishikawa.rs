@@ -19,9 +19,13 @@ const COS_A: f64 = 0.139_173_100_960_065_47;
 const SIN_A: f64 = 0.990_268_068_741_570_4;
 
 mod config;
+mod theme;
 
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
+pub(crate) use theme::{
+    IshikawaCssBinding, IshikawaTextThemePlan, IshikawaTextThemeReceipt, IshikawaTypographyTerminal,
+};
 
 pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,

@@ -14,7 +14,6 @@ use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
 use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceLayoutCheckpoints};
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
@@ -30,6 +29,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_text_heights: &'a [f64],
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
@@ -40,7 +40,8 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) note_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) label_box_height: f64,
-    pub(super) label_box_width: f64,
+    pub(super) block_label_box_height: f64,
+    pub(super) block_label_box_width: f64,
     pub(super) right_angles: bool,
     pub(super) is_neo: bool,
     pub(super) wrap_padding: f64,
@@ -48,9 +49,13 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) activation_width: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) msg_terminal_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) note_terminal_text_style: &'a TextStyle,
+    pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) typography: &'a super::SequenceTypographyPlan,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
@@ -322,6 +327,7 @@ fn handle_sequence_rect(
 
 fn handle_sequence_note(
     msg: &SequenceMessage,
+    message_index: usize,
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
@@ -344,8 +350,13 @@ fn handle_sequence_note(
             cursor_y: state.cursor_y,
             measurer: ctx.measurer,
             note_text_style: ctx.note_text_style,
+            note_terminal_text_style: ctx.note_terminal_text_style,
             math_config: ctx.math_config,
-            math_renderer: ctx.math_renderer,
+            math_terminal_style: ctx
+                .typography
+                .terminal_text_style(super::SequenceTextSurface::NoteLabel),
+            math_sidecar: ctx.math_sidecar,
+            message_index,
             checkpoints: ctx.checkpoints,
         },
     )?
@@ -396,8 +407,12 @@ fn handle_sequence_message(
             cursor_y: state.cursor_y,
             measurer: ctx.measurer,
             msg_text_style: ctx.msg_text_style,
+            msg_terminal_text_style: ctx.msg_terminal_text_style,
             math_config: ctx.math_config,
-            math_renderer: ctx.math_renderer,
+            math_terminal_style: ctx
+                .typography
+                .terminal_text_style(super::SequenceTextSurface::MessageLabel),
+            math_sidecar: ctx.math_sidecar,
             premeasured_bound: ctx
                 .message_metrics
                 .get(SequenceMessageOwner::from_model_index(msg_idx), msg),
@@ -462,6 +477,7 @@ pub(super) fn build_sequence_layout_graph(
             actor_widths: ctx.actor_widths,
             actor_centers_x: ctx.actor_centers_x,
             actor_base_heights: ctx.actor_base_heights,
+            actor_has_prepared_math: ctx.actor_has_prepared_math,
             actor_text_heights: ctx.actor_text_heights,
             is_neo: ctx.is_neo,
             actor_top_offset_y: ctx.actor_top_offset_y,
@@ -479,8 +495,8 @@ pub(super) fn build_sequence_layout_graph(
         activation_width: ctx.activation_width,
         box_margin: ctx.box_margin,
         box_text_margin: ctx.box_text_margin,
-        label_box_height: ctx.label_box_height,
-        label_box_width: ctx.label_box_width,
+        label_box_height: ctx.block_label_box_height,
+        label_box_width: ctx.block_label_box_width,
         sequence_default_width: ctx.sequence_default_width,
         wrap_padding: ctx.wrap_padding,
         note_margin: ctx.note_margin,
@@ -488,8 +504,12 @@ pub(super) fn build_sequence_layout_graph(
         measurer: ctx.measurer,
         msg_text_style: ctx.msg_text_style,
         note_text_style: ctx.note_text_style,
+        loop_text_style: ctx.loop_text_style,
         math_config: ctx.math_config,
-        math_renderer: ctx.math_renderer,
+        math_terminal_style: ctx
+            .typography
+            .terminal_text_style(super::SequenceTextSurface::ControlPrimaryTitle),
+        math_sidecar: ctx.math_sidecar,
         message_metrics: ctx.message_metrics,
         checkpoints: ctx.checkpoints,
     })?;
@@ -510,7 +530,7 @@ pub(super) fn build_sequence_layout_graph(
             continue;
         }
 
-        if handle_sequence_note(msg, &mut state, &ctx, &mut nodes)? {
+        if handle_sequence_note(msg, msg_idx, &mut state, &ctx, &mut nodes)? {
             continue;
         }
 
@@ -542,6 +562,7 @@ pub(super) fn build_sequence_layout_graph(
             actor_widths: ctx.actor_widths,
             actor_centers_x: ctx.actor_centers_x,
             actor_base_heights: ctx.actor_base_heights,
+            actor_has_prepared_math: ctx.actor_has_prepared_math,
             actor_text_heights: ctx.actor_text_heights,
             is_neo: ctx.is_neo,
             actor_lifecycle: &state.actor_lifecycle,

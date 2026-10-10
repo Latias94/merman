@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-c6-cyberpunk-flowchart",
+  "evidenceKind": "typed-capability",
+  "intent": "Prove the Cyberpunk Flowchart screen-blended tiled grid, linear wash, radial glow, and typed node-stroke slice through terminal SVG evidence and a bounded PNG canvas region."
+}

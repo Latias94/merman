@@ -1,0 +1,324 @@
+# Theme path retirement: local verification and measurements
+
+The unified terminal-theme implementation is complete locally. It removes the
+production `SvgTheme`/`MermaidThemeAdapter` closure and historical retirement
+authorization machinery. Mermaid input and derivation remain in the core;
+renderer-owned family artifacts bind winning visual properties before emission.
+This is an ownership and maintenance refactor. These measurements do not establish
+a latency, allocation or artifact-size improvement.
+
+The [final deletion inventory](../knowledge/engineering/theme-path-retirement-inventory-2026-10-09.md)
+maps removed readers/providers/gates to their replacement owners across all 35
+renderer families. The [gate removal record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+separates historical authorization from retained current behavior tests.
+
+The [implementation plan](../plans/2026-10-09-1500-refactor-theme-path-retirement-plan.md)
+is complete after the affected remote platform CI matrix passed at `3a2a2de46`.
+Local tests alone do not attest other operating systems, SDKs or packaged bindings.
+The initial verification update was
+pushed as `cb3958a43` to the existing feature branch and PR #178. No release was
+performed. The following measurements describe the frozen implementation; later
+CI repairs and optimization candidates are tracked separately below.
+
+## Revisions and controls
+
+- Baseline: `f8160267a3e905eb2d9d6c0b0c980d9fa1f07657`.
+- Measured head: `17da680e9871e7259f71f9485c5738dd3056302d`.
+- Runtime implementation: `3a11f46bad53209b0951abc0695bf971f8f3bc31`;
+  subsequent changes repair documentation comments only.
+- Host: Apple M4 Pro, macOS 27.0, arm64; Rust 1.95.0 / LLVM 22.1.2;
+  Python 3.14.8. Cargo builds and performance sampling ran serially.
+- Two clean ordinary clones, separate from registered development worktrees,
+  provided fixed source revisions. Cargo used locked dependency inputs.
+- Benchmark, corpus and fixture trees are identical. Their Git tree IDs are
+  `eb60b2644508cba59d98a6a8eb46970da5b51419` (tools/bench),
+  `516d57f4df88642190fed11e54dd60415159a2c0` (library benches), and
+  `f11c4bf868a0dc78523227b8e2913287d7b74224` (fixtures).
+- No package version or checksum changed. The exporter's obsolete optional
+  `sha2` dependency edge was removed; this is a disclosed closure change, not a
+  hidden reduction of supported outputs.
+
+Raw receipts and their lossless gzip digests are indexed in
+[the evidence manifest](evidence/theme-path-retirement-2026-10-10/manifest.json).
+Decompress each archive to recover the original receipt bytes and schema.
+The local experiment directory is
+`target/bench/experiments/theme-retirement-20261010-3a11f46ba`; it also retains
+frozen executables, artifact copies, build logs and unsuccessful attempts.
+
+## Native render latency
+
+The existing `compare_self.py` pipeline comparator measured public native
+`render-svg` operations with default features disabled and
+`svg,all-diagrams,layout-cytoscape,layout-elk,math` enabled. This is not CLI cold
+start, typed-preset qualification, native export or browser timing.
+
+The registered long preset uses 30 Criterion samples, two-second warmup,
+three-second measurement, eight A/A calibration pairs per side, a 32-pair cap,
+10,000 bootstrap resamples and seed zero. Decisions require both a 10% relative
+and 50-us absolute threshold, with simultaneous 95% confidence and Bonferroni
+adjustment across 18 components. Thresholds were not changed after sampling.
+
+| Operation | Baseline | Head | Simultaneous relative bounds | Decision |
+| --- | ---: | ---: | ---: | --- |
+| Flowchart medium | 1.53 ms | 1.55 ms | +1.02% to +1.61% | Confirmed non-regression at registered thresholds |
+| Flowchart SVG label reuse | Not admitted | Not admitted | A/A unstable | Inconclusive |
+| Class medium | 1.19 ms | 1.18 ms | -0.84% to -0.05% | Confirmed non-regression |
+| Sequence medium | 535.66 us | 531.90 us | -1.13% to -0.26% | Confirmed non-regression |
+| Requirement medium | 405.92 us | 403.62 us | -1.01% to -0.11% | Confirmed non-regression |
+| Mindmap medium | 389.01 us | 387.46 us | -0.92% to +0.21% | Confirmed non-regression |
+| GitGraph medium | 80.49 us | 80.94 us | -0.09% to +1.37% | Confirmed non-regression |
+| Architecture medium | 79.75 us | 80.11 us | -0.08% to +1.05% | Confirmed non-regression |
+| Info medium | 19.10 us | 18.84 us | -2.09% to -0.66% | Confirmed non-regression |
+
+All nine discovery outputs have equal SVG identities. The eight stable rows each
+received 14 fresh balanced AB/BA pairs. Label reuse failed absolute-margin A/A
+identity and order calibration and received no admissible A/B conclusion.
+The overall result is **inconclusive, exit 3**, with zero contract failures,
+zero confirmed regressions and zero confirmed improvements. A sub-threshold
+increase is not a speedup; these results do not certify every workload.
+
+Frozen executable SHA-256:
+
+- Base: `fad82a724015f59e9478137b24147297cbbd3821369a06a6015e85068637571c`.
+- Head: `13fac68811e4a0675a8da492e71b848781ca393825feb6b4b8977d6b67cda3dd`.
+
+An initial confirmation command combined mutually exclusive discovery-reuse and
+target-freezing arguments and exited before sampling. The corrected command
+reused the already verified frozen runners. Both attempts remain recorded.
+
+## Native allocation observations
+
+The existing `flowchart-end-to-end-memory` owner completed all six scales with
+five repetitions and matched zero-operation controls on each side. Both satisfy
+the existing infrastructure smoke caps; `candidate_admission=false`. This is
+allocator evidence for that operation, not a formal relative optimization
+admission or a measure of total WASM heap.
+
+| Scale | Allocated bytes base -> head | Allocation count base -> head | Peak live growth bytes base -> head |
+| ---: | ---: | ---: | ---: |
+| 1 | 1,357,333 -> 1,378,666 | 8,596 -> 8,629 | 286,293 -> 286,293 |
+| 2 | 1,974,019 -> 2,011,946 | 12,930 -> 12,975 | 415,634 -> 419,538 |
+| 4 | 3,340,653 -> 3,422,042 | 22,357 -> 22,446 | 674,752 -> 680,406 |
+| 10 | 7,329,685 -> 7,625,016 | 50,392 -> 50,601 | 1,460,446 -> 1,470,838 |
+| 32 | 60,980,961 -> 61,675,372 | 334,732 -> 335,317 | 14,001,153 -> 14,031,373 |
+| 100 | 349,889,357 -> 352,366,576 | 1,661,943 -> 1,663,643 | 85,301,369 -> 85,398,461 |
+
+Allocated bytes increase by 0.71% to 4.03%; peak live growth increases by at most
+0.94%. Prepared terminal records have a cost. These observations do not isolate
+which record causes each delta and do not establish allocation reduction.
+
+The additionally registered `sequence-message-repeated-memory` lane rejected
+both revisions before compilation: `owner contract probe input digest differs
+at index 0`. No Sequence samples or theme-memory comparison were produced.
+The probe and driver are identical across these revisions. Its September 26
+contract predates October 2/5 probe edits and changed manifest/lockfile inputs.
+Moreover, an August 13 change replaced prepared-render measurement with semantic
+artifact construction; the current probe does not execute layout or SVG.
+Refreshing hashes alone would not restore the historical measurement meaning.
+
+A separate follow-up should give the semantic lane an accurate name and contract,
+retain old candidate budgets as historical evidence, and add a public Sequence
+`render-svg` allocator workload if theme-memory claims are needed. It should reuse
+the current counting allocator and process protocol, without a source-analysis
+framework or automatic contract authorization.
+
+## CLI artifact size
+
+Both sides used the same `cli-release` artifact feature closure, Rust 1.95.0,
+`aarch64-apple-darwin`, `dist` profile and thin LTO. Raw binaries were copied;
+`strip -x` operated on copies, followed by gzip level 9 with `mtime=0`.
+The full command and hashes are in `cli-receipts.json` in the evidence archive.
+The common explicit features are `all-diagrams,analysis,ascii,icons,jpeg,
+layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,
+rustdoc,shell-completions,svg,system-clock,system-random,system-timezone,system-timing`;
+default features are disabled.
+
+| Metric | Baseline bytes | Head bytes | Change |
+| --- | ---: | ---: | ---: |
+| Raw | 53,664,496 | 54,205,056 | +1.01% |
+| Stripped copy | 46,796,752 | 47,277,648 | +1.03% |
+| Gzip-9 of stripped copy | 20,228,933 | 20,412,009 | +0.91% |
+
+The normalized normal package/version closure is identical: 441 unique rows.
+No dependency addition explains this increase. This comparison cannot attribute
+all bytes to a particular terminal record without symbol-level analysis.
+There is no checked-in CLI byte ceiling in this experiment and no size-reduction
+claim.
+
+The first head attempt reused the base target cache and failed on stale internal
+API metadata. An independent clean head target built successfully; only that
+artifact is measured. Both build logs are retained. The source was not changed
+to accommodate the cache failure.
+
+## Browser WASM size
+
+The two clean clones use the actual `build-wasm.mjs --package full` owner,
+independent target directories, Rust 1.95.0, wasm-pack 0.15.0 and the CI-pinned
+wasm-opt 131. Both disable default features and enable the same `web-full`
+features: `all-diagrams,analysis,ascii,editor,layout-cytoscape,layout-elk,math,svg`.
+These are wasm-bindgen web artifacts, not raw Cargo WASM or Typst modules.
+
+The size comparison uses wasm-tools 1.253.0 and Brotli 1.2.0. It follows
+`wasm-tools strip --all`, Python gzip-9 with
+`mtime=0`, and Brotli CLI quality 11 / window 22 on stripped copies. This is
+distinct from the release owner's Rust compression implementations; release
+budget acceptance is recorded separately below.
+
+Independent size measurements are recorded in `web-receipts.json`.
+
+| Metric | Baseline bytes | Head bytes | Change |
+| --- | ---: | ---: | ---: |
+| Raw | 16,335,330 | 16,418,678 | +0.51% |
+| Stripped copy | 16,335,065 | 16,418,413 | +0.51% |
+| Gzip-9 of stripped copy | 6,098,284 | 6,127,313 | +0.48% |
+| Brotli-11 of stripped copy | 4,509,566 | 4,529,971 | +0.45% |
+
+The independent head artifact remains below every registered web-full byte
+ceiling. It differs from the previously rebuilt workspace package reported below;
+the independent clone comparison is the size-delta evidence. This is not a
+byte-for-byte reproducible-build assertion, and the workspace package's smaller
+bytes must not substitute for the independent head result.
+
+The already rebuilt assembled head package passed the unchanged official owner:
+
+```text
+target/release/xtask wasm-size-matrix --artifact-profile web-full \
+  --web-package-root platforms/web/packages \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+```
+
+Its raw/stripped/gzip/Brotli bytes were
+16,314,460 / 16,314,195 / 6,098,623 / 4,510,303, below the existing
+16,804,000 / 16,804,000 / 6,282,000 / 4,646,000 ceilings. The budgets were
+not widened. This verifies `web-full`, not all six release profiles; complete
+release profiling remains a publication requirement.
+
+## Behavior and completion boundaries
+
+The plan records all final local owner receipts: 12,241 workspace tests,
+4,864 renderer tests, 45 feature builds and isolated consumers, native export,
+private acceptance, strict Clippy, docs, dependency/legal owners and public
+examples. All 77 fresh Chromium theme/workspace tests passed. Optimized evidence
+and qualification suites passed, as did full SVG structure/parity/parity-root.
+
+The final root-containment recheck covers 3,712 SVGs with zero blocking failures,
+54 browser-owned diagnostics, 2,344 upstream-inherited cases, one existing exact
+residual and zero unused residuals. The original full run had an external-image
+decode failure; focused successful decoding and the complete unchanged recheck
+are retained alongside it. No comparator, residual or source fixture was changed
+to make this pass.
+
+The final static audit covers all 35 writer families, including Error, with no
+remaining late production raw-theme winner selection. Serialization, CSS/URL
+safety, geometry-dependent effect realization, emission evidence and native
+receipts remain live contracts. The current matrix invariant traverses actual
+classification; no universal source-scanning gate was added.
+
+Local implementation and evidence are ready for review. Overall Goal completion
+still requires the affected remote feature/platform CI matrix. A/A uncertainty,
+the unavailable Sequence memory lane and unmeasured release profiles remain
+explicit limitations rather than successful checks.
+
+As a final environment probe, the CI script discovery command ran 704 tests
+locally. Five release-registry tests could not bind their loopback HTTP fixture
+(`PermissionError: Operation not permitted`); the failures occurred before their
+assertions and are caused by this sandbox's socket policy. The prior repository
+script gate receipt remains 582/582 passed. This probe is retained as an
+environment limitation and is not presented as a green CI result. After socket
+permissions were restored, the same unchanged command passed all 704 tests in
+13.021 seconds. Both logs are archived. Git write permission was also restored;
+the earlier inability to stage this report is no longer a blocker.
+
+## Remote CI follow-up
+
+CI run `38012289765` checks the pushed verification update. Web, macOS and Windows
+builds, platform bindings, Ubuntu build/test and the performance-contract lane
+passed. The overall run failed on the owners listed below. Two separate
+failures require fixes before U8 can close:
+
+- Seven fuzz jobs rejected `fuzz/Cargo.lock` under `--locked`: the exporter still
+  listed the removed optional `sha2` dependency edge. Commit `7e3b91902` removes
+  that edge without changing package versions. The pinned nightly local locked
+  fuzz check passed. After the fix was pushed, all seven fuzz jobs passed in CI
+  run `38016218098`.
+- The Typst package exceeded its unchanged stripped and gzip budgets. CI measured
+  11,972,759 stripped bytes against 11,950,000, and 4,605,401 gzip bytes against
+  4,582,000. This surface was not covered by the earlier web-full size result.
+
+The local Binaryen 131 reproduction measured 19,722,917 raw, 11,984,660 stripped,
+4,611,177 gzip and 3,419,483 Brotli bytes. The adjacent baseline with equal Typst
+features measured 19,555,520 raw and 11,903,873 stripped bytes. Its Python gzip-9
+measurement was 4,574,494 bytes; this is a diagnostic compression measurement,
+not the owner's Rust gzip result. The comparison identifies a code-size increase
+without introducing a dependency or reducing the supported diagram set.
+
+Commit `dd79ca584` shares the Class node/interface index, centralizes Sequence
+effect preparation, and shares common CSS emission and Flowchart class parsing.
+It also shares the existing XML validation loops across callback types without
+removing checks, changing reference-collection modes or changing callback order.
+All 4,864 renderer tests passed (six skipped), and the CI CLI strict clippy command
+passed. Independent source review found no validation-order or cancellation change.
+The final shared implementation's long native confirmation completed against
+the same adjacent baseline, with identical capabilities and nine fixtures.
+Eight rows confirm non-regression. The label-reuse row remains inconclusive
+because its A/A calibration is unstable; its observed paired bounds are
++1.06% to +1.35% and +40.96 to +51.34 microseconds. No row confirms regression
+under the registered joint 10% and 50-microsecond gate, and no speedup is claimed.
+The complete-suite outcome remains inconclusive (exit 3), not a passing latency
+gate. Raw samples, commands and executable hashes are in
+`latency-shared-head.json` and its companion files in the ignored experiment.
+
+The combined local owner result is 19,660,850 raw, 11,933,832 stripped, 4,598,500
+gzip and 3,412,774 Brotli bytes. Relative to the initial reproduction, it removes
+62,067 raw, 50,828 stripped and 12,677 gzip bytes. The old gzip ceiling still fails
+by 16,500 bytes. These are candidate-run size results, not the final six-artifact
+package baseline or a latency improvement claim. Logs and rejected candidates
+remain in the experiment's `size` directory.
+
+On October 10 the maintainer authorized accepting justified code-size growth with
+reasonable thresholds. The follow-up preregisters the existing
+[one-source size-baseline rule](theme_artifact_budget_reassessment_2026-09-14.md):
+build and smoke all five canonical Web packages and Typst from one committed
+source, then set each size ceiling to measured bytes plus 3%, rounded upward to
+1,000 bytes. Commit `dd79ca584` is the fixed source for this follow-up. The current
+budget catalog now records the verified one-source baseline. All six canonical
+artifacts pass functional/package/dependency checks and all 24 revised limits;
+twelve ceilings decrease and twelve increase, each following the same rule.
+The final measurements, identities and before/after ceilings are in the
+[budget reassessment](theme_artifact_budget_reassessment_2026-10-10.md).
+Remote CI confirmation passed in run `38023696805` at `3a2a2de46`.
+The shared source also passes 303 public-facade tests (two skipped), 98 native
+export tests, the complete SVG structure/parity/parity-root owner and 77 fresh
+Chromium theme/viewport tests after a locked clone-local dependency install.
+The follow-up's 52 lossless evidence archives and digest manifest are under
+`evidence/theme-path-retirement-2026-10-10/shared-final`; earlier measurements
+remain separately archived and retain their original source identities.
+The production optimizer remains Binaryen 131 `-Oz` with its existing feature
+flags. Convergence and alternative size-level trials are diagnostic only.
+
+## Final delivery verification
+
+CI run `38023696805` and Performance run `38023696796` complete successfully at
+`3a2a2de46476365b2d45270f35ce036da62fbb4d`. CI has 55 successful jobs, including
+the aggregate `pr-gate`. The sole skipped CI job is the intentionally unselected
+`typst-package-compat`; all selected owners complete in the same run. This covers
+Linux/macOS/Windows, CLI profiles, Node transports, Apple/Android/C/Python bindings,
+Web packages and browser tests, Typst, all seven fuzz jobs, dependency/legal owners
+and VS Code packages. Ubuntu completes full workspace and feature checks, private
+acceptance and qualification, documentation, SVG DOM parity and painted root
+containment. Existing diagnostics remain admitted by their unchanged contracts.
+
+The final local private-acceptance check runs 25 tests, all passing, and the public
+package boundary verifies production consumers while rejecting internal and
+retired imports. Commands, logs and full remote run/job/step identities are retained
+in `evidence/theme-path-retirement-2026-10-10/completion` with digest manifest.
+The GitHub bulk text log download did not complete during archival; the archived
+official JSON records retain each remote job and step result, not their text logs.
+The final documentation-only completion commit preserves the verified runtime,
+features, lockfiles, budgets, fixtures and workflow recipes. These records do not
+claim another whole-platform run at that later documentation commit.
+
+U1-U8 are complete as an ownership/maintenance refactor with measured product
+costs. The native latency suite still has an A/A-unstable row; the old Sequence
+allocator contract still produces no comparable samples. Neither limitation is
+hidden or represented as an optimization result. No merge or release was performed.

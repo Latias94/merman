@@ -45,13 +45,16 @@ fn direction(value: &str) -> elk::Direction {
 pub(super) fn layout(
     model: &StateDiagramModel,
     config: &Value,
+    style_plan: &super::StateStylePlan,
+    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     measurer: &dyn TextMeasurer,
     operation_seed: elk::ElkOperationSeed,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
     let hidden = state_hidden_prefixes(model);
-    let settings = StateConfigView::new(config).layout_settings(&model.direction);
+    let settings =
+        StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
     // The parser retains each note declaration, while StateDB overwrites the physical
     // note-group metadata. Preserve the final group identity without orphaning earlier notes.
     let mut note_groups = HashMap::new();
@@ -99,7 +102,7 @@ pub(super) fn layout(
         let title = node
             .label
             .as_ref()
-            .map(value_to_label_text)
+            .map(super::state_value_to_label_text)
             .unwrap_or_else(|| node.id.clone());
         let (width, height) = if group {
             (0.0, 0.0)
@@ -114,13 +117,23 @@ pub(super) fn layout(
             };
             state_fork_join_painted_dimensions(rankdir)
         } else {
-            state_node_dimensions(node, &settings, measurer)?
+            state_node_dimensions(node, &settings, style_plan, measurer, label_sidecar)?
         };
         let label = if group {
             let (width, height) = if title.is_empty() {
                 (0.0, 0.0)
             } else {
-                title_label_metrics(&title, measurer, &settings.text_style, settings.wrap_mode)
+                title_label_metrics(
+                    super::StateLabelOwner::ClusterTitle(&node.id),
+                    &title,
+                    measurer,
+                    style_plan
+                        .node(&node.id)
+                        .map(super::StateNodeStylePlan::resolved_cluster_label_typography)
+                        .unwrap_or_else(|| style_plan.composite_label_typography()),
+                    settings.wrap_mode,
+                    label_sidecar,
+                )
             };
             painted_group_labels.insert(node.id.as_str(), elk::Label { width, height });
             // Mermaid ELK's getMeasuredLabelData removes the 2px labelBBox adjustment
@@ -140,7 +153,12 @@ pub(super) fn layout(
                 elk::NodeKind::Leaf
             },
             container: elk::ContainerNodeOptions {
-                padding: node.padding.unwrap_or(settings.state_padding).max(0.0),
+                padding: style_plan
+                    .node(&node.id)
+                    .and_then(super::StateNodeStylePlan::padding_override)
+                    .or(node.padding)
+                    .unwrap_or(settings.state_padding)
+                    .max(0.0),
                 ..Default::default()
             },
             label_text: group.then_some(title),
@@ -173,8 +191,17 @@ pub(super) fn layout(
             continue;
         }
         let label = crate::text::mermaid_html_breaks_to_newlines(&edge.label);
-        let (width, height) =
-            edge_label_metrics(&label, measurer, &settings.text_style, settings.wrap_mode);
+        let (width, height) = edge_label_metrics(
+            &edge.id,
+            &label,
+            measurer,
+            style_plan
+                .edge(&edge.id)
+                .map(super::StateEdgeStylePlan::resolved_label_typography)
+                .unwrap_or_else(|| style_plan.transition_label_typography()),
+            settings.wrap_mode,
+            label_sidecar,
+        );
         edges.push(elk::Edge {
             id: edge.id.clone(),
             source: canonical(&edge.start),

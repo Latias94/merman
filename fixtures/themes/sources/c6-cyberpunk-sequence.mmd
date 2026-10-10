@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant Operator
+    participant Console
+    Operator->>Console: Breach
+    activate Console
+    Note over Operator,Console: Access granted
+    loop Trace
+        Console-->>Operator: Scan
+    end
+    deactivate Console

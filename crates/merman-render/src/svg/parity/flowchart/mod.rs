@@ -5,10 +5,17 @@ mod agentflow;
 mod css;
 mod defs;
 mod document;
+mod document_ids;
 mod edge;
+mod edge_effect;
 mod edge_geom;
+mod edge_style_plan;
 mod hierarchy;
 mod label;
+mod label_effect;
+mod node_effect;
+mod node_inventory;
+pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes};
 mod render;
 mod render_config;
 mod render_input;
@@ -24,17 +31,26 @@ use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
     FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom,
 };
+pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
+pub(crate) use render_config::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
 pub(super) use style::*;
 
+pub(in crate::svg::parity) use render::node::roughjs::{
+    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
+    roughjs_paths_for_hand_drawn_svg_path,
+};
 use render::{
     FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
     render_flowchart_node, render_flowchart_root,
 };
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
 use types::*;
-use util::{HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleAttr, OptionalStyleXmlAttr};
+use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
@@ -48,12 +64,6 @@ pub(in crate::svg::parity::flowchart) const FLOWCHART_EDGE_LABEL_WRAP_WIDTH: f64
 #[inline]
 fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<&str> {
     escape_attr_display(text)
-}
-
-pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
-    config: &merman_core::MermaidConfig,
-) -> &str {
-    flowchart_config_diagram_look(config).as_str()
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(

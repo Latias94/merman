@@ -93,9 +93,7 @@ fn swimlane_edge_label_uses_html(svg: &str) -> bool {
                         .all(|part| matches!(part, "label" | "edgeLabel"))
                         && class.split_ascii_whitespace().count() == 2
                 })
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with("edge-label-"))
+                && node.attribute("data-et") == Some("edge-label")
         })
         .expect("swimlane edge label node");
     label
@@ -107,11 +105,10 @@ fn swimlane_edge_label_uses_html(svg: &str) -> bool {
 fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     let without_line_hops =
         format!("---\nconfig:\n  swimlane:\n    lineHops: false\n---\n{DOCS_BASIC}");
-    // Probe the full SVG operation with line hops disabled: retaining original label paths also
-    // consumes work after layout. The same boundary must reject the additional line-hop work.
-    // Start at the fixture's stable 90-unit layout preflight estimate.
-    let svg_boundary = (90..=256)
-        .find(|&max_layout_work_units| {
+    // Probe the exact full-SVG baseline without line hops. Layout JSON intentionally does not pay
+    // for SVG-only hierarchy and emission work, so its boundary cannot isolate line-hop work.
+    let svg_boundary = (90..=512)
+        .find_map(|max_layout_work_units| {
             let resources = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
@@ -128,11 +125,11 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
                 OperationControl::new(),
                 request,
             )) {
-                Ok(RenderOutput::Svg(Some(_))) => true,
+                Ok(RenderOutput::Svg(Some(_))) => Some(max_layout_work_units),
                 Ok(RenderOutput::Svg(None)) => panic!("expected swimlane diagram"),
                 Ok(_) => panic!("unexpected target output"),
-                Err(error) if error.to_string().contains("max_layout_work_units") => false,
-                Err(error) => panic!("unexpected SVG render error: {error}"),
+                Err(error) if error.to_string().contains("max_layout_work_units") => None,
+                Err(error) => panic!("unexpected SVG error: {error}"),
             }
         })
         .expect("SVG without line hops must fit within the bounded probe range");
@@ -254,6 +251,10 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
         .expect("swimlane diagram");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
+        semantic.family_id(),
+        Some(merman::DiagramFamilyId::SWIMLANE)
+    );
+    assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
         Some("swimlane")
     );
@@ -277,14 +278,14 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 3);
     assert_eq!(svg.matches(r#"class="swimlane-body""#).count(), 3);
     assert!(svg.contains("rotate(-90)"), "{svg}");
-    assert!(svg.contains("typed-swimlane_swimlane-pointEnd"), "{svg}");
+    assert!(has_marker_kind(&svg, "pointEnd"), "{svg}");
     assert!(
-        svg.contains("edge-label-triage-answer-L_triage_answer_0"),
+        has_semantic_group(&svg, "L_triage_answer_0", "edge-label"),
         "{svg}"
     );
     assert!(svg.contains("Known issue"), "{svg}");
     assert!(
-        svg.contains("edge-label-triage-investigate-L_triage_investigate_0"),
+        has_semantic_group(&svg, "L_triage_investigate_0", "edge-label"),
         "{svg}"
     );
     assert!(svg.contains("Needs code change"), "{svg}");
@@ -373,12 +374,7 @@ A -->|`This is **bold**`| B
     let document = roxmltree::Document::parse(&svg).expect("valid SVG XML");
     let label = document
         .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with("edge-label-"))
-        })
+        .find(|node| node.has_tag_name("g") && node.attribute("data-et") == Some("edge-label"))
         .expect("swimlane edge label node");
     let text = label
         .descendants()
@@ -464,6 +460,10 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
         .expect("swimlane diagram with dagre override");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
+        semantic.family_id(),
+        Some(merman::DiagramFamilyId::FLOWCHART)
+    );
+    assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
         Some("dagre")
     );
@@ -480,8 +480,7 @@ fn loose_nodes_render_the_synthetic_default_lane() {
     );
 
     assert!(
-        svg.contains(r#"class="cluster swimlane" id="__swimlane_default__""#)
-            && svg.contains(r#"data-id="__swimlane_default__" data-et="cluster""#),
+        has_semantic_group(&svg, "__swimlane_default__", "cluster"),
         "{svg}"
     );
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 1);
@@ -512,6 +511,10 @@ flowchart LR
         .expect("flowchart swimlane-layout diagram");
     assert_eq!(semantic.metadata().diagram_type, "flowchart-v2");
     assert_eq!(
+        semantic.family_id(),
+        Some(merman::DiagramFamilyId::SWIMLANE)
+    );
+    assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
         Some("swimlane")
     );
@@ -522,10 +525,26 @@ flowchart LR
         "{svg}"
     );
     assert!(svg.contains(r#"class="cluster swimlane""#), "{svg}");
-    assert!(
-        svg.contains("flowchart-swimlane-layout_flowchart-v2-pointEnd"),
-        "{svg}"
-    );
+    assert!(has_marker_kind(&svg, "pointEnd"), "{svg}");
+}
+
+fn has_semantic_group(svg: &str, raw_id: &str, element_type: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("data-id") == Some(raw_id)
+            && node.attribute("data-et") == Some(element_type)
+    })
+}
+
+fn has_marker_kind(svg: &str, kind: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document.descendants().any(|node| {
+        node.has_tag_name("marker")
+            && node
+                .attribute("id")
+                .is_some_and(|id| id.ends_with(&format!("-{kind}")))
+    })
 }
 
 #[test]
@@ -619,6 +638,10 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
         .expect("ELK override prepare")
         .expect("swimlane diagram with ELK override");
     assert_eq!(semantic.metadata().diagram_type, "swimlane");
+    assert_eq!(
+        semantic.family_id(),
+        Some(merman::DiagramFamilyId::FLOWCHART)
+    );
     assert_eq!(
         semantic.metadata().effective_config.get_str("layout"),
         Some("elk")

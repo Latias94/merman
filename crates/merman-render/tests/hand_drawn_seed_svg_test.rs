@@ -65,47 +65,35 @@ fn assert_seeded_svg_contract<F>(
     }
 }
 
-fn path_chunk_by_id<'a>(svg: &'a str, id: &str) -> &'a str {
-    let id_attr = format!(r#"id="{id}""#);
-    let id_start = svg.find(&id_attr).expect("path id");
-    let path_start = svg[..id_start].rfind("<path ").expect("path start");
-    let path_end = svg[id_start..].find("/>").expect("path end") + id_start + "/>".len();
+fn path_chunk_by_data_id<'a>(svg: &'a str, data_id: &str) -> &'a str {
+    let semantic_attrs = format!(r#"data-et="edge" data-id="{data_id}""#);
+    let semantic_start = svg.find(&semantic_attrs).expect("semantic edge id");
+    let path_start = svg[..semantic_start].rfind("<path ").expect("path start");
+    let path_end =
+        svg[semantic_start..].find("/>").expect("path end") + semantic_start + "/>".len();
     &svg[path_start..path_end]
 }
 
-fn fixed_chunk_after<'a>(svg: &'a str, needle: &str, len: usize) -> &'a str {
-    let start = svg.find(needle).expect("chunk needle");
-    &svg[start..(start + len).min(svg.len())]
-}
-
-fn cluster_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
-    let needle = format!(r#"<g class="cluster" id="{id}" data-look="handDrawn""#);
-    let start = svg.find(&needle).expect("cluster start");
-    let shape_end = svg[start..]
+fn cluster_shape_chunk<'a>(svg: &'a str, data_id: &str) -> &'a str {
+    let semantic_attrs = format!(r#"data-id="{data_id}" data-et="cluster""#);
+    let semantic_start = svg.find(&semantic_attrs).expect("semantic cluster id");
+    let start = svg[..semantic_start]
+        .rfind(r#"<g class="cluster""#)
+        .expect("cluster start");
+    let shape_end = svg[semantic_start..]
         .find(r#"<g class="cluster-label""#)
         .expect("cluster label start")
-        + start;
+        + semantic_start;
     &svg[start..shape_end]
 }
 
-fn node_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
-    let id_attr = format!(r#"id="{id}""#);
-    let id_start = svg.find(&id_attr).expect("node id");
-    let node_start = svg[..id_start].rfind("<g ").expect("node start");
-    let label_start = svg[id_start..]
+fn node_shape_chunk<'a>(svg: &'a str, data_id: &str) -> &'a str {
+    let semantic_attrs = format!(r#"data-id="{data_id}" data-et="node""#);
+    let semantic_start = svg.find(&semantic_attrs).expect("semantic node id");
+    let node_start = svg[..semantic_start].rfind("<g ").expect("node start");
+    let label_start = svg[semantic_start..]
         .find(r#"<g class="label""#)
-        .map(|idx| id_start + idx)
-        .expect("node label start");
-    &svg[node_start..label_start]
-}
-
-fn node_shape_chunk_by_id_prefix<'a>(svg: &'a str, id_prefix: &str) -> &'a str {
-    let id_attr_prefix = format!(r#"id="{id_prefix}"#);
-    let id_start = svg.find(&id_attr_prefix).expect("node id prefix");
-    let node_start = svg[..id_start].rfind("<g ").expect("node start");
-    let label_start = svg[id_start..]
-        .find(r#"<g class="label""#)
-        .map(|idx| id_start + idx)
+        .map(|idx| semantic_start + idx)
         .expect("node label start");
     &svg[node_start..label_start]
 }
@@ -161,13 +149,14 @@ fn flowchart_svg_hand_drawn_basic_rect_uses_rough_node_wrapper_and_hachure_paths
         seed_7, seed_8,
         "different handDrawnSeed should change the visible basic Flowchart node rough paths"
     );
+    let node = node_shape_chunk(&seed_7, "A");
     assert!(
-        seed_7.contains(r#"<g class="rough-node default" id="flowchart-hand-rect-flowchart-A-0""#),
-        "hand-drawn basic node should use Mermaid's rough-node wrapper class: {seed_7}"
+        node.starts_with(r#"<g class="rough-node default""#),
+        "hand-drawn basic node should use Mermaid's rough-node wrapper class: {node}"
     );
     assert!(
-        !seed_7.contains(r#"<g class="node default" id="flowchart-hand-rect-flowchart-A-0""#),
-        "hand-drawn basic node should not keep the classic node wrapper class: {seed_7}"
+        !node.starts_with(r#"<g class="node default""#),
+        "hand-drawn basic node should not keep the classic node wrapper class: {node}"
     );
     assert!(
         seed_7.contains(r#"<g class="basic label-container" style=""><path d=""#)
@@ -201,11 +190,9 @@ fn flowchart_svg_hand_drawn_decision_hachure_keeps_diamond_silhouette() {
         ),
     );
 
-    let chunk = node_shape_chunk(&svg, "flowchart-hand-decision-flowchart-A-0");
+    let chunk = node_shape_chunk(&svg, "A");
     assert!(
-        chunk.contains(
-            r#"<g class="rough-node default" id="flowchart-hand-decision-flowchart-A-0""#
-        ),
+        chunk.starts_with(r#"<g class="rough-node default""#),
         "hand-drawn decision should render through the rough-node wrapper: {chunk}"
     );
 
@@ -250,10 +237,7 @@ fn flowchart_svg_hand_drawn_high_risk_shapes_keep_hachure_starts_in_bounds() {
         ("R", -50.0, -5.0),
         ("S", -35.0, 10.0),
     ] {
-        let chunk = node_shape_chunk_by_id_prefix(
-            &svg,
-            &format!("flowchart-hand-risk-shapes-flowchart-{node_id}-"),
-        );
+        let chunk = node_shape_chunk(&svg, node_id);
         assert!(
             chunk.contains(r#"class="rough-node"#),
             "{node_id} should render through the rough-node wrapper: {chunk}"
@@ -331,11 +315,10 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
             )
         },
         &[
-            r#"id="flowchart-seed-flowchart-A-0" transform="translate"#,
-            r#"data-look="handDrawn""#,
+            r#"data-look="handDrawn" data-id="A" data-et="node""#,
             r#"<g transform="translate"#,
             r##"stroke="#f8fafc" stroke-width="1.5" fill="none" stroke-dasharray="0 0""##,
-            r##"stroke="#ef4444" stroke-width="1.2999999523162842" fill="none" stroke-dasharray="0 0""##,
+            r##"stroke="#ef4444" stroke-width="3" fill="none" stroke-dasharray="0 0""##,
         ],
     );
 }
@@ -413,8 +396,8 @@ linkStyle 0 stroke:#123456,stroke-width:2px
         "same handDrawnSeed should keep Flowchart edge and cluster rough SVG deterministic"
     );
 
-    let edge_7 = path_chunk_by_id(&seed_7, "flowchart-seed-surfaces-L_A_B_0");
-    let edge_8 = path_chunk_by_id(&seed_8, "flowchart-seed-surfaces-L_A_B_0");
+    let edge_7 = path_chunk_by_data_id(&seed_7, "L_A_B_0");
+    let edge_8 = path_chunk_by_data_id(&seed_8, "L_A_B_0");
     assert_ne!(
         edge_7, edge_8,
         "different handDrawnSeed should change the visible rough edge path"
@@ -422,34 +405,31 @@ linkStyle 0 stroke:#123456,stroke-width:2px
     assert!(
         edge_7.contains("transition")
             && edge_7.contains(
-                r#"marker-end="url(#flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456)""#
+                r#"marker-end="url(#flowchart-seed-surfaces-merman-flowchart-document_flowchart-v2-pointEnd_stroke__123456)""#
             )
             && edge_7.contains(r#"data-look="handDrawn""#),
         "hand-drawn edge should keep Mermaid transition class, marker, and data attributes: {edge_7}"
     );
     assert!(
-        seed_7.contains(r#"id="flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456""#)
+        seed_7.contains(
+            r#"id="flowchart-seed-surfaces-merman-flowchart-document_flowchart-v2-pointEnd_stroke__123456""#
+        )
             && !seed_7.contains(
-                r##"id="flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="#123456" fill="#123456"/>"##
+                r##"id="flowchart-seed-surfaces-merman-flowchart-document_flowchart-v2-pointEnd_stroke__123456" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="#123456" fill="#123456"/>"##
             ),
         "hand-drawn colored marker ids should follow Mermaid's raw stroke token without inline sanitized color attrs"
     );
 
-    let cluster_7 = cluster_shape_chunk(&seed_7, "flowchart-seed-surfaces-Group");
-    let cluster_8 = cluster_shape_chunk(&seed_8, "flowchart-seed-surfaces-Group");
+    let cluster_7 = cluster_shape_chunk(&seed_7, "Group");
+    let cluster_8 = cluster_shape_chunk(&seed_8, "Group");
     assert_ne!(
         cluster_7, cluster_8,
         "different handDrawnSeed should change the visible rough cluster path"
     );
 
-    let cluster_group_7 = fixed_chunk_after(
-        &seed_7,
-        r#"<g class="cluster" id="flowchart-seed-surfaces-Group" data-look="handDrawn""#,
-        1600,
-    );
     assert!(
         cluster_7.contains("<path ") && !cluster_7.contains("<rect "),
-        "hand-drawn cluster should use a rough path group instead of a plain rect: {cluster_group_7}"
+        "hand-drawn cluster should use a rough path group instead of a plain rect: {cluster_7}"
     );
 }
 

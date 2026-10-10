@@ -1,7 +1,5 @@
 //! Flowchart process rectangle.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -10,10 +8,10 @@ const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let width = common.layout_node.width.max(1.0);
     let height = common.layout_node.height.max(1.0);
     let rough_paths = if common.look_is_hand_drawn() {
@@ -28,6 +26,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
                 HAND_DRAWN_FILL_WEIGHT,
                 HAND_DRAWN_HACHURE_GAP,
                 HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -48,16 +47,30 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
             common.stroke_width,
             escape_attr(common.stroke_dasharray),
         );
-        return;
+        return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_process();
     }
 
+    // Keep Mermaid's square default while preserving explicit Neo configuration
+    // and the independently admitted typed/source geometry channels.
+    let radius = common
+        .typed_corner_radius
+        .or(common.configured_corner_radius);
     let _ = write!(
         out,
-        r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" />"#,
+        r#"<rect class="basic label-container"{} style="{}"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
+    );
+    common.write_rectangle_corner_style(out);
+    let _ = write!(
+        out,
+        r#"" x="{}" y="{}" width="{}" height="{}""#,
         fmt(-width / 2.0),
         fmt(-height / 2.0),
         fmt(width),
         fmt(height),
     );
+    common.write_rectangle_radii(out, radius);
+    out.push_str(" />");
+    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
 }

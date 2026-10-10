@@ -1,10 +1,11 @@
+use super::super::SvgOutput;
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::edge::{
-    ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
+    ClassEdgeGroupsRenderContext, ClassEdgeLabelCenters, render_class_edge_labels,
+    render_class_edge_paths,
 };
-use crate::Result;
 use crate::model::{Bounds, LayoutEdge, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
@@ -13,6 +14,8 @@ use rustc_hash::FxHashMap;
 pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
+    pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
+    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextThemeReceipt>,
 }
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
@@ -36,62 +39,116 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) timing: RenderTiming,
     pub(super) uses_elk_adapter_dom: bool,
     pub(super) edge_paths_class: &'static str,
+    pub(super) text_paint: Option<&'a crate::class::ClassTextPaint>,
+    pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
 
-pub(super) struct ClassSplitEdgeGroups {
-    pub(super) edge_paths: String,
-    pub(super) edge_labels: String,
-}
-
-pub(super) fn render_class_split_edge_groups(
+pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
+    out: &mut O,
     state: ClassSplitEdgeGroupsRenderState<'_>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> Result<ClassSplitEdgeGroups> {
+) -> crate::Result<()> {
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
+        theme_receipt,
+        typography_receipt,
     } = state;
-
-    let mut edge_paths = String::new();
-    let mut edge_labels = String::new();
-    render_class_edge_groups(
-        ClassEdgeGroupsRenderState {
-            edge_paths: &mut edge_paths,
-            edge_labels: &mut edge_labels,
-            content_bounds,
-            detail,
-        },
-        &ClassEdgeGroupsRenderContext {
-            edges: ctx.edges,
-            missing_section_points: ctx.missing_section_points,
-            work_meter: ctx.work_meter,
-            line_hop_paths: ctx.line_hop_paths,
-            relations_by_id: ctx.relations_by_id,
-            relation_index_by_id: ctx.relation_index_by_id,
-            diagram_marker_class: ctx.diagram_marker_class,
-            diagram_id: ctx.diagram_id,
-            content_tx: ctx.content_tx,
-            content_ty: ctx.content_ty,
-            bounds_dx,
-            bounds_dy,
-            edge_use_html_labels: ctx.edge_use_html_labels,
-            text_measurer: ctx.text_measurer,
-            terminal_text_style: ctx.terminal_text_style,
-            mermaid_config: ctx.mermaid_config,
-            math_renderer: ctx.math_renderer,
-            look: ctx.look,
-            hand_drawn_seed: ctx.hand_drawn_seed.clone(),
-            timing: ctx.timing,
-            uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
-            edge_paths_class: ctx.edge_paths_class,
-            emit: ctx.emit,
-        },
+    let edge_label_centers = render_class_split_edge_paths(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        ctx,
+        bounds_dx,
+        bounds_dy,
     )?;
-    Ok(ClassSplitEdgeGroups {
-        edge_paths,
-        edge_labels,
-    })
+    render_class_split_edge_labels(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        typography_receipt,
+        ctx,
+        bounds_dx,
+        bounds_dy,
+        &edge_label_centers,
+    )
+}
+
+pub(super) fn render_class_split_edge_paths<O: SvgOutput>(
+    out: &mut O,
+    content_bounds: &mut Option<Bounds>,
+    detail: &mut ClassRenderDetails,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    bounds_dx: f64,
+    bounds_dy: f64,
+) -> crate::Result<ClassEdgeLabelCenters> {
+    let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
+    render_class_edge_paths(out, content_bounds, detail, theme_receipt, &local_ctx)
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
+pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
+    out: &mut O,
+    content_bounds: &mut Option<Bounds>,
+    detail: &mut ClassRenderDetails,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    bounds_dx: f64,
+    bounds_dy: f64,
+    edge_label_centers: &ClassEdgeLabelCenters,
+) -> crate::Result<()> {
+    let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
+    render_class_edge_labels(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        typography_receipt,
+        &local_ctx,
+        edge_label_centers,
+    )
+}
+
+fn local_edge_context<'a>(
+    ctx: &ClassSplitEdgeGroupsRenderContext<'a>,
+    bounds_dx: f64,
+    bounds_dy: f64,
+) -> ClassEdgeGroupsRenderContext<'a> {
+    ClassEdgeGroupsRenderContext {
+        edges: ctx.edges,
+        missing_section_points: ctx.missing_section_points,
+        work_meter: ctx.work_meter,
+        line_hop_paths: ctx.line_hop_paths,
+        relations_by_id: ctx.relations_by_id,
+        relation_index_by_id: ctx.relation_index_by_id,
+        diagram_marker_class: ctx.diagram_marker_class,
+        diagram_id: ctx.diagram_id,
+        content_tx: ctx.content_tx,
+        content_ty: ctx.content_ty,
+        bounds_dx,
+        bounds_dy,
+        edge_use_html_labels: ctx.edge_use_html_labels,
+        text_measurer: ctx.text_measurer,
+        terminal_text_style: ctx.terminal_text_style,
+        mermaid_config: ctx.mermaid_config,
+        math_renderer: ctx.math_renderer,
+        look: ctx.look,
+        hand_drawn_seed: ctx.hand_drawn_seed.clone(),
+        timing: ctx.timing,
+        uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
+        edge_paths_class: ctx.edge_paths_class,
+        relation_theme: ctx.relation_theme,
+        text_paint: ctx.text_paint,
+        emit: ctx.emit,
+    }
 }

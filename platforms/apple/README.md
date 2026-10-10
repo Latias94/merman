@@ -13,7 +13,7 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
-The alpha.6 XCFramework uses UniFFI API `6`. This guide targets the unpublished `0.8.0` candidate with API `7`; the latest published release is `0.8.0-alpha.7`. Use the matching source/generated Swift and native archive, as described in the [changelog](CHANGELOG.md).
+This guide describes the current source interface with UniFFI API `7`. The alpha.6 XCFramework uses API `6`; use generated Swift and a native archive from the same artifact. Apple archive publication is independent of the workspace release; consult the [dated publication snapshot](../../docs/release/PUBLISH_ORDER.md) and [changelog](CHANGELOG.md) for recorded artifact boundaries.
 
 ## Add A Release XCFramework
 
@@ -41,13 +41,13 @@ let svg = try client.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
-`resourceOptionsJson` emits Options JSON schema `2`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
+`resourceOptionsJson` emits Options JSON schema `3`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
 The generated binding API is 7. `MermanOperationRequestV4` remains the current request record name;
-it does not identify the binding API version. API 7 adds `requestedLayoutProfile` and
-`compactAttempted` to the schema-3 ASCII output plan. The effective `layoutProfile` remains
+it does not identify the binding API version. API 7 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
+`compactAttempted` in the schema-3 ASCII output plan. The effective `layoutProfile` remains
 Canonical or Compact. Replace `bindingApiVersionV6()` with `bindingApiVersionV7()` when
 regenerating source and the XCFramework together. API 6 introduced capability admission arrays
 and explicit output encoding. `MermanError.Binding` includes an optional
@@ -71,7 +71,7 @@ evidence, diagnostic failures preserve their stable code and optional source pro
 registry failures preserve their structured registration evidence, and cancellation preserves its
 reason and checkpoint phase without message parsing.
 
-The default XCFramework includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits math, PNG, JPEG, and PDF. The generated helpers remain available for custom current-contract libraries; the default artifact returns `.missingCapability` with `math`, `png`, `jpeg`, or `pdf` as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
+The default XCFramework includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits math, PNG, JPEG, and PDF. The generated helpers remain available for custom current-contract libraries; the default artifact returns `.missingCapability` with `math`, `png`, `jpeg`, or `pdf` as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `themeCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
 
 ## Text Measurement
 
@@ -87,6 +87,14 @@ git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 ```
 
 The final command proves that the checked-in UniFFI Swift projection matches the library used to build the XCFramework.
+
+The macOS smoke compares the shared theme catalog and authoring vectors, round-trips all ten preset recipes, and imports complete Cyberpunk and edited Class recipes in fresh processes. It also checks that unsupported Class node widths retain a source-addressed diagnostic and rejected admission. Set `MERMAN_APPLE_THEME_SMOKE_OUTPUT` to retain each run's recipe files, SVGs, and operation metadata under a chosen directory. These checks do not qualify visual output, iOS execution, or the Swift 5.9 compiler floor.
+
+The same smoke checks omitted, cleared, and transparent Class paints against source-owned styles.
+Clear masks the earlier paint but retains an unsupported-route diagnostic; strict portability rejects
+it. A deliberately absent font family remains a legal SVG reference with a fallback family. The
+default artifact rejects embedded font resources before decoding, including at engine construction.
+These checks do not prove that a browser or PDF renderer has the requested font or uses matching metrics.
 
 ## Documentation And Releases
 

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-c6-cyberpunk-state",
+  "evidenceKind": "typed-capability",
+  "intent": "Prove the Cyberpunk State soft-glow slice with terminal filter receipts, bounded paint outsets, and unchanged node geometry."
+}

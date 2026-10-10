@@ -1,0 +1,14 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-er-style-precedence",
+  "evidenceKind": "source-compatibility",
+  "intent": "Preserve ER default, assigned-class, and inline paint precedence from Mermaid.",
+  "styleEvidenceIds": [
+    "er-node-assigned",
+    "er-node-default",
+    "er-node-inline",
+    "er-typography-assigned-residual",
+    "er-typography-default-residual",
+    "er-typography-inline-residual"
+  ]
+}

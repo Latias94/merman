@@ -8,9 +8,26 @@ use super::super::roughjs_common::{
     mermaid_arc_points as roughjs_arc_points, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
 };
 
-pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64) -> String {
-    let radius = 5.0;
-    let taper = 5.0;
+pub(super) fn normalized_rounded_rect_radius(w: f64, h: f64, radius: f64) -> f64 {
+    let max_radius = (w.abs() / 2.0).min(h.abs() / 2.0);
+    if !radius.is_finite() || !max_radius.is_finite() || max_radius <= 0.0 {
+        0.0
+    } else {
+        radius.clamp(0.0, max_radius)
+    }
+}
+
+pub(super) fn mermaid_rounded_rect_path_data(w: f64, h: f64, radius: f64) -> String {
+    let radius = normalized_rounded_rect_radius(w, h, radius);
+    if radius == 0.0 {
+        return roughjs_closed_path_d_from_points(&[
+            (-w / 2.0, -h / 2.0),
+            (w / 2.0, -h / 2.0),
+            (w / 2.0, h / 2.0),
+            (-w / 2.0, h / 2.0),
+        ]);
+    }
+    let taper = radius;
 
     let mut points: Vec<(f64, f64)> = Vec::new();
 
@@ -73,6 +90,29 @@ pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
         (-w / 2.0, 0.0),
     ];
     roughjs_closed_path_d_from_points(&points)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_rect_radius_changes_path_geometry() {
+        let square = mermaid_rounded_rect_path_data(100.0, 40.0, 0.0);
+        let rounded = mermaid_rounded_rect_path_data(100.0, 40.0, 12.0);
+
+        assert_ne!(square, rounded);
+        assert_eq!(square, "M-50,-20 L50,-20 L50,20 L-50,20 Z");
+    }
+
+    #[test]
+    fn rounded_rect_radius_is_clamped_to_half_the_smallest_side() {
+        let clamped = mermaid_rounded_rect_path_data(100.0, 40.0, 100.0);
+        let max = mermaid_rounded_rect_path_data(100.0, 40.0, 20.0);
+
+        assert_eq!(clamped, max);
+        assert_eq!(normalized_rounded_rect_radius(100.0, 40.0, -1.0), 0.0);
+    }
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(

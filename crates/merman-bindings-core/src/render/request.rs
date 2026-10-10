@@ -2,16 +2,15 @@
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
     BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
-    PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
-    binding_site_config, css_declaration_value, finite_positive, internal_json_error,
-    no_diagram_error, normalize_option, parse_error, runtime_policy_error,
+    binding_resource_policy, binding_site_config, css_declaration_value, finite_positive,
+    internal_json_error, no_diagram_error, normalize_option, runtime_policy_error,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
+use crate::theme_execution_evidence::BindingThemeExecutionEvidence;
 use merman::svg::{
-    HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions, MeasurementProfileId,
-    Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
+    LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 
@@ -19,6 +18,7 @@ use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnviron
 pub(super) struct RenderRequestPlan {
     renderer: Renderer,
     svg: SvgRequest,
+    theme: Option<merman::svg::DiagramTheme>,
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
@@ -33,7 +33,7 @@ pub(super) struct RenderOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     input_resources: merman::resources::InputResourcePolicy,
     lenient_parsing: bool,
-    presentation: Option<Presentation>,
+    theme: Option<merman::svg::DiagramTheme>,
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
@@ -45,11 +45,11 @@ pub(super) struct RenderOperationConfig {
 }
 
 impl RenderRequestPlan {
-    pub(super) fn render_svg(
+    pub(super) fn render_svg_output(
         &self,
         source: &str,
         control: OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
             .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone()), control))
@@ -57,8 +57,13 @@ impl RenderRequestPlan {
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
         };
-        svg.map(|output| output.into_parts().0.into_bytes())
-            .ok_or_else(no_diagram_error)
+        let output = svg.ok_or_else(no_diagram_error)?;
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
+        Ok(crate::operation::BindingOperationOutput::svg(
+            output.into_parts().0.into_bytes(),
+            evidence,
+        ))
     }
 
     pub(super) fn layout_json(
@@ -147,9 +152,13 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("png"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::raster(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
+            evidence,
         ))
     }
 
@@ -174,9 +183,13 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("jpeg"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::raster(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
+            evidence,
         ))
     }
 
@@ -201,9 +214,13 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("pdf"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::pdf(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
+            evidence,
         ))
     }
 
@@ -213,9 +230,13 @@ impl RenderRequestPlan {
         target: merman::RenderTarget,
         control: OperationControl,
     ) -> RenderRequest<'a> {
-        RenderRequest::new(source, target, control)
+        let request = RenderRequest::new(source, target, control)
             .with_parse_options(self.parse_options)
-            .with_resource_policy(self.input_resources)
+            .with_resource_policy(self.input_resources);
+        match self.theme.as_ref() {
+            Some(theme) => request.with_theme(theme.clone()),
+            None => request,
+        }
     }
 }
 
@@ -235,10 +256,14 @@ fn compile_for_test(
     options: &BindingOptions,
     runtime_policy: merman::runtime::RuntimePolicy,
 ) -> Result<RenderOperationConfig, BindingError> {
+    let compiler = merman::svg::DiagramThemeCompiler::new();
+    let theme = crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?;
     RenderOperationConfig::compile(
         options,
         runtime_policy,
         RenderCapabilityPolicy::unrestricted(),
+        theme,
+        compiler.resource_policy().clone(),
     )
 }
 
@@ -247,13 +272,33 @@ impl RenderOperationConfig {
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         capability_policy: RenderCapabilityPolicy,
+        theme: Option<merman::svg::DiagramTheme>,
+        theme_resources: merman::svg::ThemeResourcePolicy,
     ) -> Result<Self, BindingError> {
         let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
         let input_resources = *render_resources.input_policy();
         let mut environment =
             SvgEnvironment::deterministic().with_capability_policy(capability_policy);
-        environment = environment.with_resource_policy(render_resources);
+        environment = environment
+            .with_resource_policy(render_resources)
+            .with_theme_resource_ceiling(theme_resources);
         if let Some(environment_json) = options.environment.as_ref() {
+            if let Some(requirement) = environment_json.theme_portability.as_deref() {
+                environment = environment.with_theme_portability_requirement(
+                    match normalize_option(requirement).as_str() {
+                        "best-effort" => merman::svg::ThemePortabilityRequirement::BestEffort,
+                        "require-portable" => {
+                            merman::svg::ThemePortabilityRequirement::RequirePortable
+                        }
+                        other => {
+                            return Err(BindingError::new(
+                                BindingStatus::InvalidArgument,
+                                format!("unsupported environment.theme_portability: {other}"),
+                            ));
+                        }
+                    },
+                );
+            }
             if let Some(kind) = environment_json.text_measurement.as_deref() {
                 environment = environment.with_text_measurement_policy(
                     match normalize_option(kind).as_str() {
@@ -299,11 +344,6 @@ impl RenderOperationConfig {
             .and_then(|parse| parse.suppress_errors)
             .unwrap_or(false);
         let mut output = merman::svg::SvgOutputPolicy::default();
-        let presentation = options
-            .presentation
-            .as_ref()
-            .map(binding_presentation)
-            .transpose()?;
         let site_config = binding_site_config(options)?;
 
         let mut layout = LayoutOptions::headless_svg_defaults();
@@ -340,23 +380,6 @@ impl RenderOperationConfig {
                     }
                 };
             }
-            if let Some(raw_policy) = svg.css_override_policy.as_deref() {
-                output.css_override_policy = match normalize_option(raw_policy).as_str() {
-                    "preserve" => merman::svg::CssOverridePolicy::Preserve,
-                    "strip-existing-important" => {
-                        merman::svg::CssOverridePolicy::StripExistingImportant
-                    }
-                    other => {
-                        return Err(BindingError::new(
-                            BindingStatus::InvalidArgument,
-                            format!("unsupported svg.css_override_policy: {other}"),
-                        ));
-                    }
-                };
-            }
-            if let Some(scoped_css) = svg.scoped_css.as_deref() {
-                output.scoped_css = Some(scoped_css.to_string());
-            }
             if let Some(root_background_color) = svg.root_background_color.as_deref() {
                 output.root_background_color = Some(css_declaration_value(
                     root_background_color,
@@ -381,7 +404,7 @@ impl RenderOperationConfig {
             runtime_policy,
             input_resources,
             lenient_parsing,
-            presentation,
+            theme,
             site_config,
             layout,
             svg: svg_options,
@@ -414,22 +437,12 @@ impl RenderOperationConfig {
         } else {
             merman::ParseOptions::strict()
         };
-
         let input_resources = self.input_resources;
         let resource_profile = input_resources.profile();
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
-        let resolved_presentation = self.presentation.map(Presentation::resolve);
-        let presentation_policy = resolved_presentation
-            .as_ref()
-            .map(|presentation| presentation.render_policy())
-            .unwrap_or_default();
-        if let Some(presentation) = resolved_presentation {
-            engine = presentation.materialize_engine(engine);
-        }
         if let Some(site_config) = self.site_config {
             engine = engine.with_site_config(site_config);
         }
-
         RenderRequestPlan {
             renderer: Renderer::new()
                 .with_engine(engine)
@@ -441,8 +454,8 @@ impl RenderOperationConfig {
                 options: self.svg,
                 debug: Default::default(),
                 pipeline: Some(self.output.pipeline()),
-                presentation: presentation_policy,
             },
+            theme: self.theme,
             parse_options,
             input_resources,
             resource_profile,
@@ -469,15 +482,15 @@ fn binding_raster_options(
         if let Some(scale) = raster.scale {
             compiled.scale = finite_positive_f32(scale, "raster.scale")?;
         }
-        if let Some(background) = raster.background.as_deref() {
-            let background = css_declaration_value(background, "raster.background")?;
-            if !merman::svg::export::is_valid_export_background_color(&background) {
+        if let Some(matte) = raster.matte.as_deref() {
+            let matte = css_declaration_value(matte, "raster.matte")?;
+            if !merman::svg::export::is_valid_export_color(&matte) {
                 return Err(BindingError::new(
                     BindingStatus::InvalidArgument,
-                    "raster.background is not supported by the native exporter",
+                    "raster.matte is not supported by the native exporter",
                 ));
             }
-            compiled.background = Some(background);
+            compiled.matte = Some(matte);
         }
         if let Some(fit) = raster.fit_to.as_ref() {
             if fit.width.is_none() && fit.height.is_none() {
@@ -547,15 +560,15 @@ fn binding_pdf_options(
     if let Some(filter_scale) = pdf.filter_scale {
         compiled.filter_scale = finite_positive_f32(filter_scale, "pdf.filter_scale")?;
     }
-    if let Some(background) = pdf.background.as_deref() {
-        let background = css_declaration_value(background, "pdf.background")?;
-        if !merman::svg::export::is_valid_export_background_color(&background) {
+    if let Some(page_paint) = pdf.page_paint.as_deref() {
+        let page_paint = css_declaration_value(page_paint, "pdf.page_paint")?;
+        if !merman::svg::export::is_valid_export_color(&page_paint) {
             return Err(BindingError::new(
                 BindingStatus::InvalidArgument,
-                "pdf.background is not supported by the native exporter",
+                "pdf.page_paint is not supported by the native exporter",
             ));
         }
-        compiled.background = Some(background);
+        compiled.page_paint = Some(page_paint);
     }
     Ok(compiled)
 }
@@ -585,95 +598,13 @@ fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingErro
     }
 }
 
-fn binding_presentation(options: &PresentationOptionsJson) -> Result<Presentation, BindingError> {
-    let mut presentation = Presentation::new();
-    if let Some(profile) = options.profile.as_deref() {
-        let profile = PresentationProfile::from_id(profile.trim()).map_err(|_| {
-            BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("unsupported presentation.profile: {profile}"),
-            )
-        })?;
-        presentation = presentation.with_profile(profile);
-    }
-    if let Some(theme) = options.theme.as_ref() {
-        presentation = presentation.with_theme(binding_presentation_theme(theme)?);
-    }
-    Ok(presentation)
-}
-
-fn binding_presentation_theme(
-    options: &PresentationThemeOptionsJson,
-) -> Result<HostTheme, BindingError> {
-    let mut theme = if let Some(preset) = options.preset.as_deref() {
-        let preset = HostThemePreset::from_id(preset.trim()).map_err(|_| {
-            BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("unsupported presentation.theme.preset: {preset}"),
-            )
-        })?;
-        HostTheme::from_preset(preset)
-    } else {
-        HostTheme::new()
-    };
-
-    if let Some(appearance) = options.appearance.as_deref() {
-        theme = theme.with_appearance(match appearance.trim() {
-            "light" => HostThemeAppearance::Light,
-            "dark" => HostThemeAppearance::Dark,
-            other => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported presentation.theme.appearance: {other}"),
-                ));
-            }
-        });
-    }
-    if let Some(font_family) = options.font_family.as_deref() {
-        theme = theme
-            .try_with_font_family(font_family)
-            .map_err(binding_presentation_error)?;
-    }
-    if let Some(font_size) = options.font_size.as_deref() {
-        theme = theme
-            .try_with_font_size(font_size)
-            .map_err(binding_presentation_error)?;
-    }
-    if let Some(roles) = options.roles.as_ref() {
-        for (id, value) in roles {
-            let role = ThemeRole::from_id(id).map_err(|_| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported presentation.theme.roles key: {id}"),
-                )
-            })?;
-            theme = theme
-                .try_with_role(role, value)
-                .map_err(binding_presentation_error)?;
-        }
-    }
-    if let Some(palette) = options.series_palette.as_ref() {
-        theme = theme
-            .try_with_series_palette(palette.iter().cloned())
-            .map_err(binding_presentation_error)?;
-    }
-    Ok(theme)
-}
-
-fn binding_presentation_error(error: merman::svg::PresentationError) -> BindingError {
-    BindingError::new(
-        BindingStatus::InvalidArgument,
-        format!("invalid presentation.{error}"),
-    )
-}
-
 fn classify_render_error(
     err: merman::RenderError,
     profile: merman::resources::ResourceProfile,
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::Parse(err) => parse_error(err),
+        merman::RenderError::Parse(err) => crate::common::parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -705,6 +636,17 @@ fn classify_render_error(
         merman::RenderError::Svg(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
+        merman::RenderError::SvgEnvironment(err) => {
+            BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+        }
+        merman::RenderError::TargetAdmission(err) => {
+            BindingError::new(BindingStatus::RenderError, err.to_string())
+        }
+        merman::RenderError::PortabilityUnavailableForTarget { target } => {
+            BindingError::invalid_argument(format!(
+                "render target `{target}` does not support RequirePortable portability admission"
+            ))
+        }
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         merman::RenderError::Export(err) => match err.resource_limit_details() {
@@ -734,6 +676,222 @@ fn unexpected_render_output(target: &str) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PORTABILITY_SOURCE: &[u8] =
+        b"sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
+
+    #[test]
+    fn theme_portability_default_and_explicit_best_effort_are_equivalent() {
+        let default_options = serde_json::json!({
+            "theme": {"spec": {"canvas": {"base": "#f7f3e8"}}},
+            "svg": {"diagram_id": "portability-contract", "pipeline": "resvg-safe"}
+        });
+        let mut explicit_options = default_options.clone();
+        explicit_options["environment"] = serde_json::json!({"theme_portability": "best-effort"});
+        let engine = crate::BindingEngine::new(b"").expect("reusable engine");
+        let mut expected = None;
+        for options in [default_options, explicit_options] {
+            let options = serde_json::to_vec(&options).expect("options JSON");
+            let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options);
+            let once = crate::execute_once(request.clone()).expect("best effort one shot");
+            let reusable = engine.execute(request).expect("best effort reusable");
+            let based = crate::BindingEngine::new(&options)
+                .expect("base options")
+                .execute(crate::BindingOperationRequest::new(
+                    "svg",
+                    PORTABILITY_SOURCE,
+                ))
+                .expect("best effort base options");
+            for actual in [&reusable, &based] {
+                assert_eq!(once.data(), actual.data());
+                assert_eq!(
+                    once.metadata().theme_execution_evidence(),
+                    actual.metadata().theme_execution_evidence()
+                );
+            }
+            let evidence = once.metadata().theme_execution_evidence().cloned();
+            if let Some((data, previous_evidence)) = expected.as_ref() {
+                assert_eq!(once.data(), data);
+                assert_eq!(&evidence, previous_evidence);
+            } else {
+                expected = Some((once.data().to_vec(), evidence));
+            }
+        }
+    }
+
+    #[test]
+    fn theme_diagnostics_locate_authored_rules_after_palette_entries() {
+        for kind in ["complete_spec", "definition"] {
+            let styles = serde_json::json!([
+                {"kind": "ordinal-palette", "target": "node", "colors": ["#123456"]},
+                {"kind": "rule", "target": "lifeline", "family": "sequence",
+                 "style": {"stroke": {"paint": "#2563eb"}, "radius": 6}}
+            ]);
+            let mut recipe = serde_json::json!({"schema_version": 1, "kind": kind});
+            recipe[kind] = if kind == "definition" {
+                serde_json::json!({"authoring_schema_version": 1, "expansion_version": 1,
+                    "tokens": {}, "styles": styles})
+            } else {
+                serde_json::json!({"styles": styles})
+            };
+            let options = serde_json::to_vec(&serde_json::json!({
+                "theme": recipe, "svg": {"pipeline": "resvg-safe"}
+            }))
+            .unwrap();
+            let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options);
+            let once = crate::execute_once(request.clone()).unwrap();
+            let reused = crate::BindingEngine::new(b"")
+                .unwrap()
+                .execute(request)
+                .unwrap();
+            assert_eq!(
+                once.metadata().theme_execution_evidence(),
+                reused.metadata().theme_execution_evidence()
+            );
+            assert!(
+                String::from_utf8_lossy(once.data()).contains("#2563eb"),
+                "a rule-level diagnostic must not imply every facet failed"
+            );
+            let metadata =
+                serde_json::to_value(once.metadata().theme_execution_evidence().unwrap()).unwrap();
+            let diagnostics = metadata["diagnostics"]
+                .as_array()
+                .expect("actual render diagnostics");
+            let diagnostic = diagnostics
+                .iter()
+                .find(|entry| {
+                    entry["target"] == "lifeline" && entry["code"] == "unsupported-geometry"
+                })
+                .expect("unsupported winning radius is explained");
+            assert_eq!(diagnostic["subject"], "rule");
+            assert_eq!(diagnostic["source_document"], kind);
+            assert_eq!(diagnostic["source_paths"], serde_json::json!(["/styles/1"]));
+            assert_eq!(diagnostic["generated"], false);
+            assert!(
+                diagnostic.get("property").is_none(),
+                "rule-level evidence cannot identify an exact failed property"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_diagnostics_do_not_report_fully_overridden_rules() {
+        let options = serde_json::to_vec(&serde_json::json!({
+            "theme": {"spec": {"styles": [
+                {"kind": "rule", "family": "sequence", "target": "lifeline", "style": {"radius": 6}},
+                {"kind": "rule", "family": "sequence", "target": "lifeline", "style": {"radius": 8}}
+            ]}}, "svg": {"pipeline": "resvg-safe"}
+        })).unwrap();
+        let result = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options),
+        )
+        .unwrap();
+        let evidence = result
+            .metadata()
+            .theme_execution_evidence()
+            .unwrap()
+            .as_v1()
+            .unwrap();
+        let diagnostics = evidence.diagnostics().unwrap();
+        let rules = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.subject() == "rule")
+            .collect::<Vec<_>>();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].source_paths(), &["/styles/1"]);
+        assert_eq!(rules[0].code(), "unsupported-geometry");
+        let mut strict_options: serde_json::Value = serde_json::from_slice(&options).unwrap();
+        strict_options["environment"] =
+            serde_json::json!({"theme_portability": "require-portable"});
+        let strict_options = serde_json::to_vec(&strict_options).unwrap();
+        let error = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&strict_options),
+        )
+        .expect_err("pure unsupported geometry must not be certified portable");
+        assert_eq!(error.status(), BindingStatus::RenderError);
+    }
+
+    #[test]
+    fn theme_portability_unknown_value_is_rejected_by_every_engine_path() {
+        let options = br#"{"environment":{"theme_portability":"portable-maybe"}}"#;
+        let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+            .with_options_json(options);
+        let once = crate::execute_once(request.clone()).expect_err("unknown one-shot policy");
+        let reusable = crate::BindingEngine::new(b"")
+            .expect("reusable engine")
+            .execute(request)
+            .expect_err("unknown request-local policy");
+        let base = crate::BindingEngine::new(options)
+            .err()
+            .expect("unknown engine policy");
+        for error in [once, reusable, base] {
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains("environment.theme_portability"));
+            assert!(error.message().contains("portable-maybe"));
+        }
+    }
+
+    #[test]
+    fn theme_portability_strict_policy_rejects_unsupported_winning_facets() {
+        let mut options = serde_json::json!({
+            "theme": {"spec": {"styles": [{
+                "kind": "rule", "target": "lifeline", "family": "sequence",
+                "style": {"stroke": {"paint": "#2563eb"}, "radius": 6}
+            }]}},
+            "svg": {"diagram_id": "strict-portability", "pipeline": "resvg-safe"}
+        });
+        let best_effort = serde_json::to_vec(&options).expect("best effort options");
+        let successful = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&best_effort),
+        )
+        .expect("supported stroke survives best effort rendering");
+        assert!(String::from_utf8_lossy(successful.data()).contains("#2563eb"));
+        options["environment"] = serde_json::json!({"theme_portability": "require-portable"});
+        let strict = serde_json::to_vec(&options).expect("strict options");
+        let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+            .with_options_json(&strict);
+        let once = crate::execute_once(request.clone()).expect_err("unsupported strict one shot");
+        let reusable = crate::BindingEngine::new(b"")
+            .expect("reusable engine")
+            .execute(request)
+            .expect_err("unsupported strict request overlay");
+        let based = crate::BindingEngine::new(&strict)
+            .expect("strict engine configuration")
+            .execute(crate::BindingOperationRequest::new(
+                "svg",
+                PORTABILITY_SOURCE,
+            ))
+            .expect_err("unsupported strict base options");
+        assert_eq!(once.status(), BindingStatus::RenderError);
+        for error in [reusable, based] {
+            assert_eq!(error.status(), once.status());
+            assert_eq!(error.message(), once.message());
+        }
+    }
+
+    #[test]
+    fn theme_evaluation_limits_keep_resource_status_for_render_outputs() {
+        let error = classify_render_error(
+            merman::RenderError::Parse(
+                merman::Error::ThemeEvaluationLimit(merman::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    requested: "65".to_string(),
+                    max: 64,
+                })
+                .into(),
+            ),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("THEME_COLOR_LIMIT"));
+        assert_eq!(error.resource_details(), None);
+    }
 
     #[test]
     fn graphical_parse_errors_are_terminal_safe_and_structured() {
@@ -770,12 +928,12 @@ mod tests {
             br##"{
                 "raster": {
                     "scale": 1.5,
-                    "background": "#ffffff",
+                    "matte": "#ffffff",
                     "fit_to": {"width": 640}
                 },
                 "jpeg": {"quality": 82},
                 "pdf": {
-                    "background": "transparent",
+                    "page_paint": "transparent",
                     "filter_scale": 2.5,
                     "page_policy": {"kind": "fixed", "width_pt": 612, "height_pt": 792}
                 },
@@ -840,13 +998,13 @@ mod tests {
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
     fn export_options_reject_backend_colors_that_would_be_ignored() {
-        let options = crate::common::parse_options(br#"{"raster":{"background":"not-a-color"}}"#)
+        let options = crate::common::parse_options(br#"{"raster":{"matte":"not-a-color"}}"#)
             .expect("JSON shape is valid");
         let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
             .err()
             .expect("unsupported backend color");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("raster.background"));
+        assert!(error.message().contains("raster.matte"));
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -870,7 +1028,7 @@ mod tests {
                 br#"{"pdf":{"page_policy":{"kind":"fit-css-width","max_width_px":0}}}"#,
                 "pdf.page_policy.max_width_px",
             ),
-            (br#"{"pdf":{"background":"not-a-color"}}"#, "pdf.background"),
+            (br#"{"pdf":{"page_paint":"not-a-color"}}"#, "pdf.page_paint"),
         ];
 
         for &(options_json, expected_field) in cases {
@@ -906,7 +1064,6 @@ mod tests {
         assert_eq!(details.actual, 5);
         assert_eq!(details.max, 4);
         assert_eq!(details.profile, "constrained");
-        assert_eq!(details.cause.as_str(), "ceiling");
 
         let error = classify_render_error(
             merman::RenderError::Export(merman::svg::export::ExportError::PdfFilterImageLimit {
@@ -924,7 +1081,27 @@ mod tests {
         assert_eq!(details.actual, 5);
         assert_eq!(details.max, 4);
         assert_eq!(details.profile, "constrained");
-        assert_eq!(details.cause.as_str(), "ceiling");
+    }
+
+    #[test]
+    fn terminal_theme_resource_failures_keep_stable_structured_metadata() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+        let error = classify_render_error(
+            merman::RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource)),
+            merman::resources::ResourceProfile::Interactive,
+        );
+        let details = error.resource_details().expect("theme resource details");
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.phase, "theme_input");
+        assert_eq!(details.actual, (maximum + 1) as u64);
+        assert_eq!(details.max, maximum as u64);
+        assert_eq!(details.profile, "interactive");
     }
 
     #[test]

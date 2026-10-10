@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { BINDING_OPTIONS_SCHEMA_VERSION } from "@mermanjs/web";
 import {
   createMermanRuntime,
   installMermanDocumentLifecycle,
@@ -86,8 +87,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
         containerHeight: 600,
         screenAvailableWidth: 1280,
       },
-      presentationProfileId: "merman-modern",
-      presentationThemePresetId: "editor-light",
+      themePresetId: "editor-light",
       svgPipeline: "resvg-safe",
     },
   );
@@ -100,17 +100,12 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.equal(input.source, "flowchart TD\n  A --> B\n");
   assert.match(input.configuredSource, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
+    theme: { preset: "editor-light" },
     site_config: {
       theme: "forest",
       fontFamily: "Arial, Helvetica, sans-serif",
       themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
-    },
-    presentation: {
-      profile: "merman-modern",
-      theme: {
-        preset: "editor-light",
-      },
     },
     layout: {
       container_width: 800,
@@ -120,6 +115,34 @@ test("freezes one configured input for detection, parse, layout, and render", ()
     svg: { pipeline: "resvg-safe" },
   });
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
+});
+
+test("custom recipe reaches the Rust transport intact and changes render identity", () => {
+  const recipe = '{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#123456","accent":"#abcdef"}}}';
+  const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
+    themeRecipeJson: recipe,
+  });
+  assert.equal(input.configurationError, null);
+  // Duplicate fields must reach Rust admission instead of disappearing in JSON.parse.
+  assert.ok(input.bindingOptionsJson?.includes(recipe));
+  assert.deepEqual(JSON.parse(input.bindingOptionsJson!).theme, JSON.parse(recipe));
+  const custom = operation({ workspace: { themeRecipeJson: recipe } });
+  assert.equal(sameRenderOperation(operation(), custom), false);
+  const exported = renderOperationWithSvgPipeline(custom, "resvg-safe");
+  assert.ok(exported.bindingOptionsJson?.includes(recipe));
+  assert.equal(JSON.parse(exported.bindingOptionsJson!).svg.pipeline, "resvg-safe");
+});
+
+test("invalid recipe and mixed selections are configuration errors", () => {
+  for (const options of [
+    { themeRecipeJson: "null" },
+    { themeRecipeJson: "{}" },
+    { themeRecipeJson: '{"schema_version":1,"kind":"definition"},"site_config":{}' },
+    { themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}', themePresetId: "brutalist" },
+  ]) {
+    const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", options);
+    assert.ok(input.configurationError);
+  }
 });
 
 test("preserves initialization independently from later source appearance", () => {
@@ -173,7 +196,7 @@ test("keeps headless layout distinct from an observed browser screen", () => {
   });
 });
 
-test("keeps the default font in Mermaid config without enabling a presentation theme", () => {
+test("keeps the default font in Mermaid config without enabling a compiled theme preset", () => {
   const input = configuredMermanOperationInput(
     "flowchart TD\nA",
     "default",
@@ -182,33 +205,45 @@ test("keeps the default font in Mermaid config without enabling a presentation t
   );
 
   assert.match(input.configuredSource, /trebuchet ms/);
+  assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
   assert.equal(input.bindingOptions.site_config?.theme, "default");
-  assert.equal(input.bindingOptions.presentation, undefined);
+  assert.equal(input.bindingOptions.theme, undefined);
   assert.equal(input.bindingOptions.svg, undefined);
 });
 
-test("keeps presentation theme, profile, and SVG pipeline independent", () => {
-  const plain = configuredMermanOperationInput("flowchart TD\nA", "default", "{}", undefined);
-  const themeOnly = configuredMermanOperationInput("flowchart TD\nA", "dark", "{}", {
-    presentationThemePresetId: "future-theme",
-  });
-  const profileOnly = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
-    presentationProfileId: "future-profile",
-  });
-  const pipelineOnly = configuredMermanOperationInput("flowchart TD\nA", "neutral", "{}", {
-    svgPipeline: "readable",
-  });
+test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
+  const plain = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "default",
+    "{}",
+    undefined,
+  );
+  const themeOnly = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "dark",
+    "{}",
+    {
+      themePresetId: "future-theme",
+    },
+  );
+  const pipelineOnly = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "neutral",
+    "{}",
+    {
+      svgPipeline: "readable",
+    },
+  );
 
-  assert.equal(plain.bindingOptions.presentation, undefined);
+  assert.equal(plain.bindingOptions.theme, undefined);
   assert.equal(plain.bindingOptions.svg, undefined);
-  assert.deepEqual(themeOnly.bindingOptions.presentation, { theme: { preset: "future-theme" } });
-  assert.deepEqual(profileOnly.bindingOptions.presentation, { profile: "future-profile" });
+  assert.deepEqual(themeOnly.bindingOptions.theme, { preset: "future-theme" });
   assert.deepEqual(pipelineOnly.bindingOptions.svg, { pipeline: "readable" });
-  for (const [input, theme] of [[plain, "default"], [themeOnly, "dark"], [profileOnly, "forest"], [pipelineOnly, "neutral"]] as const) {
+  for (const [input, theme] of [[plain, "default"], [themeOnly, "dark"], [pipelineOnly, "neutral"]] as const) {
+    assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
     assert.equal(input.bindingOptions.site_config?.theme, theme);
   }
   assert.match(themeOnly.configuredSource, /"theme":"dark"/);
-  assert.match(profileOnly.configuredSource, /"theme":"forest"/);
   assert.match(pipelineOnly.configuredSource, /"theme":"neutral"/);
 });
 
@@ -239,11 +274,12 @@ test("identity covers every render-operation axis", () => {
     operation({ workspace: { mermaidConfig: '{"layout":"elk"}' } }),
     operation({ workspace: { diagramTheme: "dark" } }),
     operation({ workspace: { diagramFont: "arial" } }),
-    operation({ workspace: { presentationProfileId: "profile" } }),
-    operation({ workspace: { presentationThemePresetId: "preset" } }),
+    operation({ workspace: { themePresetId: "preset" } }),
     operation({ workspace: { svgPipeline: "readable" } }),
     operation({ workspace: { textMeasurementMode: "headless" } }),
-    operation({ layoutEnvironment: { containerWidth: 801, containerHeight: 600 } }),
+    operation({
+      layoutEnvironment: { containerWidth: 801, containerHeight: 600 },
+    }),
     operation({ compareEnabled: false }),
     operation({ diagnosticsEnabled: true }),
     operation({ viewport: { width: 801, height: 600 } }),

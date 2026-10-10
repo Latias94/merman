@@ -184,6 +184,11 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-svg-basic",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            "brotli-decompressor",
+            "rustybuzz",
+            "ttf-parser",
+            "unicode-script",
+            "wuff",
             "chrono",
             "getrandom",
             "image",

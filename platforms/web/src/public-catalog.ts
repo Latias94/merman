@@ -48,19 +48,10 @@ export const SUPPORTED_THEMES = [
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
 
-export const BUNDLED_THEME_PRESETS = [
-  "editor-light",
-  "editor-dark",
-  "one-dark",
-  "gruvbox-light",
-  "gruvbox-dark",
-  "ayu-light",
-  "ayu-dark",
-] as const;
-
-export type BundledThemePresetName = (typeof BUNDLED_THEME_PRESETS)[number];
-
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
+
+/** An opaque diagram metadata identifier reported by the loaded artifact. */
+export type DiagramMetadataId = string;
 
 export const SUPPORTED_ASCII_DIAGRAMS = [
   "class",
@@ -197,9 +188,9 @@ export interface TextMeasurementCapabilities {
 
 export interface DiagramFamilyCapability {
   diagram_type: string;
-  logical_family_kind: string;
-  metadata_id: DiagramType | null;
-  render_model_kind: string | null;
+  family_id: string;
+  /** Open wire ID; use `tryAsKnownDiagramType()` before current-package execution. */
+  metadata_id: DiagramMetadataId | null;
   has_detector: boolean;
   has_semantic_parser: boolean;
   has_editor_parser: boolean;
@@ -313,14 +304,17 @@ export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
 
-export function isBundledThemePresetName(
-  preset: string
-): preset is BundledThemePresetName {
-  return (BUNDLED_THEME_PRESETS as readonly string[]).includes(preset);
-}
-
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
+}
+
+/** Projects an open metadata identifier into the diagram vocabulary known by this package. */
+export function tryAsKnownDiagramType(
+  metadataId: DiagramMetadataId | null | undefined
+): DiagramType | null {
+  return metadataId !== null && metadataId !== undefined && isDiagramType(metadataId)
+    ? metadataId
+    : null;
 }
 
 export function isAsciiDiagramType(
@@ -489,10 +483,4 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
 
 export function normalizeThemeName(theme: string | null | undefined): ThemeName {
   return theme && isThemeName(theme) ? theme : "default";
-}
-
-export function normalizeBundledThemePresetName(
-  preset: string | null | undefined
-): BundledThemePresetName | null {
-  return preset && isBundledThemePresetName(preset) ? preset : null;
 }

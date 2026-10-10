@@ -23,16 +23,19 @@
     ],
     "system_adapter_ids": [],
     "operation_ids": [
+      "describe-theme-support-json",
+      "export-theme-preset-json",
       "layout-json",
+      "materialize-theme-json",
       "semantic-json",
       "svg",
       "svg-plan-json"
     ],
     "metadata_ids": [
       "diagram-family-capabilities",
-      "presentation-catalog",
       "supported-diagrams",
-      "supported-themes"
+      "supported-themes",
+      "theme-catalog"
     ],
     "option_group_ids": [
       "environment",
@@ -40,11 +43,11 @@
       "fixed_today",
       "layout",
       "parse",
-      "presentation",
       "resources",
       "runtime_policy",
       "site_config",
       "svg",
+      "theme",
       "version"
     ],
     "constructor_service_ids": [],
@@ -83,14 +86,14 @@
     },
     "response": {
       "max_utf8_bytes": 27262976,
-      "max_depth": 8,
+      "max_depth": 9,
       "max_members": 32,
       "max_tokens": 128,
       "max_string_utf8_bytes": 16777216
     },
     "error": {
-      "max_utf8_bytes": 262144,
-      "max_depth": 8,
+      "max_utf8_bytes": 1048576,
+      "max_depth": 9,
       "max_members": 32,
       "max_tokens": 128,
       "max_string_utf8_bytes": 65536

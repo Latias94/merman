@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raster = RasterOptions::default()
         .with_fit_to(RasterFitBox::contain(960, 540))
         .with_scale(2.0)
-        .with_background("white");
+        .with_matte("white");
     let renderer = Renderer::new().with_parse_options(merman::ParseOptions::strict());
     let output = renderer.render(RenderRequest::png(
         SOURCE,
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&output_path, output.bytes)?;
+    std::fs::write(&output_path, output.bytes())?;
     eprintln!("wrote {}", output_path.display());
     Ok(())
 }

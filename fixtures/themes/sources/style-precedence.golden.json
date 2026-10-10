@@ -1,0 +1,138 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "keyword": "flowchart",
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {
+      "default": [
+        "fill:#f8fafc",
+        "color:#0f172a"
+      ],
+      "assigned": [
+        "fill:#d1fae5",
+        "color:#064e3b"
+      ]
+    },
+    "direction": "LR",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": [
+        "stroke:#94a3b8"
+      ]
+    },
+    "vertexCalls": [
+      "A",
+      "B",
+      "B",
+      "C",
+      "C"
+    ],
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Default",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "B",
+        "label": "Assigned",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [
+          "assigned"
+        ],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "C",
+        "label": "Inline",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [
+          "fill:#fee2e2",
+          "color:#7f1d1d"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "L_A_B_0",
+        "from": "A",
+        "to": "B",
+        "label": null,
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "interpolate": null,
+        "classes": [],
+        "style": [
+          "stroke:#475569",
+          "fill:none"
+        ],
+        "animate": null,
+        "animation": null,
+        "length": 1
+      },
+      {
+        "id": "L_B_C_0",
+        "from": "B",
+        "to": "C",
+        "label": null,
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "interpolate": null,
+        "classes": [],
+        "style": [],
+        "animate": null,
+        "animation": null,
+        "length": 1
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2"
+  }
+}

@@ -258,6 +258,7 @@ path = "tests/stdio_smoke.rs"
 required-features = ["stdio"]
 
 [dependencies]
+data-encoding.workspace = true
 futures = { workspace = true, features = ["std"] }
 tower-lsp-server.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

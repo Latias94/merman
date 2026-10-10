@@ -109,7 +109,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Png(output) = output else {
             unreachable!("PNG request must return PNG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -133,7 +133,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Jpeg(output) = output else {
             unreachable!("JPEG request must return JPEG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -153,7 +153,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Pdf(output) = output else {
             unreachable!("PDF request must return PDF output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 }
 
@@ -360,6 +360,13 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
 fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
     let source = "flowchart TD\n    A[Start] --> B[Done]";
     let renderer = TypedSvgRenderer::new()
+        .with_environment(SvgEnvironment::deterministic().with_theme_admission_policy(
+            merman::svg::ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+                merman::svg::TrustedThemeLanes::from_allowed([
+                    merman::svg::TrustedThemeLane::RawThemeCss,
+                ]),
+            ),
+        ))
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
         })))
@@ -730,7 +737,7 @@ fn custom_raster_size_limit_caps_actual_png_dimensions() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
     let options = RasterOptions::default()
         .with_size_limit(RasterSizeLimit::new(Some(128), Some(128), Some(16_384)))
-        .with_background("white");
+        .with_matte("white");
 
     let svg = finalize_raster_input(svg);
     let plan = svg_raster_plan(&svg, &options).unwrap();

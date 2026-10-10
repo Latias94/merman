@@ -1,5 +1,7 @@
 //! Headless ZenUML geometry derived from the selected ZenUML Core SVG pipeline.
 
+mod theme;
+
 use crate::Result;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
@@ -9,6 +11,11 @@ use merman_core::diagrams::zenuml::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+pub(crate) use theme::ZenumlTitleThemePlan;
+
+pub(crate) const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";
+pub(crate) const ZENUML_FRAME_TITLE_SELECTOR: &str = ".frame-title";
 
 const MARGIN: f64 = 20.0;
 const MIN_PARTICIPANT_WIDTH: f64 = 80.0;
@@ -46,6 +53,17 @@ const SVG_CONTENT_BOTTOM_SPACE: f64 = 13.0;
 const RETURN_BOTTOM_SPACE: f64 = 46.0;
 const MESSAGE_LABEL_PADDING: f64 = 10.0;
 const DEFAULT_STARTER: &str = "_STARTER_";
+
+pub(crate) fn resolve_zenuml_title<'a>(
+    model: &'a ZenumlDiagramRenderModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .filter(|title| !title.is_empty())
+        .or_else(|| diagram_title.filter(|title| !title.is_empty()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

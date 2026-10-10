@@ -28,6 +28,7 @@ png = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -42,6 +43,7 @@ jpeg = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -52,7 +54,9 @@ pdf = [
     "dep:merman-core",
     "dep:merman-render",
     "dep:quick-xml",
+    "dep:svgtypes",
     "dep:thiserror",
+    "dep:ttf-parser",
     "dep:unicase",
     "dep:usvg",
 ]
@@ -70,6 +74,7 @@ resvg = { workspace = true, optional = true, features = ["raster-images"] }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
+ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }
 

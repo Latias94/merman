@@ -21,7 +21,7 @@ test("viewport keeps a 100-event pan outside React and terminates cancelled gest
   await waitForPreviewSvg(page);
   const viewport = primaryViewport(page);
   const positionLayer = viewport.locator(
-    '[data-merman-viewport-position-layer="true"]'
+    '[data-merman-viewport-position-layer="true"]',
   );
   const box = await viewport.boundingBox();
   expect(box).not.toBeNull();
@@ -48,15 +48,15 @@ test("viewport keeps a 100-event pan outside React and terminates cancelled gest
     await dispatchPointer(viewport, "pointermove", 17, 110, 100);
     await waitForTwoFrames(page);
     const stoppedTransform = await positionLayer.evaluate(
-      (element) => (element as HTMLElement).style.transform
+      (element) => (element as HTMLElement).style.transform,
     );
     await dispatchPointer(viewport, termination, 17, 110, 100);
     await dispatchPointer(viewport, "pointermove", 17, 180, 170);
     await waitForTwoFrames(page);
     expect(
       await positionLayer.evaluate(
-        (element) => (element as HTMLElement).style.transform
-      )
+        (element) => (element as HTMLElement).style.transform,
+      ),
     ).toBe(stoppedTransform);
   }
 
@@ -65,14 +65,14 @@ test("viewport keeps a 100-event pan outside React and terminates cancelled gest
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await waitForTwoFrames(page);
   const blurredTransform = await positionLayer.evaluate(
-    (element) => (element as HTMLElement).style.transform
+    (element) => (element as HTMLElement).style.transform,
   );
   await dispatchPointer(viewport, "pointermove", 23, 190, 180);
   await waitForTwoFrames(page);
   expect(
     await positionLayer.evaluate(
-      (element) => (element as HTMLElement).style.transform
-    )
+      (element) => (element as HTMLElement).style.transform,
+    ),
   ).toBe(blurredTransform);
   await expect(viewport).toHaveAttribute("data-dragging", "false");
   errors.assertNone();
@@ -86,7 +86,7 @@ test("touch pan, pinch zoom, keyboard controls, and artifact auto-fit remain coh
   await waitForPreviewSvg(page);
   const viewport = primaryViewport(page);
   const positionLayer = viewport.locator(
-    '[data-merman-viewport-position-layer="true"]'
+    '[data-merman-viewport-position-layer="true"]',
   );
   const initialZoom = await viewportZoom(viewport);
 
@@ -110,7 +110,7 @@ test("touch pan, pinch zoom, keyboard controls, and artifact auto-fit remain coh
   await expect.poll(() => viewportZoom(viewport)).toBe(1);
   await expect(positionLayer).toHaveAttribute(
     "style",
-    /translate\(0px, 0px\)/u
+    /translate\(0px, 0px\)/u,
   );
 
   const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
@@ -122,7 +122,7 @@ test("touch pan, pinch zoom, keyboard controls, and artifact auto-fit remain coh
   await page.keyboard.press("Enter");
   await expect(positionLayer).toHaveAttribute(
     "style",
-    /translate\(0px, 0px\)/u
+    /translate\(0px, 0px\)/u,
   );
 
   await dispatchPointer(viewport, "pointerdown", 51, 80, 80);
@@ -130,12 +130,14 @@ test("touch pan, pinch zoom, keyboard controls, and artifact auto-fit remain coh
   await dispatchPointer(viewport, "pointerup", 51, 160, 150);
   await replaceEditorSource(
     page,
-    "flowchart LR\n  FreshArtifactWithLongName --> B --> C"
+    "flowchart LR\n  FreshArtifactWithLongName --> B --> C",
   );
-  await expect.poll(() => previewSvgText(page)).toContain("FreshArtifactWithLongName");
+  await expect
+    .poll(() => previewSvgText(page))
+    .toContain("FreshArtifactWithLongName");
   await expect(positionLayer).toHaveAttribute(
     "style",
-    /translate\(0px, 0px\)/u
+    /translate\(0px, 0px\)/u,
   );
   errors.assertNone();
 });
@@ -169,8 +171,8 @@ test("Kanban ticket links remain navigable inside the panning viewport", async (
         (element) =>
           element.getAttribute("href") ??
           element.getAttributeNS("http://www.w3.org/1999/xlink", "href") ??
-          element.getAttribute("xlink:href")
-      )
+          element.getAttribute("xlink:href"),
+      ),
     )
     .toBe("https://example.test/browse/MC-1");
 
@@ -180,7 +182,7 @@ test("Kanban ticket links remain navigable inside the panning viewport", async (
       if (event.composedPath().includes(element)) {
         element.setAttribute(
           "data-test-pointerdown-default-prevented",
-          String(event.defaultPrevented)
+          String(event.defaultPrevented),
         );
       }
     });
@@ -188,7 +190,7 @@ test("Kanban ticket links remain navigable inside the panning viewport", async (
       event.preventDefault();
       element.setAttribute(
         "data-test-click-count",
-        String(Number(element.getAttribute("data-test-click-count")) + 1)
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
       );
     });
   });
@@ -198,7 +200,7 @@ test("Kanban ticket links remain navigable inside the panning viewport", async (
   await expect(anchor).toHaveAttribute("data-test-click-count", "1");
   await expect(anchor).toHaveAttribute(
     "data-test-pointerdown-default-prevented",
-    "false"
+    "false",
   );
   await expect(viewport).toHaveAttribute("data-dragging", "false");
   expect(await viewportPositionTransform(viewport)).toBe(positionBefore);
@@ -225,7 +227,7 @@ test("tap intent preserves auto-fit and promoted anchor drags suppress navigatio
       "kanban",
       "  Todo",
       "    task[Task]@{ ticket: MC-2 }",
-    ].join("\n")
+    ].join("\n"),
   );
 
   const viewport = primaryViewport(page);
@@ -242,7 +244,7 @@ test("tap intent preserves auto-fit and promoted anchor drags suppress navigatio
       event.preventDefault();
       element.setAttribute(
         "data-test-click-count",
-        String(Number(element.getAttribute("data-test-click-count")) + 1)
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
       );
     });
   });
@@ -286,7 +288,7 @@ test("XHTML label links remain navigable across the shadow viewport boundary", a
       "note right of A",
       "  <a href='https://example.test/docs' target='_self'><code>Docs</code></a>",
       "end note",
-    ].join("\n")
+    ].join("\n"),
   );
 
   const viewport = primaryViewport(page);
@@ -301,14 +303,14 @@ test("XHTML label links remain navigable across the shadow viewport boundary", a
       if (!event.composedPath().includes(element)) return;
       element.setAttribute(
         "data-test-pointerdown-default-prevented",
-        String(event.defaultPrevented)
+        String(event.defaultPrevented),
       );
     });
     element.addEventListener("click", (event) => {
       event.preventDefault();
       element.setAttribute(
         "data-test-click-count",
-        String(Number(element.getAttribute("data-test-click-count")) + 1)
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
       );
     });
   });
@@ -318,14 +320,16 @@ test("XHTML label links remain navigable across the shadow viewport boundary", a
   await expect(anchor).toHaveAttribute("data-test-click-count", "1");
   await expect(anchor).toHaveAttribute(
     "data-test-pointerdown-default-prevented",
-    "false"
+    "false",
   );
   await expect(viewport).toHaveAttribute("data-dragging", "false");
   expect(await viewportPositionTransform(viewport)).toBe(positionBefore);
   errors.assertNone();
 });
 
-test("Compare panes retain independent viewport transforms", async ({ page }) => {
+test("Compare panes retain independent viewport transforms", async ({
+  page,
+}) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
@@ -336,10 +340,12 @@ test("Compare panes retain independent viewport transforms", async ({ page }) =>
       viewports.evaluateAll((elements) =>
         elements.every((element) =>
           Boolean(
-            element.querySelector(".preview-container > div")?.shadowRoot?.querySelector("svg")
-          )
-        )
-      )
+            element
+              .querySelector(".preview-container > div")
+              ?.shadowRoot?.querySelector("svg"),
+          ),
+        ),
+      ),
     )
     .toBe(true);
   const left = viewports.nth(0);
@@ -418,14 +424,14 @@ test("a current share hash is restored before the first visible publication", as
     code,
     mermaidConfig: '{"look":"classic"}',
     diagramTheme: "forest",
-    presentationThemePresetId: null,
-    presentationProfileId: null,
+    themePresetId: null,
+    themeRecipeJson: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "arial",
   });
   const wasmResponse = page.waitForResponse((response) =>
-    /\/assets\/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/u.test(response.url())
+    /\/assets\/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/u.test(response.url()),
   );
   await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await wasmResponse;
@@ -437,11 +443,13 @@ test("a current share hash is restored before the first visible publication", as
         window as typeof window & {
           __MERMAN_VISIBLE_PUBLICATIONS__?: string[];
         }
-      ).__MERMAN_VISIBLE_PUBLICATIONS__ ?? []
+      ).__MERMAN_VISIBLE_PUBLICATIONS__ ?? [],
   );
   expect(publications.length).toBeGreaterThan(0);
   expect(publications[0]).toContain("SharedFirst");
-  expect(publications).not.toContainEqual(expect.stringContaining("Condition?"));
+  expect(publications).not.toContainEqual(
+    expect.stringContaining("Condition?"),
+  );
   expect(await previewSvgText(page)).toContain("SharedFirst");
   await expect(page.locator("footer")).toContainText(`${code.length} Chars`);
   errors.assertNone();
@@ -459,8 +467,8 @@ test("a current issue link restores workspace, view, and SVG Bounds", async ({
     code: "flowchart TD\n  IssueFirst --> SharedView",
     mermaidConfig: "{}",
     diagramTheme: "forest" as const,
-    presentationThemePresetId: null,
-    presentationProfileId: null,
+    themePresetId: null,
+    themeRecipeJson: null,
     svgPipeline: "parity" as const,
     textMeasurementMode: "browser" as const,
     diagramFont: "arial" as const,
@@ -605,7 +613,7 @@ async function dispatchPointer(
   pointerId: number,
   clientX: number,
   clientY: number,
-  pointerType = "mouse"
+  pointerType = "mouse",
 ): Promise<void> {
   await target.dispatchEvent(type, {
     bubbles: true,
@@ -628,8 +636,8 @@ async function waitForTwoFrames(page: Page): Promise<void> {
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      )
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
   );
 }
 
@@ -659,7 +667,7 @@ async function reactCommitCount(page: Page): Promise<number> {
         window as typeof window & {
           __MERMAN_REACT_COMMIT_PROBE__?: { commits: number };
         }
-      ).__MERMAN_REACT_COMMIT_PROBE__?.commits ?? -1
+      ).__MERMAN_REACT_COMMIT_PROBE__?.commits ?? -1,
   );
 }
 

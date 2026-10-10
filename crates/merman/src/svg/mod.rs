@@ -6,6 +6,37 @@
 //! orchestration path.
 
 pub use crate::SvgEnvironment;
+pub use merman_core::DiagramFamilyId;
+pub use merman_render::diagram_theme::{
+    BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
+    DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectColorSpace, EffectGraph,
+    EffectInput, EffectPrimitive, FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec,
+    FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
+    FontEmbeddingPermissions, FontEmbeddingRequirement, FontFaceMetadata, FontFamilyAlias,
+    FontSource, FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, GradientStop,
+    HostMeasurementFallback, HostMeasurementFallbackPolicy, InsetsPx, LineHeight, LinearGradient,
+    MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
+    MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
+    MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
+    MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP, MAX_THEME_BASE64_BYTES_HARD_CAP,
+    MAX_THEME_ENCODED_BYTES_HARD_CAP, MermaidThemeCompatibility, MermaidThemeValue, OrdinalPalette,
+    OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified, StrokeLineCap,
+    StrokeLineJoin, THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, THEME_RESOURCE_LIMIT_COUNT,
+    THEME_RESOURCE_LIMIT_DESCRIPTORS, TextAlign, TextDecoration, TextLayoutCapability,
+    TextStylePatch, TextTransform, ThemeAdmissionError, ThemeAdmissionPolicy, ThemeAssets,
+    ThemeCapability, ThemeColorValue, ThemeCompileError, ThemeCompileValidationError,
+    ThemeDefinitionCompileError, ThemeEffectPatch, ThemeGeometryPatch, ThemeLength,
+    ThemePaintPatch, ThemePortabilityRequirement, ThemePreset, ThemePresetDescriptor,
+    ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetParseError,
+    ThemePresetQualifiedCell, ThemePresetQualifiedCellV1, ThemeRecipeFingerprint,
+    ThemeRecipeReport, ThemeRecipeV1, ThemeRequirements, ThemeResourceLimitDescriptor,
+    ThemeResourceLimitExceeded, ThemeResourceLimitId, ThemeResourceLimitOverride,
+    ThemeResourceLimitOverrideError, ThemeResourceLimitPhase, ThemeResourcePolicy,
+    ThemeResourcePolicyRestrictionError, ThemeRule, ThemeRuleSet, ThemeSpacingPatch,
+    ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, ThemeWrapMode,
+    TrustedThemeLane, TrustedThemeLanes, TypographySpec, WhiteSpace, describe_theme_presets,
+    theme_preset_descriptors, theme_resource_limit_descriptors,
+};
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
@@ -14,37 +45,29 @@ pub use merman_render::environment::{
     TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
     TextMeasurementSummary, validate_host_text_measurement,
 };
-pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
-#[cfg(feature = "math")]
-pub use merman_render::math::RatexMathRenderer;
-pub use merman_render::math::{MathRenderer, NoopMathRenderer};
-pub use merman_render::presentation::{
-    HostTheme, HostThemeAppearance, HostThemePreset, Presentation, PresentationAspectApplicability,
-    PresentationAspectDescriptor, PresentationAspectResolution, PresentationAspectState,
-    PresentationError, PresentationProfile, PresentationProfileDescriptor,
-    PresentationRenderPolicy, ResolvedPresentation, ThemeRole, presentation_profile_descriptors,
-    theme_preset_descriptors,
-};
+pub use merman_render::family::RenderCapabilityPlan;
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
     ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID, WASM_RESVG_TREE_DEPTH_HARD_CAP, resource_limit_descriptors,
-    resource_profile_descriptors,
+    ResourcePolicyRestrictionError, SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+    WASM_RESVG_TREE_DEPTH_HARD_CAP, resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,
     IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind, IconRegistryBuilder,
     IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId, ResvgCompatibleSvg,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
-    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, foreign_object_label_fallback_svg_text,
+    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions,
+    SvgFinalizationReport, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions, SvgResourceClosure,
+    SvgResourceFingerprint, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
+    TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,
@@ -112,5 +135,21 @@ mod sanitize_svg_id_tests {
         assert_eq!(sanitize_svg_id("m"), "m-untitled");
         assert_eq!(sanitize_svg_id("m-"), "m-untitled");
         assert_eq!(sanitize_svg_id("m--"), "m-untitled");
+    }
+
+    #[test]
+    fn sanitize_svg_id_isolates_prepared_text_namespace() {
+        assert_eq!(
+            sanitize_svg_id("merman-prepared-state-17"),
+            "m-user-merman-prepared-state-17"
+        );
+        assert_eq!(
+            sanitize_svg_id("merman-prepared-state-17-line-2"),
+            "m-user-merman-prepared-state-17-line-2"
+        );
+        assert_eq!(
+            sanitize_svg_id("merman--prepared-state-17"),
+            "m-user-merman-prepared-state-17"
+        );
     }
 }

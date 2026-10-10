@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+#![allow(
+    clippy::result_large_err,
+    reason = "RenderError preserves rich terminal diagnostics at the public facade boundary."
+)]
 
 //! Mermaid parsing and rendering through one operation-scoped facade.
 //!
@@ -16,13 +20,13 @@
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
 //! | Parse Mermaid or produce semantic JSON | `diagram-*` selectors, without defaults | [`Engine`] and [`ParseOptions`] |
-//! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
-//! | Build parser-backed editor snapshots | `editor` | [`editor::analyze_document_snapshot_with_shared_text`] |
-//! | Render Mermaid-like SVG | `svg` | [`Renderer`] and [`RenderRequest::svg`] |
-//! | Render terminal-friendly text | `ascii` | [`Renderer`] and [`RenderRequest::ascii`] |
-//! | Render PNG from Rust | `png` | [`Renderer`] and [`RenderRequest::png`] |
-//! | Render JPEG from Rust | `jpeg` | [`Renderer`] and [`RenderRequest::jpeg`] |
-//! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and [`RenderRequest::pdf`] |
+//! | Analyze diagnostics or Markdown fences | `analysis` | `analysis::Analyzer` |
+//! | Build parser-backed editor snapshots | `editor` | `editor::analyze_document_snapshot_with_shared_text` |
+//! | Render Mermaid-like SVG | `svg` | [`Renderer`] and `RenderRequest::svg` |
+//! | Render terminal-friendly text | `ascii` | [`Renderer`] and `RenderRequest::ascii` |
+//! | Render PNG from Rust | `png` | [`Renderer`] and `RenderRequest::png` |
+//! | Render JPEG from Rust | `jpeg` | [`Renderer`] and `RenderRequest::jpeg` |
+//! | Render a vector PDF from Rust | `pdf` | [`Renderer`] and `RenderRequest::pdf` |
 //!
 //! If you already know the diagram type, use the `*_with_type_sync` methods on
 //! [`Engine`] to skip detection. If you need lower-level layout or SVG pipeline
@@ -80,7 +84,7 @@
 //! ```
 //!
 //! For semantic inspection, use [`Renderer::prepare_semantic`] or a
-//! [`RenderTarget::Semantic`] request. For terminal output, use [`RenderTarget::Ascii`]. The
+//! [`RenderTarget::Semantic`] request. For terminal output, use `RenderTarget::Ascii`. The
 //! target adapters never create a replacement operation or silently replace the caller's
 //! cancellation handle.
 
@@ -98,23 +102,26 @@ mod operation_runner;
 )]
 pub mod render;
 pub use diagnostic::{
-    TerminalDiagnostic, TerminalDiagnosticDetails, TerminalRuntimePolicyError,
-    normalize_terminal_diagnostic, normalize_terminal_text,
+    TerminalDiagnostic, TerminalDiagnosticClass, TerminalDiagnosticDetails,
+    TerminalRuntimePolicyError, normalize_terminal_diagnostic, normalize_terminal_text,
 };
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;
-#[cfg(feature = "jpeg")]
-pub use render::JpegRequest;
-#[cfg(feature = "png")]
-pub use render::PngRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
 pub use render::{
-    OperationExecutionPath, RenderEvidence, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    DocumentPortabilityReport, OperationExecutionPath, RenderArtifactKind, RenderEvidence,
+    RenderedDocument, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
+    TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
+    ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary,
 };
+#[cfg(feature = "jpeg")]
+pub use render::{JpegRequest, PreparedJpegExport};
 #[cfg(feature = "pdf")]
-pub use render::{PdfOutput, PdfRequest};
+pub use render::{PdfOutput, PdfRequest, PreparedPdfExport};
+#[cfg(feature = "png")]
+pub use render::{PngRequest, PreparedPngExport};
 pub use render::{
     RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
     ResourceLimitExceeded, SemanticArtifact,
@@ -131,6 +138,19 @@ pub use merman_editor_core as editor;
 /// SVG target-local types and backend capabilities.
 #[cfg(feature = "svg")]
 pub mod svg;
+
+/// Versioned visual diagram-theme authoring and compilation.
+#[cfg(feature = "svg")]
+pub mod diagram_theme;
+
+/// Workspace-only evidence seams used by the non-published theme acceptance harness.
+///
+/// These helpers require the workspace acceptance cfg and are excluded from published packages.
+/// They may change or disappear without a compatibility promise.
+#[cfg(all(feature = "svg", merman_internal_theme_acceptance))]
+#[doc(hidden)]
+#[path = "theme_acceptance.rs"]
+pub mod __theme_acceptance;
 
 /// ASCII target-local types and model-level backend interface.
 #[cfg(feature = "ascii")]

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-c6-brutalist-state",
+  "evidenceKind": "typed-capability",
+  "intent": "Prove the first Brutalist State vertical slice with typed runtime evidence."
+}

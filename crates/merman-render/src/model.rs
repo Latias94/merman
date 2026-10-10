@@ -59,6 +59,7 @@ pub struct ClassPreparedHtmlLabel {
     pub metrics: crate::text::TextMetrics,
     pub max_width_px: i64,
     pub xhtml: String,
+    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
 }
 
 #[derive(Debug, Clone)]
@@ -684,6 +685,12 @@ pub struct QuadrantChartDiagramLayout {
 pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    /// Render-only occurrence ownership for `edges`.
+    ///
+    /// The typed sidecar is intentionally crate-private: compatibility JSON exposes Mermaid's raw
+    /// edge id, while render internals bind geometry to the semantic occurrence key.
+    #[serde(skip)]
+    pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
@@ -787,10 +794,9 @@ pub struct SwimlaneLaneLayout {
     pub width: f64,
     pub height: f64,
     pub padding: f64,
-    /// Layout-phase label width. SVG rendering must remeasure the emitted title with its
-    /// `SvgBBox` measurer rather than treating this as a browser `<text>.getBBox()` fact.
+    /// Prepared terminal label width shared by Swimlane layout and SVG rendering.
     pub title_label_width: f64,
-    /// Layout-phase label height; see `title_label_width` for the phase boundary.
+    /// Prepared terminal label height shared by Swimlane layout and SVG rendering.
     pub title_label_height: f64,
     #[serde(default)]
     pub content_top: Option<f64>,
@@ -830,6 +836,14 @@ pub struct SwimlaneLayout {
     pub nodes: Vec<SwimlaneNodeLayout>,
     pub lanes: Vec<SwimlaneLaneLayout>,
     pub edges: Vec<SwimlaneEdgeLayout>,
+    /// Render-only semantic occurrence ownership aligned with `edges`.
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    #[serde(skip)]
+    pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
     pub bounds: Option<Bounds>,
 }
 
@@ -919,6 +933,10 @@ pub struct ErDiagramLayout {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Renderer-owned labels prepared by the layout pass and reused by theme evidence and SVG
+    /// emission. This is intentionally excluded from compatibility layout JSON.
+    #[serde(skip)]
+    pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
 #[derive(Debug, Clone)]

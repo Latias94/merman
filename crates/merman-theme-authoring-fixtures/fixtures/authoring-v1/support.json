@@ -1,0 +1,557 @@
+[
+  {
+    "id": "unsupported-rule-v1",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "unsupported",
+      "reason_ids": [
+        "theme-support.no-supported-route"
+      ]
+    }
+  },
+  {
+    "id": "unsupported-rule-v2",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "rule",
+        "target": "title",
+        "facet": "fill"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "rule",
+          "target": "title",
+          "facet": "fill"
+        }
+      },
+      "state": "unsupported",
+      "reason_ids": [
+        "theme-support.no-supported-route"
+      ]
+    }
+  },
+  {
+    "id": "base-font-size",
+    "query": {
+      "schema_version": 1,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "base-typography",
+        "property": "font-size"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "base-typography",
+          "property": "font-size"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.document-surface-dependent"
+      ]
+    }
+  },
+  {
+    "id": "ordinal-palette",
+    "query": {
+      "schema_version": 1,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "ordinal-palette",
+        "target": "node"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "ordinal-palette",
+          "target": "node"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.document-surface-dependent"
+      ]
+    }
+  },
+  {
+    "id": "ascii-has-no-visual-theme",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "ascii",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "ascii",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "not-applicable",
+      "reason_ids": [
+        "theme-support.visual-theme-not-applicable-to-output"
+      ]
+    }
+  },
+  {
+    "id": "browser-is-unverified",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "browser-svg",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "browser-svg",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.terminal-qualification-incomplete"
+      ]
+    }
+  },
+  {
+    "id": "png-is-not-renderer-qualified",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "png",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "png",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.output-qualification-not-owned-by-renderer"
+      ]
+    }
+  },
+  {
+    "id": "unknown-family",
+    "query": {
+      "schema_version": 1,
+      "family": "future-family",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "future-family",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.unknown-family"
+      ]
+    }
+  },
+  {
+    "id": "unknown-base-property",
+    "query": {
+      "schema_version": 1,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "base-typography",
+        "property": "future-property"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "base-typography",
+          "property": "future-property"
+        }
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.unknown-base-typography-property"
+      ]
+    }
+  },
+  {
+    "id": "class-typed-edge-label-background",
+    "query": {
+      "schema_version": 1,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "rule",
+        "target": "edge-label-background",
+        "facet": "fill"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "rule",
+          "target": "edge-label-background",
+          "facet": "fill"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-background",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "edge-label-background", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "edge-label-background", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "class-typed-edge-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "class-typed-cluster-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "class-typed-cluster-stroke-paint",
+    "query": {
+      "schema_version": 1,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "class-typed-namespace-title-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-edge-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-edge-stroke-paint",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "edge", "facet": "stroke-paint"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "edge", "facet": "stroke-paint"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-cluster-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-cluster-stroke-paint",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-marker-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "marker", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "marker", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-marker-stroke-paint",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "marker", "facet": "stroke-paint"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "marker", "facet": "stroke-paint"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-text-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "subject": {"kind": "rule", "target": "text", "facet": "fill"}
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 1,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "subject": {"kind": "rule", "target": "text", "facet": "fill"}
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  }
+]

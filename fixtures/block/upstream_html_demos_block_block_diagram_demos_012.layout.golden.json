@@ -6,25 +6,25 @@
         {
           "id": "A1",
           "x": 83.84,
-          "y": -20.0,
+          "y": -24.0,
           "width": 167.68,
-          "height": 32.0,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "A2",
           "x": 200.96,
-          "y": -20.0,
+          "y": -24.0,
           "width": 50.56,
-          "height": 32.0,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "A3",
           "x": 259.52,
-          "y": -20.0,
+          "y": -24.0,
           "width": 50.56,
-          "height": 32.0,
+          "height": 40.0,
           "is_cluster": false
         }
       ],
@@ -34,14 +34,14 @@
           "id": "A1",
           "allocated": {
             "x": 83.84,
-            "y": -20.0,
+            "y": -24.0,
             "width": 167.68,
-            "height": 32.0
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
             "width": 167.68,
-            "height": 32.0,
+            "height": 40.0,
             "radius": 0.0,
             "kind": "basic"
           }
@@ -50,14 +50,14 @@
           "id": "A2",
           "allocated": {
             "x": 200.96,
-            "y": -20.0,
+            "y": -24.0,
             "width": 50.56,
-            "height": 32.0
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
             "width": 50.56,
-            "height": 32.0,
+            "height": 40.0,
             "radius": 0.0,
             "kind": "basic"
           }
@@ -66,14 +66,14 @@
           "id": "A3",
           "allocated": {
             "x": 259.52,
-            "y": -20.0,
+            "y": -24.0,
             "width": 50.56,
-            "height": 32.0
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
             "width": 50.56,
-            "height": 32.0,
+            "height": 40.0,
             "radius": 0.0,
             "kind": "basic"
           }
@@ -81,7 +81,7 @@
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -36.0,
+        "min_y": -44.0,
         "max_x": 284.8,
         "max_y": 0.0
       }

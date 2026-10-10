@@ -40,6 +40,13 @@ Typical choices:
 - Use `RenderRequest::png`, `RenderRequest::jpeg`, or `RenderRequest::pdf` when the input is Mermaid
   source and the caller wants the standard render-and-export path. These typed targets select the
   sealed raster-safe path within the same operation.
+- Use `RenderRequest::document` when the same completed layout must project to several targets.
+  `RenderedDocument::export_png`, `export_jpeg`, and `export_pdf` reuse one sealed SVG and return
+  target-owned admission receipts without re-entering parsing, layout, or SVG finalization. Their
+  `prepare_*_export` counterparts expose the frozen export plan before encoding for schedulers and
+  batch admission.
+  Document completion is target-neutral: inspect `standalone_svg_admission()` before publishing
+  its SVG bytes, while each native projection enforces its own admission independently.
 - Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
   metadata. The selected built-in preset always runs after these passes.
 
@@ -127,9 +134,9 @@ callers that already own SVG can use `SvgPipeline` and `finalize_resvg_svg(svg, 
 latter is the explicit sealed boundary for existing SVG text.
 
 The source-string helpers extract root SVG attributes only as descriptive metadata. They never
-promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
-Only the typed family render operation can retain that capability through postprocessing. A
-diagram-type string alone does not authorize a family-specific fallback, and
+promote `aria-roledescription` or any other SVG text into the catalog-owned `DiagramFamilyId`
+capability. Only the typed family render operation can retain that capability through
+postprocessing. A diagram-type string alone does not authorize a family-specific fallback, and
 `finalize_resvg_svg(svg, session)` deliberately performs only family-agnostic cleanup.
 
 ## Host Postprocessors
@@ -277,7 +284,7 @@ theme color selection, and diagram-family-specific color semantics should be imp
 narrow exception for a common host canvas need: it rewrites only the root `<svg>` inline
 `background-color`, preserving all Mermaid-owned diagram colors.
 
-Binding consumers can pass external Mermaid defaults through `options_json.site_config` without
+Binding consumers can pass bounded Mermaid defaults through `options_json.site_config` without
 embedding an init directive into the diagram source:
 
 ```json
@@ -287,30 +294,18 @@ embedding an init directive into the diagram source:
     "themeVariables": {
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc"
-    },
-    "themeCSS": ".node rect { stroke-width: 2px; }"
+    }
   }
 }
 ```
 
-Binding consumers can also inject host-owned scoped CSS through `options_json.svg.scoped_css`:
-
-```json
-{
-  "svg": {
-    "pipeline": "resvg-safe",
-    "diagram_id": "host-diagram",
-    "scoped_css": ".node rect { stroke: #2563eb; stroke-width: 2px; } .merman-foreignobject-fallback-text { fill: #111827; }",
-    "css_override_policy": "strip-existing-important",
-    "root_background_color": "#0f172a"
-  }
-}
-```
-
-The injected CSS is scoped to the root SVG id and inserted after Mermaid CSS. With
-`pipeline="resvg-safe"`, merman runs the built-in CSS sanitizer after injecting host CSS so the
-binding preset does not silently lose its raster-safety contract. Hosts still own the trust and
-compatibility policy for the CSS they provide.
+General bindings reject `site_config.themeCSS`, `site_config.secure`, `svg.scoped_css`,
+`svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy`. Raw CSS, the protected
+Mermaid key set, and cascade-priority changes are host-capability decisions rather than portable
+options data. A trusted Rust or native CLI host may still construct `ScopedCssPostprocessor` and
+select `CssOverridePolicy` directly, where it owns selector scoping, sanitization, palette
+semantics, and renderer compatibility. One-shot bindings, reusable constructors, and request
+overlays cannot opt into those capabilities.
 
 `svg.root_background_color` is a narrower host-owned option that sets the root SVG canvas color
 without relying on CSS cascade over an inline style. Passing `"transparent"` keeps the canvas

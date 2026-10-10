@@ -87,8 +87,7 @@ pub(super) fn compare_gantt_request(
     let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
     let layout_opts = baseline_container.layout_options();
     let environment = merman::SvgEnvironment::deterministic();
-    let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let mut observed_operations = ObservedRenderOperations::from_environment(&environment);
     let probe_renderer = merman::Renderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
@@ -119,7 +118,7 @@ pub(super) fn compare_gantt_request(
             report.push('\n');
         },
         |_, stem, _| {
-            crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem).map(str::to_string)
+            crate::cmd::upstream_svg_compare_skip_reason(fact.diagram, stem).map(str::to_string)
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {
@@ -146,11 +145,19 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            if semantic.semantic_kind() != "gantt" {
+            let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
+                .ok_or_else(|| {
+                    format!(
+                        "unknown render family for {}: {}",
+                        input.fixture_path.display(),
+                        semantic.diagram_type()
+                    )
+                })?;
+            if family_id != merman_core::DiagramFamilyId::GANTT {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    semantic.semantic_kind()
+                    family_id
                 ));
             }
 

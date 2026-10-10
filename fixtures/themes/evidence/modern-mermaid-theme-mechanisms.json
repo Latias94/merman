@@ -1,0 +1,591 @@
+{
+  "snapshotVersion": 3,
+  "sourceId": "source-modern-mermaid",
+  "revision": "a021cbce37fc0b07a9f4791c28e983101ea06f2d",
+  "evidenceFiles": [
+    {
+      "path": "src/utils/themes.ts",
+      "sha256": "9f1baf22457de1fbc5217437dc103840a14f15f2213eeaba45f91e306f6db92d"
+    },
+    {
+      "path": "src/components/Preview.tsx",
+      "sha256": "f3043d5b0b6d5c17f072da3a18b7cad19c9b7affa82d5f0d2f2e92542d7cac25"
+    },
+    {
+      "path": "src/fonts.css",
+      "sha256": "f15bf97d5b3ba371c93bbda5258acff9fb7ffeef25b57e8a328d49739b807de0"
+    }
+  ],
+  "themes": [
+    {
+      "referenceName": "linearLight",
+      "sourceLine": 18,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-pattern",
+        "canvas-solid",
+        "dash-array",
+        "font-stack",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "linearDark",
+      "sourceLine": 62,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-pattern",
+        "canvas-solid",
+        "font-stack",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "notion",
+      "sourceLine": 107,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": []
+    },
+    {
+      "referenceName": "ghibli",
+      "sourceLine": 440,
+      "canvasLayerCount": 4,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "spotless",
+      "sourceLine": 626,
+      "canvasLayerCount": 2,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-letter-spacing",
+        "css-text-transform",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "repeating"
+        }
+      ]
+    },
+    {
+      "referenceName": "brutalist",
+      "sourceLine": 913,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "css-filter",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": []
+    },
+    {
+      "referenceName": "glassmorphism",
+      "sourceLine": 1327,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "memphis",
+      "sourceLine": 2842,
+      "canvasLayerCount": 6,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "softPop",
+      "sourceLine": 1725,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": []
+    },
+    {
+      "referenceName": "cyberpunk",
+      "sourceLine": 209,
+      "canvasLayerCount": 3,
+      "mechanisms": [
+        "canvas-blend",
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-blend",
+          "mode": "screen"
+        },
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        },
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "monochrome",
+      "sourceLine": 396,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "dash-array",
+        "font-stack",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": []
+    },
+    {
+      "referenceName": "darkMinimal",
+      "sourceLine": 1956,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": []
+    },
+    {
+      "referenceName": "wireframe",
+      "sourceLine": 2059,
+      "canvasLayerCount": 2,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "handDrawn",
+      "sourceLine": 2258,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "external-svg-filter-reference",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "grafana",
+      "sourceLine": 2560,
+      "canvasLayerCount": 2,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        }
+      ]
+    },
+    {
+      "referenceName": "noir",
+      "sourceLine": 3263,
+      "canvasLayerCount": 3,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "not-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        },
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "none"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "not-selector",
+          "family": "state-diagram"
+        }
+      ]
+    },
+    {
+      "referenceName": "material",
+      "sourceLine": 3773,
+      "canvasLayerCount": 0,
+      "mechanisms": [
+        "canvas-solid",
+        "css-filter",
+        "css-letter-spacing",
+        "css-text-transform",
+        "dash-array",
+        "font-stack",
+        "not-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "semantic-selector",
+          "mechanism": "not-selector",
+          "family": "state-diagram"
+        }
+      ]
+    },
+    {
+      "referenceName": "aurora",
+      "sourceLine": 4288,
+      "canvasLayerCount": 3,
+      "mechanisms": [
+        "backdrop-filter",
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "not-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        },
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "none"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "not-selector",
+          "family": "state-diagram"
+        }
+      ]
+    },
+    {
+      "referenceName": "win95",
+      "sourceLine": 4830,
+      "canvasLayerCount": 4,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "has-selector",
+        "not-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "tiled"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "has-selector",
+          "family": "state-diagram"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "has-selector",
+          "family": "class-diagram"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "not-selector",
+          "family": "state-diagram"
+        },
+        {
+          "kind": "semantic-selector",
+          "mechanism": "has-selector",
+          "family": "er-diagram"
+        }
+      ]
+    },
+    {
+      "referenceName": "doodle",
+      "sourceLine": 5416,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "organic",
+      "sourceLine": 6096,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "hightech",
+      "sourceLine": 6752,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "radial",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "kawaii",
+      "sourceLine": 7306,
+      "canvasLayerCount": 1,
+      "mechanisms": [
+        "canvas-gradient",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "none"
+        }
+      ]
+    },
+    {
+      "referenceName": "geometricCollage",
+      "sourceLine": 7849,
+      "canvasLayerCount": 2,
+      "mechanisms": [
+        "canvas-gradient",
+        "canvas-layering",
+        "canvas-pattern",
+        "canvas-solid",
+        "css-filter",
+        "dash-array",
+        "font-stack",
+        "nth-child-selector",
+        "rounded-corners",
+        "stroke-styling",
+        "theme-variables"
+      ],
+      "facets": [
+        {
+          "kind": "canvas-gradient",
+          "gradient": "linear",
+          "repetition": "repeating"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Annotation colors and the preview overlay are application-owned and excluded.",
+    "Cyberpunk canvas-blend comes from bgStyle.backgroundBlendMode, not CSS animation.",
+    "Aurora backdrop-filter is retained as an explicit browser residual.",
+    "Glassmorphism simulates glass with gradients and drop shadows; it has no backdrop-filter.",
+    "The source contains no animation or @keyframes mechanism in the pinned revision.",
+    "Canvas evidence composes bgClass and bgStyle exactly as Preview applies them to the same container.",
+    "Theme mechanisms and facets are manually decomposed into Merman-owned typed evidence; the TypeScript source is not a supported input language."
+  ]
+}

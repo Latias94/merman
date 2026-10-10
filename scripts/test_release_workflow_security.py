@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -321,6 +326,163 @@ jobs:
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
+    def test_optimized_theme_rejection_tests_run_in_pr_and_preflight(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = read(WORKFLOW_ROOT / name)
+                step = text.split(
+                    "      - name: Test optimized theme evidence and qualification rejection\n", 1,
+                )[1].split("\n      - name:", 1)[0]
+                self.assertNotIn("continue-on-error", step)
+                command = " ".join(step.split("        run: |\n", 1)[1]
+                                   .replace("\\\n", " ").split())
+                self.assertIn(
+                    "cargo test --release --locked -p merman-render --no-default-features "
+                    "--lib family::evidence_support::tests", command,
+                )
+                self.assertIn(
+                    "python3 scripts/run_theme_acceptance.py test --release --locked "
+                    "-p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape "
+                    "--lib preset_qualification::", command,
+                )
+
+    def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
+        for name, runner in (("ci.yml", "cargo nextest run"),
+                             ("release-preflight.yml", "cargo test")):
+            with self.subTest(workflow=name):
+                step = read(WORKFLOW_ROOT / name).split(
+                    "      - name: Test theme authoring and font resource boundaries\n", 1,
+                )[1].split("\n      - name:", 1)[0]
+                self.assertNotIn("continue-on-error", step)
+                self.assertNotIn("if:", step)
+                self.assertIn("shell: bash", step)
+                command = " ".join(step.split("        run: |\n", 1)[1]
+                                   .replace("\\\n", " ").split())
+                self.assertIn(
+                    f"{runner} --locked -p merman-ffi --no-default-features "
+                    "--features svg,diagram-flowchart --test c_consumer_smoke", command,
+                )
+                self.assertIn(
+                    f"{runner} --locked -p merman-render --no-default-features "
+                    "--features diagram-flowchart,diagram-swimlane "
+                    "--test theme_font_capability --test flowchart_node_effects", command,
+                )
+                self.assertIn(
+                    f"{runner} --locked -p merman-bindings-core --no-default-features "
+                    "--features svg,diagram-flowchart --lib", command,
+                )
+                self.assertNotIn("embedded-fonts", command)
+
+    def test_retired_portable_font_gates_are_not_release_requirements(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = read(WORKFLOW_ROOT / name)
+                for retired in ("c6_runtime", "route_cutover_runtime", "native_export_smoke"):
+                    self.assertNotIn(f"--test {retired}", text)
+                self.assertIn("--test preset_qualification", text)
+
+    def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()
+            for test in ("block_title_legacy_projection",
+                         "class_edge_label_background_legacy_projection",
+                         "flowchart_marker_legacy_projection"):
+                with self.subTest(workflow=name, test=test):
+                    selected = [command for command in commands
+                                if f"--test {test}" in command]
+                    self.assertTrue(selected, f"{test} must be selected explicitly")
+                    for command in selected:
+                        self.assertIn("python3 scripts/run_theme_acceptance.py", command)
+                        self.assertIn("-p merman-theme-acceptance", command)
+                        features = command.split("--features ", 1)[1].split()[0].split(",")
+                        self.assertIn("png", features)
+
+    def test_support_discovery_runs_explicitly_in_ci_and_preflight(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = " ".join(read(WORKFLOW_ROOT / name).split())
+                self.assertIn("python3 scripts/run_theme_acceptance.py", text)
+                self.assertIn("nextest run --locked -p merman-render", text)
+                self.assertIn("--test theme_support_discovery_test", text)
+
+    def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
+        text = read(WORKFLOW_ROOT / "release.yml")
+        native = workflow_job(text, "verify-release-archives-native")
+        gate = workflow_job(text, "release-verification-gate")
+        self.assertIn(
+            "QUALIFY_PRESETS: ${{ matrix.package == 'merman-cli' && matrix.target == 'x86_64-unknown-linux-gnu' }}",
+            native,
+        )
+        self.assertIn("ref: ${{ needs.plan.outputs.source_sha }}", native)
+        self.assertIn("path: target/verified-release-assets", native)
+        self.assertNotIn("path: verified-release-assets\n", native)
+        self.assertIn("fonts-dejavu-core", native)
+        self.assertIn("--execute", native)
+        self.assertIn("--preset-qualification-output", native)
+        self.assertIn("--preset-qualification-check", native)
+        self.assertIn("target/preset-qualification.json", native)
+        self.assertIn("target/preset-qualification.catalog.json", native)
+        self.assertIn("if-no-files-found: error", native)
+        self.assertNotIn("continue-on-error:", native)
+        self.assertIn("- verify-release-archives-native", gate)
+        self.assertIn("needs.verify-release-archives-native.result", gate)
+        self.assertIn('"$NATIVE_RESULT" != success', gate)
+        self.assertIn("name: preset-qualification-${{ needs.plan.outputs.source_sha }}-x86_64-unknown-linux-gnu", gate)
+        self.assertIn('scripts/release_artifact_bundle.py" finalize', gate)
+        self.assertIn("native-qualification/preset-qualification.json", gate)
+        self.assertIn("name: publication-release-assets", gate)
+        self.assertIn("if-no-files-found: error", gate)
+        self.assertLess(gate.index('"$NATIVE_RESULT" != success'), gate.index('scripts/release_artifact_bundle.py" finalize'))
+        for job in ("attest-release-assets", "host"):
+            consumer = workflow_job(text, job)
+            self.assertIn("release-verification-gate", consumer)
+            self.assertIn("name: publication-release-assets", consumer)
+            self.assertNotIn("name: verified-release-assets", consumer)
+            self.assertIn("--require-preset-catalog", consumer)
+
+    @unittest.skipUnless(shutil.which("bash"), "workflow command requires Bash")
+    def test_native_archive_command_routes_qualification_and_stops_on_failure(self) -> None:
+        native = workflow_job(read(WORKFLOW_ROOT / "release.yml"), "verify-release-archives-native")
+        step = native.split("      - name: Execute final product archive\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        with tempfile.TemporaryDirectory(prefix="merman release step ") as temporary:
+            root = Path(temporary)
+            verifier = root / "record arguments.py"
+            verifier.write_text(
+                "import json, os, sys\n"
+                "with open(os.environ['ARGUMENT_LOG'], 'a') as log:\n"
+                "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                "sys.exit(int(os.environ['VERIFY_EXIT']))\n",
+                encoding="utf-8",
+            )
+            for qualify, package, target, exit_code in (
+                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 0),
+                ("false", "merman-cli", "aarch64-apple-darwin", 0),
+                ("false", "merman-lsp", "x86_64-pc-windows-msvc", 0),
+                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 7),
+            ):
+                with self.subTest(qualify=qualify, package=package, target=target, exit_code=exit_code):
+                    log = root / f"{qualify}-{package}-{target}-{exit_code}.jsonl"
+                    result = subprocess.run(
+                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        env={**os.environ, "PACKAGE": package, "TARGET": target,
+                             "QUALIFY_PRESETS": qualify, "VERIFIER": str(verifier),
+                             "GITHUB_WORKSPACE": str(root), "RELEASE_VERSION": "1.2.3",
+                             "ARGUMENT_LOG": str(log), "VERIFY_EXIT": str(exit_code)},
+                    )
+                    self.assertEqual(result.returncode, exit_code, result.stderr)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    extension = "zip" if "windows" in target else "tar.xz"
+                    archive = f"target/verified-release-assets/{package}-{target}.{extension}"
+                    common = [archive, "--checksum", archive + ".sha256", "--target", target,
+                              "--version", "1.2.3", "--repo-root", str(root), "--execute"]
+                    expected = [common]
+                    if qualify == "true":
+                        expected = [common + ["--preset-qualification-output", "target/preset-qualification.json"]]
+                        if exit_code == 0:
+                            expected.append(common + ["--preset-qualification-check", "target/preset-qualification.json"])
+                    self.assertEqual(calls, expected)
+
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")
         self.assertIn("ref: ${{ github.workflow_sha }}", text)
@@ -344,6 +506,11 @@ jobs:
     def test_release_preflight_keeps_prerelease_and_surface_contract_gates(self) -> None:
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         crates = read(WORKFLOW_ROOT / "release-crates.yml")
+        self.assertIn("mermaid-reference-materialized:", preflight)
+        self.assertIn("verify-mermaid-reference --materialized", preflight)
+        self.assertIn("MERMAID_REFERENCE_BUNDLE.json", preflight)
+        self.assertIn("--filter=blob:none", preflight)
+        self.assertIn("npm ci --ignore-scripts --prefix playground", preflight)
         for workflow_name, text in (
             ("release-preflight.yml", preflight),
             ("release-crates.yml", crates),
@@ -355,6 +522,38 @@ jobs:
                 )
                 self.assertIn("scripts/verify_prerelease_compatibility.py", text)
                 self.assertIn("previous_tag=", text)
+
+    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires Bash")
+    def test_prerelease_workflows_scope_the_accepted_transition(self) -> None:
+        for workflow in ("release-preflight.yml", "release-crates.yml"):
+            step = read(WORKFLOW_ROOT / workflow).split(
+                "        id: prerelease_compatibility", 1
+            )[1]
+            command = textwrap.dedent(
+                step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0]
+            )
+            for version, previous, accepted in (
+                ("0.8.0-alpha.7", "v0.8.0-alpha.6", True),
+                ("0.8.0-alpha.8", "v0.8.0-alpha.7", False),
+                ("0.8.0-alpha.7", "v0.8.0-alpha.5", False),
+                ("0.8.0-alpha.7", "", False),
+            ):
+                with self.subTest(workflow=workflow, version=version, previous=previous):
+                    environment = dict(os.environ, VERSION=version, TEST_PREVIOUS=previous)
+                    result = subprocess.run(
+                        ["bash", "-c", 'git() { printf "%s\\n" "$TEST_PREVIOUS"; }; '
+                         'python3() { printf "%s\\n" "$@"; };\n' + command],
+                        env=environment, capture_output=True, text=True, check=True,
+                    )
+                    arguments = result.stdout.splitlines()
+                    self.assertEqual(arguments[:3], [
+                        "scripts/verify_prerelease_compatibility.py", "--version", version,
+                    ])
+                    if previous:
+                        self.assertEqual(arguments[3:5], ["--previous-version", previous[1:]])
+                        self.assertEqual(arguments[5:], ["--accept-alpha6-transition"] if accepted else [])
+                    else:
+                        self.assertEqual(arguments[3:], ["--allow-missing-previous"])
 
     def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
         self,
@@ -424,10 +623,72 @@ jobs:
         self.assertLess(native.index("verify-plan"), native.index("dist build"))
         self.assertIn("scripts/verify_cli_release_archive.py", native)
         self.assertIn("scripts/verify_lsp_release_archive.py", native)
+        self.assertIn("if: matrix.target == 'aarch64-unknown-linux-gnu'", native)
+        self.assertIn('openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt', native)
         self.assertEqual(native.count("--execute"), 2)
         self.assertIn("if-no-files-found: error", native)
         self.assertNotIn("dist host", native)
         self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
+
+    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires bash")
+    def test_preflight_native_qualification_replays_and_propagates_failures(self) -> None:
+        native = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives")
+        step = native.split("      - name: Execute final native archives\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        upload = native.split("      - name: Upload scoped native preset qualification\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", upload)
+        self.assertIn("target/preset-qualification.json", upload)
+        self.assertIn("target/preset-qualification.catalog.json", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertIn("fonts-dejavu-core", native)
+        with tempfile.TemporaryDirectory(prefix="merman preflight qualification ") as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            # Execute the actual workflow shell with recording boundary programs.
+            verifier = (
+                "import json, os, sys\n"
+                "with open(os.environ['ARGUMENT_LOG'], 'a') as log:\n"
+                "    log.write(json.dumps(sys.argv) + '\\n')\n"
+                "sys.exit(7 if os.environ['FAIL_ARGUMENT'] in sys.argv else 0)\n"
+            )
+            for product in ("cli", "lsp"):
+                (scripts / f"verify_{product}_release_archive.py").write_text(verifier, encoding="utf-8")
+            for target, failure in (
+                ("x86_64-unknown-linux-gnu", ""),
+                ("aarch64-unknown-linux-gnu", ""),
+                ("x86_64-unknown-linux-gnu", "--preset-qualification-output"),
+                ("x86_64-unknown-linux-gnu", "--preset-qualification-check"),
+                ("aarch64-unknown-linux-gnu", "--resource-certificate"),
+                ("aarch64-unknown-linux-gnu", "--resource-key"),
+                ("aarch64-unknown-linux-gnu", "scripts/verify_lsp_release_archive.py"),
+            ):
+                with self.subTest(target=target, failure=failure):
+                    log = root / f"calls-{target}-{Path(failure).name}.jsonl"
+                    result = subprocess.run(
+                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        env={**os.environ, "TARGET": target, "VERSION": "1.2.3",
+                             "RUNNER_TEMP": str(root), "ARGUMENT_LOG": str(log),
+                             "FAIL_ARGUMENT": failure},
+                    )
+                    self.assertEqual(result.returncode, 7 if failure else 0, result.stderr)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    def expected_call(product: str, extra: list[str]) -> list[str]:
+                        archive = f"target/distrib/merman-{product}-{target}.tar.xz"
+                        return [f"scripts/verify_{product}_release_archive.py", archive,
+                                "--checksum", archive + ".sha256", "--target", target,
+                                "--version", "1.2.3", "--repo-root", ".", "--execute", *extra]
+                    if target == "x86_64-unknown-linux-gnu":
+                        expected = [expected_call("cli", ["--preset-qualification-output", "target/preset-qualification.json"])]
+                        if failure != "--preset-qualification-output":
+                            expected.append(expected_call("cli", ["--preset-qualification-check", "target/preset-qualification.json"]))
+                    else:
+                        resource_args = ["--resource-certificate", str(root / "merman-resource.crt"),
+                                         "--resource-key", str(root / "merman-resource.key")]
+                        expected = [expected_call("cli", resource_args)]
+                    if not failure.startswith(("--preset-qualification-", "--resource-")):
+                        expected.append(expected_call("lsp", []))
+                    self.assertEqual(calls, expected)
 
     def test_cli_registry_validation_does_not_gate_binary_publication(self) -> None:
         release = read(WORKFLOW_ROOT / "release.yml")
@@ -476,6 +737,25 @@ jobs:
             if path.exists():
                 with self.subTest(path=path.relative_to(ROOT).as_posix()):
                     assert_no_npm_provenance_disable(self, read(path))
+
+    def test_preflight_installs_npm_before_host_package_commands(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-preflight.yml")
+        for name in (
+            "mermaid-reference-materialized", "web-npm-dry-run", "node-loader-package",
+            "node-wasm-package", "node-platform-package", "vscode-extension-dry-run",
+        ):
+            with self.subTest(job=name):
+                job = workflow_job(text, name)
+                steps = re.split(r"(?m)^      - name: ", job)
+                setup = next(i for i, step in enumerate(steps) if step.startswith("Setup Node"))
+                install = steps[setup + 1]
+                self.assertTrue(install.startswith("Install npm toolchain\n"))
+                self.assertIn(
+                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2",
+                    install,
+                )
+                setup_if = re.findall(r"(?m)^        if: (.+)$", steps[setup])
+                self.assertEqual(re.findall(r"(?m)^        if: (.+)$", install), setup_if)
 
     def test_release_package_workflows_pin_node_toolchain(self) -> None:
         expected = 'node-version: "24.21.0"'
@@ -550,16 +830,29 @@ jobs:
             build.index("- name: Build wheel"),
         )
 
-    def test_python_release_isolates_and_bootstraps_the_final_smoke_venv(self) -> None:
-        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
-        self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
-        self.assertIn('python -m venv "$VENV_DIR"', build)
-        self.assertNotIn("target/python-final-wheel-smoke", build)
-        self.assertIn('"$PYTHON" -m ensurepip --upgrade', build)
-        self.assertLess(
-            build.index('"$PYTHON" -m ensurepip --upgrade'),
-            build.index('"$PYTHON" -m pip install --no-deps'),
-        )
+    def test_python_owners_smoke_the_final_wheel_after_repair(self) -> None:
+        for filename, job in [
+            ("release-python.yml", "build"),
+            ("release-preflight.yml", "python-wheel"),
+        ]:
+            with self.subTest(workflow=filename):
+                build = workflow_job(read(WORKFLOW_ROOT / filename), job)
+                self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
+                self.assertIn('python -m venv "$VENV_DIR"', build)
+                self.assertNotIn("target/python-final-wheel-smoke", build)
+                self.assertNotIn("build-python-uniffi-wheel.py --run-smoke", build)
+                commands = [
+                    "id: repair-linux-wheel",
+                    "python -m auditwheel repair",
+                    "mv target/python-wheels/repaired/merman-*.whl target/python-wheels/",
+                    "id: smoke-final-wheel",
+                    '"$PYTHON" -m ensurepip --upgrade',
+                    '"$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl',
+                    '"$PYTHON" platforms/python/merman/examples/smoke.py',
+                    "path: target/python-wheels/merman-*.whl",
+                ]
+                positions = [build.index(command) for command in commands]
+                self.assertEqual(positions, sorted(positions))
 
     def test_web_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-web.yml")

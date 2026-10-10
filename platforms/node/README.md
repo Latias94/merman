@@ -66,7 +66,7 @@ serve the SVG recipe; it does not expose the ASCII/agent-log or PNG recipe. Use 
 CLI build for those outputs instead of inferring package support from workspace capabilities.
 The host owns semantic theme selection, caching, scheduling, persistence, and viewer or clipboard
 actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
-artifacts; see [presentation themes](../../docs/rendering/presentation-themes.md).
+artifacts. The unreleased compiled-theme API uses [Options JSON 3](../../docs/bindings/OPTIONS_JSON.md); see the [package guide](packages/node/README.md#compiled-themes-unreleased) for preset selection and discovery. Published alpha.6 remains on Options 2.
 
 ## Package layout
 
@@ -93,8 +93,9 @@ npm run check:packages --prefix platforms/node
 ```
 
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
-benchmark contract with test transports. `check:packages` verifies the source manifests; native
-candidate assembly and installed-package smoke run in the target-specific release workflow.
+benchmark contract with test transports. `check:packages` verifies the source manifests. Pull request CI also assembles the real Node-WASM
+and Node N-API packages, installs them into a clean temporary project, and runs the installed-package
+smoke; target-specific release workflows repeat the same check for release artifacts.
 
 The Linux GNU builder uses the full Node Bullseye image to preserve the declared glibc 2.31
 floor. Its inherited `buildpack-deps` tools and CA bundle are checked during image assembly;

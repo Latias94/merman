@@ -1,7 +1,5 @@
 //! Flowchart v2 hexagon shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::fmt_display;
 
@@ -13,7 +11,7 @@ const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -35,6 +33,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
                 FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
                 FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
                 FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

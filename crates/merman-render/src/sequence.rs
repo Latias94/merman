@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, LayoutNode, SequenceDiagramLayout};
 use crate::resources::OperationWorkMeter;
 #[cfg(all(test, feature = "diagram-sequence"))]
@@ -10,21 +9,26 @@ use merman_core::diagrams::sequence::{
 };
 use merman_core::{MermaidConfig, OperationPhase};
 use rustc_hash::FxHashMap;
-use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 const SEQUENCE_ACTOR_LAYOUT_WORK_UNITS: usize = 12;
 const SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS: usize = 8;
 const SEQUENCE_BOX_LAYOUT_WORK_UNITS: usize = 3;
 const SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS: usize = 2;
+const SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS: usize = 2;
 const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
-const SEQUENCE_LAYOUT_CHECKPOINT_INTERVAL: usize = 64;
+const SEQUENCE_CHECKPOINT_INTERVAL: usize = 64;
 
 mod activation;
+mod activation_geometry;
 mod actors;
+mod block_collection;
+mod block_geometry;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
+mod math_artifact;
 mod message_metrics;
 mod messages;
 mod metrics;
@@ -32,20 +36,48 @@ mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
+mod terminal_css;
+mod terminal_theme;
+mod text_artifact;
+mod text_effect;
+mod theme_binding;
+mod theme_evidence;
+mod typography;
+pub(crate) use terminal_css::SequencePreparedCss;
+pub(crate) use terminal_theme::{
+    SequencePreparedNumberTheme, SequencePreparedStaticRectTheme, SequencePreparedTerminalTheme,
+};
+pub(crate) use text_effect::SequencePreparedTextEffect;
+pub(crate) use theme_binding::SequenceCompatBinding;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
-pub(crate) use constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT,
-    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
-    SequenceActorBands, sequence_actor_popup_min_width, sequence_actor_popup_panel_height,
-    sequence_actor_popup_rect_height,
+pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
+pub(crate) use block_collection::{
+    AltSection, SequenceBlock, collect_sequence_blocks, sequence_block_section_geometry,
 };
+pub(crate) use block_geometry::{
+    SequenceBlockGeometry, frame_x_from_actors, resolved_block_frame_x,
+};
+pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
+pub(crate) use constants::{
+    SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
+    SequenceActorBands, sequence_actor_popup_panel_height, sequence_actor_popup_rect_height,
+    sequence_text_line_step_px,
+};
+pub(crate) use math_artifact::{
+    SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
+    SequenceMathSidecarBuilder,
+};
+#[cfg(test)]
+pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
-    measure_sequence_math_label, sequence_drawn_text_first_y, sequence_drawn_text_style,
-    sequence_drawn_text_y, sequence_inline_font_family, wrap_sequence_label_like_mermaid_lines,
+    prepared_sequence_math_terminal_geometry, sequence_drawn_text_first_y,
+    sequence_drawn_text_style, sequence_drawn_text_y, sequence_inline_font_family,
+    wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
+pub(crate) use text_artifact::SequenceTextSidecar;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
@@ -53,7 +85,21 @@ use config::SequenceLayoutSettings;
 use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::{SequenceRectStackBoundsContext, sequence_rect_stack_x_bounds};
-use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
+use root_bounds::{
+    SequenceDiagramTitleGeometry, SequenceRootBoundsContext, SequenceRootGeometry,
+    prepare_sequence_root_geometry,
+};
+pub(crate) use theme_evidence::{
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
+    SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt, SequenceMessageThemeEmission,
+    SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
+    SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
+    SequenceTypographyThemeReceipt,
+};
+pub(crate) use typography::{
+    SequenceResolvedTypography, SequenceTerminalForegroundProvenance, SequenceTerminalTextStyle,
+    SequenceTextSurface, SequenceTypographyPlan, SequenceTypographyRole,
+};
 
 /// Phase-aware cancellation projection for Sequence text and math callbacks.
 ///
@@ -79,40 +125,53 @@ impl<'a> SequenceTextCheckpoints<'a> {
     }
 }
 
-/// Non-billing cancellation projection shared by Sequence derived-geometry passes.
+/// Non-billing cancellation projection shared by Sequence-owned passes.
 ///
-/// Main preparation owns the `Layout` phase. SVG-only frame-width reconstruction runs after
-/// emission has begun and therefore carries the `Emit` phase through the same bounded loops.
+/// The phase is explicit so layout and SVG emission use one cancellation protocol without making
+/// domain geometry depend on an SVG-private helper.
 #[derive(Clone, Copy)]
-pub(super) struct SequenceLayoutCheckpoints<'a> {
+pub(crate) struct SequenceOperationCheckpoints<'a> {
     work_meter: &'a OperationWorkMeter,
     phase: OperationPhase,
 }
 
-impl<'a> SequenceLayoutCheckpoints<'a> {
+impl<'a> SequenceOperationCheckpoints<'a> {
     const fn new(work_meter: &'a OperationWorkMeter) -> Self {
+        Self::for_layout(work_meter)
+    }
+
+    pub(crate) const fn for_layout(work_meter: &'a OperationWorkMeter) -> Self {
         Self::for_phase(work_meter, OperationPhase::Layout)
     }
 
-    const fn for_phase(work_meter: &'a OperationWorkMeter, phase: OperationPhase) -> Self {
+    pub(crate) const fn for_emit(work_meter: &'a OperationWorkMeter) -> Self {
+        Self::for_phase(work_meter, OperationPhase::Emit)
+    }
+
+    pub(crate) const fn for_phase(
+        work_meter: &'a OperationWorkMeter,
+        phase: OperationPhase,
+    ) -> Self {
         Self { work_meter, phase }
     }
 
-    pub(super) fn checkpoint(self) -> Result<()> {
+    pub(crate) fn checkpoint(self) -> Result<()> {
         self.work_meter.checkpoint(self.phase).map_err(Into::into)
     }
 
-    pub(super) fn checkpoint_loop(self, iteration: usize) -> Result<()> {
-        if iteration.is_multiple_of(SEQUENCE_LAYOUT_CHECKPOINT_INTERVAL) {
+    pub(crate) fn checkpoint_loop(self, iteration: usize) -> Result<()> {
+        if iteration.is_multiple_of(SEQUENCE_CHECKPOINT_INTERVAL) {
             self.checkpoint()?;
         }
         Ok(())
     }
 
-    pub(super) const fn text(self) -> SequenceTextCheckpoints<'a> {
+    pub(crate) const fn text(self) -> SequenceTextCheckpoints<'a> {
         SequenceTextCheckpoints::for_phase(self.work_meter, self.phase)
     }
 }
+
+type SequenceLayoutCheckpoints<'a> = SequenceOperationCheckpoints<'a>;
 
 /// Source-derived box title and spacing retained from actor layout.
 #[derive(Debug)]
@@ -130,13 +189,34 @@ pub(crate) struct SequenceBoxLayout {
 #[derive(Debug)]
 pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
+    actor_popup_widths: HashMap<String, f64>,
     message_metrics: SequenceMessageMetricSidecar,
     box_layouts: Vec<SequenceBoxLayout>,
     box_title_height: f64,
     box_height: f64,
+    text_sidecar: SequenceTextSidecar,
+    math_sidecar: SequenceMathSidecar,
+    theme_evidence: SequenceThemeEvidenceRecorder,
+    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
+    expected_effect_applications: std::cell::Cell<usize>,
+    typography: Arc<SequenceTypographyPlan>,
+    terminal_theme: SequencePreparedTerminalTheme,
+    activation_geometry: SequencePreparedActivationGeometry,
+    activation_theme: SequencePreparedStaticRectTheme,
+    css: SequencePreparedCss,
+    diagram_title: Option<SequenceDiagramTitleGeometry>,
+    block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
 
 impl SequencePreparedArtifact {
+    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
+        &self.effect_evidence
+    }
+
+    pub(crate) fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
+        &self.expected_effect_applications
+    }
+
     pub(crate) fn box_layouts(&self) -> &[SequenceBoxLayout] {
         &self.box_layouts
     }
@@ -152,6 +232,66 @@ impl SequencePreparedArtifact {
     pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
         &self.layout
     }
+
+    pub(crate) const fn theme_evidence(&self) -> &SequenceThemeEvidenceRecorder {
+        &self.theme_evidence
+    }
+
+    pub(crate) const fn text_sidecar(&self) -> &SequenceTextSidecar {
+        &self.text_sidecar
+    }
+
+    pub(crate) const fn math_sidecar(&self) -> &SequenceMathSidecar {
+        &self.math_sidecar
+    }
+
+    pub(crate) fn typography(&self) -> &SequenceTypographyPlan {
+        self.typography.as_ref()
+    }
+
+    pub(crate) const fn number_theme(&self) -> &SequencePreparedNumberTheme {
+        &self.terminal_theme.number
+    }
+
+    pub(crate) const fn terminal_theme(&self) -> &SequencePreparedTerminalTheme {
+        &self.terminal_theme
+    }
+
+    pub(crate) const fn activation_geometry(&self) -> &SequencePreparedActivationGeometry {
+        &self.activation_geometry
+    }
+
+    pub(crate) const fn activation_theme(&self) -> &SequencePreparedStaticRectTheme {
+        &self.activation_theme
+    }
+
+    pub(crate) const fn css(&self) -> &SequencePreparedCss {
+        &self.css
+    }
+
+    pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
+        self.diagram_title.as_ref()
+    }
+
+    pub(crate) const fn block_label_box_metrics(&self) -> SequenceBlockLabelBoxMetrics {
+        self.block_label_box_metrics
+    }
+
+    pub(crate) const fn actor_popup_widths(&self) -> &HashMap<String, f64> {
+        &self.actor_popup_widths
+    }
+
+    pub(crate) fn prepared_text_label_ledger(
+        &self,
+    ) -> Vec<crate::text::PreparedTextLabelLedgerEntry> {
+        self.text_sidecar.prepared_text_label_ledger()
+    }
+
+    pub(crate) fn take_prepared_text_retained_reservations(
+        &self,
+    ) -> Vec<crate::resources::PreparedTextRetainedReservation> {
+        self.text_sidecar.take_prepared_text_retained_reservations()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +300,7 @@ struct SequenceLayoutWorkShape {
     messages: usize,
     boxes: usize,
     box_memberships: usize,
+    popup_links: usize,
     text_work: usize,
 }
 
@@ -167,9 +308,9 @@ impl SequenceLayoutWorkShape {
     fn work_units(self) -> Option<usize> {
         // Sequence layout has a fixed number of actor and message passes: measurement, spacing,
         // geometry construction, frame propagation, and final bounds. Box membership is scanned
-        // twice by Mermaid-compatible actor margin and actor-to-box assignment. Nested frame
-        // accumulators are propagated to their parent once, so block depth does not multiply the
-        // per-message term.
+        // twice by Mermaid-compatible actor margin and actor-to-box assignment. Popup labels are
+        // measured once with ActorLabel typography. Nested frame accumulators are propagated to
+        // their parent once, so block depth does not multiply the per-message term.
         self.actors
             .checked_mul(SEQUENCE_ACTOR_LAYOUT_WORK_UNITS)?
             .checked_add(
@@ -180,6 +321,10 @@ impl SequenceLayoutWorkShape {
             .checked_add(
                 self.box_memberships
                     .checked_mul(SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS)?,
+            )?
+            .checked_add(
+                self.popup_links
+                    .checked_mul(SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS)?,
             )
             .and_then(|work| work.checked_add(self.text_work))
     }
@@ -303,6 +448,20 @@ fn sequence_layout_work_units_controlled(
     }
     checkpoints.checkpoint()?;
 
+    let mut popup_links = 0usize;
+    for (actor_position, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_position)?;
+        let actor_links = model
+            .actors
+            .get(actor_id)
+            .map_or(0, |actor| actor.links.len());
+        let Some(next) = popup_links.checked_add(actor_links) else {
+            return Ok(None);
+        };
+        popup_links = next;
+    }
+    checkpoints.checkpoint()?;
+
     let Some(text_work) = sequence_text_work_units_controlled(model, diagram_title, checkpoints)?
     else {
         return Ok(None);
@@ -313,6 +472,7 @@ fn sequence_layout_work_units_controlled(
         messages: model.messages.len(),
         boxes: model.boxes.len(),
         box_memberships,
+        popup_links,
         text_work,
     }
     .work_units())
@@ -336,12 +496,14 @@ pub(crate) fn sequence_block_widths_for_render(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: &OperationWorkMeter,
 ) -> Result<FxHashMap<String, f64>> {
-    let checkpoints = SequenceLayoutCheckpoints::for_phase(work_meter, OperationPhase::Emit);
+    let checkpoints = SequenceOperationCheckpoints::for_emit(work_meter);
     checkpoints.checkpoint()?;
-    let settings = SequenceLayoutSettings::from_effective_config(effective_config.as_value());
+    let settings = SequenceLayoutSettings::from_effective_config(
+        effective_config.as_value(),
+        prepared.typography(),
+    );
     // SVG frame emission reconstructs Mermaid's `calculateLoopBounds` after Rust layout has
     // already completed. Only the built-in operation route may carry its earlier message bounds
     // across this private split; host and custom routes deliberately replay every callback.
@@ -374,8 +536,8 @@ pub(crate) fn sequence_block_widths_for_render(
         activation_width: settings.activation_width,
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
-        label_box_height: settings.label_box_height,
-        label_box_width: settings.label_box_width,
+        label_box_height: prepared.block_label_box_metrics().layout_height(),
+        label_box_width: prepared.block_label_box_metrics().width(),
         sequence_default_width: settings.sequence_default_width,
         wrap_padding: settings.wrap_padding,
         note_margin: settings.note_margin,
@@ -383,8 +545,12 @@ pub(crate) fn sequence_block_widths_for_render(
         measurer,
         msg_text_style: &settings.msg_text_style,
         note_text_style: &settings.note_text_style,
+        loop_text_style: &settings.loop_text_style,
         math_config: effective_config,
-        math_renderer,
+        math_terminal_style: prepared
+            .typography()
+            .terminal_text_style(SequenceTextSurface::ControlPrimaryTitle),
+        math_sidecar: prepared.math_sidecar(),
         message_metrics,
         checkpoints,
     })?;
@@ -398,15 +564,21 @@ pub(crate) fn sequence_block_widths_for_render(
 }
 
 /// Prepares a Sequence model under the cumulative work meter owned by the render operation.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Prepared rendering keeps theme, text, math, and work inputs explicit"
+)]
 pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
-    effective_config: &Value,
+    effective_config: &MermaidConfig,
+    resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
+    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    work_meter: &OperationWorkMeter,
+    math_backend: Option<&crate::math::ConfiguredMathBackend>,
+    work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SequencePreparedArtifact> {
-    let checkpoints = SequenceLayoutCheckpoints::new(work_meter);
+    let checkpoints = SequenceLayoutCheckpoints::new(work_meter.as_ref());
     checkpoints.checkpoint()?;
     work_meter.preflight_sequence_complexity(model, OperationPhase::Layout)?;
     checkpoints.checkpoint()?;
@@ -414,14 +586,47 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(work_units)?;
 
-    let math_config = MermaidConfig::from_value(effective_config.clone());
-    let settings = SequenceLayoutSettings::from_effective_config(effective_config);
+    let typography = Arc::new(SequenceTypographyPlan::resolve(
+        effective_config,
+        resolved_theme,
+        work_meter.as_ref(),
+    )?);
+    checkpoints.checkpoint()?;
+    let terminal_theme = SequencePreparedTerminalTheme::resolve(
+        model,
+        effective_config,
+        resolved_theme,
+        work_meter.as_ref(),
+    )?;
+    let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
+    let base_text_style = typography.base_measurement_style();
+    let effective_config_value = effective_config.as_value();
+    let settings =
+        SequenceLayoutSettings::from_effective_config(effective_config_value, typography.as_ref());
+    let math_sidecar_builder = SequenceMathSidecarBuilder::new(
+        math_backend,
+        effective_config,
+        measurer,
+        Arc::clone(&work_meter),
+    )
+    .with_actor_terminal_emissions(if settings.mirror_actors { 2 } else { 1 });
+    let block_label_box_metrics = SequenceBlockLabelBoxMetrics::resolve(
+        model,
+        settings.label_box_width,
+        settings.label_box_height,
+        settings.box_text_margin,
+        measurer,
+        typography.loop_label(),
+        checkpoints,
+    )?;
     checkpoints.checkpoint()?;
 
     let SequenceActorLayoutPlan {
         actor_index,
         actor_widths,
+        actor_popup_widths,
         actor_base_heights,
+        actor_has_prepared_math,
         actor_text_heights,
         actor_centers_x,
         box_layouts,
@@ -436,12 +641,14 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_text_style: &settings.actor_text_style,
         note_text_style: &settings.note_text_style,
         msg_text_style: &settings.msg_text_style,
-        math_config: &math_config,
-        math_renderer,
+        math_config: effective_config,
+        typography: typography.as_ref(),
+        math_sidecar: &math_sidecar_builder,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
         is_neo: settings.is_neo,
         actor_margin: settings.actor_margin,
+        label_box_height: settings.label_box_height,
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
         wrap_padding: settings.wrap_padding,
@@ -465,6 +672,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_centers_x: &actor_centers_x,
         actor_widths: &actor_widths,
         actor_base_heights: &actor_base_heights,
+        actor_has_prepared_math: &actor_has_prepared_math,
         actor_text_heights: &actor_text_heights,
         actor_top_offset_y,
         max_actor_layout_height,
@@ -475,7 +683,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         note_margin: settings.note_margin,
         box_text_margin: settings.box_text_margin,
         label_box_height: settings.label_box_height,
-        label_box_width: settings.label_box_width,
+        block_label_box_height: block_label_box_metrics.layout_height(),
+        block_label_box_width: block_label_box_metrics.width(),
         right_angles: settings.right_angles,
         is_neo: settings.is_neo,
         wrap_padding: settings.wrap_padding,
@@ -483,9 +692,13 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         activation_width: settings.activation_width,
         measurer,
         msg_text_style: &settings.msg_text_style,
+        msg_terminal_text_style: typography.message().terminal_text_style(),
         note_text_style: &settings.note_text_style,
-        math_config: &math_config,
-        math_renderer,
+        note_terminal_text_style: typography.note().terminal_text_style(),
+        loop_text_style: &settings.loop_text_style,
+        math_config: effective_config,
+        typography: typography.as_ref(),
+        math_sidecar: &math_sidecar_builder,
         message_metrics: message_metric_view,
         checkpoints,
     })?;
@@ -514,15 +727,21 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         }
     }
 
-    let bounds = Some(sequence_root_bounds(SequenceRootBoundsContext {
-        model,
+    let SequenceRootGeometry {
+        bounds,
         diagram_title,
+    } = prepare_sequence_root_geometry(SequenceRootBoundsContext {
+        is_neo: settings.is_neo,
+        model,
+        diagram_title: effective_title,
         nodes: &nodes,
         edges: &edges,
+        block_layouts_by_id: &block_layouts_by_id,
         bounds_start_x,
         bounds_stop_x,
         actor_index: &actor_index,
         actor_centers_x: &actor_centers_x,
+        actor_popup_widths: &actor_popup_widths,
         box_layouts: &box_layouts,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
@@ -531,28 +750,69 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         diagram_margin_y: settings.diagram_margin_y,
         bottom_margin_adj: settings.bottom_margin_adj,
         box_margin: settings.box_margin,
-        wrap_padding: settings.wrap_padding,
         has_boxes,
         mirror_actors: settings.mirror_actors,
         measurer,
-        actor_text_style: &settings.actor_text_style,
+        base_text_style: &base_text_style,
         msg_text_style: &settings.msg_text_style,
-        math_config: &math_config,
-        math_renderer,
+        math_config: effective_config,
+        math_sidecar: &math_sidecar_builder,
         message_metrics: message_metric_view,
+        block_label_box_metrics,
         checkpoints,
-    })?);
-    checkpoints.checkpoint()?;
+    })?;
 
+    let math_sidecar = math_sidecar_builder.finish()?;
+    checkpoints.checkpoint()?;
+    let activation_geometry = SequencePreparedActivationGeometry::prepare(
+        model,
+        &nodes,
+        &edges,
+        typography.compat_binding().svg_activation_width,
+        checkpoints,
+    )?;
+    let activation_theme = SequencePreparedStaticRectTheme::resolve(
+        resolved_theme,
+        crate::diagram_theme::ThemeTarget::Activation,
+        activation_geometry.rect_count() != 0,
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.activationBkgColor",
+        ),
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.activationBorderColor",
+        ),
+        work_meter.as_ref(),
+    )?;
+
+    let css = SequencePreparedCss::resolve(&typography, &terminal_theme, &activation_theme);
     Ok(SequencePreparedArtifact {
         layout: SequenceDiagramLayout {
             nodes,
             edges,
             clusters,
-            bounds,
+            bounds: Some(bounds),
             block_layouts_by_id,
         },
+        actor_popup_widths,
         message_metrics,
+        text_sidecar: SequenceTextSidecar::new(
+            prepared_text_layout,
+            Arc::clone(&typography),
+            Arc::clone(&work_meter),
+        ),
+        math_sidecar,
+        theme_evidence: SequenceThemeEvidenceRecorder::default(),
+        effect_evidence: Default::default(),
+        expected_effect_applications: Default::default(),
+        typography,
+        terminal_theme,
+        activation_geometry,
+        activation_theme,
+        css,
+        diagram_title,
+        block_label_box_metrics,
         box_layouts,
         box_title_height,
         box_height,
@@ -592,6 +852,7 @@ mod resource_tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashSet;
     use std::fmt::Write;
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct CountingTextMeasurer {
@@ -738,14 +999,16 @@ mod resource_tests {
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
-        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let narrow_meter = Arc::new(OperationWorkMeter::new(narrow_policy));
         let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &json!({}),
+            &MermaidConfig::from_value(json!({})),
+            None,
+            None,
             &measurer,
             None,
-            &narrow_meter,
+            Arc::clone(&narrow_meter),
         )
         .unwrap_err();
         let Error::ResourceLimitExceeded(error) = error else {
@@ -759,14 +1022,16 @@ mod resource_tests {
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
             .unwrap();
-        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let exact_meter = Arc::new(OperationWorkMeter::new(exact_policy));
         prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &json!({}),
+            &MermaidConfig::from_value(json!({})),
+            None,
+            None,
             &measurer,
             None,
-            &exact_meter,
+            Arc::clone(&exact_meter),
         )
         .unwrap();
         assert_eq!(exact_meter.used(), expected_work);
@@ -782,17 +1047,20 @@ mod resource_tests {
         let expected_work = sequence_layout_work_units(&model).unwrap();
 
         let measurer = CountingTextMeasurer::default();
+        let effective_config = MermaidConfig::from_value(json!({}));
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
-        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let narrow_meter = Arc::new(OperationWorkMeter::new(narrow_policy));
         let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &json!({}),
+            &effective_config,
+            None,
+            None,
             &measurer,
             None,
-            &narrow_meter,
+            Arc::clone(&narrow_meter),
         )
         .unwrap_err();
         let Error::ResourceLimitExceeded(error) = error else {
@@ -806,14 +1074,16 @@ mod resource_tests {
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
             .unwrap();
-        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let exact_meter = Arc::new(OperationWorkMeter::new(exact_policy));
         prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &json!({}),
+            &effective_config,
+            None,
+            None,
             &measurer,
             None,
-            &exact_meter,
+            Arc::clone(&exact_meter),
         )
         .unwrap();
 
@@ -853,15 +1123,19 @@ mod resource_tests {
         }
         source.push_str("end\n");
         let model = sequence_model(&source);
-        let preparation_meter =
-            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let effective_config = MermaidConfig::from_value(json!({}));
+        let preparation_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
         let prepared = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
-            &json!({}),
+            &effective_config,
+            None,
+            None,
             &DeterministicTextMeasurer::default(),
             None,
-            &preparation_meter,
+            Arc::clone(&preparation_meter),
         )
         .unwrap();
 
@@ -891,7 +1165,6 @@ mod resource_tests {
             &nodes_by_id,
             &MermaidConfig::from_value(json!({})),
             &measurer,
-            None,
             &work_meter,
         )
         .unwrap_err();
@@ -917,6 +1190,7 @@ mod resource_tests {
                     messages: 0,
                     boxes: 0,
                     box_memberships: 0,
+                    popup_links: 0,
                     text_work: 0,
                 }
                 .work_units(),
@@ -929,6 +1203,7 @@ mod resource_tests {
             messages: 0,
             boxes: 1,
             box_memberships: 1,
+            popup_links: 0,
             text_work: 0,
         }
         .work_units()
@@ -938,6 +1213,7 @@ mod resource_tests {
             messages: 0,
             boxes: 1,
             box_memberships: 65,
+            popup_links: 0,
             text_work: 0,
         }
         .work_units()
@@ -945,6 +1221,22 @@ mod resource_tests {
         assert_eq!(
             many_memberships - one_membership,
             64 * super::SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS
+        );
+
+        let popup_links = SequenceLayoutWorkShape {
+            actors: 1,
+            messages: 0,
+            boxes: 0,
+            box_memberships: 0,
+            popup_links: 32,
+            text_work: 0,
+        }
+        .work_units()
+        .unwrap();
+        assert_eq!(
+            popup_links,
+            super::SEQUENCE_ACTOR_LAYOUT_WORK_UNITS
+                + 32 * super::SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS
         );
     }
 
@@ -956,6 +1248,7 @@ mod resource_tests {
                 messages: 0,
                 boxes: 0,
                 box_memberships: 0,
+                popup_links: 0,
                 text_work: 0,
             }
             .work_units(),

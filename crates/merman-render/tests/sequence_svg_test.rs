@@ -2,6 +2,13 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::DiagramFamilyId;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector,
+    Specified, TextStylePatch as ThemeTextStylePatch, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+};
+
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -172,11 +179,72 @@ fn render_sequence_with_environment(
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (svg, _, _, session) = rendered.into_parts();
+    let (svg, family_report) = rendered.into_completion().into_output_and_report();
     SequenceRenderObservation {
         svg,
-        report: session.text_measurement_report(),
+        report: family_report.session_report().measurement().clone(),
     }
+}
+
+fn try_render_sequence_svg_with_resource_policy(
+    source: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Sequence resource-bound session");
+    let parsed = parse_sequence_for_render(&Engine::new(), source);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn sequence_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = r#"sequenceDiagram
+participant A as Alice
+participant B as Bob
+Note over A,B: bounded family-level note
+A->>B: hello
+"#;
+    let baseline = try_render_sequence_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Sequence baseline");
+    let exact_bytes = baseline.len();
+    assert!(
+        exact_bytes > 1,
+        "Sequence fixture must emit a non-empty SVG"
+    );
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Sequence SVG byte ceiling");
+    let exact = try_render_sequence_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Sequence family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Sequence SVG byte ceiling");
+    let error = try_render_sequence_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Sequence family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Sequence MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 fn render_sequence_with_host_environment(
@@ -427,10 +495,10 @@ fn render_prepared_sequence_after_release(
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (svg, _, _, session) = rendered.into_parts();
+    let (svg, family_report) = rendered.into_completion().into_output_and_report();
     SequenceRenderObservation {
         svg,
-        report: session.text_measurement_report(),
+        report: family_report.session_report().measurement().clone(),
     }
 }
 
@@ -445,6 +513,125 @@ fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")
+}
+
+fn sequence_number_label_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::SequenceNumberLabel,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence number label theme")
+}
+
+fn sequence_role_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
+    let role_fill = |target| {
+        ThemeRule::new(target, ThemeStylePatch::default().with_fill(fill.clone()))
+            .for_family(DiagramFamilyId::SEQUENCE)
+    };
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(role_fill(ThemeTarget::ActorLabel))
+                    .with_rule(role_fill(ThemeTarget::MessageLabel))
+                    .with_rule(role_fill(ThemeTarget::NoteLabel))
+                    .with_rule(role_fill(ThemeTarget::LoopLabel))
+                    .with_rule(role_fill(ThemeTarget::LoopLabelBackground))
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::LoopLabelBackground,
+                            ThemeStylePatch::default().with_stroke(stroke),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+            ),
+        )
+        .expect("compile Sequence role paint theme")
+}
+
+fn inline_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style.split(';').find_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        if !name.trim().eq_ignore_ascii_case(property) {
+            return None;
+        }
+        let value = value.trim();
+        let value = value.strip_suffix("!important").unwrap_or(value).trim();
+        Some(
+            value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .unwrap_or(value),
+        )
+    })
+}
+
+fn css_property_values_for_exact_selector<'a>(
+    css: &'a str,
+    selector: &str,
+    property: &str,
+) -> Vec<&'a str> {
+    let mut values = Vec::new();
+    for rule in css.split('}') {
+        let Some((selectors, declarations)) = rule.rsplit_once('{') else {
+            continue;
+        };
+        if !selectors
+            .split(',')
+            .any(|candidate| candidate.trim() == selector)
+        {
+            continue;
+        }
+        for declaration in declarations.split(';') {
+            let Some((name, value)) = declaration.split_once(':') else {
+                continue;
+            };
+            if name.trim() == property {
+                values.push(value.trim());
+            }
+        }
+    }
+    values
+}
+
+fn assert_sequence_role_text_style(
+    document: &roxmltree::Document<'_>,
+    class_name: &str,
+    text_fragment: &str,
+    family: &str,
+    size: &str,
+    weight: &str,
+    style: &str,
+) {
+    let text = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == class_name)
+                })
+                && node
+                    .descendants()
+                    .filter(|descendant| descendant.is_text())
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains(text_fragment))
+        })
+        .unwrap_or_else(|| panic!("missing {class_name} text containing {text_fragment:?}"));
+    let inline = text.attribute("style").expect("role text inline style");
+    assert_eq!(inline_style_value(inline, "font-family"), Some(family));
+    assert_eq!(inline_style_value(inline, "font-size"), Some(size));
+    assert_eq!(inline_style_value(inline, "font-weight"), Some(weight));
+    assert_eq!(inline_style_value(inline, "font-style"), Some(style));
 }
 
 fn layout_sequence_from_environment(
@@ -755,7 +942,10 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
     assert_eq!(fanout.cause, ResourceLimitCause::Ceiling);
     assert_eq!(fanout.phase, ResourceLimitPhase::SvgOutput);
     assert_eq!(fanout.limit, ResourceLimitId::MaxSvgBytes.as_str());
-    assert_eq!(fanout.actual, fanout_ceiling + diagram_id.len());
+    assert!(
+        fanout.actual > fanout_ceiling,
+        "message references must increase the projected SVG bytes beyond the base-only ceiling: {fanout:?}"
+    );
     assert_eq!(fanout.max, fanout_ceiling);
 
     let full_svg = render_sequence_svg_from_text_with_options(&messages, &options);
@@ -777,6 +967,89 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
     assert_eq!(n_minus_one.limit, ResourceLimitId::MaxSvgBytes.as_str());
     assert_eq!(n_minus_one.actual, exact_bytes);
     assert_eq!(n_minus_one.max, exact_bytes - 1);
+}
+
+#[test]
+fn sequence_half_arrows_use_the_mermaid_11_16_marker_and_line_class_table() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+A-|\B: solid top
+A-|/B: solid bottom
+A-\\B: stick top
+A-//B: stick bottom
+A--|\B: dotted solid top
+A--|/B: dotted solid bottom
+A--\\B: dotted stick top
+A--//B: dotted stick bottom
+A/|-B: reverse solid top
+A\|-B: reverse solid bottom
+A//-B: reverse stick top
+A\\-B: reverse stick bottom
+A/|--B: dotted reverse solid top
+A\|--B: dotted reverse solid bottom
+A//--B: dotted reverse stick top
+A\\--B: dotted reverse stick bottom
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence half-arrow SVG");
+    let expected = [
+        (0, "messageLine0", None, Some("solidTopArrowHead")),
+        (1, "messageLine0", None, Some("solidBottomArrowHead")),
+        (2, "messageLine0", None, Some("stickTopArrowHead")),
+        (3, "messageLine0", None, Some("stickBottomArrowHead")),
+        (4, "messageLine1", None, Some("solidTopArrowHead")),
+        (5, "messageLine1", None, Some("solidBottomArrowHead")),
+        (6, "messageLine1", None, Some("stickTopArrowHead")),
+        (7, "messageLine1", None, Some("stickBottomArrowHead")),
+        (8, "messageLine0", Some("solidBottomArrowHead"), None),
+        (9, "messageLine0", Some("solidTopArrowHead"), None),
+        (10, "messageLine0", Some("stickBottomArrowHead"), None),
+        (11, "messageLine0", Some("stickTopArrowHead"), None),
+        (12, "messageLine1", Some("solidBottomArrowHead"), None),
+        (13, "messageLine1", Some("solidTopArrowHead"), None),
+        (14, "messageLine1", Some("stickBottomArrowHead"), None),
+        (15, "messageLine1", Some("stickTopArrowHead"), None),
+    ];
+
+    for (id, expected_class, expected_start, expected_end) in expected {
+        let data_id = format!("i{id}");
+        let message = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.attribute("data-et") == Some("message")
+                    && node.attribute("data-id") == Some(data_id.as_str())
+            })
+            .unwrap_or_else(|| panic!("missing Sequence message {data_id}: {svg}"));
+        assert_eq!(
+            message.attribute("class"),
+            Some(expected_class),
+            "{data_id}"
+        );
+        assert_eq!(
+            message.attribute("marker-start"),
+            expected_start
+                .map(|marker| format!("url(#merman-{marker})"))
+                .as_deref(),
+            "{data_id} marker-start"
+        );
+        assert_eq!(
+            message.attribute("marker-end"),
+            expected_end
+                .map(|marker| format!("url(#merman-{marker})"))
+                .as_deref(),
+            "{data_id} marker-end"
+        );
+        assert_eq!(
+            message
+                .attribute("style")
+                .is_some_and(|style| style.contains("stroke-dasharray: 3, 3")),
+            expected_class == "messageLine1",
+            "{data_id} dash style"
+        );
+    }
 }
 
 #[test]
@@ -836,6 +1109,37 @@ fn render_sequence_svg_with_theme_variables(
         .to_string()
 }
 
+#[test]
+fn sequence_activation_svg_width_preserves_json_number_only_input() {
+    for (input, expected) in [
+        (serde_json::json!("0.25"), 10.0),
+        (serde_json::json!(0.25), 1.0),
+        (serde_json::json!(4), 4.0),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"sequence": {"activationWidth": input}}),
+        ));
+        let parsed =
+            parse_sequence_for_render(&engine, "sequenceDiagram\nA->>+B: Hello\nB-->>-A: Reply");
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect") && node.attribute("class") == Some("activation0")
+            })
+            .expect("paired activation rectangle");
+        assert_eq!(
+            rect.attribute("width").unwrap().parse::<f64>().unwrap(),
+            expected
+        );
+    }
+}
+
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
@@ -863,10 +1167,11 @@ fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .expect("render Sequence artifact");
-            let (_, _, _, session) = rendered.into_parts();
+            let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-            let dimension_calls: u64 = session
-                .text_measurement_report()
+            let dimension_calls: u64 = family_report
+                .session_report()
+                .measurement()
                 .entries()
                 .iter()
                 .filter(|entry| {
@@ -895,10 +1200,11 @@ fn sequence_builtin_route_reuses_self_and_multiline_message_bounds() {
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render Sequence artifact");
-        let (_, _, _, session) = rendered.into_parts();
+        let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .filter(|entry| {
@@ -950,10 +1256,11 @@ fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emiss
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (_, _, _, session) = rendered.into_parts();
+    let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-    let dimension_calls = session
-        .text_measurement_report()
+    let dimension_calls = family_report
+        .session_report()
+        .measurement()
         .entries()
         .iter()
         .filter(|entry| {
@@ -1195,10 +1502,8 @@ A->>B: math-sidecar-sentinel $$x^2 + y^2$$ tail
         "math-message",
         SOURCE,
         "math-sidecar-sentinel",
-        RenderEnvironment::deterministic()
-            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer)),
-        RenderEnvironment::deterministic()
-            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer)),
+        RenderEnvironment::deterministic().with_compiled_math_renderer(),
+        RenderEnvironment::deterministic().with_compiled_math_renderer(),
     );
 }
 
@@ -1463,6 +1768,29 @@ sequenceDiagram
 }
 
 #[test]
+fn sequence_builtin_neo_box_shadow_fits_the_root_viewport() {
+    let svg = render_sequence_svg_from_fixture("box_variants.mmd");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let (viewbox, _) = root_view_box_and_max_width(&svg);
+    let right = viewbox[0] + viewbox[2];
+    let bottom = viewbox[1] + viewbox[3];
+    let mut checked = 0;
+    for frame in document
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+    {
+        let number = |name| frame.attribute(name).unwrap().parse::<f64>().unwrap();
+        let x = number("x");
+        let y = number("y");
+        assert!(x - 0.5 >= viewbox[0] && y - 0.5 >= viewbox[1]);
+        assert!(x + number("width") + 4.5 <= right);
+        assert!(y + number("height") + 4.5 <= bottom);
+        checked += 1;
+    }
+    assert!(checked > 0);
+}
+
+#[test]
 fn sequence_control_labels_follow_look_height_margin_and_font() {
     let source = r#"sequenceDiagram
     Alice->>Bob: Start
@@ -1555,11 +1883,9 @@ fn sequence_control_labels_follow_look_height_margin_and_font() {
                 (label_y - expected_y).abs() <= 1e-6,
                 "{look} label baseline"
             );
-            assert!(
-                label
-                    .attribute("style")
-                    .expect("label style")
-                    .contains("font-size: 22px;")
+            assert_eq!(
+                inline_style_value(label.attribute("style").expect("label style"), "font-size"),
+                Some("22px")
             );
         }
     }
@@ -1618,16 +1944,15 @@ fn sequence_control_titles_use_resolved_message_font_weight() {
         assert_eq!(titles.len(), 3, "control keyword, title and section");
         for title in titles {
             let style = title.attribute("style").expect("title style");
-            match expected_weight {
-                Some(weight) => assert!(
-                    style.contains(&format!("font-weight: {weight};")),
-                    "{config}: {style}"
-                ),
-                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
-            }
-            assert!(
-                !style.contains("font-style"),
-                "invalid CSS weight must not add declarations"
+            assert_eq!(
+                inline_style_value(style, "font-weight").unwrap_or("400"),
+                expected_weight.unwrap_or("400"),
+                "{config}: {style}"
+            );
+            assert_eq!(
+                inline_style_value(style, "font-style").unwrap_or("normal"),
+                "normal",
+                "invalid CSS weight must not inject an italic declaration"
             );
         }
     }
@@ -1635,7 +1960,7 @@ fn sequence_control_titles_use_resolved_message_font_weight() {
 
 #[test]
 fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
-    let cases = [
+    let cases = vec![
         "activation_explicit.mmd",
         "stress_sequence_batch5_many_participants_spacing_050.mmd",
         "zed_pr_57644_sequence.mmd",
@@ -1673,6 +1998,59 @@ fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() 
     assert!(
         long_conversation.1 > many_participants.1 && many_participants.1 > activation.1,
         "message depth should drive representative root heights: {roots:?}"
+    );
+}
+
+#[test]
+fn sequence_diagram_title_expands_the_root_for_typed_base_font_size() {
+    let font_size = 256.0_f32;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::SEQUENCE,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(font_size)
+                        .expect("valid large Sequence base font size"),
+                ),
+            ),
+        )
+        .expect("compile large Sequence base typography");
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin portable Sequence title session");
+    let artifact = family::prepare(
+        parse_sequence_for_render(
+            &engine,
+            "sequenceDiagram\ntitle Large Diagram Title\nparticipant A\nparticipant B\nA->>B: hello\n",
+        ),
+        &LayoutOptions::default(),
+        session,
+    )
+    .expect("prepare large Sequence title");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render large Sequence title");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence title SVG");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_none()
+                && node.text() == Some("Large Diagram Title")
+        })
+        .expect("Sequence diagram title");
+    let title_y = title
+        .attribute("y")
+        .expect("Sequence title y")
+        .parse::<f64>()
+        .expect("numeric Sequence title y");
+    let (view_box, _) = root_view_box_and_max_width(rendered.svg());
+    assert!(
+        view_box[1] <= title_y - f64::from(font_size) * 0.8,
+        "typed base font size must expand the root above the title baseline: viewBox={view_box:?}, title={title:?}"
     );
 }
 
@@ -1868,9 +2246,10 @@ fn sequence_root_font_size_wins_for_emitted_text_style() {
 
     assert!(!styled_text.is_empty());
     for text in styled_text {
-        assert!(
-            text.attribute("style")
-                .is_some_and(|style| style.contains("font-size: 10px")),
+        let style = text.attribute("style").expect("Sequence text inline style");
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some("10px"),
             "the root fontSize must win for emitted Sequence text: {text:?}"
         );
     }
@@ -2366,8 +2745,9 @@ end"##,
         "expected actor lifeline theme color in Sequence CSS: {svg}"
     );
     assert!(
-        svg.contains(r#".messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#555555;}"#),
-        "expected signal color in Sequence CSS: {svg}"
+        svg.contains(r#".messageLine0{stroke-width:1.5;stroke-dasharray:none;}"#)
+            && svg.contains(r#".messageLine0,#merman .messageLine1{stroke:#555555;}"#),
+        "expected signal color in the single final Sequence writer rule: {svg}"
     );
     assert!(
         svg.contains(r#".messageText{fill:#777777;stroke:none;}"#),
@@ -2402,11 +2782,9 @@ end"##,
         .descendants()
         .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("noteText"))
         .expect("note text");
-    assert!(
-        note_text
-            .attribute("style")
-            .unwrap()
-            .contains("font-weight: 700"),
+    assert_eq!(
+        inline_style_value(note_text.attribute("style").unwrap(), "font-weight"),
+        Some("700"),
         "the configured note weight must reach the text that note tspans inherit"
     );
     assert!(
@@ -2416,6 +2794,2237 @@ end"##,
     assert!(
         svg.contains(r#"g rect.rect{filter:"#) && svg.contains(r#"stroke:#070809;"#),
         "expected Sequence rect node border theme color in CSS: {svg}"
+    );
+}
+
+#[test]
+fn sequence_role_text_and_loop_surface_paints_seal_terminal_css_and_dom() {
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+
+    for (case, fill, stroke, fill_css, stroke_css) in [
+        (
+            "solid",
+            CanvasPaint::solid("#fef3c7").expect("valid Sequence role fill"),
+            CanvasPaint::solid("#c084fc").expect("valid Sequence Loop stroke"),
+            "#fef3c7",
+            "#c084fc",
+        ),
+        (
+            "transparent",
+            CanvasPaint::Transparent,
+            CanvasPaint::Transparent,
+            "transparent",
+            "transparent",
+        ),
+    ] {
+        let theme = sequence_role_paint_theme(fill, stroke);
+        let parsed = merman_render::__private::install_parse_compatibility(
+            &theme,
+            classic_sequence_engine(),
+        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap_or_else(|error| panic!("parse {case} Sequence role paint source: {error}"))
+        .unwrap_or_else(|| panic!("detect {case} Sequence role paint source"));
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin {case} Sequence role paint session: {error}"));
+        let diagram_id = format!("sequence-role-paint-{case}");
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {case} Sequence role paint: {error}"))
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.clone()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap_or_else(|error| panic!("render {case} Sequence role paint: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("parse {case} Sequence role paint SVG: {error}"));
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Sequence role paint stylesheet");
+
+        for terminal_rule in [
+            format!(
+                "#{diagram_id} text.actor,#{diagram_id} text.actor>tspan,#{diagram_id} text.text,#{diagram_id} text.text>tspan{{fill:{fill_css};}}"
+            ),
+            format!(
+                "#{diagram_id} .messageText,#{diagram_id} .messageText>tspan{{fill:{fill_css};}}"
+            ),
+            format!("#{diagram_id} .noteText,#{diagram_id} .noteText>tspan{{fill:{fill_css};}}"),
+            format!(
+                "#{diagram_id} .loopText,#{diagram_id} .loopText>tspan,#{diagram_id} .sectionTitle,#{diagram_id} .sectionTitle>tspan,#{diagram_id} .labelText,#{diagram_id} .labelText>tspan{{fill:{fill_css};}}"
+            ),
+            format!("#{diagram_id} .labelBox{{stroke:{stroke_css};fill:{fill_css};filter:none;}}"),
+        ] {
+            assert!(
+                css.contains(&terminal_rule),
+                "missing {case} Sequence terminal rule {terminal_rule}: {css}"
+            );
+        }
+
+        for (class_name, text_fragment) in [
+            ("actor", "Alice"),
+            ("messageText", "Message Role"),
+            ("noteText", "Note Role"),
+            ("loopText", "Loop Role"),
+            ("labelText", "loop"),
+        ] {
+            assert!(
+                document.descendants().any(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == class_name)
+                        })
+                        && node.descendants().any(|descendant| {
+                            descendant
+                                .text()
+                                .is_some_and(|text| text.contains(text_fragment))
+                        })
+                }),
+                "missing {case} Sequence {class_name} occurrence for {text_fragment:?}"
+            );
+        }
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == "labelBox")
+                    })
+                })
+                .count(),
+            1,
+            "the Loop receipt must bind the one emitted labelBox"
+        );
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 6, "{case}");
+        assert_eq!(evidence.accounted_count(), 6, "{case}");
+        assert_eq!(evidence.applied_count(), 6, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn sequence_role_paints_respect_explicit_mermaid_owners_from_site_and_source() {
+    const SOURCE: &str = r#"sequenceDiagram
+autonumber
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+    let cases = [
+        (
+            "actor-label-fill",
+            ThemeTarget::ActorLabel,
+            "actorTextColor",
+            "fill",
+            "text.actor>tspan",
+            "text",
+            "actor",
+            Some("Alice"),
+            true,
+            false,
+        ),
+        (
+            "message-label-fill",
+            ThemeTarget::MessageLabel,
+            "signalTextColor",
+            "fill",
+            ".messageText",
+            "text",
+            "messageText",
+            Some("Message Role"),
+            false,
+            false,
+        ),
+        (
+            "note-label-fill",
+            ThemeTarget::NoteLabel,
+            "noteTextColor",
+            "fill",
+            ".noteText",
+            "text",
+            "noteText",
+            Some("Note Role"),
+            false,
+            false,
+        ),
+        (
+            "loop-control-label-fill",
+            ThemeTarget::LoopLabel,
+            "labelTextColor",
+            "fill",
+            ".labelText",
+            "text",
+            "labelText",
+            Some("loop"),
+            false,
+            false,
+        ),
+        (
+            "loop-title-label-fill",
+            ThemeTarget::LoopLabel,
+            "loopTextColor",
+            "fill",
+            ".loopText",
+            "text",
+            "loopText",
+            Some("Loop Role"),
+            false,
+            false,
+        ),
+        (
+            "loop-fill",
+            ThemeTarget::LoopLabelBackground,
+            "labelBoxBkgColor",
+            "fill",
+            ".labelBox",
+            "polygon",
+            "labelBox",
+            None,
+            false,
+            false,
+        ),
+        (
+            "loop-stroke",
+            ThemeTarget::LoopLabelBackground,
+            "labelBoxBorderColor",
+            "stroke",
+            ".labelBox",
+            "polygon",
+            "labelBox",
+            None,
+            false,
+            true,
+        ),
+        (
+            "sequence-number-label-fill",
+            ThemeTarget::SequenceNumberLabel,
+            "sequenceNumberColor",
+            "fill",
+            ".sequenceNumber",
+            "text",
+            "sequenceNumber",
+            Some("1"),
+            false,
+            false,
+        ),
+    ];
+
+    for (
+        case,
+        target,
+        config_key,
+        property,
+        selector_suffix,
+        dom_tag,
+        dom_class,
+        text_fragment,
+        requires_tspan,
+        stroke,
+    ) in cases
+    {
+        for origin in ["site", "source"] {
+            let patch = if stroke {
+                ThemeStylePatch::default().with_stroke(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid configured-owner stroke"),
+                )
+            } else {
+                ThemeStylePatch::default().with_fill(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid configured-owner fill"),
+                )
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                    )),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence {case} owner test: {error}")
+                });
+            let config = serde_json::json!({
+                "themeVariables": {(config_key): MERMAID_COLOR},
+            });
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let engine = merman_render::__private::install_parse_compatibility(&theme, engine);
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence {case} owner source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence {case} owner source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence {case} owner session: {error}")
+                });
+            let diagram_id = format!("sequence-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence {case} owner theme: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence {case} owner theme: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence {case} owner SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap_or_else(|| panic!("missing {origin} Sequence {case} stylesheet"));
+            let selector = format!("#{diagram_id} {selector_suffix}");
+            let values = css_property_values_for_exact_selector(css, &selector, property);
+            assert_eq!(
+                values,
+                [MERMAID_COLOR],
+                "{origin} {case} must leave the explicit Mermaid owner as the only exact {selector} {property} terminal declaration: {css}"
+            );
+
+            let target_node = document.descendants().find(|node| {
+                node.has_tag_name(dom_tag)
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == dom_class)
+                    })
+                    && text_fragment.is_none_or(|fragment| {
+                        node.descendants().any(|descendant| {
+                            descendant
+                                .text()
+                                .is_some_and(|text| text.contains(fragment))
+                        })
+                    })
+            });
+            let target_node = target_node.unwrap_or_else(|| {
+                panic!("missing {origin} Sequence {case} terminal DOM target {dom_tag}.{dom_class}")
+            });
+            if requires_tspan {
+                assert!(
+                    target_node
+                        .children()
+                        .any(|child| child.has_tag_name("tspan")),
+                    "{origin} {case} terminal selector must bind an emitted actor tspan"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            let partially_owned_role = target == ThemeTarget::LoopLabel
+                && matches!(config_key, "labelTextColor" | "loopTextColor");
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(partially_owned_role),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!partially_owned_role),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_fill_ownership_is_terminal_surface_local() {
+    const SOURCE: &str = r#"sequenceDiagram
+box Team
+participant Alice
+participant Bob
+end
+Alice->>Bob: Message
+"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, actor_owned, box_owned) in [
+        ("actor-only", true, false),
+        ("box-only", false, true),
+        ("both", true, true),
+    ] {
+        for origin in ["site", "source"] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::ActorLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid(TYPED_COLOR)
+                                        .expect("valid Sequence ActorLabel fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence ActorLabel {case} theme: {error}")
+                });
+            let mut theme_variables = serde_json::Map::new();
+            if actor_owned {
+                theme_variables.insert(
+                    "actorTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            if box_owned {
+                theme_variables.insert(
+                    "textColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": theme_variables});
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence ActorLabel {case} source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence ActorLabel {case} source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence ActorLabel {case} session: {error}")
+                });
+            let diagram_id = format!("sequence-actor-label-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence ActorLabel {case}: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence ActorLabel {case}: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence ActorLabel {case} SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Sequence ActorLabel stylesheet");
+
+            let participant_selector = format!("#{diagram_id} text.actor>tspan");
+            let participant_values =
+                css_property_values_for_exact_selector(css, &participant_selector, "fill");
+            assert_eq!(
+                participant_values.last().copied(),
+                Some(if actor_owned {
+                    MERMAID_COLOR
+                } else {
+                    TYPED_COLOR
+                }),
+                "{origin} {case} participant terminal owner: {css}"
+            );
+
+            let box_selector = format!("#{diagram_id} text.text");
+            let box_values = css_property_values_for_exact_selector(css, &box_selector, "fill");
+            if box_owned {
+                assert!(
+                    !box_values.contains(&TYPED_COLOR),
+                    "{origin} {case} box title must not receive typed fill: {css}"
+                );
+                assert_eq!(
+                    css_property_values_for_exact_selector(css, &format!("#{diagram_id}"), "fill")
+                        .last()
+                        .copied(),
+                    Some(MERMAID_COLOR),
+                    "{origin} {case} box title must inherit the explicit root text owner"
+                );
+            } else {
+                assert_eq!(
+                    box_values.last().copied(),
+                    Some(TYPED_COLOR),
+                    "{origin} {case} box title must retain the typed fill: {css}"
+                );
+            }
+
+            for (class_name, text_fragment) in [("actor", "Alice"), ("text", "Team")] {
+                assert!(
+                    document.descendants().any(|node| {
+                        node.has_tag_name("text")
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes
+                                    .split_ascii_whitespace()
+                                    .any(|class| class == class_name)
+                            })
+                            && node.descendants().any(|descendant| {
+                                descendant
+                                    .text()
+                                    .is_some_and(|text| text.contains(text_fragment))
+                            })
+                    }),
+                    "missing {origin} {case} Sequence {class_name} occurrence"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!(actor_owned && box_owned)),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(actor_owned && box_owned),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_loop_label_fill_ownership_is_terminal_surface_local() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+alt Primary
+Alice->>Bob: Message
+else Secondary
+Bob-->>Alice: Reply
+end
+"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, keyword_owned, title_owned) in [
+        ("keyword-only", true, false),
+        ("titles-only", false, true),
+        ("both", true, true),
+    ] {
+        for origin in ["site", "source"] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::LoopLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid(TYPED_COLOR)
+                                        .expect("valid Sequence LoopLabel fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence LoopLabel {case} theme: {error}")
+                });
+            let mut theme_variables = serde_json::Map::new();
+            if keyword_owned {
+                theme_variables.insert(
+                    "labelTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            if title_owned {
+                theme_variables.insert(
+                    "loopTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": theme_variables});
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence LoopLabel {case} source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence LoopLabel {case} source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence LoopLabel {case} session: {error}")
+                });
+            let diagram_id = format!("sequence-loop-label-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence LoopLabel {case}: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence LoopLabel {case}: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence LoopLabel {case} SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Sequence LoopLabel stylesheet");
+
+            for (selector_suffix, owned) in [
+                (".labelText", keyword_owned),
+                (".loopText", title_owned),
+                (".sectionTitle", title_owned),
+            ] {
+                let selector = format!("#{diagram_id} {selector_suffix}");
+                let values = css_property_values_for_exact_selector(css, &selector, "fill");
+                assert_eq!(
+                    values.last().copied(),
+                    Some(if owned { MERMAID_COLOR } else { TYPED_COLOR }),
+                    "{origin} {case} {selector_suffix} terminal owner: {css}"
+                );
+            }
+
+            for (class_name, text_fragment) in [
+                ("labelText", "alt"),
+                ("loopText", "Primary"),
+                ("sectionTitle", "Secondary"),
+            ] {
+                assert!(
+                    document.descendants().any(|node| {
+                        node.has_tag_name("text")
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes
+                                    .split_ascii_whitespace()
+                                    .any(|class| class == class_name)
+                            })
+                            && node.descendants().any(|descendant| {
+                                descendant
+                                    .text()
+                                    .is_some_and(|text| text.contains(text_fragment))
+                            })
+                    }),
+                    "missing {origin} {case} Sequence {class_name} occurrence"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!(keyword_owned && title_owned)),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(keyword_owned && title_owned),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_role_paints_yield_to_derived_mermaid_surface_owners_from_site_and_source() {
+    const SOURCE: &str = r#"sequenceDiagram
+autonumber
+box Team
+participant Alice
+participant Bob
+end
+Alice->>Bob: Message Role
+activate Bob
+Bob-->>Alice: Active Reply
+deactivate Bob
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#22c55e";
+    const TYPED_COLOR: &str = "#123456";
+
+    let mut cases = vec![
+        ("default", ThemeTarget::ActorLabel, "textColor", false, true),
+        (
+            "default",
+            ThemeTarget::MessageLabel,
+            "textColor",
+            false,
+            true,
+        ),
+        (
+            "default",
+            ThemeTarget::NoteLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        (
+            "default",
+            ThemeTarget::LoopLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        (
+            "base",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
+        (
+            "base",
+            ThemeTarget::Activation,
+            "secondaryColor",
+            true,
+            true,
+        ),
+        (
+            "base",
+            ThemeTarget::SequenceNumberLabel,
+            "lineColor",
+            false,
+            true,
+        ),
+        (
+            "dark",
+            ThemeTarget::LoopLabelBackground,
+            "border1",
+            true,
+            true,
+        ),
+        ("forest", ThemeTarget::Actor, "mainBkg", false, true),
+        ("forest", ThemeTarget::Lifeline, "mainBkg", true, true),
+        (
+            "forest",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
+        (
+            "forest",
+            ThemeTarget::LoopLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        ("neutral", ThemeTarget::Actor, "mainBkg", false, true),
+        ("neutral", ThemeTarget::Lifeline, "border1", true, true),
+        (
+            "neutral",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
+        ("default", ThemeTarget::Lifeline, "actorBorder", true, false),
+        ("dark", ThemeTarget::Lifeline, "actorBorder", true, false),
+        (
+            "default",
+            ThemeTarget::LoopLabelBackground,
+            "actorBkg",
+            false,
+            false,
+        ),
+        (
+            "dark",
+            ThemeTarget::LoopLabelBackground,
+            "actorBkg",
+            false,
+            false,
+        ),
+    ];
+    for (theme_id, primary_owns_activation, primary_border_owns_loop, text_owns_message) in [
+        ("neo", true, true, true),
+        ("neo-dark", false, true, true),
+        ("redux", true, false, true),
+        ("redux-dark", false, false, false),
+        ("redux-color", true, false, true),
+        ("redux-dark-color", false, false, false),
+    ] {
+        cases.extend([
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "mainBkg",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "secondaryColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "secondaryColor",
+                true,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "primaryColor",
+                false,
+                primary_owns_activation,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabel,
+                "primaryTextColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::MessageLabel,
+                "textColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Message,
+                "textColor",
+                true,
+                text_owns_message,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "primaryBorderColor",
+                true,
+                primary_border_owns_loop,
+            ),
+            (
+                theme_id,
+                ThemeTarget::SequenceNumberLabel,
+                "lineColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::SequenceNumberLabel,
+                "background",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "primaryColor",
+                false,
+                false,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "nodeBkg",
+                false,
+                false,
+            ),
+        ]);
+    }
+
+    for (theme_id, target, config_key, stroke, mermaid_owns_terminal) in cases {
+        for origin in ["site", "source"] {
+            let partially_owned_terminal = theme_id == "default"
+                && target == ThemeTarget::ActorLabel
+                && config_key == "textColor";
+            let terminal_key = match target {
+                ThemeTarget::Actor => "actorBkg",
+                ThemeTarget::ActorLabel => "actorTextColor",
+                ThemeTarget::Lifeline => "actorLineColor",
+                ThemeTarget::MessageLabel => "signalTextColor",
+                ThemeTarget::NoteLabel => "noteTextColor",
+                ThemeTarget::LoopLabel => "loopTextColor",
+                ThemeTarget::LoopLabelBackground if stroke => "labelBoxBorderColor",
+                ThemeTarget::LoopLabelBackground => "labelBoxBkgColor",
+                ThemeTarget::Activation if stroke => "activationBorderColor",
+                ThemeTarget::Activation => "activationBkgColor",
+                ThemeTarget::Message => "signalColor",
+                ThemeTarget::SequenceNumberLabel => "sequenceNumberColor",
+                _ => panic!("unexpected Sequence terminal target: {target:?}"),
+            };
+            let patch = if stroke {
+                ThemeStylePatch::default().with_stroke(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid typed Sequence stroke"),
+                )
+            } else {
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid(TYPED_COLOR).expect("valid typed Sequence fill"))
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                    )),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} {theme_id} {config_key} Sequence theme: {error}")
+                });
+            let config = serde_json::json!({
+                "theme": theme_id,
+                "themeVariables": {(config_key): MERMAID_COLOR},
+            });
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} {theme_id} {config_key} Sequence source: {error}")
+                })
+                .unwrap_or_else(|| {
+                    panic!("detect {origin} {theme_id} {config_key} Sequence source")
+                });
+            let expected_mermaid_color = parsed
+                .metadata()
+                .effective_config
+                .as_value()["themeVariables"][terminal_key]
+                .as_str()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{origin} {theme_id} {config_key} did not resolve terminal themeVariables.{terminal_key}"
+                    )
+                })
+                .to_owned();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin strict {origin} {theme_id} {config_key} session: {error}")
+                });
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} {theme_id} {config_key} Sequence theme: {error}")
+                })
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap_or_else(|error| {
+                    panic!("render strict {origin} {theme_id} {config_key} Sequence theme: {error}")
+                });
+
+            if mermaid_owns_terminal {
+                assert!(
+                    rendered.svg().contains(&expected_mermaid_color),
+                    "{origin} {theme_id} {config_key} must preserve effective themeVariables.{terminal_key}={expected_mermaid_color}: {}",
+                    rendered.svg()
+                );
+                if partially_owned_terminal {
+                    assert!(
+                        rendered.svg().contains(TYPED_COLOR),
+                        "typed paint must remain on the unowned participant surface for {origin} {theme_id} {config_key}: {}",
+                        rendered.svg()
+                    );
+                } else {
+                    assert!(
+                        !rendered.svg().contains(TYPED_COLOR),
+                        "typed paint must yield to {origin} {theme_id} {config_key}: {}",
+                        rendered.svg()
+                    );
+                }
+            } else {
+                assert!(
+                    rendered.svg().contains(TYPED_COLOR),
+                    "typed paint must retain the unowned {origin} {theme_id} {config_key} route: {}",
+                    rendered.svg()
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(
+                evidence.required_count(),
+                1,
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.accounted_count(),
+                1,
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!mermaid_owns_terminal || partially_owned_terminal),
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(mermaid_owns_terminal && !partially_owned_terminal),
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "{origin} {theme_id} {config_key}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_role_paints_yield_to_neutral_site_text_derivations() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#22c55e";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, target, terminal_key, stroke) in [
+        ("loop-label", ThemeTarget::LoopLabel, "loopTextColor", false),
+        ("message", ThemeTarget::Message, "signalColor", true),
+    ] {
+        let patch = if stroke {
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neutral Sequence stroke"),
+            )
+        } else {
+            ThemeStylePatch::default().with_fill(
+                CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neutral Sequence fill"),
+            )
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                )),
+            )
+            .unwrap_or_else(|error| panic!("compile Neutral site text {case} theme: {error}"));
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "neutral",
+            "themeVariables": { "text": MERMAID_COLOR },
+        })));
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse Neutral site text {case} source: {error}"))
+            .unwrap_or_else(|| panic!("detect Neutral site text {case} source"));
+        let terminal_path = format!("themeVariables.{terminal_key}");
+        assert_eq!(
+            parsed.metadata().effective_config.get_str(&terminal_path),
+            Some(MERMAID_COLOR),
+            "Neutral site text has incorrect derived {terminal_key} value"
+        );
+        assert!(
+            merman_core::__private::config_path_overrides_typed_default(
+                &parsed.metadata().effective_config,
+                &terminal_path,
+            ),
+            "Neutral site text must own derived {terminal_key}"
+        );
+
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict Neutral site text {case}: {error}"));
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare Neutral site text {case}: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render strict Neutral site text {case}: {error}"));
+        assert!(
+            rendered.svg().contains(MERMAID_COLOR),
+            "Neutral site text must reach the {case} terminal: {}",
+            rendered.svg()
+        );
+        assert!(
+            !rendered.svg().contains(TYPED_COLOR),
+            "typed {case} paint must yield to Neutral site text: {}",
+            rendered.svg()
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
+    for (case, target, source, expected_math_occurrences) in [
+        (
+            "participant",
+            ThemeTarget::ActorLabel,
+            "sequenceDiagram\nparticipant A as $$x^2$$\nparticipant B\nA->>B: ok\n",
+            2,
+        ),
+        (
+            "actor-man",
+            ThemeTarget::ActorLabel,
+            "sequenceDiagram\nactor A as $$x^2$$\nparticipant B\nA->>B: ok\n",
+            2,
+        ),
+        (
+            "message",
+            ThemeTarget::MessageLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n",
+            1,
+        ),
+        (
+            "note",
+            ThemeTarget::NoteLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nNote over A,B: $$x^2$$\n",
+            1,
+        ),
+        (
+            "control-primary-and-section",
+            ThemeTarget::LoopLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nalt $$x^2$$\nA->>B: ok\nelse $$y^2$$\nB-->>A: no\nend\n",
+            2,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#22d3ee")
+                                    .expect("valid Sequence math role fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .unwrap_or_else(|error| panic!("compile Sequence {case} math theme: {error}"));
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse Sequence {case} math source: {error}"))
+            .unwrap_or_else(|| panic!("detect Sequence {case} math source"));
+        let session = RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict Sequence {case} math session: {error}"));
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare Sequence {case} math: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render strict Sequence {case} math: {error}"));
+        assert_eq!(
+            rendered
+                .svg()
+                .matches("class=\"merman-prepared-math\"")
+                .count(),
+            expected_math_occurrences,
+            "{case}: {}",
+            rendered.svg()
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("parse Sequence {case} math SVG: {error}"));
+        for literal_fallback in document
+            .descendants()
+            .filter(|node| node.is_text() && node.text().is_some_and(|text| text.contains("$$")))
+        {
+            assert!(
+                literal_fallback.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("switch")
+                        && ancestor.attribute("data-merman-prepared-math-switch") == Some("v1")
+                }),
+                "{case}: raw math text may only survive inside the renderer-owned switch fallback: {}",
+                rendered.svg()
+            );
+        }
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn sequence_explicit_config_typography_reaches_measurement_and_terminal_writers() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "Courier New",
+        "fontSize": 23,
+        "fontWeight": 700,
+        "themeVariables": {"fontFamily": "Excalifont"},
+    })));
+    let source = r#"sequenceDiagram
+autonumber
+box Config Team
+participant Alice as Config Actor
+participant Bob
+end
+Alice->>Bob: Config Message
+Note over Alice,Bob: Config Note
+loop Config Loop
+Bob-->>Alice: Reply
+end"#;
+    let measurement_parsed = parse_sequence_for_render(&engine, source);
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-config-typography").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .expect("begin configured Sequence measurement session");
+    let _measurement_artifact = family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare configured Sequence measurement artifact");
+    let requests = host.snapshot();
+    for text_fragment in [
+        "Config Team",
+        "Config Actor",
+        "Config Message",
+        "Config Note",
+        "Config Loop",
+    ] {
+        assert!(
+            requests.iter().any(|exchange| {
+                let request = &exchange.request;
+                request.text.contains(text_fragment)
+                    && request.font_family.as_deref() == Some("Courier New")
+                    && request.font_size_bits == f64::to_bits(23.0)
+                    && request.font_weight.as_deref() == Some("700")
+            }),
+            "layout measurement must consume explicit config typography for {text_fragment:?}"
+        );
+    }
+
+    let rendered = family::prepare(
+        parse_sequence_for_render(&engine, source),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin configured Sequence render session"),
+    )
+    .expect("prepare configured Sequence render")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render configured Sequence SVG");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid config-only SVG");
+    for (class_name, text_fragment) in [
+        ("text", "Config Team"),
+        ("actor-box", "Config Actor"),
+        ("messageText", "Config Message"),
+        ("noteText", "Config Note"),
+        ("loopText", "Config Loop"),
+    ] {
+        assert_sequence_role_text_style(
+            &document,
+            class_name,
+            text_fragment,
+            "Courier New",
+            "23px",
+            "700",
+            "normal",
+        );
+    }
+
+    let sequence_number = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber"))
+        .expect("configured autonumber terminal label");
+    let inline = sequence_number
+        .attribute("style")
+        .expect("configured autonumber role typography style");
+    assert_eq!(
+        inline_style_value(inline, "font-family"),
+        Some("Courier New")
+    );
+    assert_eq!(inline_style_value(inline, "font-weight"), Some("700"));
+    assert_eq!(inline_style_value(inline, "font-style"), Some("normal"));
+    assert_eq!(sequence_number.attribute("font-size"), Some("12px"));
+}
+
+#[test]
+fn sequence_cssom_rejected_root_font_keeps_measurement_and_terminal_ownership_separate() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {"fontFamily": "Excalifont"},
+    })));
+    let source = r#"sequenceDiagram
+participant Alice as CSSOM Actor
+participant Bob
+Alice->>Bob: CSSOM Message
+Note over Alice,Bob: CSSOM Note
+loop CSSOM Loop
+Bob-->>Alice: Reply
+end"#;
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-cssom-font-owner").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .expect("begin Sequence CSSOM font measurement session");
+    let _measurement_artifact = family::prepare(
+        parse_sequence_for_render(&engine, source),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare Sequence CSSOM font measurement artifact");
+    let requests = host.snapshot();
+
+    for text_fragment in ["CSSOM Actor", "CSSOM Message", "CSSOM Note", "CSSOM Loop"] {
+        let matching = requests
+            .iter()
+            .filter(|exchange| {
+                exchange.request.text.contains(text_fragment)
+                    && exchange.request.operation
+                        == TextMeasurementOperation::MermaidCalculateTextDimensions
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !matching.is_empty(),
+            "expected layout measurement requests for {text_fragment:?}"
+        );
+        let configured = matching
+            .iter()
+            .filter(|exchange| exchange.request.font_family.as_deref() != Some("sans-serif"))
+            .collect::<Vec<_>>();
+        assert!(
+            !configured.is_empty()
+                && configured.iter().all(|exchange| {
+                    exchange.request.font_family.as_deref()
+                        == Some("\"trebuchet ms\", verdana, arial, sans-serif;")
+                }),
+            "Mermaid calculateTextDimensions must preserve the source declaration and its CSSOM fallback for {text_fragment:?}: {matching:#?}"
+        );
+    }
+
+    for (text_fragment, operations) in [
+        (
+            "CSSOM Message",
+            [
+                TextMeasurementOperation::RawBBoxWidth,
+                TextMeasurementOperation::RawBBoxHeight,
+            ],
+        ),
+        (
+            "CSSOM Note",
+            [
+                TextMeasurementOperation::TspanBBoxWidth,
+                TextMeasurementOperation::TspanBBoxHeight,
+            ],
+        ),
+    ] {
+        for operation in operations {
+            let matching = requests
+                .iter()
+                .filter(|exchange| {
+                    exchange.request.text.contains(text_fragment)
+                        && exchange.request.operation == operation
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                !matching.is_empty()
+                    && matching.iter().all(|exchange| {
+                        exchange.request.font_family.as_deref() == Some("Excalifont")
+                    }),
+                "terminal {operation:?} requests must use the CSSOM-effective inherited font for {text_fragment:?}: {matching:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_theme_variable_note_weight_does_not_override_typed_note_weight() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NoteLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_weight: Specified::Value(700),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence NoteLabel weight theme");
+    let source = r#"%%{init: {"themeVariables": {"noteFontWeight": 600}}}%%
+sequenceDiagram
+participant Alice
+participant Bob
+Note over Alice,Bob: Config Note Weight"#;
+    let engine = merman_render::__private::install_parse_compatibility(
+        &theme,
+        legacy_init_theme_compat_engine(),
+    );
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-note-theme-variable-weight").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse measured Sequence note source")
+        .expect("detect measured Sequence note source");
+    assert_eq!(
+        measurement_parsed.metadata().effective_config.as_value()["themeVariables"]["noteFontWeight"],
+        serde_json::json!(600),
+        "the explicit legacy init value must survive the configured Mermaid secure allowlist"
+    );
+    assert!(
+        merman_core::__private::config_path_overrides_typed_default(
+            &measurement_parsed.metadata().effective_config,
+            "themeVariables.noteFontWeight",
+        ),
+        "the legacy init value remains authored config even though Sequence no longer consumes it"
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin measured Sequence note session");
+    let _measurement_artifact = family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence note");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text.contains("Config Note Weight")
+                && exchange.request.font_weight.as_deref() == Some("700")
+        }),
+        "themeVariables.noteFontWeight must not override typed NoteLabel layout measurement"
+    );
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse configured Sequence note source")
+        .expect("detect configured Sequence note source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin configured Sequence note session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare configured Sequence note")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render configured Sequence note");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured note SVG");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    let selector = "#merman .noteText,#merman .noteText>tspan{";
+    let role_rule = css
+        .rfind(selector)
+        .and_then(|start| css[start + selector.len()..].split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("post-legacy NoteLabel typography rule");
+    assert!(
+        role_rule.contains("font-weight:700"),
+        "typed NoteLabel weight must reach the note and its child tspans: {role_rule}"
+    );
+
+    let note = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("noteText")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("Config Note Weight"))
+        })
+        .expect("terminal configured note label");
+    assert_eq!(
+        note.attribute("style")
+            .and_then(|style| inline_style_value(style, "font-weight")),
+        Some("700")
+    );
+}
+
+#[test]
+fn sequence_typed_message_css_escapes_the_diagram_id_selector() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default().with_stroke(
+                            CanvasPaint::solid("#2563eb").expect("valid Message stroke"),
+                        ),
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence Message theme");
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Sequence Message source")
+        .expect("detect Sequence Message source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Sequence Message session");
+    let options = SvgRenderOptions {
+        diagram_id: Some("seq:prod".to_string()),
+        ..SvgRenderOptions::default()
+    };
+
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence Message theme")
+        .render_svg(&options, &SvgDebugOptions::default())
+        .expect("render Sequence Message theme");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence SVG");
+    assert_eq!(document.root_element().attribute("id"), Some("seq-prod"));
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    assert!(
+        css.contains(r"#seq-prod .messageLine0,#seq-prod .messageLine1{stroke:#2563eb;}"),
+        "{css}"
+    );
+    assert!(!css.contains("#seq:prod"), "{css}");
+}
+
+#[test]
+fn sequence_number_label_fill_seals_actual_autonumber_text() {
+    let source = r#"sequenceDiagram
+autonumber
+participant Alice
+participant Bob
+Alice->>Bob: First
+Bob-->>Alice: Second"#;
+
+    for (case, fill, expected_css) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = sequence_number_label_theme(fill);
+        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse themed Sequence autonumber source")
+            .expect("detect themed Sequence autonumber source");
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence autonumber session");
+        let diagram_id = format!("sequence-number-{case}");
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare themed Sequence autonumber")
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.clone()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("typed Sequence number label must be portable");
+        let svg = rendered.svg().to_owned();
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence autonumber SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Sequence stylesheet");
+        let terminal_rule = format!(
+            "#{diagram_id} .sequenceNumber,#{diagram_id} .sequenceNumber>tspan{{fill:{expected_css};}}"
+        );
+        assert!(
+            css.contains(&terminal_rule),
+            "missing final Sequence number writer rule: {css}"
+        );
+        assert_eq!(css.matches(&terminal_rule).count(), 1);
+        assert!(!css.contains(&format!("#{diagram_id} .sequenceNumber{{fill:")));
+        let numbers = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber")
+            })
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>();
+        assert_eq!(numbers, ["1", "2"]);
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_number_label_is_not_applicable_without_autonumber() {
+    let theme = sequence_number_label_theme(
+        CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+    );
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Sequence source without autonumber")
+        .expect("detect Sequence source without autonumber");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Sequence session without autonumber");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence source without autonumber")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("an absent Sequence number label must remain portable");
+    assert!(!rendered.svg().contains(r#"class="sequenceNumber""#));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn sequence_number_label_unsupported_selectors_fail_closed() {
+    let rule = || {
+        ThemeRule::new(
+            ThemeTarget::SequenceNumberLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").expect("valid Sequence number fill")),
+        )
+    };
+    for (case, rule) in [
+        (
+            "explicit-default",
+            rule().with_variant(ThemeVariant::Default),
+        ),
+        (
+            "ordinal",
+            rule().with_ordinal(OrdinalSelector::exact(1).expect("valid ordinal")),
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(rule.for_family(DiagramFamilyId::SEQUENCE)),
+            ))
+            .unwrap_or_else(|error| panic!("compile {case} Sequence number theme: {error}"));
+        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap_or_else(|error| panic!("parse {case} Sequence number source: {error}"))
+            .unwrap_or_else(|| panic!("detect {case} Sequence number source"));
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict {case} Sequence number session: {error}"));
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {case} Sequence number theme: {error}"));
+        let error = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .err()
+            .unwrap_or_else(|| panic!("{case} Sequence number selector must remain unsupported"));
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::SEQUENCE, 1)),
+            "{case}"
+        );
+        assert_eq!(error.incomplete_family_theme(), None, "{case}");
+    }
+}
+
+#[test]
+fn sequence_number_label_does_not_emit_a_superseded_direct_fill() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456")
+                                    .expect("valid direct Sequence number fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#fedcba")
+                                    .expect("valid explicit-default Sequence number fill"),
+                            ),
+                        )
+                        .with_variant(ThemeVariant::Default)
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+            ),
+        )
+        .expect("compile mixed Sequence number theme");
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse mixed Sequence number source")
+        .expect("detect mixed Sequence number source");
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin mixed Sequence number session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare mixed Sequence number theme")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render mixed Sequence number theme in best-effort mode");
+
+    for fill in ["#123456", "#fedcba"] {
+        assert!(
+            !rendered.svg().contains(&format!(
+                "#merman .sequenceNumber,#merman .sequenceNumber>tspan{{fill:{fill};}}"
+            )),
+            "an unsupported final winner must not acquire the typed Sequence number terminal: {}",
+            rendered.svg()
+        );
+    }
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn sequence_clear_typography_uses_the_computed_family_base_everywhere() {
+    let base_typography = ThemeTextStyle::default()
+        .with_font_size_px(21.0)
+        .expect("valid Sequence family base font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_family_style(DiagramFamilyId::SEQUENCE, base_typography),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::MessageLabel,
+                            ThemeStylePatch {
+                                typography: ThemeTextStylePatch {
+                                    font_size_px: Specified::Clear,
+                                    ..ThemeTextStylePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                            },
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+        )
+        .expect("compile Sequence MessageLabel clear theme");
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Clear Message"#;
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-computed-clear-typography").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin Sequence clear measurement session");
+    let _measurement_artifact = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse measured Sequence clear source")
+            .expect("detect measured Sequence clear source"),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence clear artifact");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text.contains("Clear Message")
+                && exchange.request.font_size_bits == f64::to_bits(21.0)
+        }),
+        "MessageLabel Clear must measure with the computed Sequence family base"
+    );
+
+    let render_session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin Sequence clear session");
+    let rendered = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse rendered Sequence clear source")
+            .expect("detect rendered Sequence clear source"),
+        &LayoutOptions::default(),
+        render_session,
+    )
+    .expect("prepare Sequence clear artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render Sequence clear typography");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid clear typography SVG");
+    let message = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("messageText")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("Clear Message"))
+        })
+        .expect("terminal cleared message label");
+    assert_eq!(
+        message
+            .attribute("style")
+            .and_then(|style| inline_style_value(style, "font-size")),
+        Some("21px")
+    );
+}
+
+#[test]
+fn sequence_loop_keyword_typography_expands_the_measured_label_box() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::LoopLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_size_px: Specified::Value(96.0),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile large Sequence LoopLabel theme");
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+participant Carol
+critical Establish connection
+Bob->>Carol: Connect
+option Retry later
+Carol-->>Bob: Retry
+end"#;
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-loop-control-label-box").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin measured Sequence LoopLabel session");
+    let _measurement_artifact = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse measured Sequence LoopLabel source")
+            .expect("detect measured Sequence LoopLabel source"),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence LoopLabel artifact");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text == "critical"
+                && exchange.request.font_size_bits == f64::to_bits(96.0)
+        }),
+        "the terminal control keyword must participate in LoopLabel layout measurement"
+    );
+
+    let render_session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin portable large Sequence LoopLabel session");
+    let rendered = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse rendered Sequence LoopLabel source")
+            .expect("detect rendered Sequence LoopLabel source"),
+        &LayoutOptions::default(),
+        render_session,
+    )
+    .expect("prepare portable large Sequence LoopLabel artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("measured LoopLabel control keyword must seal as portable");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid LoopLabel SVG");
+    let control_structure = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-et") == Some("control-structure")
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text")
+                        && descendant.attribute("class") == Some("labelText")
+                        && descendant.text() == Some("critical")
+                })
+        })
+        .expect("critical control structure");
+    let label = control_structure
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("labelText"))
+        .expect("critical terminal label");
+    assert_eq!(
+        label
+            .attribute("style")
+            .and_then(|style| inline_style_value(style, "font-size")),
+        Some("96px")
+    );
+    let points = control_structure
+        .descendants()
+        .find(|node| node.has_tag_name("polygon") && node.attribute("class") == Some("labelBox"))
+        .and_then(|node| node.attribute("points"))
+        .expect("critical label box points")
+        .split_whitespace()
+        .map(|point| {
+            let (x, y) = point.split_once(',').expect("label box coordinate pair");
+            (
+                x.parse::<f64>().expect("numeric label box x"),
+                y.parse::<f64>().expect("numeric label box y"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let min_x = points.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|(x, _)| *x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = points.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+    let max_y = points
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        max_x - min_x > 50.0,
+        "large LoopLabel typography must widen the control label box"
+    );
+    assert!(
+        max_y - min_y > 20.0,
+        "large LoopLabel typography must increase the control label box height"
+    );
+    let (view_box, _) = root_view_box_and_max_width(rendered.svg());
+    assert!(
+        max_x <= view_box[0] + view_box[2],
+        "the measured control label box must remain inside the root viewBox"
+    );
+    let actor_max_x = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "actor")
+                })
+        })
+        .filter_map(|node| {
+            Some((
+                node.attribute("x")?.parse::<f64>().ok()?,
+                node.attribute("width")?.parse::<f64>().ok()?,
+            ))
+        })
+        .map(|(x, width)| x + width)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let frame_max_x = control_structure
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "loopLine")
+                })
+        })
+        .flat_map(|node| [node.attribute("x1"), node.attribute("x2")])
+        .flatten()
+        .filter_map(|value| value.parse::<f64>().ok())
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        actor_max_x > max_x,
+        "the unused leading actor regression must leave the participant row wider than the resolved label box: actor_max_x={actor_max_x}, label_max_x={max_x}"
+    );
+    let emitted_max_x = actor_max_x.max(frame_max_x).max(max_x);
+    assert!(
+        ((view_box[0] + view_box[2]) - (emitted_max_x + 50.0)).abs() <= 0.01,
+        "the root must add diagramMarginX to the actual emitted geometry rather than a guessed block anchor: viewBox={view_box:?}, actor_max_x={actor_max_x}, frame_max_x={frame_max_x}, label_max_x={max_x}"
+    );
+}
+
+#[test]
+fn sequence_explicit_default_role_typography_remains_a_portability_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::ActorLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_weight: Specified::Value(700),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile explicit-default Sequence ActorLabel theme");
+    let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse explicit-default Sequence source")
+        .expect("detect explicit-default Sequence source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict explicit-default Sequence session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare explicit-default Sequence theme");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => {
+            panic!("explicit Default role typography must fail closed until directly supported")
+        }
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: DiagramFamilyId::SEQUENCE,
+                residual_count: 1,
+            }
+        ),
+        "unexpected explicit-default Sequence typography error: {error:?}"
+    );
+}
+
+#[test]
+fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
+    let mut style = ThemeStylePatch::default()
+        .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"))
+        .with_padding(InsetsPx::all(4.0));
+    style.geometry.radius = Specified::Value(6.0);
+    style.paint.opacity = Specified::Value(0.75);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Lifeline, style).for_family(DiagramFamilyId::SEQUENCE),
+            )),
+        )
+        .expect("compile mixed Sequence Lifeline theme");
+    let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+
+    let rendered = family::prepare(
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse mixed Sequence Lifeline source")
+            .expect("detect mixed Sequence Lifeline source"),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin mixed Sequence Lifeline session"),
+    )
+    .expect("prepare mixed Sequence Lifeline theme")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort rendering keeps the directly supported Lifeline stroke");
+    assert!(
+        rendered.svg().contains(".actor-line{stroke:#2563eb;"),
+        "the typed Lifeline stroke should still reach terminal CSS: {}",
+        rendered.svg()
+    );
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse strict mixed Sequence Lifeline source")
+        .expect("detect strict mixed Sequence Lifeline source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict mixed Sequence Lifeline session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare strict mixed Sequence Lifeline theme");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("unsupported Lifeline radius, padding, and opacity must fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: DiagramFamilyId::SEQUENCE,
+                residual_count: 1,
+            }
+        ),
+        "unexpected mixed Sequence Lifeline portability error: {error:?}"
     );
 }
 
@@ -2862,21 +5471,68 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
 }
 
 #[test]
-fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
-    // Mermaid CLI (mmdc) currently does not reflect `sequence.messageFontSize` overrides in the
-    // emitted SVG; it sticks to the global `fontSize` defaults. Keep our Stage B output aligned
-    // with the upstream baselines under `fixtures/upstream-svgs/sequence`.
-    let svg = render_sequence_svg_from_fixture(
-        "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
+fn sequence_generated_root_typography_shadows_message_config_like_mermaid_11_17_2() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(
+            "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
+        );
+    let source = std::fs::read_to_string(path).expect("Sequence configured-font fixture");
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-mermaid-config-font-precedence")
+            .expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
     );
-    assert!(
-        svg.contains("font-size: 16px"),
-        "expected message/actor text to use the global fontSize (16px) like Mermaid CLI baselines"
-    );
-    assert!(
-        !svg.contains("font-size: 18px"),
-        "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
-    );
+    let observation = render_sequence_with_environment(&source, &environment);
+    let requests = host.snapshot();
+
+    for message in ["I'm short", "Short as well"] {
+        let matching = requests
+            .iter()
+            .filter(|exchange| exchange.request.text == message)
+            .collect::<Vec<_>>();
+        assert!(
+            !matching.is_empty(),
+            "expected layout measurement requests for {message:?}"
+        );
+        assert!(
+            matching.iter().all(|exchange| {
+                exchange.request.font_size_bits == 16.0_f64.to_bits()
+                    && exchange.request.font_family.as_deref() != Some("Arial")
+            }),
+            "Mermaid's generated root typography must shadow sequence.messageFont* during measurement: {matching:#?}"
+        );
+    }
+
+    let document =
+        roxmltree::Document::parse(&observation.svg).expect("valid Sequence configured-font SVG");
+    for message in ["I'm short", "Short as well"] {
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == "messageText")
+                    })
+                    && node.text() == Some(message)
+            })
+            .unwrap_or_else(|| panic!("missing Sequence message {message:?}"));
+        let inline = text.attribute("style").expect("message inline style");
+        assert_eq!(inline_style_value(inline, "font-size"), Some("16px"));
+        assert_eq!(
+            inline_style_value(inline, "font-family"),
+            None,
+            "shadowed role-local Arial must not be reasserted by the terminal writer"
+        );
+    }
 }
 
 #[test]
@@ -2957,7 +5613,7 @@ Note right of B: $$x^2$$
 "#;
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+        .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), text);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
@@ -2996,7 +5652,7 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
 
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+        .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
@@ -3017,6 +5673,2696 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         !svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && !svg.contains(r#"Answer: $$2$$"#),
         "expected mixed sequence message formulas to replace source delimiters: {svg}"
     );
+}
+
+// Isolate typed effects and geometry from Mermaid's built-in Neo shadow and palette.
+fn classic_sequence_engine() -> Engine {
+    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "classic",
+        "theme": "default"
+    })))
+}
+
+fn try_render_sequence_theme_request(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Sequence theme request")
+        .expect("Sequence diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("Sequence theme session");
+    family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    })
+}
+
+#[test]
+fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
+    let source = "sequenceDiagram\ntitle Diagram title\nbox Group\nparticipant A\nend\nparticipant B\nA->>B: Message\nloop Repeat\nNote over A,B: Note\nB-->>A: Reply\nend\n";
+    for look in ["classic", "neo", "handDrawn"] {
+        for variables in [
+            serde_json::json!({}),
+            serde_json::json!({"textColor":"#345678", "titleColor":"#876543"}),
+        ] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"look":look, "handDrawnSeed":42, "themeVariables":variables}),
+            ));
+            let render = |theme: &DiagramTheme, portability| {
+                try_render_sequence_theme_request(source, theme, engine.clone(), portability)
+            };
+            let baseline_theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline =
+                render(&baseline_theme, ThemePortabilityRequirement::BestEffort).unwrap();
+            assert!(baseline.svg().contains("Diagram title"));
+            for target in [ThemeTarget::Text, ThemeTarget::Title] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    for paint in [
+                        CanvasPaint::solid("#d12345").unwrap(),
+                        CanvasPaint::Transparent,
+                    ] {
+                        let mut rule =
+                            ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
+                        if let Some(variant) = variant {
+                            rule = rule.with_variant(variant);
+                        }
+                        let theme = DiagramThemeCompiler::new()
+                            .compile(
+                                DiagramThemeSpec::new()
+                                    .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                            )
+                            .unwrap();
+                        let rendered =
+                            render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
+                        assert_eq!(
+                            rendered.svg(),
+                            baseline.svg(),
+                            "{look}/{target:?}/{variant:?}/{variables}"
+                        );
+                        let completion = rendered.into_completion();
+                        let evidence =
+                            merman_render::__private::family_evidence(completion.report());
+                        assert_eq!(evidence.applied_count(), 0);
+                        assert_eq!(evidence.theme_residual_count(), 1);
+                        assert!(
+                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_err()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
+    let text = || {
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    let title = || {
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    let source = "sequenceDiagram\ntitle Diagram title\nA->>B: Message\n";
+    for (source, rules, not_applicable, residuals) in [
+        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 1, 0),
+        (
+            "sequenceDiagram\ntitle Diagram title\nparticipant A\n",
+            vec![text(), title()],
+            0,
+            2,
+        ),
+        (
+            source,
+            vec![title().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![text().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            0,
+            1,
+        ),
+        (
+            source,
+            vec![text().with_ordinal(OrdinalSelector::exact(1000).unwrap())],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![text().with_variant(ThemeVariant::Default), text()],
+            1,
+            1,
+        ),
+        (
+            source,
+            vec![
+                title().with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                title(),
+            ],
+            1,
+            1,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    rules
+                        .into_iter()
+                        .fold(ThemeRuleSet::default(), |set, rule| set.with_rule(rule)),
+                ),
+            )
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), not_applicable, "{source}");
+        assert_eq!(evidence.theme_residual_count(), residuals, "{source}");
+        assert_eq!(evidence.accounted_count(), not_applicable + residuals);
+        assert_eq!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            residuals == 0,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn sequence_role_fill_coverage_reconciles_generic_text_without_hiding_other_facets() {
+    let source =
+        "sequenceDiagram\nA->>B: Message\nNote over A: Note\nloop Work\nB->>A: Reply\nend\n";
+    let generic = || {
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff00ff").unwrap()),
+        )
+    };
+    for (roles, title, number, number_fill, extra_stroke, residuals) in [
+        (true, false, false, false, false, 0),
+        (false, false, false, false, false, 1),
+        (true, true, false, false, false, 1),
+        (true, false, true, false, false, 1),
+        (true, false, true, true, false, 0),
+        (true, false, false, false, true, 1),
+    ] {
+        let mut rules = ThemeRuleSet::default().with_rule(if extra_stroke {
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ff00ff").unwrap())
+                    .with_stroke(CanvasPaint::solid("#ff00ff").unwrap()),
+            )
+        } else {
+            generic()
+        });
+        for target in [
+            ThemeTarget::ActorLabel,
+            ThemeTarget::MessageLabel,
+            ThemeTarget::LoopLabel,
+        ] {
+            rules = rules.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        if roles {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        if number_fill {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::SequenceNumberLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        let source = source.replacen(
+            "sequenceDiagram\n",
+            &format!(
+                "sequenceDiagram\n{}{}",
+                if title { "title Diagram title\n" } else { "" },
+                if number { "autonumber\n" } else { "" }
+            ),
+            1,
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            residuals,
+            "roles={roles} title={title} number={number} stroke={extra_stroke}"
+        );
+        assert_eq!(
+            try_render_sequence_theme_request(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            residuals == 0
+        );
+    }
+}
+
+fn sequence_actor_geometry_theme(clear: bool) -> DiagramTheme {
+    let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+    patch.geometry.radius = Specified::Value(10.0);
+    let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch));
+    if clear {
+        let mut patch = ThemeStylePatch::default();
+        patch.geometry.radius = Specified::Clear;
+        patch.stroke.width = Specified::Clear;
+        rules = rules.with_rule(
+            ThemeRule::new(ThemeTarget::Actor, patch).with_variant(ThemeVariant::Default),
+        );
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+}
+
+#[test]
+fn sequence_actor_geometry_reaches_both_rectangles_without_styling_text_or_lifelines() {
+    for mirror in [true, false] {
+        let engine = classic_sequence_engine().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({
+                "sequence":{"mirrorActors":mirror}
+            }),
+        ));
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Hello",
+            &sequence_actor_geometry_theme(false),
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("rectangular actor geometry must be consumed");
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
+            })
+            .collect();
+        assert_eq!(actors.len(), if mirror { 4 } else { 2 });
+        for actor in actors {
+            assert_eq!(actor.attribute("rx"), Some("10"));
+            assert_eq!(actor.attribute("ry"), Some("10"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        }
+        for node in doc
+            .descendants()
+            .filter(|n| n.has_tag_name("text") || n.has_tag_name("line"))
+        {
+            assert!(
+                !node
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("stroke-width:3px")
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_clear_and_source_width_preserve_other_facets() {
+    for clear in [false, true] {
+        for source_width in [None, Some("7px")] {
+            let engine = classic_sequence_engine().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables":source_width.map(|w| serde_json::json!({"strokeWidth":w,"actorBorder":"#ff0000"})).unwrap_or(serde_json::json!({"actorBorder":"#ff0000"}))
+            })));
+            let rendered = try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello",
+                &sequence_actor_geometry_theme(clear),
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("source width and Clear must reconcile per facet");
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let actor = doc
+                .descendants()
+                .find(|n| n.has_tag_name("rect") && n.attribute("name") == Some("A"))
+                .unwrap();
+            assert_eq!(actor.attribute("rx"), Some(if clear { "3" } else { "10" }));
+            assert_eq!(
+                actor.attribute("style"),
+                if clear || source_width.is_some() {
+                    None
+                } else {
+                    Some("stroke-width:3px;")
+                }
+            );
+            if source_width.is_some() {
+                assert!(rendered.svg().contains(".actor{stroke:#ff0000;"));
+                assert!(rendered.svg().contains("stroke-width:7px;"));
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes() {
+    for declaration in [
+        "actor A",
+        "participant A@{type: database}",
+        "participant A@{type: collections}",
+        "participant A@{type: queue}",
+        "participant A\nproperties A: {\"class\":\"custom\"}",
+    ] {
+        let source = format!("sequenceDiagram\n{declaration}\nA->>B: Hello");
+        let theme = sequence_actor_geometry_theme(false);
+        let rendered = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0, "{declaration}");
+        assert_eq!(evidence.theme_residual_count(), 1, "{declaration}");
+        assert!(
+            try_render_sequence_theme_request(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err(),
+            "{declaration}"
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_keeps_unsupported_siblings_and_ordinals_visible() {
+    let source = "sequenceDiagram\nA->>B: Hello";
+    for ordinal in [
+        None,
+        Some(OrdinalSelector::exact(1).unwrap()),
+        Some(OrdinalSelector::exact(9).unwrap()),
+    ] {
+        let mut patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#00f2ff").unwrap())
+            .with_stroke_width(3.0)
+            .unwrap();
+        patch.geometry.radius = Specified::Value(10.0);
+        // Padding has no Sequence Actor consumer; a supported sibling must not hide it.
+        patch.spacing.padding = Specified::Value(InsetsPx::all(2.0));
+        let mut rule = ThemeRule::new(ThemeTarget::Actor, patch);
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(ordinal != Some(OrdinalSelector::exact(9).unwrap()))
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(ordinal == Some(OrdinalSelector::exact(9).unwrap()))
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_source_width_suppresses_only_that_facet_for_special_glyphs() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Actor,
+                ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+            ))),
+        )
+        .unwrap();
+    let source = "---\nconfig:\n  themeVariables:\n    strokeWidth: 7\n---\nsequenceDiagram\nactor A\nA->>B: Hello";
+    let rendered = try_render_sequence_theme_request(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow() {
+    use merman_render::diagram_theme::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+    let saved = serde_json::to_vec(&recipe).unwrap();
+    let mut outputs = Vec::new();
+    for theme in [
+        compiler.compile_preset(ThemePreset::Cyberpunk).unwrap(),
+        DiagramThemeCompiler::new()
+            .compile_recipe(serde_json::from_slice(&saved).unwrap())
+            .unwrap(),
+    ] {
+        let rendered = try_render_sequence_theme_request(
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "look": "classic"
+            }))),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
+            })
+            .collect();
+        assert_eq!(actors.len(), 4);
+        for actor in actors {
+            assert_eq!(actor.attribute("rx"), Some("10"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        }
+        let css: String = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("style"))
+            .filter_map(|n| n.text())
+            .collect();
+        assert!(css.contains(".messageLine0{stroke-width:2px;stroke-dasharray:none;}"));
+        assert!(css.contains(".messageLine1{stroke-width:2px;stroke-dasharray:2,2;}"));
+        outputs.push(rendered.svg().to_owned());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        let doc = roxmltree::Document::parse(outputs.last().unwrap()).unwrap();
+        let filters: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("filter"))
+            .collect();
+        assert_eq!(filters.len(), 21);
+        for filter in filters {
+            assert_eq!(
+                filter.attribute("color-interpolation-filters"),
+                Some("sRGB")
+            );
+            let deviations: Vec<_> = filter
+                .children()
+                .filter(|n| n.has_tag_name("feGaussianBlur"))
+                .map(|n| n.attribute("stdDeviation").unwrap())
+                .collect();
+            let is_frame = filter.attribute("id").unwrap().contains("-loop-")
+                && !filter.attribute("id").unwrap().contains("-loop-text-");
+            let is_keyword = filter
+                .attribute("id")
+                .unwrap()
+                .contains("-loop-label-background-");
+            let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
+            let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
+            let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
+            let is_lifeline = filter.attribute("id").unwrap().contains("-lifeline-");
+            let is_message = filter.attribute("id").unwrap().contains("-message-");
+            let is_note = filter.attribute("id").unwrap().contains("-note-");
+            assert_eq!(
+                deviations,
+                if is_keyword {
+                    vec!["6"]
+                } else if is_frame {
+                    vec!["4"]
+                } else if is_loop_text {
+                    vec!["5"]
+                } else if is_note_text {
+                    vec!["4"]
+                } else if is_message || is_lifeline {
+                    vec!["6"]
+                } else if is_note {
+                    vec!["8"]
+                } else {
+                    vec!["8", "16"]
+                }
+            );
+            let reference = format!("url(#{})", filter.attribute("id").unwrap());
+            let consumers: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.attribute("filter") == Some(reference.as_str()))
+                .collect();
+            assert_eq!(consumers.len(), 1);
+            if is_keyword {
+                assert!(consumers[0].has_tag_name("polygon"));
+                assert_eq!(consumers[0].attribute("rx"), None);
+            } else if is_frame {
+                assert_eq!(consumers[0].attribute("class"), Some("loopLine"));
+            } else if is_actor_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert_eq!(consumers[0].attribute("class"), Some("actor actor-box"));
+            } else if is_loop_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert!(matches!(
+                    consumers[0].attribute("class"),
+                    Some("labelText" | "loopText")
+                ));
+            } else if is_note_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert_eq!(consumers[0].attribute("class"), Some("noteText"));
+            } else if is_lifeline {
+                assert_eq!(consumers[0].attribute("data-et"), Some("life-line"));
+            } else if is_message {
+                assert!(consumers[0].has_tag_name("line"));
+                assert!(
+                    consumers[0]
+                        .attribute("class")
+                        .unwrap()
+                        .starts_with("messageLine")
+                );
+                assert!(consumers[0].attribute("marker-end").is_some());
+            } else if is_note {
+                assert!(consumers[0].has_tag_name("rect"));
+                assert_eq!(consumers[0].attribute("class"), Some("note"));
+                assert_eq!(consumers[0].attribute("stroke-width"), Some("2"));
+                assert_eq!(consumers[0].attribute("rx"), Some("10"));
+                assert_eq!(consumers[0].attribute("ry"), Some("10"));
+                let flood = filter
+                    .descendants()
+                    .find(|n| n.has_tag_name("feFlood"))
+                    .unwrap();
+                assert_eq!(
+                    flood.attribute("flood-color"),
+                    Some("rgba(255, 0, 255, 0.4)")
+                );
+            } else {
+                assert!(consumers[0].has_tag_name("rect"));
+                assert!(
+                    consumers[0]
+                        .attribute("class")
+                        .unwrap()
+                        .starts_with("actor ")
+                );
+            }
+        }
+    }
+    assert_eq!(outputs[0], outputs[1]);
+}
+
+#[test]
+fn sequence_actor_geometry_wide_strokes_expand_viewport_without_moving_actors() {
+    let mut outputs = Vec::new();
+    for width in [0.0, 200.0] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Actor,
+                        ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap();
+        outputs.push(
+            try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello",
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap()
+            .svg()
+            .to_owned(),
+        );
+    }
+    let documents: Vec<_> = outputs
+        .iter()
+        .map(|s| roxmltree::Document::parse(s).unwrap())
+        .collect();
+    let actors = |doc: &roxmltree::Document<'_>| {
+        doc.descendants()
+            .filter(|n| n.has_tag_name("rect") && n.attribute("name").is_some())
+            .map(|n| {
+                ["x", "y", "width", "height"]
+                    .map(|key| n.attribute(key).unwrap().parse::<f64>().unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(actors(&documents[0]), actors(&documents[1]));
+    let bounds: Vec<f64> = documents[1]
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    for [x, y, width, height] in actors(&documents[1]) {
+        assert!(x - 100.0 >= bounds[0] && y - 100.0 >= bounds[1]);
+        assert!(x + width + 100.0 <= bounds[0] + bounds[2]);
+        assert!(y + height + 100.0 <= bounds[1] + bounds[3]);
+    }
+}
+
+fn sequence_shadow_spec(target: ThemeTarget, rules: ThemeRuleSet) -> DiagramThemeSpec {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue,
+    };
+    DiagramThemeSpec::new().with_styles(rules).with_effects(
+        DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "actor-shadow",
+                    [EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        offset_x: -9.0,
+                        offset_y: 13.0,
+                        blur_radius: 8.0,
+                        spread: 0.0,
+                        color: ThemeColorValue::parse("#00f2ff").unwrap(),
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .with_binding(EffectBinding::new(target, "actor-shadow").unwrap())
+            .unwrap(),
+    )
+}
+
+#[test]
+fn sequence_actor_shadow_binding_clear_and_rule_ownership() {
+    for mirror in [false, true] {
+        for clear in [None, Some(false), Some(true)] {
+            let mut rules = ThemeRuleSet::default();
+            if let Some(clear) = clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = if clear {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                rules = rules.with_rule(
+                    ThemeRule::new(ThemeTarget::Actor, patch).with_variant(ThemeVariant::Default),
+                );
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::Actor, rules))
+                .unwrap();
+            let rendered = try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello",
+                &theme,
+                classic_sequence_engine().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"sequence":{"mirrorActors":mirror}}),
+                )),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let filters: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("filter"))
+                .collect();
+            assert_eq!(
+                filters.len(),
+                if clear == Some(true) {
+                    0
+                } else if mirror {
+                    4
+                } else {
+                    2
+                }
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(clear.is_some())
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sequence_shadows_reject_unhandled_actor_geometry_and_nonzero_spread() {
+    for (declaration, width) in [
+        ("actor A", "1"),
+        ("participant A@{type: database}", "1"),
+        ("participant A@{type: collections}", "1"),
+        ("participant A@{type: queue}", "1"),
+        ("participant A\nproperties A: {\"class\":\"custom\"}", "1"),
+        ("participant A", "2em"),
+    ] {
+        let source = format!("sequenceDiagram\n{declaration}\nA->>B: Hello");
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Actor,
+                ThemeRuleSet::default(),
+            ))
+            .unwrap();
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"themeVariables":{"strokeWidth":width}}),
+        ));
+        let rendered = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            engine.clone(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0, "{declaration} / {width}");
+        assert_eq!(evidence.theme_residual_count(), 1);
+        assert!(
+            try_render_sequence_theme_request(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err()
+        );
+    }
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue,
+    };
+    for target in [ThemeTarget::Actor, ThemeTarget::Message, ThemeTarget::Note] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_effects(
+                    DiagramEffectSet::default()
+                        .with_graph(
+                            EffectGraph::new(
+                                "spread",
+                                [EffectPrimitive::DropShadow {
+                                    input: EffectInput::SourceGraphic,
+                                    offset_x: 0.0,
+                                    offset_y: 0.0,
+                                    blur_radius: 8.0,
+                                    spread: 2.0,
+                                    color: ThemeColorValue::parse("#00ffff").unwrap(),
+                                }],
+                            )
+                            .unwrap(),
+                        )
+                        .unwrap()
+                        .with_binding(EffectBinding::new(target, "spread").unwrap())
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        assert!(
+            try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello\nNote over A,B: Note",
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_shadow_viewport_contains_actual_regions_and_source_strokes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Actor,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    for width in ["1", "200px"] {
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Hello",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"strokeWidth":width}}),
+            )),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let viewport: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        let number =
+            |node: roxmltree::Node, name| node.attribute(name).unwrap().parse::<f64>().unwrap();
+        for actor in doc
+            .descendants()
+            .filter(|n| n.has_tag_name("rect") && n.attribute("filter").is_some())
+        {
+            let id = actor
+                .attribute("filter")
+                .unwrap()
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let filter = doc
+                .descendants()
+                .find(|n| n.attribute("id") == Some(id))
+                .unwrap();
+            let left = number(actor, "x") + number(actor, "width") * number(filter, "x");
+            let top = number(actor, "y") + number(actor, "height") * number(filter, "y");
+            let right = left + number(actor, "width") * number(filter, "width");
+            let bottom = top + number(actor, "height") * number(filter, "height");
+            assert!(left >= viewport[0] - 0.01 && top >= viewport[1] - 0.01);
+            assert!(
+                right <= viewport[0] + viewport[2] + 0.01
+                    && bottom <= viewport[1] + viewport[3] + 0.01
+            );
+            let half_stroke = if width == "1" { 0.5 } else { 100.0 };
+            assert!(left <= number(actor, "x") - half_stroke - 40.9);
+            assert!(bottom >= number(actor, "y") + number(actor, "height") + half_stroke + 44.9);
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_shadow_preserves_ordinal_residuals_and_resource_admission() {
+    for ordinal in [1, 9] {
+        let rule = ThemeRule::new(
+            ThemeTarget::Actor,
+            ThemeStylePatch::default()
+                .with_effect("actor-shadow")
+                .unwrap(),
+        )
+        .with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Actor,
+                ThemeRuleSet::default().with_rule(rule),
+            ))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Hello",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            ordinal == 9,
+            "matching unsupported ordinal must remain explicit"
+        );
+    }
+    use merman_render::diagram_theme::{
+        ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
+    };
+    let theme = DiagramThemeCompiler::new()
+        .with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+                .unwrap(),
+        )
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Actor,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let error = try_render_sequence_theme_request(
+        "sequenceDiagram\nA->>B: Hello",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .err()
+    .expect("materialized filter region must exceed the budget");
+    assert!(
+        matches!(error, Error::ThemeResourceLimitExceeded(ref limit)
+        if limit.phase == ThemeResourceLimitPhase::EffectMaterialize && limit.limit == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn sequence_message_width_reaches_lines_and_self_paths_without_changing_dash_semantics() {
+    for width in [0.0, 1.5, 2.0, 12.0] {
+        for default_variant in [false, true] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+            );
+            if default_variant {
+                rule = rule.with_variant(ThemeVariant::Default);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let rendered = try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self",
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("static Message width must reach every concrete line/path");
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let messages: Vec<_> = doc
+                .descendants()
+                .filter(|n| matches!(n.attribute("class"), Some("messageLine0" | "messageLine1")))
+                .collect();
+            assert_eq!(messages.len(), 3);
+            assert!(messages.iter().any(|n| n.has_tag_name("path")));
+            let css: String = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("style"))
+                .filter_map(|n| n.text())
+                .collect();
+            assert!(css.contains(&format!(
+                ".messageLine0{{stroke-width:{width}px;stroke-dasharray:none;}}"
+            )));
+            assert!(css.contains(&format!(
+                ".messageLine1{{stroke-width:{width}px;stroke-dasharray:2,2;}}"
+            )));
+            let reply = messages
+                .iter()
+                .find(|n| n.attribute("class") == Some("messageLine1"))
+                .unwrap();
+            assert!(
+                reply
+                    .attribute("style")
+                    .unwrap()
+                    .contains("stroke-dasharray: 3, 3")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sequence_message_width_preserves_clear_and_unsupported_selector_outcomes() {
+    let width = || {
+        ThemeRule::new(
+            ThemeTarget::Message,
+            ThemeStylePatch::default().with_stroke_width(12.0).unwrap(),
+        )
+    };
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.width = Specified::Clear;
+    let cleared = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(width()).with_rule(
+                ThemeRule::new(ThemeTarget::Message, clear).with_variant(ThemeVariant::Default),
+            ),
+        ))
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let source = "sequenceDiagram\nA->>B: Request\nB-->>A: Reply";
+    let base = try_render_sequence_theme_request(
+        source,
+        &baseline,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let restored = try_render_sequence_theme_request(
+        source,
+        &cleared,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert_eq!(
+        base.svg(),
+        restored.svg(),
+        "Clear must restore default paint and viewport"
+    );
+    let completion = restored.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+
+    // Message ordinal and non-default variant routes remain conservatively unsupported,
+    // including unmatched selectors; this increment only consumes static default width.
+    let mut mixed = ThemeStylePatch::default().with_stroke_width(12.0).unwrap();
+    mixed.geometry.radius = Specified::Value(4.0);
+    for (case, (source, rule, accepted)) in [
+        (source, ThemeRule::new(ThemeTarget::Message, mixed), false),
+        (
+            source,
+            width().with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            false,
+        ),
+        (
+            source,
+            width().with_ordinal(OrdinalSelector::exact(99).unwrap()),
+            false,
+        ),
+        ("sequenceDiagram\nparticipant A", width(), true),
+        (source, width().with_variant(ThemeVariant::Active), false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        assert_eq!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            accepted,
+            "selector case {case}"
+        );
+    }
+}
+
+#[test]
+fn sequence_message_width_contains_actual_paths_and_markers_without_layout_margins() {
+    for width in [0.0, 2.0, 12.0] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap();
+        for (target, right_angles) in [("B", false), ("A", false), ("A", true)] {
+            for arrow in ["->>", "-x", "-)", r"-|\", r"-\\", "<<->>", "-|/", r"-//"] {
+                let source = format!(
+                    "---\nconfig:\n  sequence:\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n    rightAngles: {right_angles}\n---\nsequenceDiagram\nA{arrow}{target}: Request"
+                );
+                let rendered = try_render_sequence_theme_request(
+                    &source,
+                    &theme,
+                    Engine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let view_box: Vec<f64> = doc
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                let contains = |x: f64, y: f64, radius: f64| {
+                    assert!(
+                        x - radius >= view_box[0] - 1e-8
+                            && y - radius >= view_box[1] - 1e-8
+                            && x + radius <= view_box[0] + view_box[2] + 1e-8
+                            && y + radius <= view_box[1] + view_box[3] + 1e-8,
+                        "{arrow} to {target}, rightAngles={right_angles}, width={width}: point {x},{y} radius {radius}, viewBox {view_box:?}"
+                    );
+                };
+                let message = doc
+                    .descendants()
+                    .find(|n| n.attribute("class") == Some("messageLine0"))
+                    .unwrap();
+                let (start, end) = if message.has_tag_name("line") {
+                    let value = |key| message.attribute(key).unwrap().parse::<f64>().unwrap();
+                    ((value("x1"), value("y1")), (value("x2"), value("y2")))
+                } else {
+                    // The generated self paths contain only M/C or M/H/V/H. Read their
+                    // terminal coordinates and sample the actual curve, not a padding formula.
+                    let numbers: Vec<f64> = message
+                        .attribute("d")
+                        .unwrap()
+                        .split(|c: char| c.is_ascii_alphabetic() || c.is_whitespace() || c == ',')
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.parse().unwrap())
+                        .collect();
+                    if right_angles {
+                        for (x, y) in [
+                            (numbers[0], numbers[1]),
+                            (numbers[2], numbers[1]),
+                            (numbers[2], numbers[3]),
+                            (numbers[4], numbers[3]),
+                        ] {
+                            contains(x, y, f64::from(width) / 2.0);
+                        }
+                        ((numbers[0], numbers[1]), (numbers[4], numbers[3]))
+                    } else {
+                        for step in 0..=100 {
+                            let t = f64::from(step) / 100.0;
+                            let u = 1.0 - t;
+                            let coordinate = |axis: usize| {
+                                u.powi(3) * numbers[axis]
+                                    + 3.0 * u.powi(2) * t * numbers[axis + 2]
+                                    + 3.0 * u * t.powi(2) * numbers[axis + 4]
+                                    + t.powi(3) * numbers[axis + 6]
+                            };
+                            contains(coordinate(0), coordinate(1), f64::from(width) / 2.0);
+                        }
+                        ((numbers[0], numbers[1]), (numbers[6], numbers[7]))
+                    }
+                };
+                for (attribute, (x, y)) in [("marker-start", start), ("marker-end", end)] {
+                    contains(x, y, f64::from(width) / 2.0);
+                    let Some(reference) = message.attribute(attribute) else {
+                        continue;
+                    };
+                    let id = reference
+                        .strip_prefix("url(#")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let marker = doc
+                        .descendants()
+                        .find(|n| n.attribute("id") == Some(id))
+                        .unwrap();
+                    let value = |key| marker.attribute(key).unwrap().parse::<f64>().unwrap();
+                    let scale = if marker.attribute("markerUnits") == Some("userSpaceOnUse") {
+                        1.0
+                    } else {
+                        f64::from(width)
+                    };
+                    let radius = value("refX")
+                        .abs()
+                        .max((value("markerWidth") - value("refX")).abs())
+                        .hypot(
+                            value("refY")
+                                .abs()
+                                .max((value("markerHeight") - value("refY")).abs()),
+                        )
+                        * scale;
+                    contains(x, y, radius);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_message_shadow_binding_clear_and_rule_ownership() {
+    let source = "sequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self\nB-->>B: Dotted self";
+    for right_angles in [false, true] {
+        for clear in [None, Some(false), Some(true)] {
+            let mut rules = ThemeRuleSet::default();
+            if let Some(clear) = clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = if clear {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                rules = rules.with_rule(
+                    ThemeRule::new(ThemeTarget::Message, patch).with_variant(ThemeVariant::Default),
+                );
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::Message, rules))
+                .unwrap();
+            let rendered = try_render_sequence_theme_request(
+                source,
+                &theme,
+                classic_sequence_engine().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"sequence":{"rightAngles":right_angles,"diagramMarginX":0,"diagramMarginY":0}}),
+                )),
+                ThemePortabilityRequirement::RequirePortable,
+            ).unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let filters: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("filter"))
+                .collect();
+            let lines: Vec<_> = doc
+                .descendants()
+                .filter(|n| matches!(n.attribute("class"), Some("messageLine0" | "messageLine1")))
+                .collect();
+            assert_eq!(lines.len(), 4);
+            assert_eq!(filters.len(), if clear == Some(true) { 0 } else { 4 });
+            for line in &lines {
+                assert_eq!(line.attribute("filter").is_some(), clear != Some(true));
+                assert!(line.attribute("marker-end").is_some());
+            }
+            assert!(
+                doc.descendants()
+                    .filter(|n| n.has_tag_name("text"))
+                    .all(|n| n.attribute("filter").is_none())
+            );
+            let view: Vec<f64> = doc
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.parse().unwrap())
+                .collect();
+            for filter in filters {
+                assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                assert!(
+                    x >= view[0] - 0.001
+                        && y >= view[1] - 0.001
+                        && x + w <= view[0] + view[2] + 0.001
+                        && y + h <= view[1] + view[3] + 0.001
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(clear.is_some())
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sequence_message_shadow_preserves_unsupported_selectors_and_filter_budget() {
+    for (source, rule, succeeds) in [
+        (
+            "sequenceDiagram\nA->>B: Hello",
+            ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )
+            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            false,
+        ),
+        (
+            "sequenceDiagram\nA->>B: Hello",
+            ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )
+            .with_variant(ThemeVariant::Primary),
+            false,
+        ),
+        (
+            "sequenceDiagram\nparticipant A",
+            ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            ),
+            true,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Message,
+                ThemeRuleSet::default().with_rule(rule),
+            ))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(result.is_ok(), succeeds, "{:?}", result.as_ref().err());
+    }
+    use merman_render::diagram_theme::{
+        ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
+    };
+    let theme = DiagramThemeCompiler::new()
+        .with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+                .unwrap(),
+        )
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Message,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let error = try_render_sequence_theme_request(
+        "sequenceDiagram\nA->>B: Hello",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .err()
+    .expect("materialized region exceeds budget");
+    assert!(
+        matches!(error, Error::ThemeResourceLimitExceeded(ref limit)
+        if limit.phase == ThemeResourceLimitPhase::EffectMaterialize && limit.limit == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn sequence_note_geometry_shadow_and_clear_reach_rect_terminals() {
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nNote left of A: Left note\nNote right of B: Right note\nNote over A,B: Wide note";
+    for clear in [None, Some(false), Some(true)] {
+        let mut patch = ThemeStylePatch::default().with_stroke_width(12.0).unwrap();
+        patch.geometry.radius = Specified::Value(10.0);
+        if let Some(clear) = clear {
+            patch.effects.effect = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value("actor-shadow".to_owned())
+            };
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Note,
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(ThemeTarget::Note, patch).with_variant(ThemeVariant::Default),
+                ),
+            ))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"sequence":{"diagramMarginX":0,"diagramMarginY":0}}),
+            )),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let view: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        let notes: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("rect") && n.attribute("class") == Some("note"))
+            .collect();
+        assert_eq!(notes.len(), 3);
+        for note in notes {
+            assert_eq!(note.attribute("stroke-width"), Some("12"));
+            assert_eq!(note.attribute("rx"), Some("10"));
+            assert_eq!(note.attribute("ry"), Some("10"));
+            assert_eq!(note.attribute("filter").is_some(), clear != Some(true));
+            let [left, top, width, height] = ["x", "y", "width", "height"]
+                .map(|k| note.attribute(k).unwrap().parse::<f64>().unwrap());
+            let bounds = if let Some(binding) = note.attribute("filter") {
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(&binding[5..binding.len() - 1]))
+                    .unwrap();
+                assert_eq!(filter.attribute("filterUnits"), Some("objectBoundingBox"));
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                [
+                    left + x * width,
+                    top + y * height,
+                    left + (x + w) * width,
+                    top + (y + h) * height,
+                ]
+            } else {
+                [
+                    left - 6.0,
+                    top - 6.0,
+                    left + width + 6.0,
+                    top + height + 6.0,
+                ]
+            };
+            assert!(
+                bounds[0] >= view[0] - 0.001
+                    && bounds[1] >= view[1] - 0.001
+                    && bounds[2] <= view[0] + view[2] + 0.001
+                    && bounds[3] <= view[1] + view[3] + 0.001,
+                "{bounds:?} {view:?}"
+            );
+        }
+        assert!(
+            doc.descendants()
+                .filter(|n| n.has_tag_name("text"))
+                .all(|n| n.attribute("filter").is_none())
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(
+            evidence.applied_count(),
+            if clear.is_none() { 2 } else { 1 }
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(clear.is_some())
+        );
+    }
+}
+
+#[test]
+fn sequence_note_geometry_clear_source_paint_and_unsupported_facets() {
+    let source = "sequenceDiagram\nNote over A,B: Note";
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+            .with_stroke(CanvasPaint::solid("#00ff00").unwrap())
+            .with_stroke_width(12.0)
+            .unwrap();
+        patch.geometry.radius = Specified::Value(10.0);
+        let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Note, patch));
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.stroke.width = Specified::Clear;
+            patch.geometry.radius = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::Note, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(source, &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"noteBkgColor":"#123456","noteBorderColor":"#654321","strokeWidth":200}}))),
+            ThemePortabilityRequirement::RequirePortable).unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let note = doc
+            .descendants()
+            .find(|n| n.has_tag_name("rect") && n.attribute("class") == Some("note"))
+            .unwrap();
+        assert_eq!(
+            note.attribute("stroke-width"),
+            if clear { None } else { Some("12") }
+        );
+        assert_eq!(note.attribute("rx"), if clear { None } else { Some("10") });
+        let css: String = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("style"))
+            .filter_map(|n| n.text())
+            .collect();
+        assert!(css.contains("stroke:#654321;fill:#123456;"), "{css}");
+    }
+    for selector in [0, 1, 2] {
+        let mut patch = ThemeStylePatch::default().with_stroke_width(2.0).unwrap();
+        if selector == 0 {
+            patch.spacing.padding = Specified::Value(InsetsPx::all(2.0));
+        }
+        let rule = ThemeRule::new(ThemeTarget::Note, patch);
+        let rule = match selector {
+            1 => rule.with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            2 => rule.with_variant(ThemeVariant::Primary),
+            _ => rule,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        assert!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn sequence_note_shadow_absence_and_resource_admission() {
+    use merman_render::diagram_theme::{
+        ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
+    };
+    let compiler = DiagramThemeCompiler::new();
+    let spec = || sequence_shadow_spec(ThemeTarget::Note, ThemeRuleSet::default());
+    let theme = compiler.compile(spec()).unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "sequenceDiagram\nA->>B: No note",
+        &theme,
+        classic_sequence_engine(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert!(!rendered.svg().contains("<filter"));
+    let completion = rendered.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).not_applicable_count(),
+        1
+    );
+    let theme = DiagramThemeCompiler::new()
+        .with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+                .unwrap(),
+        )
+        .compile(spec())
+        .unwrap();
+    let error = try_render_sequence_theme_request(
+        "sequenceDiagram\nNote over A,B: Note",
+        &theme,
+        classic_sequence_engine(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .err()
+    .expect("region budget must remain authoritative");
+    assert!(
+        matches!(error, Error::ThemeResourceLimitExceeded(ref limit) if limit.phase == ThemeResourceLimitPhase::EffectMaterialize && limit.limit == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn sequence_note_label_shadow_is_text_only_and_clear_preserves_layout() {
+    let source = "sequenceDiagram\nautonumber\nA->>B: Message\nNote left of A: 中文 Note<br/>Second line\nNote right of B: Another";
+    let mut positions = None;
+    for clear in [None, Some(false), Some(true)] {
+        let mut rules = ThemeRuleSet::default();
+        if let Some(clear) = clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value("actor-shadow".to_owned())
+            };
+            rules = rules.with_rule(
+                ThemeRule::new(ThemeTarget::NoteLabel, patch).with_variant(ThemeVariant::Default),
+            );
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some("noteText"))
+            .collect();
+        assert_eq!(labels.len(), 3);
+        let current: Vec<_> = labels
+            .iter()
+            .map(|n| {
+                (
+                    n.attribute("x").unwrap().to_owned(),
+                    n.attribute("y").unwrap().to_owned(),
+                )
+            })
+            .collect();
+        if let Some(previous) = &positions {
+            assert_eq!(previous, &current);
+        }
+        positions = Some(current);
+        let view: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        for label in labels {
+            assert_eq!(label.attribute("filter").is_some(), clear != Some(true));
+            if let Some(binding) = label.attribute("filter") {
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(&binding[5..binding.len() - 1]))
+                    .unwrap();
+                assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                assert!(
+                    x >= view[0] - 0.001
+                        && y >= view[1] - 0.001
+                        && x + w <= view[0] + view[2] + 0.001
+                        && y + h <= view[1] + view[3] + 0.001
+                );
+            }
+        }
+        assert!(
+            doc.descendants()
+                .filter(|n| n.attribute("filter").is_some())
+                .all(|n| n.has_tag_name("text") && n.attribute("class") == Some("noteText"))
+        );
+        if clear == Some(true) {
+            let baseline = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let plain = try_render_sequence_theme_request(
+                source,
+                &baseline,
+                classic_sequence_engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(
+                rendered.svg(),
+                plain.svg(),
+                "Clear must retain the ordinary no-effect output"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(clear.is_some())
+        );
+    }
+}
+
+#[test]
+fn sequence_note_label_effect_residuals_and_absence_are_honest() {
+    for (source, rules, accepted) in [
+        (
+            "sequenceDiagram\nA->>B: No note",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nNote over A,B: Note",
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::NoteLabel,
+                    ThemeStylePatch::default()
+                        .with_effect("actor-shadow")
+                        .unwrap(),
+                )
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            ),
+            false,
+        ),
+        (
+            "sequenceDiagram\nNote over A,B: Note",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap()
+                    .with_stroke_width(3.0)
+                    .unwrap(),
+            )),
+            false,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "{source}: {:?}",
+            result.as_ref().err()
+        );
+        if let Ok(rendered) = result {
+            assert!(!rendered.svg().contains("<filter"));
+        }
+    }
+}
+
+#[test]
+fn sequence_note_label_effect_final_output_and_region_budgets_remain_authoritative() {
+    use merman_render::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
+    let source = "sequenceDiagram\nNote left of A: 中文 Long note<br/><br/>Another line";
+    let spec = || sequence_shadow_spec(ThemeTarget::NoteLabel, ThemeRuleSet::default());
+    let theme = DiagramThemeCompiler::new().compile(spec()).unwrap();
+    let render = |policy| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = parse_sequence_for_render(
+            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            source,
+        );
+        family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        })
+    };
+    let baseline = render(RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+    let size = baseline.svg().len();
+    let exact = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, size)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exact.svg(), baseline.svg());
+    let error = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, size - 1)
+            .unwrap(),
+    )
+    .err()
+    .unwrap();
+    assert!(
+        matches!(error, Error::ResourceLimitExceeded(_)),
+        "{error:?}"
+    );
+    let theme = DiagramThemeCompiler::new()
+        .with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+                .unwrap(),
+        )
+        .compile(spec())
+        .unwrap();
+    let error = try_render_sequence_theme_request(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .err()
+    .unwrap();
+    assert!(
+        matches!(error, Error::ThemeResourceLimitExceeded(_)),
+        "{error:?}"
+    );
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_note_label_math_glow_remains_incomplete_and_clear_is_consumed() {
+    for clear in [false, true] {
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::NoteLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = parse_sequence_for_render(
+            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            "sequenceDiagram\nNote over A,B: Ordinary\nNote over A,B: $$x^2$$",
+        );
+        let result =
+            family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            });
+        assert_eq!(result.is_ok(), clear, "{:?}", result.as_ref().err());
+    }
+}
+
+#[test]
+fn sequence_paintless_note_rule_is_consumed_without_claiming_a_filter() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::NoteLabel,
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "sequenceDiagram\nNote over A,B: <br/>",
+        &theme,
+        classic_sequence_engine(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert!(!rendered.svg().contains("<filter"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn sequence_loop_label_effects_cover_keyword_primary_and_section_titles() {
+    let source = "sequenceDiagram\nloop Retry<br/>Second\nA->>B: Work\nend\nalt Accepted\nB-->>A: Done\nelse Other\nB-->>A: Retry\nend";
+    for clear in [false, true] {
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::LoopLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let viewport: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        for filter in doc.descendants().filter(|n| n.has_tag_name("filter")) {
+            let [x, y, w, h] = ["x", "y", "width", "height"]
+                .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+            assert!(
+                x >= viewport[0] - 0.001
+                    && y >= viewport[1] - 0.001
+                    && x + w <= viewport[0] + viewport[2] + 0.001
+                    && y + h <= viewport[1] + viewport[3] + 0.001
+            );
+        }
+        for class in ["labelText", "loopText", "sectionTitle"] {
+            let labels: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some(class))
+                .collect();
+            assert!(!labels.is_empty(), "missing {class}");
+            for label in labels {
+                assert_eq!(label.attribute("filter").is_some(), !clear, "{class}");
+            }
+        }
+        assert!(
+            doc.descendants()
+                .filter(|n| n.attribute("filter").is_some())
+                .all(|n| n.has_tag_name("text")
+                    && matches!(
+                        n.attribute("class"),
+                        Some("labelText" | "loopText" | "sectionTitle")
+                    ))
+        );
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                classic_sequence_engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_loop_label_effects_preserve_rule_residuals_and_empty_titles() {
+    for (source, rules, accepted) in [
+        (
+            "sequenceDiagram\nA->>B: No control",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop\nA->>B: Work\nend",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::LoopLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::LoopLabel,
+                    ThemeStylePatch::default()
+                        .with_effect("actor-shadow")
+                        .unwrap(),
+                )
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            ),
+            false,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::LoopLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap()
+                    .with_stroke_width(3.0)
+                    .unwrap(),
+            )),
+            false,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "{source}: {:?}",
+            result.as_ref().err()
+        );
+        if source.contains("loop\n") {
+            let rendered = result.unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count(),
+                1,
+                "empty title has no filter, keyword still does"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_loop_label_math_effects_remain_incomplete_but_clear_is_consumed() {
+    for source in [
+        "sequenceDiagram\nloop $$x^2$$\nA->>B: Work\nend",
+        "sequenceDiagram\nalt First\nA->>B: Work\nelse $$x^2$$\nA->>B: Again\nend",
+    ] {
+        for clear in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            if clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = Specified::Clear;
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::LoopLabel, patch));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_compiled_math_renderer()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let parsed = parse_sequence_for_render(
+                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                source,
+            );
+            let result =
+                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                });
+            assert_eq!(
+                result.is_ok(),
+                clear,
+                "{source}: {:?}",
+                result.as_ref().err()
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_effects_cover_shapes_boxes_and_visible_links() {
+    let source = r#"sequenceDiagram
+box Team
+participant A as Alpha<br/>中文
+participant Q@{ "type": "queue" }
+participant D@{ "type": "database" }
+participant C@{ "type": "collections" }
+end
+actor U as User
+participant B@{ "type": "boundary" }
+participant E@{ "type": "entity" }
+participant K@{ "type": "control" }
+A->>U: Work
+"#;
+    for clear in [false, true] {
+        let rules = if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch))
+        } else {
+            ThemeRuleSet::default()
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("text")
+                    && n.attribute("class")
+                        .is_some_and(|c| c == "text" || c.split_whitespace().any(|v| v == "actor"))
+            })
+            .collect();
+        assert_eq!(
+            labels.len(),
+            19,
+            "two copies of eight actors, an extra line each for Alpha, and one box title"
+        );
+        for label in labels {
+            assert_eq!(label.attribute("filter").is_some(), !clear, "{label:?}");
+            if let Some(binding) = label.attribute("filter") {
+                let id = binding
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(id))
+                    .unwrap();
+                let mut translation_y = 0.0;
+                for parent in label.ancestors() {
+                    if let Some(transform) = parent.attribute("transform") {
+                        let translation = transform
+                            .strip_prefix("translate(0,")
+                            .unwrap()
+                            .strip_suffix(')')
+                            .unwrap();
+                        translation_y += translation.trim().parse::<f64>().unwrap();
+                    }
+                }
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                let (view, _) = root_view_box_and_max_width(rendered.svg());
+                assert!(x >= view[0] - 0.001 && x + w <= view[0] + view[2] + 0.001);
+                assert!(
+                    y + translation_y >= view[1] - 0.001
+                        && y + translation_y + h <= view[1] + view[3] + 0.001
+                );
+            }
+        }
+        assert_eq!(
+            doc.descendants()
+                .filter(|n| n.has_tag_name("filter"))
+                .count(),
+            if clear { 0 } else { 19 }
+        );
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                classic_sequence_engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+    for (force, clear) in [(false, false), (true, false), (false, true)] {
+        let source = format!(
+            r#"---
+config:
+  sequence:
+    forceMenus: {force}
+    mirrorActors: false
+---
+sequenceDiagram
+participant A
+link A: Documentation @ https://example.com
+A->>B: Work
+"#
+        );
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            force || clear,
+            "force={force}, clear={clear}: {:?}",
+            result.as_ref().err()
+        );
+        if force {
+            let rendered = result.unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count(),
+                3
+            );
+            let link = doc
+                .descendants()
+                .find(|n| n.has_tag_name("text") && n.ancestors().any(|p| p.has_tag_name("a")))
+                .unwrap();
+            assert!(link.attribute("filter").is_some());
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_effect_rules_retain_unsupported_facets_and_selectors() {
+    for (ordinal, sibling, accepted) in [
+        (false, false, true),
+        (true, false, false),
+        (false, true, false),
+    ] {
+        let mut patch = ThemeStylePatch::default()
+            .with_effect("actor-shadow")
+            .unwrap();
+        if sibling {
+            patch = patch.with_stroke_width(3.0).unwrap();
+        }
+        let mut rule = ThemeRule::new(ThemeTarget::ActorLabel, patch);
+        if ordinal {
+            rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::ActorLabel,
+                ThemeRuleSet::default().with_rule(rule),
+            ))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Work",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "ordinal={ordinal}, sibling={sibling}: {:?}",
+            result.as_ref().err()
+        );
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_actor_label_math_glow_is_incomplete_and_clear_preserves_fallback() {
+    for declaration in ["participant A as $$x^2$$", "actor A as $$x^2$$"] {
+        for clear in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            if clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = Specified::Clear;
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_compiled_math_renderer()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let parsed = parse_sequence_for_render(
+                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                &format!("sequenceDiagram\n{declaration}\nA->>B: Work"),
+            );
+            let result =
+                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                });
+            assert_eq!(
+                result.is_ok(),
+                clear,
+                "{declaration}: {:?}",
+                result.as_ref().err()
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_activation_geometry_and_effects_reach_nested_terminals() {
+    let source = "sequenceDiagram\nA->>B: Start\nactivate B\nB->>B: Nested\nactivate B\nB-->>A: Inner\ndeactivate B\nB-->>A: Outer\ndeactivate B";
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+        patch.geometry.radius = Specified::Value(4.0);
+        if clear {
+            patch.stroke.width = Specified::Clear;
+            patch.geometry.radius = Specified::Clear;
+            patch.effects.effect = Specified::Clear;
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Activation,
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Activation, patch)),
+            ))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rectangles: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.starts_with("activation"))
+            })
+            .collect();
+        assert_eq!(rectangles.len(), 2);
+        for rect in rectangles {
+            assert_eq!(
+                rect.attribute("stroke-width"),
+                if clear { None } else { Some("3") }
+            );
+            assert_eq!(rect.attribute("rx"), if clear { None } else { Some("4") });
+            assert_eq!(rect.attribute("filter").is_some(), !clear);
+        }
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_lifeline_effects_reach_all_actor_shapes_and_clear_restores_baseline() {
+    let source = "sequenceDiagram\nparticipant A\nactor U\nparticipant B@{\"type\":\"boundary\"}\nparticipant E@{\"type\":\"entity\"}\nparticipant C@{\"type\":\"control\"}\nparticipant Q@{\"type\":\"queue\"}\nparticipant D@{\"type\":\"database\"}\nparticipant L@{\"type\":\"collections\"}\nA->>U: Request";
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default();
+        if clear {
+            patch.effects.effect = Specified::Clear;
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Lifeline,
+                if clear {
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Lifeline, patch))
+                } else {
+                    ThemeRuleSet::default()
+                },
+            ))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let lines: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.attribute("data-et") == Some("life-line"))
+            .collect();
+        assert_eq!(lines.len(), 8);
+        for line in lines {
+            assert_eq!(line.attribute("filter").is_some(), !clear);
+        }
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_lifeline_and_activation_effects_keep_source_ownership_and_residuals() {
+    let source = "---\nconfig:\n  themeVariables:\n    actorLineColor: '#ff0000'\n    activationBkgColor: '#000000'\n    activationBorderColor: '#ffffff'\n---\nsequenceDiagram\nA->>B: Start\nactivate B\nB-->>A: Done\ndeactivate B";
+    for target in [ThemeTarget::Lifeline, ThemeTarget::Activation] {
+        for (ordinal, sibling, accepted) in [
+            (false, false, true),
+            (true, false, false),
+            (false, true, false),
+        ] {
+            let mut patch = ThemeStylePatch::default()
+                .with_effect("actor-shadow")
+                .unwrap()
+                .with_stroke(CanvasPaint::solid("#00ffff").unwrap());
+            if sibling {
+                patch.paint.opacity = Specified::Value(0.5);
+            }
+            let mut rule = ThemeRule::new(target, patch).with_variant(ThemeVariant::Default);
+            if ordinal {
+                rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(
+                    target,
+                    ThemeRuleSet::default().with_rule(rule),
+                ))
+                .unwrap();
+            let result = try_render_sequence_theme_request(
+                source,
+                &theme,
+                classic_sequence_engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(
+                result.is_ok(),
+                accepted,
+                "{target:?} ordinal={ordinal} sibling={sibling}: {:?}",
+                result.as_ref().err()
+            );
+            if accepted {
+                let rendered = result.unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let filter_count = doc
+                    .descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count();
+                assert_eq!(
+                    filter_count,
+                    if target == ThemeTarget::Lifeline {
+                        2
+                    } else {
+                        1
+                    }
+                );
+                let css = doc
+                    .descendants()
+                    .find(|n| n.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert!(css.contains(if target == ThemeTarget::Lifeline {
+                    "stroke:#ff0000"
+                } else {
+                    "stroke:#ffffff"
+                }));
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_control_frame_effect_reaches_each_line_and_separator() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Loop,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "sequenceDiagram\nparticipant A\nparticipant B\nalt First\nA->>B: One\nelse Second\nB-->>A: Two\nend",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ).expect("control frame effect must reach the actual lines");
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let lines: Vec<_> = doc
+        .descendants()
+        .filter(|n| n.attribute("class") == Some("loopLine"))
+        .collect();
+    assert_eq!(lines.len(), 5);
+    assert!(lines.iter().all(|n| n.attribute("filter").is_some()));
+    assert!(
+        doc.descendants()
+            .filter(|n| n.attribute("class") == Some("labelBox"))
+            .all(|n| n.attribute("filter").is_none())
+    );
+}
+
+#[test]
+fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nloop Work\nA->>B: Request\nend";
+    for source_owned in [false, true] {
+        let input = if source_owned {
+            format!(
+                "---\nconfig:\n  themeVariables:\n    labelBoxBkgColor: '#abcdef'\n    labelBoxBorderColor: '#123456'\n---\n{source}"
+            )
+        } else {
+            source.to_owned()
+        };
+        for clear_frame in [false, true] {
+            for clear_keyword in [false, true] {
+                let mut frame = ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#ff0000").unwrap())
+                    .with_stroke_width(6.0)
+                    .unwrap();
+                frame.effects.effect = if clear_frame {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                let mut keyword = ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#001122").unwrap())
+                    .with_stroke(CanvasPaint::solid("#00ff00").unwrap())
+                    .with_stroke_width(4.0)
+                    .unwrap();
+                keyword.effects.effect = if clear_keyword {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                let rules = ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(ThemeTarget::Loop, frame)
+                            .with_variant(ThemeVariant::Default),
+                    )
+                    .with_rule(ThemeRule::new(ThemeTarget::LoopLabelBackground, keyword));
+                let theme = DiagramThemeCompiler::new()
+                    .compile(sequence_shadow_spec(ThemeTarget::Loop, rules))
+                    .unwrap();
+                let rendered = try_render_sequence_theme_request(
+                    &input,
+                    &theme,
+                    classic_sequence_engine(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let css = doc
+                    .descendants()
+                    .find(|n| n.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert!(css.contains(if source_owned {
+                    ".labelBox{stroke:#123456;fill:#abcdef;"
+                } else {
+                    ".labelBox{stroke:#00ff00;fill:#001122;"
+                }));
+                assert!(css.contains(if source_owned {
+                    ".loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#123456;"
+                } else {
+                    ".loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#ff0000;"
+                }));
+                for (class, width, clear, count) in [
+                    ("loopLine", "6px", clear_frame, 4),
+                    ("labelBox", "4px", clear_keyword, 1),
+                ] {
+                    let terminals: Vec<_> = doc
+                        .descendants()
+                        .filter(|n| n.attribute("class") == Some(class))
+                        .collect();
+                    assert_eq!(terminals.len(), count);
+                    for terminal in terminals {
+                        assert_eq!(terminal.attribute("filter").is_some(), !clear);
+                        assert!(
+                            terminal
+                                .attribute("style")
+                                .unwrap()
+                                .contains(&format!("stroke-width:{width};"))
+                        );
+                    }
+                }
+                assert_eq!(
+                    doc.descendants()
+                        .filter(|n| n.has_tag_name("filter"))
+                        .count(),
+                    usize::from(!clear_frame) * 4 + usize::from(!clear_keyword)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_control_unsupported_siblings_remain_residual() {
+    let source = "sequenceDiagram\nloop Work\nA->>B: Request\nend";
+    for (target, patch) in [
+        (
+            ThemeTarget::Loop,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
+        ),
+        (ThemeTarget::Loop, {
+            let mut p = ThemeStylePatch::default();
+            p.paint.opacity = Specified::Value(0.5);
+            p
+        }),
+        (ThemeTarget::LoopLabelBackground, {
+            let mut p = ThemeStylePatch::default();
+            p.geometry.radius = Specified::Value(10.0);
+            p
+        }),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                target,
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    target,
+                    patch.with_effect("actor-shadow").unwrap(),
+                )),
+            ))
+            .unwrap();
+        assert!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err(),
+            "{target:?}"
+        );
+    }
+}
+
+#[test]
+fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::LoopLabelBackground,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "---\nconfig:\n  sequence:\n    labelBoxWidth: 1\n    diagramMarginX: 0\n---\nsequenceDiagram\nloop Work\nA->>B: Request\nend",
+        &theme, classic_sequence_engine(), ThemePortabilityRequirement::RequirePortable,
+    ).unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let polygon = doc
+        .descendants()
+        .find(|n| n.attribute("class") == Some("labelBox"))
+        .unwrap();
+    let min_x = polygon
+        .attribute("points")
+        .unwrap()
+        .split_whitespace()
+        .map(|pair| pair.split_once(',').unwrap().0.parse::<f64>().unwrap())
+        .reduce(f64::min)
+        .unwrap();
+    let first_x: f64 = polygon
+        .attribute("points")
+        .unwrap()
+        .split_once(',')
+        .unwrap()
+        .0
+        .parse()
+        .unwrap();
+    assert!(
+        first_x - min_x > 7.0,
+        "fixture must retain the outlying keyword vertex"
+    );
+    let filter = doc
+        .descendants()
+        .find(|n| n.has_tag_name("filter"))
+        .unwrap();
+    let left: f64 = filter.attribute("x").unwrap().parse().unwrap();
+    // Shared lowering retains four sigma (32px); the 1px polygon stroke needs its
+    // default miter envelope of 2px. Omitting the x3 vertex cannot satisfy this bound.
+    assert!(
+        left <= min_x - 2.0 - 9.0 - 32.0,
+        "left={left}, actual polygon minimum={min_x}"
+    );
+}
+
+#[test]
+fn sequence_control_effects_are_absent_without_control_structures() {
+    for target in [ThemeTarget::Loop, ThemeTarget::LoopLabelBackground] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(target, ThemeRuleSet::default()))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Request",
+            &theme,
+            classic_sequence_engine(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        assert!(!rendered.svg().contains("<filter"));
+    }
 }
 
 #[test]
@@ -3309,12 +8655,14 @@ fn sequence_popup_text_uses_resolved_actor_font_style() {
             .and_then(|popup| popup.descendants().find(|node| node.has_tag_name("text")))
             .expect("popup text");
         let style = text.attribute("style").expect("popup style");
-        assert!(
-            style.contains(&format!("font-size: {expected_size};")),
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some(expected_size),
             "{style}"
         );
-        assert!(
-            style.contains(&format!("font-weight: {expected_weight};")),
+        assert_eq!(
+            inline_style_value(style, "font-weight"),
+            Some(expected_weight),
             "{style}"
         );
     }
@@ -3434,14 +8782,16 @@ fn sequence_actor_labels_and_popups_share_resolved_weight() {
         assert_eq!(texts.len(), 3, "two actor labels and one menu label");
         for text in texts {
             let style = text.attribute("style").expect("text style");
-            match expected {
-                Some(weight) => assert!(
-                    style.contains(&format!("font-weight: {weight};")),
-                    "{config}: {style}"
-                ),
-                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
-            }
-            assert!(!style.contains("fill: red"), "CSS must remain one value");
+            assert_eq!(
+                inline_style_value(style, "font-weight").unwrap_or("400"),
+                expected.unwrap_or("400"),
+                "{config}: {style}"
+            );
+            assert_eq!(
+                inline_style_value(style, "fill"),
+                None,
+                "CSS must remain one value"
+            );
         }
     }
 }
@@ -3588,8 +8938,16 @@ fn sequence_box_titles_share_measured_height_and_use_actor_font_when_drawn() {
             "all boxes share the maximum title height"
         );
         let style = title.attribute("style").expect("title style");
-        assert!(style.contains("font-size: 26px;"), "{style}");
-        assert!(style.contains("font-weight: 700;"), "{style}");
+        assert_eq!(
+            inline_style_value(style, "font-size"),
+            Some("26px"),
+            "{style}"
+        );
+        assert_eq!(
+            inline_style_value(style, "font-weight"),
+            Some("700"),
+            "{style}"
+        );
         let tspan = title
             .children()
             .find(|node| node.has_tag_name("tspan"))
@@ -3854,15 +9212,36 @@ fn sequence_family_fonts_match_measurement_and_svg_with_falsy_or_string_global_s
             assert_eq!(texts.len(), expected_count, "{config}: {class}");
             for text in texts {
                 let style = text.attribute("style").expect("inline font style");
-                assert!(
-                    style.contains(&format!("font-size: {size}px;")),
+                let expected_size = format!("{size}px");
+                assert_eq!(
+                    inline_style_value(style, "font-size"),
+                    Some(expected_size.as_str()),
                     "{config}: {class} has the wrong size: {style}"
                 );
-                assert!(
-                    style.contains(&format!("font-family: {family};")),
+                assert_eq!(
+                    inline_style_value(style, "font-family"),
+                    Some(family),
                     "{config}: {class} has the wrong family: {style}"
                 );
             }
         }
     }
+}
+
+#[test]
+fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
+    // Mermaid CLI (mmdc) currently does not reflect `sequence.messageFontSize` overrides in the
+    // emitted SVG; it sticks to the global `fontSize` defaults. Keep our Stage B output aligned
+    // with the upstream baselines under `fixtures/upstream-svgs/sequence`.
+    let svg = render_sequence_svg_from_fixture(
+        "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
+    );
+    assert!(
+        svg.contains("font-size: 16px"),
+        "expected message/actor text to use the global fontSize (16px) like Mermaid CLI baselines"
+    );
+    assert!(
+        !svg.contains("font-size: 18px"),
+        "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
+    );
 }

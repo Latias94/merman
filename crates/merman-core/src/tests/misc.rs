@@ -168,7 +168,8 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        // Forest initializes mainBkg independently; overriding primaryColor does not replace it.
+        Some("#cde498")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
@@ -218,7 +219,7 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        Some("#cde498")
     );
 }
 
@@ -1384,6 +1385,7 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
         .unwrap();
 
     assert_eq!(parsed.metadata().diagram_type, "customDiagram");
+    assert_eq!(parsed.family_id(), None);
     let RenderSemanticModel::CustomJson(model) = parsed.model() else {
         panic!("custom semantic parsers must produce an explicit CustomJson render boundary");
     };
@@ -1751,6 +1753,7 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
         panic!("explicit custom render overlay should select an explicit CustomJson model");
     };
     assert_eq!(model.model_name(), "custom-flowchart-model");
+    assert_eq!(parsed.family_id(), None);
     assert_eq!(
         model.provenance(),
         CustomJsonProvenance::RenderRegistryOverlay

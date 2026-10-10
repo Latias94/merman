@@ -1,31 +1,29 @@
 //! Flowchart v2 stacked rectangle shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::fmt_display;
 
 use super::super::geom::path_from_points;
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
-fn write_stacked_rectangle_rough_path_group(
-    out: &mut String,
+fn write_stacked_rectangle_path_group(
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     fill_d: &str,
     stroke_d: &str,
+    hand_drawn: bool,
 ) {
-    if common.look_is_hand_drawn() {
+    if hand_drawn {
         let _ = write!(
             out,
-            r#"<g><path d="{}" stroke="none" stroke-width="0" fill="{}"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+            r#"<g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
             escape_attr(fill_d),
             escape_attr(common.fill_color),
-            OptionalStyleAttr(common.style),
             escape_attr(stroke_d),
             escape_attr(common.stroke_color),
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
-            OptionalStyleAttr(common.style),
         );
         return;
     }
@@ -43,7 +41,7 @@ fn write_stacked_rectangle_rough_path_group(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -86,30 +84,37 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
     let outer_path = path_from_points(&outer_points);
     let inner_path = path_from_points(&inner_points);
 
-    out.push_str(r#"<g class="basic label-container outer-path">"#);
-    if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_svg_path(
-                &outer_path,
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.hand_drawn_seed,
-            )
-        })
-    {
-        write_stacked_rectangle_rough_path_group(out, common, &fill_d, &stroke_d);
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" style="{}">"#,
+            escape_attr(common.rough_group_style),
+        );
+    } else {
+        out.push_str(r#"<g class="basic label-container outer-path">"#);
     }
-    if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_svg_path(
-                &inner_path,
-                common.stroke_width,
-                common.stroke_dasharray,
-                common.hand_drawn_seed,
-            )
-        })
-    {
-        write_stacked_rectangle_rough_path_group(out, common, &fill_d, &stroke_d);
+    for path_data in [&outer_path, &inner_path] {
+        let hand_drawn = common.look_is_hand_drawn();
+        let paths = if hand_drawn {
+            helpers::hand_drawn_path_pair(common, details, path_data)
+        } else {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_paths_for_svg_path(
+                    path_data,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    common.hand_drawn_seed,
+                )
+            })
+        };
+
+        if let Some((fill_d, stroke_d)) = paths {
+            write_stacked_rectangle_path_group(out, common, &fill_d, &stroke_d, hand_drawn);
+        } else if hand_drawn {
+            // RoughJS only accepts a strict color subset. Preserve the complete geometry when a
+            // user supplies a CSS color that cannot be represented by the hand-drawn generator.
+            write_stacked_rectangle_path_group(out, common, path_data, path_data, false);
+        }
     }
     out.push_str("</g>");
 }

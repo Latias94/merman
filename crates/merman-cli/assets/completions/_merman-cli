@@ -169,7 +169,18 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+one-dark\:"\[alpha\] One Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"
+brutalist\:"\[alpha\] Brutalist"
+spotless\:"\[alpha\] Spotless"
+cyberpunk\:"\[alpha\] Cyberpunk"))' \
+'(--theme-preset --theme-definition)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
+'(--theme-preset --theme-file)--theme-definition=[Shareable ThemeDefinitionV1 JSON materialized before rendering]:THEME_DEFINITION:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -260,7 +271,18 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+one-dark\:"\[alpha\] One Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"
+brutalist\:"\[alpha\] Brutalist"
+spotless\:"\[alpha\] Spotless"
+cyberpunk\:"\[alpha\] Cyberpunk"))' \
+'(--theme-preset --theme-definition)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
+'(--theme-preset --theme-file)--theme-definition=[Shareable ThemeDefinitionV1 JSON materialized before rendering]:THEME_DEFINITION:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -446,12 +468,11 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--iconPacksNamesAndUrls=[Iconify prefix#url definitions]:ICON_PACKS_NAMES_AND_URLS:_default' \
 '-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--configFile=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'-t+[Theme of the chart]:THEME:(default forest dark neutral)' \
-'--theme=[Theme of the chart]:THEME:(default forest dark neutral)' \
+'-t+[Official Mermaid CLI theme selector]::THEME:(default forest dark neutral)' \
+'--theme=[Official Mermaid CLI theme selector]::THEME:(default forest dark neutral)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \
 '--width=[Width of the page]:CONTAINER_WIDTH:_default' \

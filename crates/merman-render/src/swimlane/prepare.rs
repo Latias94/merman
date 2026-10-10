@@ -1,12 +1,12 @@
 use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, GROUP_PADDING};
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode, flowchart_swimlane_label_rect_text_style,
-    measure_flowchart_svg_label_for_layout, node_layout_dimensions,
+    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides,
+    FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+    FlowchartSvgWidthMode, NodeLayoutDimensionsRequest,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides, node_layout_dimensions,
 };
 use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
@@ -42,6 +42,8 @@ struct MeasureContext<'a> {
     settings: &'a crate::flowchart::FlowchartLayoutSettings,
     title_html_labels: bool,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
+    edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 }
 
 fn measure_content_node(
@@ -56,7 +58,7 @@ fn measure_content_node(
     } else {
         &ctx.settings.text_style
     };
-    let style = flowchart_effective_text_style_for_node_classes(
+    let style = flowchart_effective_text_style_for_node_classes_with_provenance(
         base_style,
         &ctx.model.class_defs,
         &node.classes,
@@ -71,7 +73,7 @@ fn measure_content_node(
         wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let metrics = measure_flowchart_svg_label_for_layout(
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         owner,
         owner.map(|_| node.id.as_str()),
@@ -85,6 +87,8 @@ fn measure_content_node(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
         svg_width_mode,
     );
 
@@ -135,12 +139,13 @@ fn measure_content_node(
 
 fn measure_edge_label(
     edge: &FlowEdge,
+    key: crate::flowchart::FlowchartEdgeKey,
     render_label: &str,
     label_node_id: String,
     parent_id: Option<String>,
     owner: FlowchartSvgLabelOwner,
     ctx: &MeasureContext<'_>,
-) -> WorkingNode {
+) -> crate::Result<WorkingNode> {
     // Mermaid turns Swimlane edge labels into fresh `labelRect` nodes. The conversion copies the
     // label and label style, but deliberately does not copy `edge.labelType`; `labelHelper`
     // therefore treats the new node as ordinary non-Markdown text. Its initial width is zero, so
@@ -152,17 +157,13 @@ fn measure_edge_label(
     } else {
         &ctx.settings.text_style
     };
-    let default_edge_styles = ctx
-        .model
-        .edge_defaults
-        .as_ref()
-        .map_or(&[][..], |defaults| defaults.style.as_slice());
-    let style =
-        flowchart_swimlane_label_rect_text_style(base_style, default_edge_styles, &edge.style);
+    let style = ctx
+        .edge_style_plan
+        .swimlane_edge_label_text_style_for(key, base_style)?;
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
-    let metrics = measure_flowchart_svg_label_for_layout(
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(edge.id.as_str()),
@@ -176,10 +177,15 @@ fn measure_edge_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
         FlowchartSvgWidthMode::Bbox,
     );
+    let (label_width, label_height) = ctx
+        .edge_label_padding
+        .padded_size(metrics.width.max(0.0), metrics.height.max(0.0));
 
-    WorkingNode {
+    Ok(WorkingNode {
         id: label_node_id,
         label: semantic_label.to_string(),
         label_type: label_type.to_string(),
@@ -193,23 +199,23 @@ fn measure_edge_label(
         y: 0.0,
         // createGraphWithElements overwrites labelRect's hidden 0.1 x 0.1 SVG rect with the
         // complete label group's measured bbox before the Swimlane layout core runs.
-        width: metrics.width.max(0.0),
-        height: metrics.height.max(0.0),
-        label_width: metrics.width.max(0.0),
-        label_height: metrics.height.max(0.0),
+        width: label_width,
+        height: label_height,
+        label_width,
+        label_height,
         layer: 0,
         order: 0,
         content_top: None,
         title_rect: None,
-    }
+    })
 }
 
-fn working_edge(edge: &FlowEdge) -> WorkingEdge {
+fn working_edge(edge: &FlowEdge, transport_id: &str) -> WorkingEdge {
     WorkingEdge {
-        id: edge.id.clone(),
+        id: transport_id.to_string(),
         from: edge.from.clone(),
         to: edge.to.clone(),
-        reference_id: edge.id.clone(),
+        reference_id: transport_id.to_string(),
         label_node_id: None,
         reversed_for_layout: false,
         points: Vec::new(),
@@ -238,7 +244,7 @@ fn measure_group_title(
     let (classes, styles) = ctx
         .model
         .effective_subgraph_css(declaration_ordinal, subgraph);
-    let style = flowchart_effective_text_style_for_classes(
+    let style = flowchart_effective_text_style_for_classes_with_provenance(
         base_style,
         &ctx.model.class_defs,
         classes,
@@ -247,16 +253,26 @@ fn measure_group_title(
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
     let render_label_type = "markdown";
-    let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-        measurer: ctx.measurer,
-        raw_label: render_title,
-        label_type: render_label_type,
-        style: style.as_ref(),
-        max_width_px: Some(ctx.settings.cluster_title_wrapping_width),
-        wrap_mode,
-        config: ctx.config,
-        math_renderer: ctx.math_renderer,
-    });
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
+        ctx.svg_label_sidecar,
+        Some(FlowchartSvgLabelOwner::SwimlaneGroupTitle(
+            declaration_ordinal,
+        )),
+        Some(subgraph.id.as_str()),
+        FlowchartLabelMetricsRequest {
+            measurer: ctx.measurer,
+            raw_label: render_title,
+            label_type: render_label_type,
+            style: style.as_ref(),
+            max_width_px: Some(ctx.settings.cluster_title_wrapping_width),
+            wrap_mode,
+            config: ctx.config,
+            math_renderer: ctx.math_renderer,
+        },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
+        FlowchartSvgWidthMode::Bbox,
+    );
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
@@ -267,13 +283,21 @@ pub(super) fn prepare(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
-) -> WorkingLayout {
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+) -> crate::Result<WorkingLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
-    let settings = config_view.layout_settings();
+    let settings = svg_label_sidecar.map_or_else(
+        || config_view.layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config.as_value()),
+    );
+    let edge_label_padding = svg_label_sidecar.map_or_else(
+        crate::flowchart::FlowchartEdgeLabelPadding::default,
+        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
+    );
     let measure_ctx = MeasureContext {
         model,
         config: effective_config,
@@ -283,6 +307,8 @@ pub(super) fn prepare(
         settings: &settings,
         title_html_labels: swimlane_title_html_labels,
         svg_label_sidecar,
+        edge_style_plan,
+        edge_label_padding,
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
@@ -439,12 +465,26 @@ pub(super) fn prepare(
 
     let mut original_edges = Vec::with_capacity(model.edges.len());
     let mut graph_edges = Vec::with_capacity(model.edges.len() * 2);
+    let transport_plan =
+        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
     for (edge_index, edge) in model.edges.iter().enumerate() {
-        let mut original = working_edge(edge);
-        let render_label = model.edge_label_for_render(edge);
+        let key = crate::flowchart::FlowchartEdgeKey::new(edge_index);
+        let transport_id = transport_plan
+            .id(key)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing Swimlane transport id for semantic edge owner {edge_index}"
+                ),
+            })?;
+        let mut original = working_edge(edge, transport_id);
+        let render_label = model.edge_label_for_render(edge_index, edge);
         let has_label = render_label.is_some_and(|label| !label.is_empty());
         if has_label && nodes.contains_key(&edge.from) && nodes.contains_key(&edge.to) {
-            let label_node_id = format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id);
+            let label_node_id = if transport_id != edge.id {
+                format!("edge-label-occurrence-{:020}", key.semantic_index())
+            } else {
+                format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id)
+            };
             let source_parent = nodes
                 .get(&edge.from)
                 .and_then(|node| node.parent_id.clone());
@@ -456,28 +496,29 @@ pub(super) fn prepare(
             };
             let label_node = measure_edge_label(
                 edge,
+                crate::flowchart::FlowchartEdgeKey::new(edge_index),
                 render_label.unwrap_or_default(),
                 label_node_id.clone(),
                 label_parent,
                 FlowchartSvgLabelOwner::SwimlaneEdgeLabel(edge_index),
                 &measure_ctx,
-            );
+            )?;
             nodes.insert(label_node_id.clone(), label_node);
             original.label_node_id = Some(label_node_id.clone());
             graph_edges.push(WorkingEdge {
-                id: format!("{}-to-label", edge.id),
+                id: format!("{transport_id}-to-label"),
                 from: edge.from.clone(),
                 to: label_node_id.clone(),
-                reference_id: edge.id.clone(),
+                reference_id: transport_id.to_string(),
                 label_node_id: None,
                 reversed_for_layout: false,
                 points: Vec::new(),
             });
             graph_edges.push(WorkingEdge {
-                id: format!("{}-from-label", edge.id),
+                id: format!("{transport_id}-from-label"),
                 from: label_node_id,
                 to: edge.to.clone(),
-                reference_id: edge.id.clone(),
+                reference_id: transport_id.to_string(),
                 label_node_id: None,
                 reversed_for_layout: false,
                 points: Vec::new(),
@@ -508,5 +549,5 @@ pub(super) fn prepare(
         top_lane_order,
     };
     layout.refresh_top_lane_ids();
-    layout
+    Ok(layout)
 }

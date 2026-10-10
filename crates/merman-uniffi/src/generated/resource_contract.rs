@@ -43,6 +43,7 @@ pub enum MermanResourceOverrideId {
     MaxAsciiOutputBytes,
     MaxAsciiGraphemeBytes,
     MaxAsciiNestingDepth,
+    MaxPreparedTextRetainedBytes,
 }
 
 impl MermanResourceOverrideId {
@@ -69,6 +70,7 @@ impl MermanResourceOverrideId {
         Self::MaxAsciiOutputBytes => "max_ascii_output_bytes",
         Self::MaxAsciiGraphemeBytes => "max_ascii_grapheme_bytes",
         Self::MaxAsciiNestingDepth => "max_ascii_nesting_depth",
+        Self::MaxPreparedTextRetainedBytes => "max_prepared_text_retained_bytes",
         }
     }
 }

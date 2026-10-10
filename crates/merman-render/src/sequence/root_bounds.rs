@@ -1,24 +1,29 @@
 use super::SequenceLayoutCheckpoints;
+use super::block_collection::{SequenceBlock, collect_sequence_blocks};
+use super::block_geometry::{frame_x_from_actors, resolved_block_frame_x};
 use super::constants::{sequence_actor_popup_panel_height, sequence_actor_popup_rect_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use crate::Result;
-use crate::math::MathRenderer;
-use crate::model::{Bounds, LayoutEdge, LayoutNode};
+use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
+    pub(super) is_neo: bool,
     pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
+    pub(super) block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     pub(super) bounds_start_x: f64,
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
+    pub(super) actor_popup_widths: &'a HashMap<String, f64>,
     pub(super) box_layouts: &'a [super::SequenceBoxLayout],
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
@@ -27,19 +32,48 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_margin_y: f64,
     pub(super) bottom_margin_adj: f64,
     pub(super) box_margin: f64,
-    pub(super) wrap_padding: f64,
     pub(super) has_boxes: bool,
     pub(super) mirror_actors: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) actor_text_style: &'a TextStyle,
+    pub(super) base_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a super::SequenceMathSidecarBuilder<'a>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
+    pub(super) block_label_box_metrics: super::SequenceBlockLabelBoxMetrics,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
-pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Result<Bounds> {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SequenceDiagramTitleGeometry {
+    text: String,
+    x: f64,
+    y: f64,
+    bounds: Bounds,
+}
+
+impl SequenceDiagramTitleGeometry {
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub(crate) const fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) const fn y(&self) -> f64 {
+        self.y
+    }
+}
+
+pub(super) struct SequenceRootGeometry {
+    pub(super) bounds: Bounds,
+    pub(super) diagram_title: Option<SequenceDiagramTitleGeometry>,
+}
+
+pub(super) fn prepare_sequence_root_geometry(
+    ctx: SequenceRootBoundsContext<'_>,
+) -> Result<SequenceRootGeometry> {
     let mut content = sequence_content_bounds(&ctx)?;
 
     include_actor_popup_bottoms(&mut content, &ctx)?;
@@ -47,12 +81,11 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Result
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
-    let extra_vert_for_title =
-        if super::sequence_render_title(ctx.model.title.as_deref(), ctx.diagram_title).is_some() {
-            40.0
-        } else {
-            0.0
-        };
+    let extra_vert_for_title = if ctx.diagram_title.is_some() {
+        40.0
+    } else {
+        0.0
+    };
 
     // Mermaid's sequence renderer sets the viewBox y origin to
     // `-(diagramMarginY + extraVertForTitle)` regardless of diagram contents.
@@ -78,14 +111,124 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Result
     bounds_box.include(content.min_x, content.max_x);
     bounds_box.include_actor_boxes(&ctx)?;
     include_self_message_bounds(&mut bounds_box, &ctx)?;
+    include_resolved_block_label_box_bounds(&mut bounds_box, &ctx)?;
     ctx.checkpoints.checkpoint()?;
 
-    Ok(Bounds {
+    let diagram_title = prepare_diagram_title_geometry(&ctx, &bounds_box)?;
+    let mut bounds = Bounds {
         min_x: bounds_box.start_x - ctx.diagram_margin_x,
         min_y: vb_min_y,
         max_x: bounds_box.stop_x + ctx.diagram_margin_x,
         max_y: bounds_box_stopy + ctx.diagram_margin_y,
+    };
+    if let Some(title) = diagram_title.as_ref() {
+        bounds.min_x = bounds.min_x.min(title.bounds.min_x);
+        bounds.min_y = bounds.min_y.min(title.bounds.min_y);
+        bounds.max_x = bounds.max_x.max(title.bounds.max_x);
+        bounds.max_y = bounds.max_y.max(title.bounds.max_y);
+    }
+
+    Ok(SequenceRootGeometry {
+        bounds,
+        diagram_title,
     })
+}
+
+fn prepare_diagram_title_geometry(
+    ctx: &SequenceRootBoundsContext<'_>,
+    bounds_box: &ActorHorizontalBounds,
+) -> Result<Option<SequenceDiagramTitleGeometry>> {
+    let Some(text) = ctx.diagram_title else {
+        return Ok(None);
+    };
+    let x = (bounds_box.stop_x - bounds_box.start_x) / 2.0 - 2.0 * ctx.diagram_margin_x;
+    let y = -25.0;
+    ctx.checkpoints.checkpoint()?;
+    let (left, right) = ctx
+        .measurer
+        .measure_svg_title_bbox_x(text, ctx.base_text_style);
+    ctx.checkpoints.checkpoint()?;
+    let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(ctx.base_text_style);
+
+    Ok(Some(SequenceDiagramTitleGeometry {
+        text: text.to_owned(),
+        x,
+        y,
+        bounds: Bounds {
+            min_x: x - left,
+            min_y: y - ascent,
+            max_x: x + right,
+            max_y: y + descent,
+        },
+    }))
+}
+
+fn include_resolved_block_label_box_bounds(
+    bounds_box: &mut ActorHorizontalBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) -> Result<()> {
+    if !ctx.block_label_box_metrics.typography_expanded() {
+        return Ok(());
+    }
+
+    // Mermaid anchors each label box to the left edge of its resolved control-block frame. Consume
+    // the same family-owned block plan as terminal SVG emission instead of guessing that edge from
+    // a global actor position.
+    let mut nodes_by_id = FxHashMap::default();
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        nodes_by_id.insert(node.id.as_str(), node);
+    }
+    let mut edges_by_id = FxHashMap::default();
+    for (edge_index, edge) in ctx.edges.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(edge_index)?;
+        edges_by_id.insert(edge.id.as_str(), edge);
+    }
+    let mut actor_nodes_by_id = FxHashMap::default();
+    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_index)?;
+        let node_id = format!("actor-top-{actor_id}");
+        if let Some(node) = nodes_by_id.get(node_id.as_str()).copied() {
+            actor_nodes_by_id.insert(actor_id.as_str(), node);
+        }
+    }
+
+    let Some(default_frame) = frame_x_from_actors(ctx.model, &nodes_by_id, ctx.checkpoints)? else {
+        return Ok(());
+    };
+    let (_, blocks) = collect_sequence_blocks(
+        ctx.model,
+        &actor_nodes_by_id,
+        &edges_by_id,
+        &nodes_by_id,
+        ctx.block_layouts_by_id,
+        ctx.checkpoints,
+    )?;
+    for (block_index, block) in blocks.into_iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(block_index)?;
+        let Some(layout) = block.layout() else {
+            continue;
+        };
+        let critical_section_count = match &block {
+            SequenceBlock::Critical { sections, .. } => Some(sections.len()),
+            _ => None,
+        };
+        let frame = resolved_block_frame_x(
+            block.geometry(),
+            layout,
+            &actor_nodes_by_id,
+            default_frame,
+            critical_section_count,
+        );
+        let Some((frame_left, frame_right, _)) = frame else {
+            continue;
+        };
+        bounds_box.include(
+            frame_left,
+            frame_right.max(frame_left + ctx.block_label_box_metrics.width()),
+        );
+    }
+    Ok(())
 }
 
 fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> Result<ContentBounds> {
@@ -179,14 +322,11 @@ fn include_actor_popup_widths(
         if actor.links.is_empty() {
             continue;
         }
-        let min_width = crate::sequence::sequence_actor_popup_min_width(
-            actor,
-            ctx.measurer,
-            ctx.actor_text_style,
-            ctx.wrap_padding,
-            ctx.box_margin,
-        );
-        let panel_width = node.width.max(min_width);
+        let panel_width = ctx
+            .actor_popup_widths
+            .get(actor_id)
+            .copied()
+            .unwrap_or(node.width);
         let left = node.x - node.width / 2.0;
         content.include_x(left, left + panel_width);
     }
@@ -200,7 +340,6 @@ fn include_actor_popup_bottoms(
     // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
     // present, even when they are emitted hidden by default. Account for the menu panel bottom so
     // root height stays aligned with upstream for link-only fixtures.
-    let is_neo = crate::config::config_diagram_look(ctx.math_config.as_value()).is_neo();
     let node_prefix = if ctx.mirror_actors {
         "actor-bottom-"
     } else {
@@ -221,7 +360,7 @@ fn include_actor_popup_bottoms(
             &actor.actor_type,
             node.height,
             ctx.actor_height,
-            is_neo,
+            ctx.is_neo,
             ctx.mirror_actors,
         ) + sequence_actor_popup_panel_height(actor.links.len());
         let popup_content_bottom = if ctx.mirror_actors {
@@ -267,12 +406,16 @@ fn include_self_message_bounds(
         } else if let Some(metrics) = premeasured_bound {
             (metrics.width(), 0.0)
         } else {
-            measure_sequence_label_for_layout(
+            let prepared_math = ctx
+                .math_sidecar
+                .get(&super::SequenceMathOccurrence::Message(message_index), text);
+            measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
                 ctx.measurer,
                 text,
                 ctx.msg_text_style,
                 ctx.math_config,
-                ctx.math_renderer,
+                None,
                 SequenceMathHeightMode::Bound,
                 ctx.checkpoints.text(),
             )?

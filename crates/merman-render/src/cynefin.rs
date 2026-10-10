@@ -1,3 +1,7 @@
+mod theme;
+
+pub(crate) use theme::{CynefinSurfaceReceipt, CynefinTextRole, CynefinTypographyThemePlan};
+
 use crate::Result;
 use crate::config::{config_bool, config_f64, config_string};
 use crate::model::{
@@ -42,7 +46,6 @@ pub(crate) struct CynefinLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CynefinTheme {
-    pub font_family: String,
     pub complex_bg: String,
     pub complicated_bg: String,
     pub chaotic_bg: String,
@@ -122,7 +125,6 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 
     CynefinTheme {
-        font_family: crate::config::config_font_family_css(effective_config),
         complex_bg: color(effective_config, "complexBg", "#E8F5E9"),
         complicated_bg: color(effective_config, "complicatedBg", "#E3F2FD"),
         chaotic_bg: color(effective_config, "chaoticBg", "#FBE9E7"),
@@ -146,15 +148,55 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_cynefin_diagram_typed(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<CynefinDiagramLayout> {
+    let font_family_css = crate::config::config_font_family_css(effective_config);
+    let colors = cynefin_theme(effective_config);
+    layout_cynefin_diagram_with_font_family(
+        model,
+        effective_config,
+        &font_family_css,
+        &colors,
+        measurer,
+    )
+}
+
+pub(crate) fn layout_cynefin_diagram_typed_with_theme(
+    model: &CynefinDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    typography_theme: &CynefinTypographyThemePlan,
+    measurer: &dyn TextMeasurer,
+) -> Result<CynefinDiagramLayout> {
+    layout_cynefin_diagram_with_font_family(
+        model,
+        effective_config,
+        typography_theme.font_family_css(),
+        typography_theme.colors(),
+        measurer,
+    )
+}
+
+fn layout_cynefin_diagram_with_font_family(
+    model: &CynefinDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    font_family_css: &str,
+    theme: &CynefinTheme,
+    measurer: &dyn TextMeasurer,
+) -> Result<CynefinDiagramLayout> {
     let settings = cynefin_layout_settings(effective_config);
-    let theme = cynefin_theme(effective_config);
     let domain_layouts = build_domain_layouts(settings.width, settings.height);
-    let items = layout_items(model, &domain_layouts, &settings, &theme, measurer);
+    let items = layout_items(
+        model,
+        &domain_layouts,
+        &settings,
+        theme,
+        font_family_css,
+        measurer,
+    );
     let transitions = layout_transitions(model, &domain_layouts);
     let total_width = settings.width + settings.padding * 2.0;
     let total_height = settings.height + settings.padding * 2.0;
@@ -395,10 +437,11 @@ fn layout_items(
     domain_layouts: &[CynefinDomainLayout],
     settings: &CynefinLayoutSettings,
     theme: &CynefinTheme,
+    font_family_css: &str,
     measurer: &dyn TextMeasurer,
 ) -> Vec<CynefinItemLayout> {
     let style = TextStyle {
-        font_family: Some(theme.font_family.clone()),
+        font_family: Some(font_family_css.to_string()),
         font_size: theme.item_font_size,
         ..Default::default()
     };

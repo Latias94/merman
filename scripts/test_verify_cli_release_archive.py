@@ -137,12 +137,14 @@ def semantic_surface_digest(surface: dict[str, object]) -> str:
             (
                 {
                     "id": operation["id"],
+                    "maturity": operation["maturity"],
                     "capability": operation["capability"],
                     "output": operation["output"],
                     "compiled_prerequisites": sorted(
                         operation["compiled_prerequisites"]
                     ),
                     "description": operation["description"],
+                    "input_kind": operation["input_kind"],
                     "media_type": operation["media_type"],
                     "requires_uri": operation["requires_uri"],
                     "targets": sorted(operation["targets"]),
@@ -226,7 +228,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 5,
+        "cli_contract_version": 6,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -244,6 +246,13 @@ def valid_capabilities_payload(
         "capabilities": capabilities,
         "outputs": outputs,
         "ascii": valid_ascii_capabilities_payload(),
+        "theme_presets": {"schema_version": 1, "presets": [{
+            "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
+            "maturity": "alpha", "available": True, "availability_reason_ids": [],
+            "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
+            "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
+            "required_attribution": None, "export_kind": "complete_spec",
+        }]},
     }
 
 
@@ -482,6 +491,143 @@ class SuccessfulArchiveTests(unittest.TestCase):
                         target=LINUX_TARGET,
                         version=VERSION,
                     )
+
+
+class ThemeAuthoringCapabilityTests(unittest.TestCase):
+    def test_current_operation_metadata_matches_the_descriptor_owned_digest(self) -> None:
+        surface = read_json(PROJECT_ROOT, "capabilities/feature-surface-v1.json")
+        profiles = read_json(PROJECT_ROOT, "capabilities/artifact-profiles-v2.json")
+        canonical = verifier.validate_capability_authority(
+            profiles, surface, expected_path=verifier.CAPABILITY_SURFACE_PATH,
+            profiles_context="profiles", capability_context="capability surface",
+            error_factory=verifier.ArchiveVerificationError,
+        )
+        operation = next(row for row in canonical["binding_operations"]
+                         if row["id"] == "materialize-theme-json")
+        self.assertEqual(operation["maturity"], "alpha")
+        self.assertEqual(operation["input_kind"], "theme-definition-json")
+        for field in ("maturity", "input_kind"):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(surface)
+                changed["binding_operations"][0][field] = "changed-value"
+                with self.assertRaisesRegex(verifier.ArchiveVerificationError, "digest must match"):
+                    verifier.validate_capability_authority(
+                        profiles, changed, expected_path=verifier.CAPABILITY_SURFACE_PATH,
+                        profiles_context="profiles", capability_context="capability surface",
+                        error_factory=verifier.ArchiveVerificationError,
+                    )
+
+
+class PresetQualificationArchiveTests(unittest.TestCase):
+    def test_qualification_requires_explicit_host_execution(self) -> None:
+        with self.assertRaisesRegex(verifier.ArchiveVerificationError, "requires --execute"):
+            verifier.verify_release_archive(
+                Path("missing.tar.xz"), Path("missing.sha256"), target=LINUX_TARGET,
+                version=VERSION, repo_root=PROJECT_ROOT,
+                preset_qualification_output=Path("record.json"),
+            )
+
+    def test_qualification_binds_extracted_binary_and_archive_and_replays(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, checksum = write_tar(root)
+            output = root / "qualification.json"
+            observed_binaries = []
+            scenarios = [{
+                "family": "state", "output": output, "source_id": "state-v1",
+                "source_digest": "source-digest", "png_scale": scale,
+                "font_source": "system-only",
+            } for output, scale in [("svg", 1.0), ("png", 4.0)]]
+            public_qualification = {
+                "preset": "brutalist", "profile": "native-state-system-fonts-v1",
+                "qualification_schema_revision": 1, "recipe_fingerprint": "recipe-digest",
+                "resource_fingerprint": "resource-digest", "scenarios": scenarios,
+            }
+            public_catalog = valid_capabilities_payload()["theme_presets"]
+            public_catalog["presets"][0]["qualified_cells"] = [{
+                "family_id": "state", "output_id": output,
+                "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
+            } for output in ("png", "svg")]
+
+            def qualify(repo_root, *, cli_binary):
+                observed_binaries.append(cli_binary.read_bytes())
+                return {
+                    "source_commit": "test-source", "host": {"system": "test-host"},
+                    "qualification": {"presets": [{
+                        **public_qualification,
+                        "cells": [{**scenario, "target_receipt_digest": "private-receipt",
+                                   "source": "private-source"} for scenario in scenarios],
+                    }]},
+                    "cli": {"executable_sha256": hashlib.sha256(cli_binary.read_bytes()).hexdigest(),
+                            "catalog": public_catalog,
+                            "render_config": {"htmlLabels": False}, "svg_pipeline": "resvg-safe"},
+                }
+
+            with (
+                mock.patch.object(verifier, "verify_runtime_contract") as runtime,
+                mock.patch.object(verifier, "collect_preset_qualification", side_effect=qualify),
+            ):
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_output=output)
+                record = json.loads(output.read_text())
+                self.assertEqual(record["cli_archive"], {
+                    "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                    "target": LINUX_TARGET, "version": VERSION,
+                })
+                catalog_path = output.with_suffix(".catalog.json")
+                catalog = json.loads(catalog_path.read_text())
+                self.assertEqual(catalog["artifact"]["sha256"], record["cli_archive"]["sha256"])
+                self.assertEqual(catalog["artifact"]["executable_sha256"], record["cli"]["executable_sha256"])
+                self.assertEqual(catalog["catalog"], record["cli"]["catalog"])
+                self.assertEqual(catalog["qualifications"], [public_qualification])
+                self.assertEqual(catalog["catalog"]["presets"][0]["qualified_cells"], [
+                    {"family_id": "state", "output_id": output,
+                     "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
+                    for output in ("png", "svg")
+                ])
+                self.assertNotIn("target_receipt_digest", json.dumps(catalog))
+                self.assertNotIn("private-receipt", json.dumps(catalog))
+                self.assertNotIn("private-source", json.dumps(catalog))
+                self.assertEqual(observed_binaries, [required_files(LINUX_TARGET)["merman-cli"]])
+                runtime.assert_called_once()
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_check=output)
+                for changed_catalog in [
+                    {**catalog, "schema_version": True},
+                    {**catalog, "render_config": {"htmlLabels": 0}},
+                    {**catalog, "artifact": {**catalog["artifact"], "executable_sha256": "stale"}},
+                ]:
+                    catalog_path.write_text(json.dumps(changed_catalog))
+                    with self.assertRaisesRegex(RuntimeError, "Stale"):
+                        verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                       execute=True, preset_qualification_check=output)
+                changed_catalog = copy.deepcopy(catalog)
+                changed_catalog["catalog"]["presets"].append({"maturity": "stable"})
+                catalog_path.write_text(json.dumps(changed_catalog))
+                with self.assertRaisesRegex(RuntimeError, "Stale"):
+                    verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                   execute=True, preset_qualification_check=output)
+                catalog_path.write_text(json.dumps(catalog))
+                record["cli_archive"]["sha256"] = "stale"
+                output.write_text(json.dumps(record))
+                with self.assertRaisesRegex(RuntimeError, "Stale"):
+                    verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                   execute=True, preset_qualification_check=output)
+
+    def test_failed_qualification_does_not_write_a_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, checksum = write_tar(root)
+            output = root / "qualification.json"
+            with (
+                mock.patch.object(verifier, "verify_runtime_contract"),
+                mock.patch.object(verifier, "collect_preset_qualification", side_effect=RuntimeError("CLI differs")),
+                self.assertRaisesRegex(RuntimeError, "CLI differs"),
+            ):
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_output=output)
+            self.assertFalse(output.exists())
+            self.assertFalse(output.with_suffix(".catalog.json").exists())
 
 
 class ChecksumAndNamingTests(unittest.TestCase):
@@ -1615,6 +1761,9 @@ class RuntimeContractTests(unittest.TestCase):
                     ),
                 ),
                 ("ASCII", lambda value: value.pop("ascii")),
+                ("catalog", lambda value: value.pop("theme_presets")),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("qualified_cells", [{}])),
                 (
                     "ASCII output schema version",
                     lambda value: value["ascii"].__setitem__("output_schema_version", 2),

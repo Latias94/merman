@@ -49,6 +49,21 @@
           "state": "value",
           "value": "#ECECFF"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#333333",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#333333"
@@ -157,6 +172,21 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#333333",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#333333"
@@ -233,6 +263,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -342,6 +387,21 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -418,6 +478,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#1f2020"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "lightgrey",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -527,6 +602,21 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "lightgrey",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "lightgrey"
@@ -603,6 +693,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#cde498"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#000000",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -712,6 +817,21 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#000000",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#000000"
@@ -788,6 +908,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#eee"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#666",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -897,6 +1032,21 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#666",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#666"
@@ -973,6 +1123,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#cccccc"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1079,6 +1232,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -1152,6 +1308,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#1f2020"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1258,6 +1417,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -1331,6 +1493,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#cccccc"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1437,6 +1602,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -1510,6 +1678,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#1f2020"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1616,6 +1787,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -1689,6 +1863,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#cccccc"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1795,6 +1972,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -1868,6 +2048,9 @@
         "primaryColor": {
           "state": "value",
           "value": "#1f2020"
+        },
+        "radar": {
+          "state": "missing"
         },
         "radar.axisColor": {
           "state": "missing"
@@ -1974,6 +2157,9 @@
           "state": "value",
           "value": "#123456"
         },
+        "radar": {
+          "state": "missing"
+        },
         "radar.axisColor": {
           "state": "missing"
         },
@@ -2047,6 +2233,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -2125,6 +2326,21 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -2201,6 +2417,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -2279,6 +2510,21 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -2356,6 +2602,21 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -2432,6 +2693,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -2511,6 +2787,21 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -2588,6 +2879,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -2667,6 +2973,21 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": "#0b0b0b"
@@ -2744,6 +3065,21 @@
         "primaryColor": {
           "state": "value",
           "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": "#0b0b0b",
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
         },
         "radar.axisColor": {
           "state": "value",
@@ -2824,9 +3160,104 @@
           "state": "value",
           "value": "#fff4dd"
         },
+        "radar": {
+          "state": "value",
+          "value": {
+            "axisColor": null,
+            "axisLabelFontSize": 12,
+            "axisStrokeWidth": 2,
+            "curveOpacity": 0.5,
+            "curveStrokeWidth": 2,
+            "graticuleColor": "#DEDEDE",
+            "graticuleOpacity": 0.3,
+            "graticuleStrokeWidth": 1,
+            "legendBoxSize": 12,
+            "legendFontSize": 12
+          }
+        },
         "radar.axisColor": {
           "state": "value",
           "value": null
+        },
+        "rowEven": {
+          "state": "value",
+          "value": "hsl(40.5882352941, 100%, 98.3333333333%)"
+        },
+        "rowOdd": {
+          "state": "value",
+          "value": "hsl(40.5882352941, 100%, 100%)"
+        },
+        "scaleLabelColor": {
+          "state": "value",
+          "value": "#333"
+        },
+        "surface0": {
+          "state": "value",
+          "value": "hsl(220.5882352941, 85%, 88.3333333333%)"
+        },
+        "surfacePeer0": {
+          "state": "value",
+          "value": "hsl(220.5882352941, 85%, 85.3333333333%)"
+        }
+      },
+      "status": "ok",
+      "theme": "base"
+    },
+    {
+      "id": "object-field-number",
+      "overrides": {
+        "radar": 17
+      },
+      "selected": {
+        "cScale0": {
+          "state": "value",
+          "value": "hsl(40.5882352941, 100%, 68.3333333333%)"
+        },
+        "cScaleInv0": {
+          "state": "value",
+          "value": "rgb(0, 52.2500000001, 161.5000000002)"
+        },
+        "cScaleLabel0": {
+          "state": "value",
+          "value": "#333"
+        },
+        "cScalePeer0": {
+          "state": "value",
+          "value": "hsl(40.5882352941, 100%, 58.3333333333%)"
+        },
+        "darkMode": {
+          "state": "missing"
+        },
+        "edgeLabelBackground": {
+          "state": "value",
+          "value": "hsl(-79.4117647059, 100%, 93.3333333333%)"
+        },
+        "fontFamily": {
+          "state": "value",
+          "value": "\"trebuchet ms\", verdana, arial, sans-serif"
+        },
+        "fontSize": {
+          "state": "value",
+          "value": "16px"
+        },
+        "git0": {
+          "state": "value",
+          "value": "hsl(40.5882352941, 100%, 68.3333333333%)"
+        },
+        "gitInv0": {
+          "state": "value",
+          "value": "rgb(0, 52.2500000001, 161.5000000002)"
+        },
+        "primaryColor": {
+          "state": "value",
+          "value": "#fff4dd"
+        },
+        "radar": {
+          "state": "value",
+          "value": 17
+        },
+        "radar.axisColor": {
+          "state": "missing"
         },
         "rowEven": {
           "state": "value",
@@ -2860,5 +3291,2734 @@
     "mermaidSourceTag": "mermaid@12.1.0",
     "mermaidVersion": "12.1.0"
   },
-  "schemaVersion": 1
+  "schemaVersion": 2,
+  "stageOracleCases": [
+    {
+      "id": "node-border-finalize",
+      "overrides": {
+        "nodeBorder": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "constructorPrepared": {
+          "nodeBorder": {
+            "state": "missing"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "explicitReplay": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "finalResolved": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": false
+          }
+        },
+        "overridesApplied": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        }
+      },
+      "theme": "base"
+    },
+    {
+      "id": "node-border-explicit-gradient",
+      "overrides": {
+        "nodeBorder": "#123456",
+        "useGradient": true
+      },
+      "stages": {
+        "afterUpdate": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "constructorPrepared": {
+          "nodeBorder": {
+            "state": "missing"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "explicitReplay": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "finalResolved": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        },
+        "overridesApplied": {
+          "nodeBorder": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "useGradient": {
+            "state": "value",
+            "value": true
+          }
+        }
+      },
+      "theme": "base"
+    },
+    {
+      "id": "partial-objects",
+      "overrides": {
+        "radar": {
+          "axisColor": "#123456"
+        },
+        "xyChart": {
+          "titleColor": "#abcdef"
+        }
+      },
+      "stages": {
+        "afterUpdate": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": "#123456",
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#abcdef",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "constructorPrepared": {
+          "radar": {
+            "state": "missing"
+          },
+          "xyChart": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": "#123456",
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#abcdef",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "finalResolved": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": "#123456",
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#abcdef",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "overridesApplied": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": "#123456"
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "titleColor": "#abcdef"
+            }
+          }
+        }
+      },
+      "theme": "base"
+    },
+    {
+      "id": "nested-object-replay",
+      "overrides": {
+        "radar": {
+          "axisColor": {
+            "custom": "#123456"
+          }
+        }
+      },
+      "stages": {
+        "afterUpdate": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": {
+                "custom": "#123456"
+              },
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#333",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "constructorPrepared": {
+          "radar": {
+            "state": "missing"
+          },
+          "xyChart": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": {
+                "custom": "#123456"
+              },
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#333",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "finalResolved": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": {
+                "custom": "#123456"
+              },
+              "axisLabelFontSize": 12,
+              "axisStrokeWidth": 2,
+              "curveOpacity": 0.5,
+              "curveStrokeWidth": 2,
+              "graticuleColor": "#DEDEDE",
+              "graticuleOpacity": 0.3,
+              "graticuleStrokeWidth": 1,
+              "legendBoxSize": 12,
+              "legendFontSize": 12
+            }
+          },
+          "xyChart": {
+            "state": "value",
+            "value": {
+              "backgroundColor": "#f4f4f4",
+              "dataLabelColor": "#333",
+              "legendTextColor": "#333",
+              "plotColorPalette": "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+              "titleColor": "#333",
+              "xAxisLabelColor": "#333",
+              "xAxisLineColor": "#333",
+              "xAxisTickColor": "#333",
+              "xAxisTitleColor": "#333",
+              "yAxisLabelColor": "#333",
+              "yAxisLineColor": "#333",
+              "yAxisTickColor": "#333",
+              "yAxisTitleColor": "#333"
+            }
+          }
+        },
+        "overridesApplied": {
+          "radar": {
+            "state": "value",
+            "value": {
+              "axisColor": {
+                "custom": "#123456"
+              }
+            }
+          },
+          "xyChart": {
+            "state": "missing"
+          }
+        }
+      },
+      "theme": "base"
+    },
+    {
+      "id": "secondary-border",
+      "overrides": {
+        "secondaryBorderColor": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "constructorPrepared": {
+          "flowContainerStroke": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "finalResolved": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "overridesApplied": {
+          "flowContainerStroke": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        }
+      },
+      "theme": "base"
+    },
+    {
+      "id": "falsy-container-stroke",
+      "overrides": {
+        "flowContainerStroke": false,
+        "secondaryBorderColor": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "constructorPrepared": {
+          "flowContainerStroke": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          }
+        },
+        "explicitReplay": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": false
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "finalResolved": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": false
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "overridesApplied": {
+          "flowContainerStroke": {
+            "state": "value",
+            "value": false
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          }
+        }
+      },
+      "theme": "dark"
+    },
+    {
+      "id": "primary-and-derived-replay",
+      "overrides": {
+        "nodeBkg": "#abcdef",
+        "primaryColor": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "cScale0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#4d1037"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#3f5258"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 28.3529411765%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(183.8476190475, 181.5523809523, 181.5523809523)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(20, 0%, 2.3529411765%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(20, 1.5873015873%, 12.3529411765%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(222.9999999999, 223.6666666666, 223.9999999999)"
+          }
+        },
+        "constructorPrepared": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "calculated"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 28.3529411765%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(183.8476190475, 181.5523809523, 181.5523809523)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(20, 0%, 2.3529411765%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(20, 1.5873015873%, 12.3529411765%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(222.9999999999, 223.6666666666, 223.9999999999)"
+          }
+        },
+        "explicitReplay": {
+          "cScale0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#4d1037"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#3f5258"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 28.3529411765%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(183.8476190475, 181.5523809523, 181.5523809523)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(20, 0%, 2.3529411765%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(20, 1.5873015873%, 12.3529411765%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(222.9999999999, 223.6666666666, 223.9999999999)"
+          }
+        },
+        "finalResolved": {
+          "cScale0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#4d1037"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#3f5258"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 28.3529411765%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(183.8476190475, 181.5523809523, 181.5523809523)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(20, 0%, 2.3529411765%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(20, 1.5873015873%, 12.3529411765%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(222.9999999999, 223.6666666666, 223.9999999999)"
+          }
+        },
+        "overridesApplied": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(180, 0%, 18.3529411765%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 28.3529411765%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(183.8476190475, 181.5523809523, 181.5523809523)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(20, 0%, 2.3529411765%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(20, 1.5873015873%, 12.3529411765%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(222.9999999999, 223.6666666666, 223.9999999999)"
+          }
+        }
+      },
+      "theme": "dark"
+    },
+    {
+      "id": "primary-and-derived-replay",
+      "overrides": {
+        "nodeBkg": "#abcdef",
+        "primaryColor": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "cScale0": {
+            "state": "value",
+            "value": "hsl(210, 65.3846153846%, 10.3921568627%)"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 74.5098039216%)"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "hsl(240, 65.3846153846%, 10.3921568627%)"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "#cdffb2"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "#32004d"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 74.5098039216%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          }
+        },
+        "constructorPrepared": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "calculated"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "#cdffb2"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "#32004d"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 74.5098039216%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          }
+        },
+        "explicitReplay": {
+          "cScale0": {
+            "state": "value",
+            "value": "hsl(210, 65.3846153846%, 10.3921568627%)"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 74.5098039216%)"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "hsl(240, 65.3846153846%, 10.3921568627%)"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "#cdffb2"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "#32004d"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 74.5098039216%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          }
+        },
+        "finalResolved": {
+          "cScale0": {
+            "state": "value",
+            "value": "hsl(210, 65.3846153846%, 10.3921568627%)"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 74.5098039216%)"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "hsl(240, 65.3846153846%, 10.3921568627%)"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "#cdffb2"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "#32004d"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 74.5098039216%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          }
+        },
+        "overridesApplied": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#cde498"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(98.961038961, 60%, 74.9019607843%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "#cdffb2"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "#32004d"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 74.5098039216%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "#321b67"
+          }
+        }
+      },
+      "theme": "forest"
+    },
+    {
+      "id": "primary-and-derived-replay",
+      "overrides": {
+        "nodeBkg": "#abcdef",
+        "primaryColor": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "cScale0": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#BBB"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#111111"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 98.9215686275%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(2.7499999999, 2.7499999999, 2.7499999999)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 83.3333333333%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 93.3333333333%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(17.0000000001, 17.0000000001, 17.0000000001)"
+          }
+        },
+        "constructorPrepared": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "calculated"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#111111"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 98.9215686275%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(2.7499999999, 2.7499999999, 2.7499999999)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 83.3333333333%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 93.3333333333%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(17.0000000001, 17.0000000001, 17.0000000001)"
+          }
+        },
+        "explicitReplay": {
+          "cScale0": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#BBB"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#111111"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 98.9215686275%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(2.7499999999, 2.7499999999, 2.7499999999)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 83.3333333333%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 93.3333333333%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(17.0000000001, 17.0000000001, 17.0000000001)"
+          }
+        },
+        "finalResolved": {
+          "cScale0": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale2": {
+            "state": "value",
+            "value": "#555"
+          },
+          "cScale3": {
+            "state": "value",
+            "value": "#BBB"
+          },
+          "fillType0": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#111111"
+          },
+          "requirementBackground": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 98.9215686275%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(2.7499999999, 2.7499999999, 2.7499999999)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 83.3333333333%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 93.3333333333%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(17.0000000001, 17.0000000001, 17.0000000001)"
+          }
+        },
+        "overridesApplied": {
+          "cScale0": {
+            "state": "missing"
+          },
+          "cScale2": {
+            "state": "missing"
+          },
+          "cScale3": {
+            "state": "missing"
+          },
+          "fillType0": {
+            "state": "missing"
+          },
+          "gradientStart": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "gradientStop": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "mainBkg": {
+            "state": "value",
+            "value": "#eee"
+          },
+          "nodeBkg": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "primaryColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#111111"
+          },
+          "requirementBackground": {
+            "state": "missing"
+          },
+          "secondaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 88.9215686275%)"
+          },
+          "secondaryColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 98.9215686275%)"
+          },
+          "secondaryTextColor": {
+            "state": "value",
+            "value": "rgb(2.7499999999, 2.7499999999, 2.7499999999)"
+          },
+          "tertiaryBorderColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 83.3333333333%)"
+          },
+          "tertiaryColor": {
+            "state": "value",
+            "value": "hsl(-160, 0%, 93.3333333333%)"
+          },
+          "tertiaryTextColor": {
+            "state": "value",
+            "value": "rgb(17.0000000001, 17.0000000001, 17.0000000001)"
+          }
+        }
+      },
+      "theme": "neutral"
+    },
+    {
+      "id": "color-limit-and-tag-replay",
+      "overrides": {
+        "THEME_COLOR_LIMIT": "0x9",
+        "cScaleInv8": false,
+        "cScaleInv9": false,
+        "cScaleLabel8": false,
+        "cScaleLabel9": false,
+        "cScalePeer8": false,
+        "cScalePeer9": false,
+        "darkMode": false,
+        "pie8": false,
+        "pie9": false,
+        "scaleLabelColor": false,
+        "tagLabelBorder": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": "#eab8f9"
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": "lightgrey"
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": "hsl(106.1538461538, 84.4155844156%, 25.0980392157%)"
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": "#154706"
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": "lightgrey"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#cccccc"
+          }
+        },
+        "constructorPrepared": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": 12
+          },
+          "cScaleInv8": {
+            "state": "missing"
+          },
+          "cScaleInv9": {
+            "state": "missing"
+          },
+          "cScaleLabel8": {
+            "state": "missing"
+          },
+          "cScaleLabel9": {
+            "state": "missing"
+          },
+          "cScalePeer8": {
+            "state": "missing"
+          },
+          "cScalePeer9": {
+            "state": "missing"
+          },
+          "darkMode": {
+            "state": "missing"
+          },
+          "pie8": {
+            "state": "missing"
+          },
+          "pie9": {
+            "state": "missing"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "scaleLabelColor": {
+            "state": "missing"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "finalResolved": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "overridesApplied": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        }
+      },
+      "theme": "dark"
+    },
+    {
+      "id": "color-limit-and-tag-replay",
+      "overrides": {
+        "THEME_COLOR_LIMIT": "0x9",
+        "cScaleInv8": false,
+        "cScaleInv9": false,
+        "cScaleLabel8": false,
+        "cScaleLabel9": false,
+        "cScalePeer8": false,
+        "cScalePeer9": false,
+        "darkMode": false,
+        "pie8": false,
+        "pie9": false,
+        "scaleLabelColor": false,
+        "tagLabelBorder": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": "hsl(108.1578947368, 58.4615384615%, 64.5098039216%)"
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": "black"
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": "hsl(288.1578947368, 58.4615384615%, 39.5098039216%)"
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": "hsl(18.1578947368, 58.4615384615%, 64.5098039216%)"
+          },
+          "pie9": {
+            "state": "value",
+            "value": "hsl(198.1578947368, 58.4615384615%, 74.5098039216%)"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": "black"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          }
+        },
+        "constructorPrepared": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": 12
+          },
+          "cScaleInv8": {
+            "state": "missing"
+          },
+          "cScaleInv9": {
+            "state": "missing"
+          },
+          "cScaleLabel8": {
+            "state": "missing"
+          },
+          "cScaleLabel9": {
+            "state": "missing"
+          },
+          "cScalePeer8": {
+            "state": "missing"
+          },
+          "cScalePeer9": {
+            "state": "missing"
+          },
+          "darkMode": {
+            "state": "missing"
+          },
+          "pie8": {
+            "state": "missing"
+          },
+          "pie9": {
+            "state": "missing"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "scaleLabelColor": {
+            "state": "missing"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "finalResolved": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "overridesApplied": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        }
+      },
+      "theme": "forest"
+    },
+    {
+      "id": "color-limit-and-tag-replay",
+      "overrides": {
+        "THEME_COLOR_LIMIT": "0x9",
+        "cScaleInv8": false,
+        "cScaleInv9": false,
+        "cScaleLabel8": false,
+        "cScaleLabel9": false,
+        "cScalePeer8": false,
+        "cScalePeer9": false,
+        "darkMode": false,
+        "pie8": false,
+        "pie9": false,
+        "scaleLabelColor": false,
+        "tagLabelBorder": "#123456"
+      },
+      "stages": {
+        "afterUpdate": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": "#222222"
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": "#333"
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": "hsl(0, 0%, 76.6666666667%)"
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": "#DDD"
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": "#333"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          }
+        },
+        "constructorPrepared": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": 12
+          },
+          "cScaleInv8": {
+            "state": "missing"
+          },
+          "cScaleInv9": {
+            "state": "missing"
+          },
+          "cScaleLabel8": {
+            "state": "missing"
+          },
+          "cScaleLabel9": {
+            "state": "missing"
+          },
+          "cScalePeer8": {
+            "state": "missing"
+          },
+          "cScalePeer9": {
+            "state": "missing"
+          },
+          "darkMode": {
+            "state": "missing"
+          },
+          "pie8": {
+            "state": "missing"
+          },
+          "pie9": {
+            "state": "missing"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "scaleLabelColor": {
+            "state": "missing"
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "finalResolved": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        },
+        "overridesApplied": {
+          "THEME_COLOR_LIMIT": {
+            "state": "value",
+            "value": "0x9"
+          },
+          "cScaleInv8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleInv9": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel8": {
+            "state": "value",
+            "value": false
+          },
+          "cScaleLabel9": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer8": {
+            "state": "value",
+            "value": false
+          },
+          "cScalePeer9": {
+            "state": "value",
+            "value": false
+          },
+          "darkMode": {
+            "state": "value",
+            "value": false
+          },
+          "pie8": {
+            "state": "value",
+            "value": false
+          },
+          "pie9": {
+            "state": "value",
+            "value": false
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "hsl(0, 0%, 83.3333333333%)"
+          },
+          "scaleLabelColor": {
+            "state": "value",
+            "value": false
+          },
+          "tagBorder": {
+            "state": "missing"
+          },
+          "tagLabelBorder": {
+            "state": "value",
+            "value": "#123456"
+          }
+        }
+      },
+      "theme": "neutral"
+    },
+    {
+      "id": "falsy-or-chain",
+      "overrides": {
+        "primaryTextColor": false,
+        "quadrant2TextFill": "#000",
+        "quadrant3TextFill": "#000",
+        "quadrant4TextFill": "#000",
+        "stateBkg": false
+      },
+      "stages": {
+        "afterUpdate": {
+          "primaryTextColor": {
+            "state": "value",
+            "value": false
+          },
+          "stateBkg": {
+            "state": "value",
+            "value": "#1f2020"
+          },
+          "stateLabelColor": {
+            "state": "value",
+            "value": false
+          }
+        },
+        "constructorPrepared": {
+          "primaryTextColor": {
+            "state": "value",
+            "value": "#e0dfdf"
+          },
+          "stateBkg": {
+            "state": "missing"
+          },
+          "stateLabelColor": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "primaryTextColor": {
+            "state": "value",
+            "value": false
+          },
+          "stateBkg": {
+            "state": "value",
+            "value": false
+          },
+          "stateLabelColor": {
+            "state": "value",
+            "value": false
+          }
+        },
+        "finalResolved": {
+          "primaryTextColor": {
+            "state": "value",
+            "value": false
+          },
+          "stateBkg": {
+            "state": "value",
+            "value": false
+          },
+          "stateLabelColor": {
+            "state": "value",
+            "value": false
+          }
+        },
+        "overridesApplied": {
+          "primaryTextColor": {
+            "state": "value",
+            "value": false
+          },
+          "stateBkg": {
+            "state": "value",
+            "value": false
+          },
+          "stateLabelColor": {
+            "state": "missing"
+          }
+        }
+      },
+      "theme": "dark"
+    },
+    {
+      "id": "operator-and-replay",
+      "overrides": {
+        "gradientStart": "#abcdef",
+        "pieOpacity": 0,
+        "primaryBorderColor": "#123456",
+        "venn1": 0
+      },
+      "stages": {
+        "afterUpdate": {
+          "gradientStart": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "pieOpacity": {
+            "state": "value",
+            "value": "0.7"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "venn1": {
+            "state": "value",
+            "value": 0
+          }
+        },
+        "constructorPrepared": {
+          "gradientStart": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "pieOpacity": {
+            "state": "missing"
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#cccccc"
+          },
+          "venn1": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "gradientStart": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "pieOpacity": {
+            "state": "value",
+            "value": 0
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "venn1": {
+            "state": "value",
+            "value": 0
+          }
+        },
+        "finalResolved": {
+          "gradientStart": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "pieOpacity": {
+            "state": "value",
+            "value": 0
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "venn1": {
+            "state": "value",
+            "value": 0
+          }
+        },
+        "overridesApplied": {
+          "gradientStart": {
+            "state": "value",
+            "value": "#abcdef"
+          },
+          "pieOpacity": {
+            "state": "value",
+            "value": 0
+          },
+          "primaryBorderColor": {
+            "state": "value",
+            "value": "#123456"
+          },
+          "venn1": {
+            "state": "value",
+            "value": 0
+          }
+        }
+      },
+      "theme": "dark"
+    },
+    {
+      "id": "null-elision",
+      "overrides": {
+        "venn1": null
+      },
+      "stages": {
+        "afterUpdate": {
+          "venn1": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 42.3529411765%)"
+          }
+        },
+        "constructorPrepared": {
+          "venn1": {
+            "state": "missing"
+          }
+        },
+        "explicitReplay": {
+          "venn1": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 42.3529411765%)"
+          }
+        },
+        "finalResolved": {
+          "venn1": {
+            "state": "value",
+            "value": "hsl(180, 1.5873015873%, 42.3529411765%)"
+          }
+        },
+        "overridesApplied": {
+          "venn1": {
+            "state": "missing"
+          }
+        }
+      },
+      "theme": "dark"
+    }
+  ]
 }

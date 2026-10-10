@@ -10,10 +10,13 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode};
 ))]
 use crate::text::TextMetrics;
 use crate::text::{
-    TextMeasurer, TextStyle, WrapMode, is_ecmascript_whitespace,
-    is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
+    PreparedText, TextLayoutError, TextMeasurer, TextProjection, TextStyle, WrapMode,
+    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, text_projection_layout_error,
+    trim_html_collapsible_ascii_whitespace,
 };
 use merman_core::MermaidConfig;
+use std::ops::Range;
+use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) struct FlowchartLabelMetricsRequest<'a> {
@@ -202,27 +205,412 @@ pub(crate) fn flowchart_node_svg_width_mode(
 
 /// Pure source projection of Mermaid's non-Markdown SVG createText payload.
 ///
-/// The source rows retain authored entity/tag boundaries while `plain_text` is the exact visible
-/// projection used for emptiness and metrics. This state is independent of style, width, and text
-/// measurement routing; measured preparation lives in the private Flowchart family sidecar.
+/// The source rows retain authored entity and tag boundaries while `plain_text` is the exact
+/// visible projection used for emptiness and metrics. This state is independent of style, width,
+/// and text-measurement routing; measured preparation lives in the private Flowchart sidecar.
 #[derive(Debug, Clone)]
 pub(crate) struct FlowchartSvgLabelSource {
     source_lines: Vec<Vec<String>>,
     plain_text: String,
+    plain_pieces: Vec<FlowchartSourcePlainPiece>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartSourceWordId {
+    line: usize,
+    word: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlowchartSourcePlainPiece {
+    word: Option<FlowchartSourceWordId>,
+    entity_id: Option<usize>,
+    source_range: Range<usize>,
+    plain_range: Range<usize>,
+}
+
+const FLOWCHART_SOURCE_RECORD_BYTES: usize = 128;
+const FLOWCHART_SOURCE_LINE_RECORD_BYTES: usize = 32;
+const FLOWCHART_SOURCE_WORD_RECORD_BYTES: usize = 32;
+const FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES: usize = 96;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlowchartSourceVisibleAtom {
+    visible_range: Range<usize>,
+    source_pieces: Range<usize>,
+    entity_id: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FlowchartSvgPreparedProjection {
+    visible_text: Arc<str>,
+    atoms: Vec<FlowchartSourceVisibleAtom>,
+}
+
+impl FlowchartSvgPreparedProjection {
+    pub(crate) fn visible_text(&self) -> &str {
+        &self.visible_text
+    }
+}
+
+fn flowchart_source_plain_projection(
+    source_lines: &[Vec<String>],
+) -> (String, Vec<FlowchartSourcePlainPiece>) {
+    let mut plain_text = String::new();
+    let mut pieces = Vec::new();
+    for (line_index, line) in source_lines.iter().enumerate() {
+        if line_index > 0 {
+            let start = plain_text.len();
+            plain_text.push('\n');
+            pieces.push(FlowchartSourcePlainPiece {
+                word: None,
+                entity_id: None,
+                source_range: 0..0,
+                plain_range: start..plain_text.len(),
+            });
+        }
+        for (word_index, source_word) in line.iter().enumerate() {
+            if word_index > 0 {
+                let start = plain_text.len();
+                plain_text.push(' ');
+                pieces.push(FlowchartSourcePlainPiece {
+                    word: None,
+                    entity_id: None,
+                    source_range: 0..0,
+                    plain_range: start..plain_text.len(),
+                });
+            }
+
+            let word = Some(FlowchartSourceWordId {
+                line: line_index,
+                word: word_index,
+            });
+            let mut source_cursor = 0;
+            let mut entity_id = 0;
+            while source_cursor < source_word.len() {
+                let rest = &source_word[source_cursor..];
+                let Some(authored_entity_len) = authored_entity_len(rest) else {
+                    let Some(character) = rest.chars().next() else {
+                        break;
+                    };
+                    let source_len = character.len_utf8();
+                    let plain_start = plain_text.len();
+                    plain_text.push(character);
+                    pieces.push(FlowchartSourcePlainPiece {
+                        word,
+                        entity_id: None,
+                        source_range: source_cursor..source_cursor + source_len,
+                        plain_range: plain_start..plain_text.len(),
+                    });
+                    source_cursor += source_len;
+                    continue;
+                };
+
+                let authored_entity = &rest[..authored_entity_len];
+                let decoded = match authored_entity {
+                    "&lt;" => "<",
+                    "&gt;" => ">",
+                    "&amp;" => "&",
+                    _ => authored_entity,
+                };
+                let current_entity_id = entity_id;
+                entity_id += 1;
+                let plain_start = plain_text.len();
+                plain_text.push_str(decoded);
+                for (offset, grapheme) in decoded.grapheme_indices(true) {
+                    let source_range = if decoded.len() != authored_entity_len {
+                        source_cursor..source_cursor + authored_entity_len
+                    } else {
+                        source_cursor + offset..source_cursor + offset + grapheme.len()
+                    };
+                    pieces.push(FlowchartSourcePlainPiece {
+                        word,
+                        entity_id: Some(current_entity_id),
+                        source_range,
+                        plain_range: plain_start + offset..plain_start + offset + grapheme.len(),
+                    });
+                }
+                source_cursor += authored_entity_len;
+            }
+        }
+    }
+    (plain_text, pieces)
+}
+
+fn authored_entity_len(text: &str) -> Option<usize> {
+    const MAX_AUTHORED_ENTITY_BYTES: usize = 64;
+
+    let bytes = text.as_bytes();
+    if bytes.first() != Some(&b'&') {
+        return None;
+    }
+    let scan = &bytes[..bytes.len().min(MAX_AUTHORED_ENTITY_BYTES)];
+    let end = scan.iter().position(|byte| *byte == b';')?.checked_add(1)?;
+    let body = text.get(1..end - 1)?;
+    (!body.is_empty() && body.chars().all(|character| !character.is_whitespace())).then_some(end)
+}
+
+fn flowchart_entity_group_id(pieces: &[FlowchartSourcePlainPiece]) -> Option<usize> {
+    let mut entity_id = None;
+    for piece in pieces {
+        if let Some(current) = piece.entity_id {
+            if entity_id.is_some_and(|previous| previous != current) {
+                return None;
+            }
+            entity_id = Some(current);
+        }
+    }
+    entity_id
 }
 
 impl FlowchartSvgLabelSource {
     pub(crate) fn new(source: &str) -> Self {
         let source_lines = flowchart_non_markdown_svg_source_word_lines(source);
-        let plain_text = flowchart_svg_source_word_lines_plain_text(&source_lines);
+        let (plain_text, plain_pieces) = flowchart_source_plain_projection(&source_lines);
         Self {
             source_lines,
             plain_text,
+            plain_pieces,
         }
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let mut retained = FLOWCHART_SOURCE_RECORD_BYTES
+            .saturating_add(
+                self.source_lines
+                    .capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_LINE_RECORD_BYTES),
+            )
+            .saturating_add(self.plain_text.capacity())
+            .saturating_add(
+                self.plain_pieces
+                    .capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES),
+            );
+        for line in &self.source_lines {
+            retained = retained.saturating_add(
+                line.capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_WORD_RECORD_BYTES),
+            );
+            for word in line {
+                retained = retained.saturating_add(word.capacity());
+            }
+        }
+        retained
     }
 
     pub(crate) fn plain_text(&self) -> &str {
         &self.plain_text
+    }
+
+    pub(crate) fn prepared_projection(
+        &self,
+        transform: crate::diagram_theme::TextTransform,
+    ) -> Result<FlowchartSvgPreparedProjection, TextLayoutError> {
+        if self
+            .source_lines
+            .iter()
+            .flatten()
+            .any(|word| word.contains('<') || word.contains('>'))
+        {
+            return Err(TextLayoutError::UnsupportedPreparedTextPath("html_tag"));
+        }
+
+        let projection = TextProjection::new_family_normalized(self.plain_text.as_str(), transform)
+            .map_err(text_projection_layout_error)?;
+        let visible_text = projection.visible().to_string();
+        let transformed_spans = projection
+            .spans()
+            .iter()
+            .map(|span| (span.source().as_range(), span.visible().as_range()))
+            .collect::<Vec<_>>();
+        let mut piece_cursor = 0;
+        let mut atoms: Vec<FlowchartSourceVisibleAtom> =
+            Vec::with_capacity(transformed_spans.len());
+        for (plain_range, visible_range) in transformed_spans {
+            let pieces_start = piece_cursor;
+            let mut plain_cursor = plain_range.start;
+            while let Some(piece) = self.plain_pieces.get(piece_cursor) {
+                if piece.plain_range.start >= plain_range.end {
+                    break;
+                }
+                if piece.plain_range.start != plain_cursor
+                    || piece.plain_range.end > plain_range.end
+                {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                plain_cursor = piece.plain_range.end;
+                piece_cursor += 1;
+            }
+            if plain_cursor != plain_range.end {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+            let entity_id = self
+                .plain_pieces
+                .get(pieces_start..piece_cursor)
+                .and_then(flowchart_entity_group_id);
+            if let Some(previous) = atoms.last_mut()
+                && entity_id.is_some()
+                && previous.entity_id == entity_id
+                && previous.visible_range.end == visible_range.start
+                && previous.source_pieces.end == pieces_start
+            {
+                previous.visible_range.end = visible_range.end;
+                previous.source_pieces.end = piece_cursor;
+            } else {
+                atoms.push(FlowchartSourceVisibleAtom {
+                    visible_range,
+                    source_pieces: pieces_start..piece_cursor,
+                    entity_id,
+                });
+            }
+        }
+        if piece_cursor != self.plain_pieces.len() {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        Ok(FlowchartSvgPreparedProjection {
+            visible_text: visible_text.into(),
+            atoms,
+        })
+    }
+
+    fn atom_has_authored_source(
+        &self,
+        atom: &FlowchartSourceVisibleAtom,
+    ) -> Result<bool, TextLayoutError> {
+        Ok(self
+            .plain_pieces
+            .get(atom.source_pieces.clone())
+            .ok_or(TextLayoutError::InvalidPreparedText)?
+            .iter()
+            .any(|piece| piece.word.is_some()))
+    }
+
+    pub(crate) fn project_prepared_lines(
+        &self,
+        projection: &FlowchartSvgPreparedProjection,
+        prepared: &PreparedText,
+    ) -> Result<Vec<Vec<String>>, TextLayoutError> {
+        if prepared.source_text() != projection.visible_text()
+            || prepared.visible_text() != projection.visible_text()
+        {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        let visible_ranges = prepared
+            .lines()
+            .iter()
+            .map(|line| line.visible_range())
+            .collect::<Vec<_>>();
+        self.project_visible_ranges(projection, &visible_ranges)
+    }
+
+    fn project_visible_ranges(
+        &self,
+        projection: &FlowchartSvgPreparedProjection,
+        visible_ranges: &[Range<usize>],
+    ) -> Result<Vec<Vec<String>>, TextLayoutError> {
+        let visible = projection.visible_text();
+        let mut atom_cursor = 0;
+        let mut previous_end = 0;
+        let mut projected = Vec::with_capacity(visible_ranges.len());
+
+        for visible_range in visible_ranges {
+            if visible_range.start < previous_end
+                || visible_range.start > visible_range.end
+                || visible_range.end > visible.len()
+                || !visible.is_char_boundary(visible_range.start)
+                || !visible.is_char_boundary(visible_range.end)
+            {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+
+            while projection
+                .atoms
+                .get(atom_cursor)
+                .is_some_and(|atom| atom.visible_range.end <= visible_range.start)
+            {
+                let Some(atom) = projection.atoms.get(atom_cursor) else {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                };
+                if self.atom_has_authored_source(atom)? {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                atom_cursor += 1;
+            }
+
+            let mut row = Vec::<String>::new();
+            let mut row_source_line = None;
+            let mut last_word = None::<FlowchartSourceWordId>;
+            while let Some(atom) = projection.atoms.get(atom_cursor) {
+                if atom.visible_range.start >= visible_range.end {
+                    break;
+                }
+                if atom.visible_range.start < visible_range.start
+                    || atom.visible_range.end > visible_range.end
+                {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                let pieces = self
+                    .plain_pieces
+                    .get(atom.source_pieces.clone())
+                    .ok_or(TextLayoutError::InvalidPreparedText)?;
+                let word_id = pieces.iter().find_map(|piece| piece.word);
+                if pieces.iter().any(|piece| piece.word != word_id) {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                if let Some(word_id) = word_id {
+                    if row_source_line.is_some_and(|line| line != word_id.line) {
+                        return Err(TextLayoutError::InvalidPreparedText);
+                    }
+                    row_source_line = Some(word_id.line);
+                    let fragment = if atom.entity_id.is_some() {
+                        let source_word = self
+                            .source_lines
+                            .get(word_id.line)
+                            .and_then(|line| line.get(word_id.word))
+                            .ok_or(TextLayoutError::InvalidPreparedText)?;
+                        let mut authored = String::new();
+                        let mut previous_range = None;
+                        for piece in pieces {
+                            if previous_range.as_ref() == Some(&piece.source_range) {
+                                continue;
+                            }
+                            let source = source_word
+                                .get(piece.source_range.clone())
+                                .ok_or(TextLayoutError::InvalidPreparedText)?;
+                            authored.push_str(source);
+                            previous_range = Some(piece.source_range.clone());
+                        }
+                        authored
+                    } else {
+                        visible
+                            .get(atom.visible_range.clone())
+                            .ok_or(TextLayoutError::InvalidPreparedText)?
+                            .to_string()
+                    };
+                    if last_word == Some(word_id) {
+                        let Some(last) = row.last_mut() else {
+                            return Err(TextLayoutError::InvalidPreparedText);
+                        };
+                        last.push_str(&fragment);
+                    } else {
+                        row.push(fragment);
+                    }
+                    last_word = Some(word_id);
+                }
+                atom_cursor += 1;
+            }
+            projected.push(row);
+            previous_end = visible_range.end;
+        }
+
+        while let Some(atom) = projection.atoms.get(atom_cursor) {
+            if self.atom_has_authored_source(atom)? {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+            atom_cursor += 1;
+        }
+        Ok(projected)
     }
 
     pub(crate) fn wrapped_lines(
@@ -1284,6 +1672,208 @@ mod tests {
     use super::*;
     use crate::math::MathRenderer;
     use crate::model::{LayoutLabel, LayoutPoint};
+
+    #[test]
+    fn source_retained_model_bounds_native_allocations() {
+        assert!(FLOWCHART_SOURCE_RECORD_BYTES >= std::mem::size_of::<FlowchartSvgLabelSource>());
+        assert!(FLOWCHART_SOURCE_LINE_RECORD_BYTES >= std::mem::size_of::<Vec<String>>());
+        assert!(FLOWCHART_SOURCE_WORD_RECORD_BYTES >= std::mem::size_of::<String>());
+        assert!(
+            FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES
+                >= std::mem::size_of::<FlowchartSourcePlainPiece>()
+        );
+
+        let source = FlowchartSvgLabelSource::new(&"alpha &amp; beta ".repeat(128));
+        let native_allocations = std::mem::size_of::<FlowchartSvgLabelSource>()
+            .saturating_add(
+                source
+                    .source_lines
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<Vec<String>>()),
+            )
+            .saturating_add(source.plain_text.capacity())
+            .saturating_add(
+                source
+                    .plain_pieces
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<FlowchartSourcePlainPiece>()),
+            )
+            .saturating_add(source.source_lines.iter().fold(0usize, |total, line| {
+                total
+                    .saturating_add(
+                        line.capacity()
+                            .saturating_mul(std::mem::size_of::<String>()),
+                    )
+                    .saturating_add(
+                        line.iter()
+                            .fold(0usize, |bytes, word| bytes.saturating_add(word.capacity())),
+                    )
+            }));
+
+        assert!(source.retained_bytes() >= native_allocations);
+    }
+
+    #[test]
+    fn authored_entity_scan_is_bounded_to_sixty_four_bytes() {
+        let longest_admitted = format!("&{};", "a".repeat(62));
+        let first_rejected = format!("&{};", "a".repeat(63));
+        let amplified = format!("{};", "&".repeat(16_384));
+
+        assert_eq!(authored_entity_len(&longest_admitted), Some(64));
+        assert_eq!(authored_entity_len(&first_rejected), None);
+        assert_eq!(authored_entity_len(&amplified), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&amplified).plain_text(),
+            amplified
+        );
+    }
+
+    #[test]
+    fn authored_entity_scan_preserves_unicode_entity_semantics() {
+        assert_eq!(authored_entity_len("&é;"), Some(4));
+        assert_eq!(authored_entity_len("&\u{2003};"), None);
+
+        let split_at_scan_boundary = format!("&{};", "é".repeat(32));
+        assert_eq!(authored_entity_len(&split_at_scan_boundary), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&split_at_scan_boundary).plain_text(),
+            split_at_scan_boundary
+        );
+    }
+
+    #[test]
+    fn prepared_projection_preserves_entities_breaks_and_long_word_fragments() {
+        let source = FlowchartSvgLabelSource::new("alpha &amp; beta\nsuperlong");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::None)
+            .expect("entity-aware projection should build");
+
+        let projected = source
+            .project_visible_ranges(&projection, &[0..7, 8..12, 13..18, 18..22])
+            .expect("admitted visible ranges should project back to source words");
+
+        assert_eq!(
+            projected,
+            vec![
+                vec!["alpha".to_string(), "&amp;".to_string()],
+                vec!["beta".to_string()],
+                vec!["super".to_string()],
+                vec!["long".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn prepared_projection_uses_ranges_for_repeated_text() {
+        let source = FlowchartSvgLabelSource::new("echo echo echo");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::None)
+            .expect("repeated source should project");
+
+        assert_eq!(projection.visible_text(), "echo echo echo");
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..4, 5..9, 10..14])
+                .expect("ordered ranges disambiguate repeated words"),
+            vec![
+                vec!["echo".to_string()],
+                vec!["echo".to_string()],
+                vec!["echo".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn prepared_projection_preserves_transform_expansion_atoms() {
+        let source = FlowchartSvgLabelSource::new("straße ß");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::Uppercase)
+            .expect("uppercase source should project");
+
+        assert_eq!(projection.visible_text(), "STRASSE SS");
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..7, 8..10])
+                .expect("whole transform atoms should reproject"),
+            vec![vec!["STRASSE".to_string()], vec!["SS".to_string()]]
+        );
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..7, 8..9])
+                .expect_err("a line must not split the visible half of one transform atom"),
+            TextLayoutError::InvalidPreparedText
+        );
+    }
+
+    #[test]
+    fn prepared_projection_keeps_entity_atomic_at_narrow_line_boundaries() {
+        let source = FlowchartSvgLabelSource::new("a &amp; b");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::None)
+            .expect("entity source should project");
+
+        assert_eq!(projection.visible_text(), "a & b");
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..1, 2..3, 4..5])
+                .expect("line boundaries beside an entity are valid"),
+            vec![
+                vec!["a".to_string()],
+                vec!["&amp;".to_string()],
+                vec!["b".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn prepared_projection_does_not_reinterpret_entity_authored_break_markup() {
+        let source = FlowchartSvgLabelSource::new("&lt;br&gt;");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::None)
+            .expect("decoded entity text is not raw HTML syntax");
+
+        assert_eq!(projection.visible_text(), "<br>");
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..4])
+                .expect("entity-authored markup remains one source word"),
+            vec![vec!["&lt;br&gt;".to_string()]]
+        );
+    }
+
+    #[test]
+    fn prepared_projection_keeps_literal_unknown_entities_atomic() {
+        let source = FlowchartSvgLabelSource::new("&unknown;");
+        let projection = source
+            .prepared_projection(crate::diagram_theme::TextTransform::None)
+            .expect("literal entity spelling should project");
+
+        assert_eq!(projection.visible_text(), "&unknown;");
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..4])
+                .expect_err("unknown authored entities must not be emitted partially"),
+            TextLayoutError::InvalidPreparedText
+        );
+        assert_eq!(
+            source
+                .project_visible_ranges(&projection, &[0..9])
+                .expect("the complete literal entity remains renderable"),
+            vec![vec!["&unknown;".to_string()]]
+        );
+    }
+
+    #[test]
+    fn prepared_projection_rejects_raw_html_tags() {
+        let source = FlowchartSvgLabelSource::new("<strong>alpha</strong>");
+
+        assert_eq!(
+            source
+                .prepared_projection(crate::diagram_theme::TextTransform::None)
+                .expect_err("raw HTML requires the browser label lane"),
+            TextLayoutError::UnsupportedPreparedTextPath("html_tag")
+        );
+    }
 
     #[cfg(any(
         feature = "diagram-flowchart",

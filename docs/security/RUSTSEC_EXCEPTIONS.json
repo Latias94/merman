@@ -60,6 +60,7 @@
         "rust-render-native-svg",
         "rust-static-svg",
         "rustdoc-static-svg",
+        "typst-wasm",
         "web-full",
         "web-render"
       ],

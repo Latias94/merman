@@ -1,5 +1,5 @@
 import { Unzlib, zlibSync } from "fflate";
-import { isBundledThemePresetName, isThemeName } from "@mermanjs/web";
+import { isThemeName } from "@mermanjs/web";
 
 import { isMermaidThemeSelection } from "./mermaid-theme-name.ts";
 import { isDiagramFont } from "./diagram-font.ts";
@@ -13,8 +13,9 @@ import { isMermanSvgPipeline } from "../runtime/merman-core.ts";
 const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
 const SHARE_JSON_OVERHEAD_BYTES = 16 * 1024;
-const SHARE_PRESENTATION_ID_BYTES = 16 * 1024;
+const SHARE_THEME_PRESET_ID_BYTES = 16 * 1024;
 const SHARE_V2_ENCODED_BYTES = 512 * 1024;
+export const SHARE_THEME_RECIPE_BYTES = 256 * 1024;
 const SHARE_DECOMPRESSION_CHUNK_BYTES = 512;
 
 export const SHARE_LIMITS = Object.freeze({
@@ -23,10 +24,17 @@ export const SHARE_LIMITS = Object.freeze({
     SHARE_SOURCE_BYTES + SHARE_CONFIG_BYTES + SHARE_JSON_OVERHEAD_BYTES,
   sourceBytes: SHARE_SOURCE_BYTES,
   configBytes: SHARE_CONFIG_BYTES,
-  idBytes: SHARE_PRESENTATION_ID_BYTES,
+  idBytes: SHARE_THEME_PRESET_ID_BYTES,
 });
 
 export const SHARE_V2_PREFIX = "#s2:" as const;
+export const SHARE_V3_PREFIX = "#s3:" as const;
+
+export const SHARE_V3_LIMITS = Object.freeze({
+  ...SHARE_LIMITS,
+  encodedBytes: SHARE_LIMITS.encodedBytes + SHARE_THEME_RECIPE_BYTES,
+  jsonBytes: SHARE_LIMITS.jsonBytes + SHARE_THEME_RECIPE_BYTES,
+});
 
 // This is the complete default snapshot owned by the s2 wire format. Keep it
 // independent from application defaults so future UI changes cannot reinterpret
@@ -40,8 +48,24 @@ export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
     C --> D`,
   mermaidConfig: "{\n}\n",
   diagramTheme: "auto",
-  presentationThemePresetId: null,
-  presentationProfileId: null,
+  themePresetId: null,
+  themeRecipeJson: null,
+  svgPipeline: "parity",
+  textMeasurementMode: "browser",
+  diagramFont: "trebuchet",
+});
+
+// The s3 wire format owns its defaults independently of both the UI and s2.
+export const WORKSPACE_V3_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
+  code: `flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+    C --> D`,
+  mermaidConfig: "{\n}\n",
+  diagramTheme: "auto",
+  themePresetId: null,
+  themeRecipeJson: null,
   svgPipeline: "parity",
   textMeasurementMode: "browser",
   diagramFont: "trebuchet",
@@ -55,13 +79,13 @@ const WORKSPACE_V2_KEYS = new Set([
   "theme",
   "themeSelection",
   "config",
-  "presentationThemePresetId",
-  "presentationProfileId",
+  "themePresetId",
   LEGACY_RENDER_VIEWPORT_KEY,
   "svgPipeline",
   "textMeasurementMode",
   "diagramFont",
 ]);
+const WORKSPACE_V3_KEYS = new Set([...WORKSPACE_V2_KEYS, "themeRecipeJson"]);
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -70,16 +94,22 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
 
-  const json = JSON.stringify(encodeWorkspaceV2Payload(data));
-  if (utf8ByteLength(json) > SHARE_LIMITS.jsonBytes) {
+  const customTheme = data.themeRecipeJson !== null;
+  const prefix = customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const limits = customTheme ? SHARE_V3_LIMITS : SHARE_LIMITS;
+  const defaults = customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const payload = encodeWorkspacePayload(data, defaults);
+  if (customTheme) payload.themeRecipeJson = data.themeRecipeJson;
+  const json = JSON.stringify(payload);
+  if (utf8ByteLength(json) > limits.jsonBytes) {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
 
   const encoded = encodeBase64Url(zlibSync(utf8Encoder.encode(json)));
-  if (SHARE_V2_PREFIX.length + encoded.length > SHARE_LIMITS.encodedBytes) {
+  if (prefix.length + encoded.length > limits.encodedBytes) {
     throw new RangeError("Workspace exceeds the share URL contract.");
   }
-  return `${SHARE_V2_PREFIX}${encoded}`;
+  return `${prefix}${encoded}`;
 }
 
 export function decodeShareHash(
@@ -88,7 +118,10 @@ export function decodeShareHash(
 ): WorkspaceSnapshot | null {
   const fragment = hash.startsWith("#") ? hash : `#${hash}`;
   if (fragment.startsWith(SHARE_V2_PREFIX)) {
-    return decodeWorkspaceV2(fragment.slice(SHARE_V2_PREFIX.length));
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V2_PREFIX.length), false);
+  }
+  if (fragment.startsWith(SHARE_V3_PREFIX)) {
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V3_PREFIX.length), true);
   }
   return decodeLegacyWorkspaceHash(hash, legacyDefaults);
 }
@@ -120,115 +153,95 @@ export async function copyWorkspaceShareUrl(
 
 export const copyShareUrl = copyWorkspaceShareUrl;
 
-export function migrateLegacyHostTheme(value: unknown): Pick<
-  WorkspaceSnapshot,
-  "presentationThemePresetId" | "presentationProfileId" | "svgPipeline"
-> {
-  if (typeof value !== "string" || value === "none" || value === "mermaid") {
-    return {
-      presentationThemePresetId: null,
-      presentationProfileId: null,
-      svgPipeline: "parity",
-    };
-  }
-  if (value === "merman-modern") {
-    return {
-      presentationThemePresetId: null,
-      presentationProfileId: value,
-      svgPipeline: "parity",
-    };
-  }
-  return {
-    presentationThemePresetId: value,
-    presentationProfileId: null,
-    svgPipeline: isBundledThemePresetName(value) ? "resvg-safe" : "parity",
-  };
-}
-
-function encodeWorkspaceV2Payload(
-  data: WorkspaceSnapshot
+function encodeWorkspacePayload(
+  data: WorkspaceSnapshot,
+  defaults: Readonly<WorkspaceSnapshot>,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
-  if (data.code !== WORKSPACE_V2_DEFAULTS.code) payload.code = data.code;
-  if (data.diagramTheme !== WORKSPACE_V2_DEFAULTS.diagramTheme) {
+  if (data.code !== defaults.code) payload.code = data.code;
+  if (data.diagramTheme !== defaults.diagramTheme) {
     payload.themeSelection = data.diagramTheme;
   }
-  if (data.mermaidConfig !== WORKSPACE_V2_DEFAULTS.mermaidConfig) {
+  if (data.mermaidConfig !== defaults.mermaidConfig) {
     payload.config = data.mermaidConfig;
   }
-  if (
-    data.presentationThemePresetId !==
-    WORKSPACE_V2_DEFAULTS.presentationThemePresetId
-  ) {
-    payload.presentationThemePresetId = data.presentationThemePresetId;
+  if (data.themePresetId !== defaults.themePresetId) {
+    payload.themePresetId = data.themePresetId;
   }
-  if (
-    data.presentationProfileId !== WORKSPACE_V2_DEFAULTS.presentationProfileId
-  ) {
-    payload.presentationProfileId = data.presentationProfileId;
-  }
-  if (data.svgPipeline !== WORKSPACE_V2_DEFAULTS.svgPipeline) {
+  if (data.svgPipeline !== defaults.svgPipeline) {
     payload.svgPipeline = data.svgPipeline;
   }
-  if (
-    data.textMeasurementMode !== WORKSPACE_V2_DEFAULTS.textMeasurementMode
-  ) {
+  if (data.textMeasurementMode !== defaults.textMeasurementMode) {
     payload.textMeasurementMode = data.textMeasurementMode;
   }
-  if (data.diagramFont !== WORKSPACE_V2_DEFAULTS.diagramFont) {
+  if (data.diagramFont !== defaults.diagramFont) {
     payload.diagramFont = data.diagramFont;
   }
   return payload;
 }
 
-function decodeWorkspaceV2(encoded: string): WorkspaceSnapshot | null {
+function decodeCompressedWorkspace(
+  encoded: string,
+  customThemes: boolean,
+): WorkspaceSnapshot | null {
+  const limits = customThemes ? SHARE_V3_LIMITS : SHARE_LIMITS;
+  const prefix = customThemes ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const defaults = customThemes ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const keys = customThemes ? WORKSPACE_V3_KEYS : WORKSPACE_V2_KEYS;
   try {
     if (
       encoded.length === 0 ||
-      SHARE_V2_PREFIX.length + encoded.length > SHARE_LIMITS.encodedBytes ||
+      prefix.length + encoded.length > limits.encodedBytes ||
       !/^[A-Za-z0-9_-]+$/u.test(encoded)
     ) {
       return null;
     }
     const compressed = decodeBase64Url(encoded);
-    const jsonBytes = decompressWithinBudget(compressed);
+    const jsonBytes = decompressWithinBudget(compressed, limits.jsonBytes);
     const value: unknown = JSON.parse(utf8Decoder.decode(jsonBytes));
-    if (!isRecord(value) || !hasOnlyKeys(value, WORKSPACE_V2_KEYS)) return null;
-    return decodeWorkspaceV2Record(value);
+    if (!isRecord(value) || !hasOnlyKeys(value, keys)) return null;
+    return decodeWorkspaceRecord(value, defaults);
   } catch {
     return null;
   }
 }
 
-function decodeWorkspaceV2Record(
-  value: Record<string, unknown>
+function decodeWorkspaceRecord(
+  value: Record<string, unknown>,
+  defaults: Readonly<WorkspaceSnapshot>,
 ): WorkspaceSnapshot | null {
   const code = optionalBoundedString(
     value,
     "code",
-    WORKSPACE_V2_DEFAULTS.code,
+    defaults.code,
     SHARE_LIMITS.sourceBytes
   );
-  const diagramTheme = decodeThemeSelection(value);
+  const diagramTheme = decodeThemeSelection(value, defaults.diagramTheme);
   const mermaidConfig = optionalBoundedString(
     value,
     "config",
-    WORKSPACE_V2_DEFAULTS.mermaidConfig,
+    defaults.mermaidConfig,
     SHARE_LIMITS.configBytes
   );
   const textMeasurementMode = optionalEnum(
     value,
     "textMeasurementMode",
-    WORKSPACE_V2_DEFAULTS.textMeasurementMode,
+    defaults.textMeasurementMode,
     isTextMeasurementMode
   );
   const diagramFont = optionalEnum(
     value,
     "diagramFont",
-    WORKSPACE_V2_DEFAULTS.diagramFont,
+    defaults.diagramFont,
     isDiagramFontValue
   );
-  const presentation = decodeCurrentPresentation(value, WORKSPACE_V2_DEFAULTS);
+  const renderOptions = decodeCurrentRenderOptions(value, defaults);
+  const themeRecipeJson = optionalNullableString(
+    value,
+    "themeRecipeJson",
+    defaults.themeRecipeJson,
+    SHARE_THEME_RECIPE_BYTES,
+  );
   if (
     code === null ||
     diagramTheme === null ||
@@ -236,7 +249,10 @@ function decodeWorkspaceV2Record(
     textMeasurementMode === null ||
     diagramFont === null ||
     !hasValidLegacyRenderViewportMode(value) ||
-    presentation === null
+    renderOptions === null ||
+    themeRecipeJson === undefined ||
+    !isThemeRecipeJson(themeRecipeJson) ||
+    (themeRecipeJson !== null && renderOptions.themePresetId !== null)
   ) {
     return null;
   }
@@ -245,7 +261,8 @@ function decodeWorkspaceV2Record(
     code,
     diagramTheme,
     mermaidConfig,
-    ...presentation,
+    ...renderOptions,
+    themeRecipeJson,
     textMeasurementMode,
     diagramFont,
   };
@@ -292,28 +309,26 @@ function decodeLegacyWorkspaceHash(
       config === null ||
       textMeasurementMode === null ||
       diagramFont === null ||
-      !hasValidLegacyRenderViewportMode(value)
+      !hasValidLegacyRenderViewportMode(value) ||
+      Object.hasOwn(value, "hostThemePreset") ||
+      Object.hasOwn(value, "themeRecipeJson")
     ) {
       return null;
     }
 
-    const hasNewPresentation = [
-      "presentationThemePresetId",
-      "presentationProfileId",
-      "svgPipeline",
-    ].some((key) => Object.hasOwn(value, key));
-    const presentation = hasNewPresentation
-      ? decodeCurrentPresentation(value, defaults)
-      : Object.hasOwn(value, "hostThemePreset")
-        ? decodeLegacyPresentation(value.hostThemePreset)
-        : selectDefaultPresentation(defaults);
-    if (!presentation) return null;
+    const renderOptions = ["themePresetId", "svgPipeline"].some((key) =>
+      Object.hasOwn(value, key)
+    )
+      ? decodeCurrentRenderOptions(value, defaults)
+      : selectDefaultRenderOptions(defaults);
+    if (!renderOptions) return null;
 
     return {
       code: value.code,
       diagramTheme: value.theme === "default" ? "auto" : value.theme,
       mermaidConfig: config,
-      ...presentation,
+      ...renderOptions,
+      themeRecipeJson: null,
       textMeasurementMode,
       diagramFont,
     };
@@ -322,12 +337,15 @@ function decodeLegacyWorkspaceHash(
   }
 }
 
-function decompressWithinBudget(compressed: Uint8Array): Uint8Array {
+function decompressWithinBudget(
+  compressed: Uint8Array,
+  maxBytes: number,
+): Uint8Array {
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let complete = false;
   const decompressor = new Unzlib((chunk, final) => {
-    if (totalBytes + chunk.byteLength > SHARE_LIMITS.jsonBytes) {
+    if (totalBytes + chunk.byteLength > maxBytes) {
       throw new RangeError("Workspace exceeds the share URL contract.");
     }
     chunks.push(chunk);
@@ -377,23 +395,14 @@ function decodeBase64Url(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function decodeCurrentPresentation(
+function decodeCurrentRenderOptions(
   value: Record<string, unknown>,
   defaults: Readonly<WorkspaceSnapshot>
-): Pick<
-  WorkspaceSnapshot,
-  "presentationThemePresetId" | "presentationProfileId" | "svgPipeline"
-> | null {
-  const presentationThemePresetId = optionalNullableString(
+): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> | null {
+  const themePresetId = optionalNullableString(
     value,
-    "presentationThemePresetId",
-    defaults.presentationThemePresetId,
-    SHARE_LIMITS.idBytes
-  );
-  const presentationProfileId = optionalNullableString(
-    value,
-    "presentationProfileId",
-    defaults.presentationProfileId,
+    "themePresetId",
+    defaults.themePresetId,
     SHARE_LIMITS.idBytes
   );
   const svgPipeline = optionalEnum(
@@ -402,41 +411,20 @@ function decodeCurrentPresentation(
     defaults.svgPipeline,
     isMermanSvgPipeline
   );
-  if (
-    presentationThemePresetId === undefined ||
-    presentationProfileId === undefined ||
-    svgPipeline === null
-  ) {
+  if (themePresetId === undefined || svgPipeline === null) {
     return null;
   }
   return {
-    presentationThemePresetId,
-    presentationProfileId,
+    themePresetId,
     svgPipeline,
   };
 }
 
-function decodeLegacyPresentation(
-  value: unknown
-): Pick<
-  WorkspaceSnapshot,
-  "presentationThemePresetId" | "presentationProfileId" | "svgPipeline"
-> | null {
-  if (value !== null && value !== undefined && !isOptionalId(value)) {
-    return null;
-  }
-  return migrateLegacyHostTheme(value);
-}
-
-function selectDefaultPresentation(
+function selectDefaultRenderOptions(
   defaults: Readonly<WorkspaceSnapshot>
-): Pick<
-  WorkspaceSnapshot,
-  "presentationThemePresetId" | "presentationProfileId" | "svgPipeline"
-> {
+): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> {
   return {
-    presentationThemePresetId: defaults.presentationThemePresetId,
-    presentationProfileId: defaults.presentationProfileId,
+    themePresetId: defaults.themePresetId,
     svgPipeline: defaults.svgPipeline,
   };
 }
@@ -470,12 +458,29 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isBoundedString(value.code, SHARE_LIMITS.sourceBytes) &&
     isBoundedString(value.mermaidConfig, SHARE_LIMITS.configBytes) &&
     isMermaidThemeSelection(value.diagramTheme) &&
-    isOptionalId(value.presentationThemePresetId) &&
-    isOptionalId(value.presentationProfileId) &&
+    isOptionalId(value.themePresetId) &&
+    isThemeRecipeJson(value.themeRecipeJson) &&
+    (value.themeRecipeJson === null || value.themePresetId === null) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
     isDiagramFontValue(value.diagramFont)
   );
+}
+
+// Rust owns recipe schema validation. Sharing checks only the bounded envelope.
+function isThemeRecipeJson(value: unknown): value is string | null {
+  if (value === null) return true;
+  if (!isBoundedString(value, SHARE_THEME_RECIPE_BYTES)) return false;
+  try {
+    const recipe: unknown = JSON.parse(value);
+    return (
+      isRecord(recipe) &&
+      recipe.schema_version === 1 &&
+      (recipe.kind === "definition" || recipe.kind === "complete_spec")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isOptionalId(value: unknown): value is string | null {
@@ -507,6 +512,7 @@ function isTextMeasurementMode(
 // field so explicit classic default and automatic appearance remain distinct.
 function decodeThemeSelection(
   value: Record<string, unknown>,
+  fallback: WorkspaceSnapshot["diagramTheme"],
 ): WorkspaceSnapshot["diagramTheme"] | null {
   if (Object.hasOwn(value, "themeSelection")) {
     if (Object.hasOwn(value, "theme")) return null;
@@ -514,7 +520,7 @@ function decodeThemeSelection(
       ? value.themeSelection
       : null;
   }
-  if (!Object.hasOwn(value, "theme")) return WORKSPACE_V2_DEFAULTS.diagramTheme;
+  if (!Object.hasOwn(value, "theme")) return fallback;
   if (typeof value.theme !== "string" || !isThemeName(value.theme)) return null;
   return value.theme === "default" ? "auto" : value.theme;
 }

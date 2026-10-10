@@ -5,7 +5,7 @@ use super::messages::{
     sequence_message_horizontal_model,
 };
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_math_label, measure_svg_like_with_html_br,
+    SequenceMathHeightMode, measure_prepared_sequence_math_label, measure_svg_like_with_html_br,
 };
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
 use super::{
@@ -13,13 +13,111 @@ use super::{
     wrap_sequence_label_like_mermaid_lines,
 };
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
 };
 use std::collections::HashMap;
+
+const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
+const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT: f64 = 20.0;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SequenceBlockLabelBoxMetrics {
+    width: f64,
+    layout_height: f64,
+    terminal_height: f64,
+    typography_expanded: bool,
+}
+
+impl SequenceBlockLabelBoxMetrics {
+    pub(crate) fn resolve(
+        model: &SequenceDiagramRenderModel,
+        configured_width: f64,
+        configured_height: f64,
+        text_margin: f64,
+        measurer: &dyn TextMeasurer,
+        typography: &super::typography::SequenceResolvedTypography,
+        checkpoints: SequenceLayoutCheckpoints<'_>,
+    ) -> Result<Self> {
+        let legacy = Self {
+            width: configured_width,
+            layout_height: configured_height,
+            terminal_height: LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT,
+            typography_expanded: false,
+        };
+        // Authored Mermaid fonts preserve drawLoop's configured geometry. Only typed
+        // typography adds measured space beyond the upstream label-box contract.
+        if !typography.has_typed_typography() {
+            return Ok(legacy);
+        }
+
+        let mut present = [false; SEQUENCE_BLOCK_CONTROL_LABELS.len()];
+        for message in &model.messages {
+            let index = match message.message_type {
+                10 => Some(0),
+                12 => Some(1),
+                15 => Some(2),
+                19 | 32 => Some(3),
+                27 => Some(4),
+                30 => Some(5),
+                _ => None,
+            };
+            if let Some(index) = index {
+                present[index] = true;
+            }
+        }
+
+        let mut measured_width: f64 = 0.0;
+        let mut measured_height: f64 = 0.0;
+        let mut measured_any = false;
+        for (label, is_present) in SEQUENCE_BLOCK_CONTROL_LABELS.iter().zip(present) {
+            if !is_present {
+                continue;
+            }
+            let (width, height) = measure_svg_like_with_html_br(
+                measurer,
+                label,
+                typography.measurement_style(),
+                checkpoints.text(),
+            )?;
+            measured_width = measured_width.max(width);
+            measured_height = measured_height.max(height);
+            measured_any = true;
+        }
+        if !measured_any {
+            return Ok(legacy);
+        }
+
+        let text_padding = 2.0 * text_margin.max(0.0);
+        let height = configured_height
+            .max(LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT)
+            .max(measured_height + text_padding);
+        Ok(Self {
+            width: configured_width.max(0.0).max(measured_width + text_padding),
+            layout_height: height,
+            terminal_height: height,
+            typography_expanded: true,
+        })
+    }
+
+    pub(crate) const fn width(self) -> f64 {
+        self.width
+    }
+
+    pub(crate) const fn layout_height(self) -> f64 {
+        self.layout_height
+    }
+
+    pub(crate) const fn terminal_height(self) -> f64 {
+        self.terminal_height
+    }
+
+    pub(crate) const fn typography_expanded(self) -> bool {
+        self.typography_expanded
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct BlockStepPlanContext<'a> {
@@ -40,8 +138,10 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
@@ -70,7 +170,7 @@ pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> Result<Sequ
         let frame_width = widths_by_id.get(&msg.id).copied();
         directive_steps.insert(
             msg.id.clone(),
-            block_label_step(msg.message_text(), frame_width, frame_ctx, step_ctx)?,
+            block_label_step(msg, frame_width, frame_ctx, step_ctx)?,
         );
     }
     ctx.checkpoints.checkpoint()?;
@@ -117,22 +217,25 @@ fn is_block_role(message: &SequenceMessage, role: SequenceControlRole) -> bool {
 }
 
 fn block_label_step(
-    raw_label: &str,
+    message: &SequenceMessage,
     frame_width: Option<f64>,
     frame_ctx: BlockFrameWidthContext<'_>,
     step_ctx: BlockStepContext,
 ) -> Result<f64> {
+    let raw_label = message.message_text();
     if raw_label.trim().is_empty() {
         return Ok(step_ctx.block_base_step_empty);
     }
 
     let label = bracketize_sequence_block_label(raw_label);
-    if let Some((_, height)) = measure_sequence_math_label(
-        frame_ctx.measurer,
+    let prepared_math = frame_ctx.math_sidecar.prepare_or_get(
+        super::SequenceMathOccurrence::BlockLabel(message.id.clone()),
         &label,
-        frame_ctx.msg_text_style,
-        frame_ctx.math_config,
-        frame_ctx.math_renderer,
+        frame_ctx.math_terminal_style,
+    );
+    if let Some((_, height)) = measure_prepared_sequence_math_label(
+        prepared_math.as_deref(),
+        frame_ctx.loop_text_style,
         SequenceMathHeightMode::Bound,
         frame_ctx.checkpoints.text(),
     )? {
@@ -143,7 +246,7 @@ fn block_label_step(
         Some(width) => wrap_sequence_label_like_mermaid_lines(
             &label,
             frame_ctx.measurer,
-            frame_ctx.msg_text_style,
+            frame_ctx.loop_text_style,
             sequence_block_label_wrap_width(width, step_ctx.wrap_padding),
             frame_ctx.checkpoints.text(),
         )?
@@ -153,7 +256,7 @@ fn block_label_step(
     let (_, height) = measure_svg_like_with_html_br(
         frame_ctx.measurer,
         &measured_label,
-        frame_ctx.msg_text_style,
+        frame_ctx.loop_text_style,
         frame_ctx.checkpoints.text(),
     )?;
     Ok(step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height))
@@ -174,8 +277,10 @@ struct BlockFrameWidthContext<'a> {
     measurer: &'a dyn TextMeasurer,
     msg_text_style: &'a TextStyle,
     note_text_style: &'a TextStyle,
+    loop_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     message_metrics: SequenceMessageMetricView<'a>,
     checkpoints: SequenceLayoutCheckpoints<'a>,
 }
@@ -203,8 +308,10 @@ impl<'a> BlockStepPlanContext<'a> {
             measurer: self.measurer,
             msg_text_style: self.msg_text_style,
             note_text_style: self.note_text_style,
+            loop_text_style: self.loop_text_style,
             math_config: self.math_config,
-            math_renderer: self.math_renderer,
+            math_terminal_style: self.math_terminal_style,
+            math_sidecar: self.math_sidecar,
             message_metrics: self.message_metrics,
             checkpoints: self.checkpoints,
         }
@@ -418,7 +525,9 @@ fn calculate_sequence_block_bounds(
                     measurer: ctx.measurer,
                     note_text_style: ctx.note_text_style,
                     math_config: ctx.math_config,
-                    math_renderer: ctx.math_renderer,
+                    math_terminal_style: ctx.math_terminal_style,
+                    math_sidecar: ctx.math_sidecar,
+                    message_index,
                     checkpoints,
                 },
             )?
@@ -469,6 +578,7 @@ mod tests {
         SequenceMessageMetricView, block_label_step, calculate_sequence_block_bounds,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::sequence::SequenceMathSidecar;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
@@ -515,6 +625,7 @@ mod tests {
         let msg_style = TextStyle::default();
         let note_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
@@ -535,8 +646,15 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &msg_style,
                 note_text_style: &note_style,
+                loop_text_style: &msg_style,
                 math_config: &math_config,
-                math_renderer: None,
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &msg_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
                 checkpoints,
             },
@@ -683,12 +801,14 @@ mod tests {
         let measurer = ExpectedBlockLabelMeasurer;
         let text_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let math_sidecar = SequenceMathSidecar::default();
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let checkpoints = crate::sequence::SequenceLayoutCheckpoints::new(&work_meter);
 
+        let block_message = message("title", 10, None, None, "[Action 1]");
         let step = block_label_step(
-            "[Action 1]",
+            &block_message,
             None,
             BlockFrameWidthContext {
                 actor_index: &actor_index,
@@ -704,8 +824,15 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &text_style,
                 note_text_style: &text_style,
+                loop_text_style: &text_style,
                 math_config: &math_config,
-                math_renderer: None,
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &text_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
                 checkpoints,
             },

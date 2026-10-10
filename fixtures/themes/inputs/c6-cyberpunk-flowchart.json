@@ -1,0 +1,97 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-c6-cyberpunk-flowchart",
+  "tokens": null,
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#020617"
+    },
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 90,
+      "repetition": "tiled",
+      "tileWidthPx": 24,
+      "tileHeightPx": 24,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#22d3ee33"
+        },
+        {
+          "offsetPercent": 50,
+          "color": "#22d3ee33"
+        },
+        {
+          "offsetPercent": 51,
+          "color": "#22d3ee00"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#22d3ee00"
+        }
+      ]
+    },
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 135,
+      "repetition": "none",
+      "tileWidthPx": null,
+      "tileHeightPx": null,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#0f172a"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#164e63"
+        }
+      ]
+    },
+    {
+      "kind": "radial-gradient",
+      "centerXPercent": 50,
+      "centerYPercent": 50,
+      "repetition": "none",
+      "tileWidthPx": null,
+      "tileHeightPx": null,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#67e8f955"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#67e8f900"
+        }
+      ]
+    }
+  ],
+  "blendMode": "screen",
+  "nodeStyle": {
+    "border": {
+      "color": "#22d3ee",
+      "widthPx": 2
+    },
+    "dashPattern": [],
+    "cornerRadiusPx": null,
+    "shadow": null
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

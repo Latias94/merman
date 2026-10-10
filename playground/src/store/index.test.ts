@@ -8,43 +8,31 @@ import {
 } from "./index.ts";
 import type { StartupShareHydration } from "../lib/share-view.ts";
 
-test("presentation setters update only their own axis", () => {
+test("diagram rendering setters update only their own axis", () => {
   useAppStore.setState({
     diagramTheme: "forest",
-    presentationProfileId: null,
-    presentationThemePresetId: null,
+    themePresetId: null,
     svgPipeline: "parity",
   });
 
-  useAppStore.getState().setPresentationThemePresetId("future-theme");
-  assert.deepEqual(presentationState(), {
+  useAppStore.getState().setThemePresetId("future-theme");
+  assert.deepEqual(renderingState(), {
     diagramTheme: "forest",
-    presentationProfileId: null,
-    presentationThemePresetId: "future-theme",
-    svgPipeline: "parity",
-  });
-
-  useAppStore.getState().setPresentationProfileId("future-profile");
-  assert.deepEqual(presentationState(), {
-    diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "parity",
   });
 
   useAppStore.getState().setSvgPipeline("readable");
-  assert.deepEqual(presentationState(), {
+  assert.deepEqual(renderingState(), {
     diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "readable",
   });
 
   useAppStore.getState().setDiagramTheme("dark");
-  assert.deepEqual(presentationState(), {
+  assert.deepEqual(renderingState(), {
     diagramTheme: "dark",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "readable",
   });
 });
@@ -54,8 +42,8 @@ test("applies one complete workspace snapshot with one coherent notification", (
     code: "sequenceDiagram\nA->>B: hello",
     mermaidConfig: '{"look":"neo"}',
     diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
+    themeRecipeJson: null,
     svgPipeline: "readable",
     textMeasurementMode: "headless",
     diagramFont: "arial",
@@ -97,8 +85,8 @@ test("applies startup workspace, view preferences, and warning in one store tran
       mermaidConfig: '{"look":"neo"}',
       diagramTheme: "forest",
       diagramFont: "arial",
-      presentationProfileId: "future-profile",
-      presentationThemePresetId: "future-theme",
+      themePresetId: "future-theme",
+      themeRecipeJson: null,
       svgPipeline: "readable",
       textMeasurementMode: "headless",
     },
@@ -143,12 +131,49 @@ test("applies startup workspace, view preferences, and warning in one store tran
   ]);
 });
 
-function presentationState() {
+function renderingState() {
   const state = useAppStore.getState();
   return {
     diagramTheme: state.diagramTheme,
-    presentationProfileId: state.presentationProfileId,
-    presentationThemePresetId: state.presentationThemePresetId,
+    themePresetId: state.themePresetId,
     svgPipeline: state.svgPipeline,
   };
 }
+
+test("preset and custom recipe setters replace one another atomically", () => {
+  useAppStore.getState().setThemePresetId("brutalist");
+  const recipe = '{"schema_version":1,"kind":"definition","definition":{}}';
+  const notifications: Array<[string | null, string | null]> = [];
+  const unsubscribe = useAppStore.subscribe((state) => {
+    notifications.push([state.themePresetId, state.themeRecipeJson]);
+  });
+
+  useAppStore.getState().setThemeRecipeJson(recipe);
+  assert.equal(
+    selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeJson,
+    recipe,
+  );
+  useAppStore.getState().setThemePresetId("spotless");
+  useAppStore.getState().setThemeRecipeJson(null);
+  useAppStore.getState().setThemeRecipeJson(recipe);
+  useAppStore.getState().setThemePresetId(null);
+  unsubscribe();
+
+  assert.deepEqual(notifications, [
+    [null, recipe],
+    ["spotless", null],
+    ["spotless", null],
+    [null, recipe],
+    [null, null],
+  ]);
+});
+
+test("applying and selecting a custom workspace retains its recipe", () => {
+  const snapshot: WorkspaceSnapshot = {
+    ...selectWorkspaceSnapshot(useAppStore.getState()),
+    themePresetId: null,
+    themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+  };
+  useAppStore.getState().applyWorkspaceSnapshot(snapshot);
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), snapshot);
+});

@@ -1,5 +1,18 @@
 use std::collections::BTreeMap;
 
+pub const BINDING_OPTIONS_JSON_MAX_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const BINDING_OPTIONS_JSON_LIMIT_ID: &str = "max_options_json_bytes";
+
+const BINDING_OPTIONS_JSON_LIMIT_DESCRIPTOR: BindingResourceLimitDescriptor =
+    BindingResourceLimitDescriptor {
+        stable_id: BINDING_OPTIONS_JSON_LIMIT_ID,
+        phase: "options-json-preflight",
+        description: "Non-overridable encoded options document cap before JSON materialization",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    };
+
 /// One resource limit exposed by the capabilities compiled into this binding artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -78,6 +91,7 @@ fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
             minimum_value: descriptor.minimum_value,
         })
         .collect::<Vec<_>>();
+    limits.push(BINDING_OPTIONS_JSON_LIMIT_DESCRIPTOR);
 
     #[cfg(feature = "svg")]
     limits.extend(
@@ -149,6 +163,10 @@ pub(crate) fn resource_profile_value(
     profile: merman::resources::ResourceProfile,
     stable_id: &str,
 ) -> Option<Option<usize>> {
+    if stable_id == BINDING_OPTIONS_JSON_LIMIT_ID {
+        return Some(Some(BINDING_OPTIONS_JSON_MAX_BYTES));
+    }
+
     if let Some(id) = merman::resources::InputResourceLimitId::from_stable_id(stable_id) {
         return Some(merman::resources::InputResourcePolicy::for_profile(profile).value(id));
     }
@@ -210,6 +228,10 @@ pub(crate) enum BindingResourceOwner {
 }
 
 pub(crate) fn resource_limit_owner(stable_id: &str) -> BindingResourceOwner {
+    if stable_id == BINDING_OPTIONS_JSON_LIMIT_ID {
+        return BindingResourceOwner::Artifact;
+    }
+
     if merman::resources::InputResourceLimitId::from_stable_id(stable_id).is_some() {
         return BindingResourceOwner::Artifact;
     }
@@ -245,6 +267,7 @@ pub(crate) enum BindingResourceScope {
     AnalysisDiagram,
     DocumentAnalysis,
     Model,
+    ThemeAuthoring,
     Ascii,
     Layout,
     Svg,
@@ -270,6 +293,7 @@ impl BindingResourceScope {
                     || input == Some(merman::resources::InputResourceLimitId::MaxSourceBytes)
             }
             Self::Model => input.is_some(),
+            Self::ThemeAuthoring => is_theme_resource_limit(stable_id),
             Self::Ascii => input.is_some() || ascii,
             Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
             Self::Svg => input.is_some() || render,
@@ -296,6 +320,7 @@ impl BindingResourceScope {
             Self::AnalysisDiagram => "single-diagram analysis",
             Self::DocumentAnalysis => "host-document analysis",
             Self::Model => "semantic-model",
+            Self::ThemeAuthoring => "theme authoring",
             Self::Ascii => "ASCII render",
             Self::Layout => "layout",
             Self::Svg => "SVG render",
@@ -303,6 +328,18 @@ impl BindingResourceScope {
             Self::Jpeg => "JPEG export",
             Self::Pdf => "PDF export",
         }
+    }
+}
+
+fn is_theme_resource_limit(stable_id: &str) -> bool {
+    #[cfg(feature = "svg")]
+    {
+        merman::svg::ThemeResourceLimitId::from_stable_id(stable_id).is_some()
+    }
+    #[cfg(not(feature = "svg"))]
+    {
+        let _ = stable_id;
+        false
     }
 }
 
@@ -354,6 +391,83 @@ fn export_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
     {
         let _ = stable_id;
         None
+    }
+}
+
+#[cfg(all(test, feature = "svg"))]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn generic_render_contract_excludes_theme_resource_limits() {
+        let contract = binding_resource_contract();
+        let forbidden = [
+            "max_theme_encoded_bytes",
+            "max_theme_base64_bytes",
+            "max_font_asset_compressed_bytes",
+            "max_font_asset_decoded_bytes",
+            "max_font_catalog_decoded_bytes",
+            "max_font_assets",
+            "max_font_faces",
+            "max_font_tables",
+            "max_font_aliases",
+            "max_font_decoded_expansion_ratio",
+            "theme_encoded_bytes_hard_cap",
+            "theme_base64_bytes_hard_cap",
+            "font_asset_compressed_bytes_hard_cap",
+            "font_asset_decoded_bytes_hard_cap",
+            "font_catalog_decoded_bytes_hard_cap",
+            "font_assets_hard_cap",
+            "font_faces_hard_cap",
+            "font_tables_hard_cap",
+            "font_aliases_hard_cap",
+            "font_decoded_expansion_ratio_hard_cap",
+            "max_effect_graphs",
+            "max_effect_primitives_per_graph",
+            "max_effect_bindings",
+            "max_effect_offset_magnitude",
+            "max_effect_filter_region_magnitude",
+            "max_effect_blur_magnitude",
+            "max_effect_displacement_scale",
+            "max_effect_turbulence_octaves",
+            "effect_graphs_hard_cap",
+            "effect_primitives_per_graph_hard_cap",
+            "effect_bindings_hard_cap",
+            "effect_offset_magnitude_hard_cap",
+            "effect_filter_region_magnitude_hard_cap",
+            "effect_blur_magnitude_hard_cap",
+            "effect_displacement_scale_hard_cap",
+            "effect_turbulence_octaves_hard_cap",
+        ];
+
+        for id in forbidden {
+            assert!(
+                contract.limits.iter().all(|limit| limit.stable_id != id),
+                "generic binding resource contract must not project theme-owned limit `{id}`"
+            );
+            assert!(
+                contract
+                    .profiles
+                    .iter()
+                    .all(|profile| !profile.limits.contains_key(id)),
+                "generic binding resource profiles must not project theme-owned limit `{id}`"
+            );
+        }
+    }
+
+    #[test]
+    fn options_document_hard_cap_is_catalogued_for_every_profile() {
+        let contract = binding_resource_contract();
+        let descriptor = contract
+            .limits
+            .iter()
+            .find(|limit| limit.stable_id == BINDING_OPTIONS_JSON_LIMIT_ID)
+            .expect("options document descriptor");
+        assert!(descriptor.hard_cap);
+        assert!(!descriptor.overridable);
+        assert!(contract.profiles.iter().all(|profile| {
+            profile.limits[BINDING_OPTIONS_JSON_LIMIT_ID] == Some(BINDING_OPTIONS_JSON_MAX_BYTES)
+        }));
     }
 }
 

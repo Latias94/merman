@@ -1,8 +1,9 @@
 # SVG, PNG, JPEG, and PDF Output
 
-> This guide targets the prepared `0.8.0-alpha.6` source candidate. The versioned registry
-> examples below are source-contract examples; use the exact published version only after the
-> corresponding release channel has been verified.
+> [!NOTE]
+> This guide documents the current `main` branch. The `RenderedDocument` and target-admission APIs
+> were introduced after the published `0.8.0-alpha.5` tag. Use matching Git revisions while trying
+> these examples, or consult the tagged documentation for a published release.
 
 Merman exposes four output contracts from the same headless render operation. SVG is the pure
 vector path. PNG and JPEG allocate a final pixel buffer. PDF keeps ordinary SVG geometry as vector
@@ -34,11 +35,12 @@ stack. Raw parity SVG does not enter this recursive backend and is not subject t
 
 ### Host fonts and embedded images
 
-The native PNG, JPEG, and PDF exporters discover fonts from the host system on their first use.
-That scan is cached process-wide and shared by subsequent exports. It is host-dependent: the same
-SVG can select different installed fonts, metrics, or fallback glyphs on different machines. Font
-discovery is not covered by Merman's resource profiles or raster/PDF allocation budgets, so hosts
-that require isolation or a hard memory/latency ceiling must provide it at the process boundary.
+The sealed SVG artifact retains its authorized font catalog and font-source policy. Native PNG,
+JPEG, and PDF export consult host fonts only when that policy permits them. An authorized system
+scan is cached process-wide and shared by subsequent exports; such an export is host-dependent and
+may select different installed fonts or fallback glyphs on different machines. Embedded-only
+exports do not perform host discovery. `RasterExportReport` and `PdfExportReport` record the actual
+font source and fallback decisions made while parsing the sealed artifact.
 
 Embedded images have a narrower input contract. The native exporters resolve only `data:` URLs;
 they do not read image paths from the filesystem and do not fetch images over the network. The
@@ -49,17 +51,23 @@ profile.
 
 ### PNG and JPEG
 
-`RasterOptions` controls four independent concerns:
+`RasterOptions` controls six independent concerns:
 
 - `fit_to` constrains the displayed SVG to a CSS-pixel box while preserving its aspect ratio;
 - `scale` applies device-pixel scaling after the fit;
+- `matte` optionally composites a solid color behind the final pixels;
 - `size_limit` constrains the final pixmap before allocation;
-- `embedded_image_limit` checks embedded PNG/JPEG/GIF/WebP bytes and dimensions before decode.
+- `embedded_image_limit` checks embedded PNG/JPEG/GIF/WebP bytes and dimensions before decode;
+- `conversion_limits` bound recursive SVG conversion work.
 
 The default `RasterSizeLimit` is 4096 pixels per side and 16,777,216 total pixels. If a requested
 output exceeds a limit, Merman reduces it proportionally instead of first allocating the oversized
 pixmap. `RasterPlan` exposes both requested and final dimensions. JPEG also has the format's
 65,535-pixel per-side encoder limit.
+
+The matte is an output property, not the diagram's theme canvas. PNG defaults to no matte. JPEG
+defaults to opaque white because the format cannot preserve alpha. `RasterExportReport` records
+the effective matte and whether JPEG supplied that default.
 
 The default decoded-image budget accepts the byte and intrinsic-pixel limits described above,
 including recursively embedded SVG resources. This budget is separate from the final PNG/JPEG
@@ -78,6 +86,11 @@ The page remains vector regardless of its dimensions. SVG filters may require lo
 sampling inside the PDF; `PdfOptions` requests a filter scale of 4 by default and caps the aggregate
 filter bitmap plan at 33,554,432 pixels. Merman lowers the effective filter scale when necessary.
 Embedded raster images use the same independent decoded-image policy described above.
+
+`page_paint` optionally paints a solid color across the PDF page before the SVG is drawn. Like the
+raster matte, it belongs to the output container rather than the diagram theme. `PdfExportReport`
+records the page geometry, page paint, localized filter plan, image plan, conversion plan, font
+decisions, and sealed SVG resource fingerprint used by the export.
 
 Unbounded modes are scoped deliberately. `RasterOptions::with_unbounded_size()` affects only the
 final PNG/JPEG pixmap. `PdfOptions::with_unbounded_filter_images()` affects only localized PDF
@@ -121,7 +134,7 @@ merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["pn
 ```rust
 use merman::svg::export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions};
 use merman::{
-    OperationControl, PdfRequest, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
 
 let renderer = Renderer::new();
@@ -137,32 +150,36 @@ let svg = SvgRequest {
 let raster = RasterOptions::default()
     .with_fit_to(RasterFitBox::contain(960, 540))
     .with_scale(2.0)
-    .with_background("white");
-let RenderOutput::Png(Some(png)) = renderer.render(RenderRequest::png(
+    .with_matte("white");
+let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
     source,
     OperationControl::new(),
-    PngRequest {
-        svg: svg.clone(),
-        options: raster,
-    },
+    svg,
 ))? else {
     return Err("no Mermaid diagram detected".into());
 };
+let png = document.export_png(&raster, OperationControl::new())?;
 
 let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
     max_width_px: 800.0,
 });
-let RenderOutput::Pdf(Some(pdf)) = renderer.render(RenderRequest::pdf(
-    source,
-    OperationControl::new(),
-    PdfRequest { svg, options: pdf },
-))? else {
-    return Err("no Mermaid diagram detected".into());
-};
+let pdf = document.export_pdf(&pdf, OperationControl::new())?;
 
-# let _ = (png.bytes, pdf.bytes);
+# let _ = (png.bytes(), pdf.bytes());
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+Use `prepare_png_export`, `prepare_jpeg_export`, or `prepare_pdf_export` when a scheduler must
+inspect the frozen allocation report before encoding. Calling `encode()` on the prepared value
+returns the same evidence-bearing `RasterOutput` or `PdfOutput` as the corresponding one-step
+`export_*` method.
+
+`RenderedDocument` freezes layout, terminal SVG resources, render evidence, and the standalone SVG
+admission once. Document completion does not enforce that SVG receipt; inspect
+`standalone_svg_admission()` before publishing the SVG. Each native projection receives its own
+cancellation control, independently enforces the request's portability requirement, and returns a
+target-owned admission receipt.
+Calling `into_bytes()` is an explicit lossy projection that discards those receipts.
 
 The same path is available as a runnable repository example:
 
@@ -207,9 +224,10 @@ transitive SVG/raster implementation closure, so this is an API and direct-featu
 than a claim that a PDF-only binary contains no raster implementation at all. The artifact-profile
 closure checks record that residual explicitly.
 
-Use `prepare_raster` or `prepare_pdf` when a host needs to inspect the allocation plan or reserve
-memory before encoding. Their scheduling weights include the native recursive-backend worker stack
-in addition to output pixels, decoded images, and encoder overhead.
+Use `prepare_raster` or `prepare_pdf` when a host needs to inspect frozen export evidence or reserve
+memory before encoding. `PreparedRaster::report_for_output` and `PreparedPdf::report` expose that
+evidence without reparsing the SVG. Their scheduling weights include the native recursive-backend
+worker stack in addition to output pixels, decoded images, and encoder overhead.
 
 ## Known gaps
 

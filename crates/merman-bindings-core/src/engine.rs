@@ -20,6 +20,10 @@ pub struct BindingEngine {
     analyzer: Analyzer,
     #[cfg(feature = "svg")]
     render: crate::render::CachedRenderEngine,
+    #[cfg(feature = "svg")]
+    theme_compiler: merman::svg::DiagramThemeCompiler,
+    #[cfg(feature = "svg")]
+    base_theme: Option<merman::svg::DiagramTheme>,
     #[cfg(feature = "ascii")]
     ascii: crate::ascii::CachedAsciiEngine,
     services: BindingEngineServices,
@@ -170,6 +174,20 @@ impl BindingEngine {
         base_options: common::BaseBindingOptions,
         services: BindingEngineServices,
     ) -> Result<Self, BindingError> {
+        #[cfg(feature = "svg")]
+        let theme_compiler = merman::svg::DiagramThemeCompiler::new()
+            .with_resource_policy(base_options.theme_resource_policy().clone());
+        #[cfg(feature = "svg")]
+        let base_theme = crate::theme::compile_theme_with(&theme_compiler, options.theme.as_ref())?;
+        #[cfg(feature = "svg")]
+        let configs = BindingOperationConfigs::compile(
+            options,
+            runtime_policy.clone(),
+            &artifact_contract,
+            base_theme.clone(),
+            base_options.theme_resource_policy().clone(),
+        )?;
+        #[cfg(not(feature = "svg"))]
         let configs =
             BindingOperationConfigs::compile(options, runtime_policy.clone(), &artifact_contract)?;
         #[cfg(feature = "svg")]
@@ -185,6 +203,10 @@ impl BindingEngine {
             analyzer: Analyzer::with_options(configs.analysis),
             #[cfg(feature = "svg")]
             render,
+            #[cfg(feature = "svg")]
+            theme_compiler,
+            #[cfg(feature = "svg")]
+            base_theme,
             #[cfg(feature = "ascii")]
             ascii: configs.ascii.materialize(),
             services,
@@ -200,6 +222,8 @@ impl BindingEngine {
             options_json,
             operation.resource_scope(),
             &self.artifact_contract,
+            #[cfg(feature = "svg")]
+            self.theme_compiler.resource_policy(),
         )?;
         match overlay {
             common::BindingRequestOverlay::Unchanged => {
@@ -212,10 +236,33 @@ impl BindingEngine {
                 Ok(PreparedRequestOverlay::Unchanged)
             }
             overlay @ common::BindingRequestOverlay::Override { .. } => {
+                #[cfg(feature = "svg")]
+                let theme_overlay = overlay.theme_overlay();
+                #[cfg(feature = "svg")]
+                let theme_resources = overlay.theme_resource_policy().clone();
                 let options = self
                     .base_options
                     .apply_overlay(overlay, &self.artifact_contract)?;
                 self.services.validate_options(&options)?;
+                #[cfg(feature = "svg")]
+                let theme = match theme_overlay {
+                    common::BindingThemeOverlay::Inherit => self.base_theme.clone(),
+                    common::BindingThemeOverlay::Clear => None,
+                    common::BindingThemeOverlay::Replace => {
+                        let compiler = merman::svg::DiagramThemeCompiler::new()
+                            .with_resource_policy(theme_resources.clone());
+                        crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?
+                    }
+                };
+                #[cfg(feature = "svg")]
+                let configs = BindingOperationConfigs::compile(
+                    &options,
+                    self.runtime_policy.clone(),
+                    &self.artifact_contract,
+                    theme,
+                    theme_resources,
+                )?;
+                #[cfg(not(feature = "svg"))]
                 let configs = BindingOperationConfigs::compile(
                     &options,
                     self.runtime_policy.clone(),
@@ -239,6 +286,30 @@ impl BindingEngine {
             .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
         match operation.key() {
+            crate::OperationKey::DescribeThemeSupportJson
+            | crate::OperationKey::ExportThemePresetJson
+            | crate::OperationKey::MaterializeThemeJson => {
+                #[cfg(feature = "svg")]
+                {
+                    control
+                        .checkpoint_at(OperationPhase::Parse)
+                        .map_err(BindingError::cancelled)?;
+                    let output = execute_theme_authoring_with_compiler(
+                        operation.key(),
+                        &configs.theme_compiler,
+                        source,
+                    )?;
+                    control
+                        .checkpoint_at(OperationPhase::Postprocess)
+                        .map_err(BindingError::cancelled)?;
+                    Ok(BindingOperationOutput::plain(output))
+                }
+                #[cfg(not(feature = "svg"))]
+                {
+                    let _ = configs;
+                    Err(common::feature_required_error("theme authoring", "svg"))
+                }
+            }
             crate::OperationKey::SemanticJson => configs
                 .semantic
                 .materialize()
@@ -344,9 +415,9 @@ impl BindingEngine {
                         .map_err(BindingError::cancelled)?;
                     let render = configs.render.materialize(&self.services);
                     let output = match operation.key() {
-                        crate::OperationKey::Svg => render
-                            .render_svg(source, control.clone())
-                            .map(BindingOperationOutput::plain),
+                        crate::OperationKey::Svg => {
+                            render.render_svg_output(source, control.clone())
+                        }
                         crate::OperationKey::SvgPlanJson => render
                             .svg_plan_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
@@ -441,18 +512,64 @@ impl BindingEngine {
         self.artifact_contract.admit_operation(operation)
     }
 
+    #[cfg(feature = "svg")]
+    pub(crate) fn execute_theme_authoring_data(
+        &self,
+        operation: crate::OperationKey,
+        input: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        execute_theme_authoring_with_compiler(operation, &self.theme_compiler, input)
+    }
+
     pub fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new("svg", source))
     }
 
-    pub(crate) fn render_svg_data(
+    /// Returns metadata projected through this engine's immutable resource policy.
+    pub fn metadata_json(&self, id: &str) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "svg")]
+        {
+            self.artifact_contract
+                .metadata_json_with_theme_compiler(id, &self.theme_compiler)
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            self.artifact_contract.metadata_json(id)
+        }
+    }
+
+    /// Materializes one versioned theme definition under this engine's resource policy.
+    pub fn materialize_theme(&self, definition_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "materialize-theme-json",
+            definition_json,
+        ))
+    }
+
+    /// Describes the static support bound for one versioned theme query.
+    pub fn describe_theme_support(&self, query_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "describe-theme-support-json",
+            query_json,
+        ))
+    }
+
+    /// Exports one built-in preset as a closed self-contained recipe envelope.
+    pub fn export_theme_preset(&self, preset_id: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "export-theme-preset-json",
+            preset_id,
+        ))
+    }
+
+    pub(crate) fn render_svg_output(
         &self,
         source: &[u8],
         control: OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.render_svg(source, control)
+            self.render.render_svg_output(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
@@ -931,6 +1048,8 @@ pub(crate) struct BindingOperationConfigs {
     analysis: merman_analysis::AnalysisOptions,
     #[cfg(feature = "svg")]
     render: crate::render::RenderOperationConfig,
+    #[cfg(feature = "svg")]
+    theme_compiler: merman::svg::DiagramThemeCompiler,
     #[cfg(feature = "ascii")]
     ascii: crate::ascii::AsciiOperationConfig,
 }
@@ -940,6 +1059,8 @@ impl BindingOperationConfigs {
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         artifact_contract: &ValidatedArtifactContract,
+        #[cfg(feature = "svg")] theme: Option<merman::svg::DiagramTheme>,
+        #[cfg(feature = "svg")] theme_resources: merman::svg::ThemeResourcePolicy,
     ) -> Result<Self, BindingError> {
         let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
@@ -947,10 +1068,15 @@ impl BindingOperationConfigs {
         let analysis =
             common::artifact_analysis_options(options)?.with_runtime_policy(runtime_policy.clone());
         #[cfg(feature = "svg")]
+        let theme_compiler =
+            merman::svg::DiagramThemeCompiler::new().with_resource_policy(theme_resources.clone());
+        #[cfg(feature = "svg")]
         let render = crate::render::RenderOperationConfig::compile(
             options,
             runtime_policy.clone(),
             artifact_contract.render_capability_policy(),
+            theme,
+            theme_resources,
         )?;
         #[cfg(not(feature = "svg"))]
         let _ = artifact_contract;
@@ -963,9 +1089,37 @@ impl BindingOperationConfigs {
             analysis,
             #[cfg(feature = "svg")]
             render,
+            #[cfg(feature = "svg")]
+            theme_compiler,
             #[cfg(feature = "ascii")]
             ascii,
         })
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn execute_theme_authoring_with_compiler(
+    operation: crate::OperationKey,
+    compiler: &merman::svg::DiagramThemeCompiler,
+    input: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    match operation {
+        crate::OperationKey::MaterializeThemeJson => {
+            crate::theme_definition::materialize_theme_definition_json_with_resource_policy(
+                input,
+                compiler.resource_policy(),
+            )
+        }
+        crate::OperationKey::DescribeThemeSupportJson => {
+            crate::theme_definition::describe_theme_support_json_with_resource_policy(
+                input,
+                compiler.resource_policy(),
+            )
+        }
+        crate::OperationKey::ExportThemePresetJson => {
+            crate::theme_definition::export_theme_preset_json_with(compiler, input)
+        }
+        _ => unreachable!("theme authoring dispatch requires a theme authoring operation"),
     }
 }
 
@@ -1040,7 +1194,7 @@ impl SemanticOperationEngine {
             control,
         ) {
             Err(error) => return Err(BindingError::cancelled(error)),
-            Ok(result) => result.map_err(classify_semantic_error)?,
+            Ok(result) => result.map_err(common::core_error)?,
         }
         .ok_or_else(common::no_diagram_error)?;
 
@@ -1056,7 +1210,7 @@ impl SemanticOperationEngine {
             .model()
             .compatibility_json_controlled(parsed.metadata(), control)
             .map_err(BindingError::cancelled)?
-            .map_err(classify_semantic_error)?;
+            .map_err(common::core_error)?;
         control
             .checkpoint_at(OperationPhase::Postprocess)
             .map_err(BindingError::cancelled)?;
@@ -1064,20 +1218,30 @@ impl SemanticOperationEngine {
     }
 }
 
-fn classify_semantic_error(error: merman::Error) -> BindingError {
-    match error {
-        merman::Error::RuntimePolicy(error) => common::runtime_policy_error(error),
-        error => common::parse_error(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
+    #[cfg(feature = "svg")]
+    use serde_json::json;
     use std::sync::Arc;
     #[cfg(feature = "svg")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn theme_evaluation_limits_keep_resource_status_at_the_binding_boundary() {
+        let error = common::core_error(merman::Error::ThemeEvaluationLimit(
+            merman::ThemeEvaluationLimitExceeded {
+                limit: "THEME_COLOR_LIMIT",
+                requested: "65".to_string(),
+                max: 64,
+            },
+        ));
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("THEME_COLOR_LIMIT"));
+        assert_eq!(error.resource_details(), None);
+    }
 
     #[cfg(feature = "svg")]
     struct CountingHostTextMeasurer {
@@ -1103,7 +1267,7 @@ mod tests {
         let diagnostic = merman::ParseDiagnostic::new("missing\u{7}value")
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.semantic\u{1b}");
-        let error = classify_semantic_error(merman::Error::diagram_parse_diagnostic(
+        let error = common::core_error(merman::Error::diagram_parse_diagnostic(
             "state\u{1b}",
             diagnostic,
         ));
@@ -1246,6 +1410,161 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn request_theme_replacement_is_compiled_after_request_overlay() {
+        let engine = BindingEngine::new(
+            br##"{
+                "theme": {
+                    "spec": {
+                        "styles": [{
+                            "kind": "rule",
+                            "target": "node",
+                            "family": "flowchart",
+                            "style": { "fill": "#111827" }
+                        }]
+                    }
+                }
+            }"##,
+        )
+        .unwrap();
+
+        let inherited = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"svg":{"diagram_id":"inherit"}}"#),
+            )
+            .expect("an inherited compiled theme must not be recompiled");
+        assert!(
+            String::from_utf8_lossy(inherited.data()).contains("#111827"),
+            "the inherited compiled theme must remain installed"
+        );
+
+        engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"theme":null}"#),
+            )
+            .expect("clearing a theme does not require theme admission");
+
+        let replaced = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(
+                        br##"{
+                    "theme": {
+                        "spec": {
+                            "styles": [{
+                                "kind": "rule",
+                                "target": "node",
+                                "family": "flowchart",
+                                "style": { "fill": "#f8fafc" }
+                            }]
+                        }
+                    }
+                }"##,
+                    ),
+            )
+            .expect("replacement recipe should compile before runtime admission");
+        assert!(
+            String::from_utf8_lossy(replaced.data()).contains("#f8fafc"),
+            "the request-local compiled theme must replace the inherited recipe"
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn request_theme_profile_can_tighten_but_not_loosen_the_engine_ceiling() {
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"constrained"}}"#).unwrap();
+
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(
+                    br#"{"resources":{"profile":"interactive"},"theme":{"preset":"editor-light"}}"#,
+                ),
+            )
+            .expect_err("a request must not loosen the constructor-owned theme ceiling");
+        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("loosen the transport ceiling for theme limit"),
+            "unexpected error: {error:?}"
+        );
+
+        let interactive = BindingEngine::new(b"").unwrap();
+        interactive
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(
+                    br#"{"resources":{"profile":"constrained"},"theme":{"preset":"editor-light"}}"#,
+                ),
+            )
+            .expect("a request may tighten the constructor-owned theme ceiling");
+    }
+
+    #[cfg(feature = "svg")]
+    fn oversized_constrained_font_theme_options() -> (Vec<u8>, usize) {
+        let max = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained encoded-theme ceiling");
+        let options = serde_json::to_vec(&json!({
+            "resources": { "profile": "constrained" },
+            "theme": {
+                "spec": {
+                    "assets": {
+                        "fonts": [{
+                            "id": "oversized",
+                            "format": "invalid-after-preflight",
+                            "data_base64": "A".repeat(max),
+                        }]
+                    }
+                }
+            }
+        }))
+        .expect("oversized font theme options JSON");
+        (options, max)
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constrained_font_asset_preflight_matches_constructor_and_request_transport_paths() {
+        let (options, max) = oversized_constrained_font_theme_options();
+        let constructor_error = BindingEngine::new(&options)
+            .err()
+            .expect("the constructor must reject the oversized font theme before typed decoding");
+
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"interactive"}}"#)
+            .expect("interactive engine");
+        let request_error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(&options),
+            )
+            .expect_err(
+                "the request overlay must reject the oversized font theme before typed decoding",
+            );
+
+        assert_eq!(
+            constructor_error.resource_details(),
+            request_error.resource_details(),
+            "constructor and request transports must expose the same constrained ceiling"
+        );
+        for error in [&constructor_error, &request_error] {
+            assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+            let details = error
+                .resource_details()
+                .expect("theme input rejection must remain structured");
+            assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+            assert_eq!(details.phase, "theme_input");
+            assert!(details.actual > details.max);
+            assert_eq!(details.max, u64::try_from(max).unwrap());
+            assert_eq!(details.profile, "constrained");
+            assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn legacy_text_measurement_selectors_are_rejected() {
         for selector in ["vendored", "parity"] {
             let options = format!(r#"{{"environment":{{"text_measurement":"{selector}"}}}}"#);
@@ -1258,6 +1577,170 @@ mod tests {
                 format!("unsupported environment.text_measurement: {selector}")
             );
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engine_exposes_theme_authoring_under_one_resource_policy() {
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"constrained"}}"#)
+            .expect("constrained engine");
+        let definition = br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": { "text": "#123456", "accent": "#abcdef" }
+        }"##;
+        let materialized = engine
+            .materialize_theme(definition)
+            .expect("the reusable engine should materialize definitions");
+        let generic = engine
+            .execute_data(crate::BindingOperationRequest::new(
+                "materialize-theme-json",
+                definition,
+            ))
+            .expect("the generic operation should share the same implementation");
+        assert_eq!(materialized, generic);
+        let materialized: Value = serde_json::from_slice(&materialized).unwrap();
+        assert_eq!(materialized["schema_version"], 1);
+        assert_eq!(materialized["spec"]["styles"].is_array(), true);
+
+        let support = engine
+            .describe_theme_support(
+                br#"{"schema_version":1,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+            )
+            .expect("the reusable engine should expose support discovery");
+        let support: Value = serde_json::from_slice(&support).unwrap();
+        assert_eq!(support["schema_version"], 1);
+        assert_eq!(support["query"]["family"], "sequence");
+
+        let preset = engine
+            .export_theme_preset(b"editor-light")
+            .expect("the reusable engine should export built-in presets");
+        let preset: Value = serde_json::from_slice(&preset).unwrap();
+        assert_eq!(preset["kind"], "complete_spec");
+
+        let catalog = engine
+            .metadata_json("theme-catalog")
+            .expect("engine metadata should use the same policy");
+        let catalog: Value = serde_json::from_slice(&catalog).unwrap();
+        let encoded_limit = catalog["resource_limits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|limit| limit["id"] == "max_theme_encoded_bytes")
+            .expect("theme encoded-byte limit");
+        assert_eq!(
+            encoded_limit["effective_value"],
+            u64::try_from(
+                merman::svg::ThemeResourcePolicy::constrained()
+                    .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+                    .unwrap()
+            )
+            .unwrap()
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    fn effect_heavy_theme_options(profile: &str) -> Vec<u8> {
+        let effects = (0..9)
+            .map(|index| {
+                json!({
+                    "kind": "graph",
+                    "id": format!("blur-{index}"),
+                    "primitives": [{ "kind": "gaussian-blur", "std_deviation": 1.0 }]
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&json!({
+            "resources": { "profile": profile },
+            "theme": { "spec": { "effects": effects } }
+        }))
+        .expect("theme options JSON")
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_profiles_bound_base_and_request_effect_compilation() {
+        BindingEngine::new(&effect_heavy_theme_options("interactive"))
+            .expect("interactive theme compilation admits nine effect graphs");
+
+        let base_error = match BindingEngine::new(&effect_heavy_theme_options("constrained")) {
+            Ok(_) => panic!("constrained base themes admit at most eight effect graphs"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            base_error.status(),
+            crate::BindingStatus::ResourceLimitExceeded
+        );
+        let base_details = base_error.resource_details().expect("base limit details");
+        assert_eq!(base_details.limit_id, "max_effect_graphs");
+        assert_eq!(base_details.profile, "constrained");
+
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"interactive"}}"#)
+            .expect("interactive engine");
+        let request_error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(&effect_heavy_theme_options("constrained")),
+            )
+            .expect_err("a constrained request must retain its effect-compile ceiling");
+        let request_details = request_error
+            .resource_details()
+            .expect("request limit details");
+        assert_eq!(request_details.limit_id, "max_effect_graphs");
+        assert_eq!(request_details.profile, "constrained");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constrained_request_revalidates_an_inherited_interactive_theme() {
+        let engine = BindingEngine::new(&effect_heavy_theme_options("interactive"))
+            .expect("interactive base theme admits nine effect graphs");
+
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"resources":{"profile":"constrained"}}"#),
+            )
+            .expect_err("the constrained request must reject the inherited interactive theme");
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("inherited theme rejection must remain structured");
+        assert_eq!(details.limit_id, "max_effect_graphs");
+        assert_eq!(details.phase, "effect_compile");
+        assert_eq!(details.actual, 9);
+        assert_eq!(details.max, 8);
+        assert_eq!(details.profile, "constrained");
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn escaped_request_profile_bounds_raw_theme_input() {
+        let max = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained encoded-theme ceiling");
+        let padding = " ".repeat(max);
+        let request = format!(
+            r#"{{
+                "resources": {{ "profile": "constr\u0061ined" }},
+                "theme": {{{padding}"preset":"editor-light"}}
+            }}"#
+        );
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"interactive"}}"#)
+            .expect("interactive engine");
+
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(request.as_bytes()),
+            )
+            .expect_err("escaped constrained profile must bound raw request themes");
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        let details = error.resource_details().expect("request limit details");
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.profile, "constrained");
     }
 
     #[cfg(feature = "svg")]

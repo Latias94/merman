@@ -1,7 +1,5 @@
 //! Flowchart v2 curly brace / comment shapes.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -402,7 +400,7 @@ pub(in crate::svg::parity::flowchart) fn curly_brace_comment_geometry(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_comment(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -410,6 +408,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
 ) {
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,

@@ -5,7 +5,8 @@ pub mod foreign_object;
 pub(crate) mod gitgraph_label;
 pub(crate) mod id_rebase;
 pub(crate) mod id_suffix;
-pub(crate) mod presentation_fallback;
+pub(crate) mod prepared_math;
+pub(crate) mod quadrant_resvg_fallback;
 pub mod root_background;
 pub mod scoped_css;
 pub(crate) mod util;
@@ -16,6 +17,7 @@ pub use foreign_object::{ForeignObjectFallbackPostprocessor, StripForeignObjectP
 pub(crate) use gitgraph_label::GitGraphBranchLabelBaselinePostprocessor;
 pub(crate) use id_rebase::RebaseSvgIdsPostprocessor;
 pub use root_background::RootBackgroundPostprocessor;
+pub(crate) use root_background::set_root_background_color;
 pub use scoped_css::ScopedCssPostprocessor;
 
 pub use attr_sanitize::SanitizeSvgAttributesPostprocessor;

@@ -18,7 +18,7 @@ type DagreGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 pub(super) fn expand_self_loops(
     nodes: &mut Vec<UsecaseNodePlan>,
     edges: &mut Vec<UsecaseEdgePlan>,
-    config: &Value,
+    generic_font: &TextStyle,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     work.charge_adapter(work.checked_add(nodes.len(), edges.len())?)?;
@@ -46,6 +46,7 @@ pub(super) fn expand_self_loops(
                 work.charge_adapter(1)?;
                 nodes.push(UsecaseNodePlan {
                     id: id.clone(),
+                    source_style: String::new(),
                     parent: parents[&edge.source].clone(),
                     source_label: String::new(),
                     label: UsecaseLabelPlan {
@@ -57,7 +58,7 @@ pub(super) fn expand_self_loops(
                             height: 0.0,
                             line_count: 1,
                         },
-                        style: text_style(config, None),
+                        style: generic_font.clone(),
                         max_width: Some(10.0),
                         styles: indexmap::IndexMap::new(),
                     },

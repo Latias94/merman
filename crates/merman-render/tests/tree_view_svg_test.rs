@@ -4,19 +4,162 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{
     Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
 };
-use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
+    OrdinalSelector, Specified, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::model::TreeViewDiagramLayout;
-use merman_render::resources::RenderResourcePolicy;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextStyle};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use merman_render::{DiagramFamilyId, LayoutOptions};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+fn tree_view_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Tree View edge theme")
+}
+
+fn tree_view_edge_width_style(stroke_width: Specified<f32>) -> ThemeStylePatch {
+    ThemeStylePatch {
+        stroke: ThemeStrokePatch {
+            width: stroke_width,
+            ..ThemeStrokePatch::default()
+        },
+        ..ThemeStylePatch::default()
+    }
+}
+
+fn tree_view_edge_width_theme(stroke_width: Specified<f32>) -> DiagramTheme {
+    tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        tree_view_edge_width_style(stroke_width),
+    )])
+}
+
+fn tree_view_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::TREE_VIEW, typography),
+        ))
+        .expect("compile Tree View typography theme")
+}
+
+fn tree_view_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Tree View SVG XML");
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect()
+}
+
+fn tree_view_css_rule<'a>(stylesheet: &'a str, selector: &str) -> &'a str {
+    let marker = format!("{selector} {{");
+    let start = stylesheet
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing Tree View CSS selector `{selector}`: {stylesheet}"))
+        + marker.len();
+    let end = stylesheet[start..].find('}').unwrap_or_else(|| {
+        panic!("unterminated Tree View CSS selector `{selector}`: {stylesheet}")
+    });
+    &stylesheet[start..start + end]
+}
+
+fn try_render_tree_view_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    try_render_tree_view_svg_with_theme_requirement(
+        source,
+        theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_tree_view_svg_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    try_render_tree_view_svg_with_theme_requirement_and_engine(
+        source,
+        theme,
+        Engine::new(),
+        portability,
+    )
+}
+
+fn try_render_tree_view_svg_with_theme_requirement_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        theme,
+        engine,
+        portability,
+        &RenderEnvironment::deterministic(),
+        "tree-view-theme",
+    )?;
+    Ok((layout, rendered.svg().to_owned()))
+}
+
+fn try_render_tree_view_with_theme_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: &RenderEnvironment,
+    diagram_id: &str,
+) -> merman_render::Result<(TreeViewDiagramLayout, family::RenderedFamilySvg)> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Tree View")
+        .expect("detect themed Tree View");
+    let session = environment
+        .clone()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Tree View session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let projection = artifact.layout_json()?;
+    let layout = serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone())
+        .expect("Tree View layout projection");
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok((layout, rendered))
+}
+
+fn render_tree_view_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> (TreeViewDiagramLayout, String) {
+    try_render_tree_view_svg_with_theme(source, theme).expect("render themed Tree View SVG")
+}
 
 #[derive(Default)]
 struct TreeViewBBoxHost {
@@ -33,6 +176,28 @@ impl HostTextMeasurer for TreeViewBBoxHost {
             TextMeasurementOperation::RawBBoxHeight => Some(HostTextMeasurement::Length(31.0)),
             _ => None,
         })
+    }
+}
+
+#[derive(Debug)]
+struct TreeViewTypedFontMeasurer {
+    expected_font_family: String,
+    measured_text: Mutex<Vec<String>>,
+}
+
+impl TextMeasurer for TreeViewTypedFontMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some(self.expected_font_family.as_str()),
+            "Tree View layout measurement must use the resolved typed font stack"
+        );
+        self.measured_text.lock().unwrap().push(text.to_string());
+        TextMetrics {
+            width: text.chars().count() as f64 * 9.0,
+            height: 19.0,
+            line_count: 1,
+        }
     }
 }
 
@@ -73,6 +238,76 @@ fn render_parsed_tree_view_svg(
         .unwrap()
         .svg()
         .to_owned()
+}
+
+fn try_render_tree_view_svg_with_resource_policy(
+    input: &str,
+    diagram_id: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin TreeView resource-bound session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("parse TreeView resource-bound fixture")
+        .expect("detect TreeView resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn tree_view_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let input = r#"treeView-beta
+Root/ :::highlight icon(folder) ## bounded root
+    Child.txt icon(file) ## bounded child
+"#;
+    let diagram_id = "tree-view-bounded";
+    let baseline = try_render_tree_view_svg_with_resource_policy(
+        input,
+        diagram_id,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded TreeView baseline");
+    let exact_bytes = baseline.len();
+    assert!(
+        exact_bytes > 1,
+        "TreeView fixture must emit a non-empty SVG"
+    );
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact TreeView SVG byte ceiling");
+    let exact = try_render_tree_view_svg_with_resource_policy(input, diagram_id, exact_policy)
+        .expect("the exact TreeView family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact TreeView SVG byte ceiling");
+    let error = try_render_tree_view_svg_with_resource_policy(input, diagram_id, below_policy)
+        .expect_err("one byte below the TreeView family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected TreeView MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDiagramLayout {
@@ -162,6 +397,767 @@ treeView-beta
     assert!(svg.contains(r#"font-size: 20px"#));
     assert!(svg.contains(r#"fill: #FF0000"#));
     assert!(svg.contains(r#"stroke: #00FF00"#));
+}
+
+#[test]
+fn tree_view_line_terminals_carry_renderer_owned_dual_paint_markers() {
+    let svg = render_tree_view_svg_with_options(
+        "treeView-beta\nRoot/\n    Child\n        Leaf\n",
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-paint-proof".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Tree View SVG XML");
+    let line_terminals = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+        .collect::<Vec<_>>();
+    assert!(
+        !line_terminals.is_empty(),
+        "fixture must emit line terminals"
+    );
+
+    let mut ids = BTreeSet::new();
+    for line in &line_terminals {
+        let id = line
+            .attribute("id")
+            .expect("every Tree View line needs a renderer-owned semantic id");
+        assert!(
+            id.starts_with("treeView-edge-"),
+            "unexpected Tree View line id: {id}"
+        );
+        assert!(
+            id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX),
+            "Tree View line id must bind both semantic paint facets: {id}"
+        );
+        assert!(ids.insert(id), "Tree View line ids must be unique: {id}");
+    }
+
+    let marked_nodes = document
+        .descendants()
+        .filter(|node| {
+            node.attribute("id").is_some_and(|id| {
+                id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX)
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(marked_nodes.len(), line_terminals.len());
+    assert!(marked_nodes.iter().all(|node| node.has_tag_name("line")));
+}
+
+#[test]
+fn tree_view_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
+    let font_stack =
+        FontStack::new(["Tree View Typed", "monospace"]).expect("valid Tree View font stack");
+    let expected_font = font_stack.as_css();
+    let theme = tree_view_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let measurer = Arc::new(TreeViewTypedFontMeasurer {
+        expected_font_family: expected_font.clone(),
+        measured_text: Mutex::new(Vec::new()),
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.tree-view-typed-font").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer.clone())),
+    );
+    let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nRoot/\n    Child.txt ## typed description\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-typed-font",
+    )
+    .expect("render directly themed Tree View through the public family entry");
+
+    assert!(layout.nodes.iter().all(|node| node.label_height == 19.0));
+    let measured_text = measurer.measured_text.lock().unwrap();
+    assert!(
+        measured_text.iter().any(|text| text == "Root")
+            && measured_text.iter().any(|text| text == "Child.txt"),
+        "Tree View labels must reach the recording measurer"
+    );
+    assert!(
+        measured_text.iter().any(|text| text == "typed description"),
+        "Tree View descriptions must use the same typed layout font"
+    );
+    drop(measured_text);
+
+    let stylesheet = tree_view_stylesheet(rendered.svg());
+    for selector in [".treeView-node-label", ".treeView-node-description"] {
+        assert!(
+            tree_view_css_rule(&stylesheet, selector)
+                .contains(&format!("font-family: {expected_font};")),
+            "missing resolved Tree View font rule for {selector}: {stylesheet}"
+        );
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let generic_color = CanvasPaint::solid("#123456").expect("valid generic Text color");
+    let generic_theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(generic_color.clone()),
+    )]);
+    let (_, generic_rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        &generic_theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &RenderEnvironment::deterministic(),
+        "tree-view-generic-text",
+    )
+    .expect("render Tree View with the generic Text fallback");
+    let generic_stylesheet = tree_view_stylesheet(generic_rendered.svg());
+    assert!(
+        tree_view_css_rule(&generic_stylesheet, ".treeView-node-label").contains("fill: #123456;"),
+        "generic Text.fill must reach the Tree View label terminal: {generic_stylesheet}"
+    );
+    let generic_evidence =
+        merman_render::__private::family_evidence(generic_rendered.into_completion().report());
+    assert_eq!(generic_evidence.required_count(), 1);
+    assert_eq!(generic_evidence.accounted_count(), 1);
+    assert_eq!(generic_evidence.applied_count(), 1);
+    assert_eq!(generic_evidence.not_applicable_count(), 0);
+    assert_eq!(generic_evidence.theme_residual_count(), 0);
+    assert_eq!(generic_evidence.compatibility_residual_count(), 0);
+
+    let label_color = CanvasPaint::solid("#654321").expect("valid NodeLabel color");
+    let cascade_theme = tree_view_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(generic_color),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(label_color),
+        ),
+    ]);
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        &cascade_theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &RenderEnvironment::deterministic(),
+        "tree-view-node-label-override",
+    )
+    .expect("render Tree View with the specific NodeLabel winner");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Tree View SVG");
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.text() == Some("Child")
+            && node.attribute("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|part| part == "treeView-node-label")
+            })
+    }));
+    drop(document);
+    let stylesheet = tree_view_stylesheet(rendered.svg());
+    let label_rule = tree_view_css_rule(&stylesheet, ".treeView-node-label");
+    assert!(label_rule.contains("fill: #654321;"), "{stylesheet}");
+    assert!(!label_rule.contains("#123456"), "{stylesheet}");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn tree_view_explicit_default_scalar_paints_reach_typed_css_and_portable_evidence() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let cases = [
+        (
+            ThemeTarget::NodeLabel,
+            false,
+            ".treeView-node-label",
+            "#123456",
+        ),
+        (ThemeTarget::Text, false, ".treeView-node-label", "#234567"),
+        (ThemeTarget::Edge, false, ".treeView-node-line", "#345678"),
+        (ThemeTarget::Edge, true, ".treeView-node-line", "#456789"),
+    ];
+
+    for (target, stroke, selector, expected_color) in cases {
+        let paint = CanvasPaint::solid(expected_color).expect("valid Tree View paint");
+        let style = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let rule = ThemeRule::new(target, style)
+            .for_family(DiagramFamilyId::TREE_VIEW)
+            .with_variant(ThemeVariant::Default);
+        let theme = tree_view_rules_theme([rule]);
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-view-explicit-default-paint",
+        )
+        .expect("explicit Default Tree View paint must be portable");
+
+        let stylesheet = tree_view_stylesheet(rendered.svg());
+        assert!(
+            tree_view_css_rule(&stylesheet, selector).contains(&format!(
+                "{}: {}",
+                if selector == ".treeView-node-line" {
+                    "stroke"
+                } else {
+                    "fill"
+                },
+                expected_color
+            )),
+            "typed Tree View CSS did not consume {target:?} Default paint: {stylesheet}"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "target={target:?}");
+        assert_eq!(evidence.accounted_count(), 1, "target={target:?}");
+        assert_eq!(evidence.applied_count(), 1, "target={target:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "target={target:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "target={target:?}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "target={target:?}"
+        );
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "target={target:?}"
+        );
+    }
+}
+
+#[test]
+fn tree_view_static_edge_width_reaches_layout_bounds_endpoints_svg_and_evidence() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let baseline_layout = layout_tree_view(source, &RenderEnvironment::deterministic());
+    let baseline_svg = render_tree_view_svg_with_options(
+        source,
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty typed theme");
+    let (_, empty_theme_svg) = render_tree_view_svg_with_theme(source, &empty_theme);
+    assert_eq!(empty_theme_svg.as_bytes(), baseline_svg.as_bytes());
+
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Value(6.0)));
+    assert_eq!(layout.line_thickness, 6.0);
+    assert_eq!(
+        layout.bounds.as_ref().map(|bounds| bounds.min_x),
+        Some(-3.0)
+    );
+    assert!(layout.lines.iter().all(|line| line.stroke_width == 6.0));
+
+    let baseline_vertical = baseline_layout
+        .lines
+        .iter()
+        .find(|line| line.kind == "vertical")
+        .expect("baseline Tree View vertical line");
+    let themed_vertical = layout
+        .lines
+        .iter()
+        .find(|line| line.kind == "vertical")
+        .expect("themed Tree View vertical line");
+    assert_eq!(themed_vertical.y2 - baseline_vertical.y2, 2.5);
+
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    let root_view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("Tree View root viewBox");
+    assert!(root_view_box.starts_with("-3 0 "), "{root_view_box}");
+    let terminal_lines = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+        .collect::<Vec<_>>();
+    assert_eq!(terminal_lines.len(), layout.lines.len());
+    assert!(
+        terminal_lines
+            .iter()
+            .all(|line| line.attribute("stroke-width") == Some("6"))
+    );
+}
+
+#[test]
+fn tree_view_edge_width_preserves_the_authored_round_trip_token() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let authored_width = 5.999_999_5_f32;
+    let (layout, svg) = render_tree_view_svg_with_theme(
+        source,
+        &tree_view_edge_width_theme(Specified::Value(authored_width)),
+    );
+
+    assert_eq!(layout.line_thickness, f64::from(authored_width));
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("5.9999995"))
+    );
+}
+
+#[test]
+fn tree_view_static_width_falls_back_when_an_ordinal_rule_wins_any_line() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let theme = tree_view_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(6.0)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(9.0)),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).expect("valid Tree View edge ordinal")),
+    ]);
+    let (layout, svg) = try_render_tree_view_svg_with_theme_requirement(
+        source,
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render Tree View with an unsupported ordinal width");
+
+    assert_eq!(layout.line_thickness, 1.0);
+    assert!(layout.lines.iter().all(|line| line.stroke_width == 1.0));
+    let document = roxmltree::Document::parse(&svg).expect("valid fallback Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("1"))
+    );
+}
+
+#[test]
+fn tree_view_large_edge_width_expands_paint_bounds_without_relaying_out_nodes() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let baseline = layout_tree_view(source, &RenderEnvironment::deterministic());
+    let (layout, svg) = render_tree_view_svg_with_theme(
+        source,
+        &tree_view_edge_width_theme(Specified::Value(100.0)),
+    );
+
+    assert_eq!(layout.nodes.len(), baseline.nodes.len());
+    for (themed, baseline) in layout.nodes.iter().zip(&baseline.nodes) {
+        assert_eq!((themed.x, themed.y), (baseline.x, baseline.y));
+        assert_eq!(
+            (themed.label_x, themed.label_y),
+            (baseline.label_x, baseline.label_y)
+        );
+    }
+
+    let bounds = layout.bounds.as_ref().expect("Tree View paint bounds");
+    let stroke_outset = layout.line_thickness / 2.0;
+    for (line_index, line) in layout.lines.iter().enumerate() {
+        let expected_min_x = if line_index == 0 && line.kind == "horizontal" {
+            line.x2 - stroke_outset
+        } else {
+            line.x1.min(line.x2) - stroke_outset
+        };
+        assert!(bounds.min_x <= expected_min_x);
+        assert!(bounds.min_y <= line.y1.min(line.y2) - stroke_outset);
+        assert!(bounds.max_x >= line.x1.max(line.x2) + stroke_outset);
+        assert!(bounds.max_y >= line.y1.max(line.y2) + stroke_outset);
+    }
+    assert!(bounds.min_y < 0.0);
+    assert!(bounds.max_y > layout.total_height);
+
+    let document = roxmltree::Document::parse(&svg).expect("valid wide-edge Tree View SVG XML");
+    let view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("Tree View root viewBox")
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    assert!((view_box[0] - bounds.min_x).abs() < 1e-6);
+    assert!((view_box[1] - bounds.min_y).abs() < 1e-6);
+    assert!((view_box[0] + view_box[2] - bounds.max_x).abs() < 1e-6);
+    assert!((view_box[1] + view_box[3] - bounds.max_y).abs() < 1e-6);
+}
+
+#[test]
+fn tree_view_edge_width_clear_restores_the_mermaid_baseline() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Clear));
+
+    assert_eq!(layout.line_thickness, 1.0);
+    let document = roxmltree::Document::parse(&svg).expect("valid cleared Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("1"))
+    );
+}
+
+#[test]
+fn tree_view_explicit_line_thickness_outranks_typed_edge_width() {
+    let source = r#"---
+config:
+  treeView:
+    lineThickness: 7
+---
+treeView-beta
+Root/
+    Child
+"#;
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Value(6.0)));
+
+    assert_eq!(layout.line_thickness, 7.0);
+    let document = roxmltree::Document::parse(&svg).expect("valid source-owned Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("7"))
+    );
+}
+
+#[test]
+fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
+    let edge = CanvasPaint::solid("#00ff00").expect("valid Tree View edge color");
+    let marker = CanvasPaint::solid("#0000ff").expect("valid Tree View marker color");
+    let theme = tree_view_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(edge),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_stroke(marker),
+        ),
+    ]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "securityLevel": "loose"
+    })));
+    let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
+        "treeView-beta\nRoot icon(folder)\n",
+        &theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render mixed Tree View edge and marker paint");
+    let document = roxmltree::Document::parse(&svg).expect("valid mixed Tree View SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Tree View stylesheet");
+
+    let icon_group = tree_view_icon_group_for_label(&document, "Root");
+    assert!(
+        icon_group.children().any(|node| node.has_tag_name("svg")),
+        "the fixture must exercise a real icon terminal"
+    );
+    assert!(
+        stylesheet.contains(".treeView-node-line { stroke: #00ff00; }"),
+        "{stylesheet}"
+    );
+    assert!(
+        stylesheet.contains(".treeView-node-icon { color: #0000ff; }"),
+        "{stylesheet}"
+    );
+}
+
+#[test]
+fn tree_view_typed_marker_paint_reaches_icon_terminal_and_portable_evidence() {
+    let source = "treeView-beta\nRoot icon(folder)\n";
+    let cases = [
+        (false, None, "#123456"),
+        (true, None, "#234567"),
+        (false, Some(ThemeVariant::Default), "#345678"),
+        (true, Some(ThemeVariant::Default), "#456789"),
+    ];
+
+    for (stroke, variant, expected_color) in cases {
+        let paint = CanvasPaint::solid(expected_color).expect("valid Tree View marker paint");
+        let style = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let mut rule =
+            ThemeRule::new(ThemeTarget::Marker, style).for_family(DiagramFamilyId::TREE_VIEW);
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &tree_view_rules_theme([rule]),
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-view-typed-marker-paint",
+        )
+        .unwrap_or_else(|error| {
+            panic!(
+                "typed Tree View Marker.{channel} {variant:?} route must be portable: {error}",
+                channel = if stroke { "stroke" } else { "fill" },
+                variant = variant,
+            )
+        });
+
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid typed Tree View marker SVG");
+        let stylesheet = tree_view_stylesheet(rendered.svg());
+        assert!(
+            tree_view_css_rule(&stylesheet, ".treeView-node-icon")
+                .contains(&format!("color: {expected_color};")),
+            "typed Tree View Marker.{channel} {variant:?} did not reach icon CSS: {stylesheet}",
+            channel = if stroke { "stroke" } else { "fill" },
+            variant = variant,
+        );
+        let icon_group = tree_view_icon_group_for_label(&document, "Root");
+        let icon_path = icon_group
+            .descendants()
+            .find(|node| node.has_tag_name("path"))
+            .expect("built-in Tree View icon path");
+        assert_eq!(
+            icon_path.attribute("fill"),
+            Some("currentColor"),
+            "typed marker paint must be consumed through the icon currentColor terminal"
+        );
+        drop(document);
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.accounted_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.applied_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "variant={variant:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "variant={variant:?}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "variant={variant:?}"
+        );
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "variant={variant:?}"
+        );
+    }
+}
+
+#[test]
+fn tree_view_typed_marker_paint_is_not_applicable_without_icon_terminals() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint")),
+    )]);
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nRoot\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &RenderEnvironment::deterministic(),
+        "tree-view-typed-marker-no-icon",
+    )
+    .expect("marker paint without icon terminals is not applicable");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies() {
+    let registry = IconRegistry::from_packs([IconPack::new(
+        br##"{
+            "prefix":"test",
+            "icons":{
+                "current":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V16H0Z\"/>"},
+                "fixed":{"body":"<path fill=\"#ff0000\" d=\"M0 0H16V16H0Z\"/>"},
+                "mixed":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V8H0Z\"/><path fill=\"#ff0000\" d=\"M0 8H16V16H0Z\"/>"},
+                "empty":{"body":""}
+            }
+        }"##,
+    )])
+    .expect("compile Tree View icon registry fixture");
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint")),
+    )]);
+    let source = "treeView-beta\nCurrent icon(test:current)\nFixed icon(test:fixed)\nMissing icon(test:missing)\nEmpty icon(test:empty)\n";
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-icon-facts",
+    )
+    .expect("currentColor icon should prove the typed marker route");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Tree View SVG");
+    for label in ["Fixed", "Missing", "Empty"] {
+        let icon = tree_view_icon_group_for_label(&document, label);
+        assert_eq!(
+            icon.attribute("id"),
+            None,
+            "fixed/unknown/empty icon must retain the upstream group without a paint marker: {label}"
+        );
+    }
+    let current = tree_view_icon_group_for_label(&document, "Current");
+    assert!(current.attribute("id").is_some_and(|id| {
+        id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let (_, fixed_only_rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nFixed icon(test:fixed)\nMissing icon(test:missing)\nEmpty icon(test:empty)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-fixed-icons",
+    )
+    .expect("fixed/unknown/empty icons should remain valid terminals");
+    let fixed_only_evidence =
+        merman_render::__private::family_evidence(fixed_only_rendered.into_completion().report());
+    assert_eq!(fixed_only_evidence.applied_count(), 0);
+    assert_eq!(fixed_only_evidence.not_applicable_count(), 1);
+    assert_eq!(fixed_only_evidence.theme_residual_count(), 0);
+
+    let mixed_result = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nMixed icon(test:mixed)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-mixed-icon",
+    );
+    let mixed_error = match mixed_result {
+        Ok((_, _rendered)) => {
+            panic!("mixed currentColor/fixed icon paint must fail closed")
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        mixed_error.incomplete_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1, 0))
+    );
+}
+
+#[test]
+fn tree_view_mixed_marker_paint_and_unsupported_facet_fails_closed() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint"))
+            .with_padding(InsetsPx::all(2.0)),
+    )]);
+    let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot icon(folder)\n", &theme)
+        .expect_err("mixed typed/unsupported Marker rule must fail closed");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+    );
+}
+
+#[test]
+fn tree_view_unsupported_only_marker_facet_fails_closed() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default().with_padding(InsetsPx::all(2.0)),
+    )]);
+    let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot icon(folder)\n", &theme)
+        .expect_err("unsupported-only Marker rule must fail closed");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+    );
+}
+
+#[test]
+fn tree_view_edge_width_rejects_qualified_ordinal_and_mixed_rules() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let width_style = tree_view_edge_width_style(Specified::Value(6.0));
+    for rule in [
+        ThemeRule::new(ThemeTarget::Edge, width_style.clone()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Edge, width_style.clone())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Tree View edge ordinal")),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            width_style.clone().with_padding(InsetsPx::all(4.0)),
+        ),
+    ] {
+        let error = try_render_tree_view_svg_with_theme(source, &tree_view_rules_theme([rule]))
+            .expect_err("unsupported Tree View edge routes must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+        );
+    }
+
+    let theme = tree_view_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(6.0)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(99.0)),
+        )
+        .with_variant(ThemeVariant::Warning)
+        .with_ordinal(
+            OrdinalSelector::exact(999).expect("valid out-of-range Tree View edge ordinal"),
+        ),
+    ]);
+    let (_, svg) = try_render_tree_view_svg_with_theme(source, &theme)
+        .expect("an out-of-range Tree View selector must be not applicable");
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("6"))
+    );
 }
 
 #[test]
@@ -339,6 +1335,11 @@ App.tsx icon(logos:react)
 
     for label in ["src", "file.txt"] {
         let icon_group = tree_view_icon_group_for_label(&document, label);
+        assert_eq!(
+            icon_group.attribute("id"),
+            None,
+            "unthemed icons must keep the upstream DOM without a typed paint marker"
+        );
         let icon_svg = tree_view_icon_svg_for_label(&document, label);
 
         assert_eq!(icon_svg.attribute("width"), Some("14"));

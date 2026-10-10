@@ -131,17 +131,25 @@ jobs:
         with:
           tool: cargo-semver-checks@0.50.0
 
-      - name: Install CLI asset validators
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: nextest
+
+      - name: Install CLI validators and native qualification fonts
         timeout-minutes: 10
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core
 
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Verify ADR identities
+        run: python3 scripts/adr_identity.py
 
       - name: Verify static release surface contract
         env:
@@ -149,15 +157,18 @@ jobs:
         run: python3 scripts/release_surface_contract.py --version "$VERSION"
 
       - name: Compile prerelease lanes from fresh Cargo resolutions
+        id: prerelease_compatibility
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
           previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)"
           if [[ -n "$previous_tag" ]]; then
-            python3 scripts/verify_prerelease_compatibility.py \
-              --version "$VERSION" \
-              --previous-version "${previous_tag#v}"
+            set -- --version "$VERSION" --previous-version "${previous_tag#v}"
+            if [[ "$VERSION" == "0.8.0-alpha.7" && "$previous_tag" == "v0.8.0-alpha.6" ]]; then
+              set -- "$@" --accept-alpha6-transition
+            fi
+            python3 scripts/verify_prerelease_compatibility.py "$@"
           else
             python3 scripts/verify_prerelease_compatibility.py \
               --version "$VERSION" \
@@ -199,6 +210,49 @@ jobs:
       - name: Verify exhaustive Cargo feature and artifact recipes
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
+      - name: Verify native ABI projections
+        run: cargo run --locked -p xtask -- verify-native-abi
+
+      - name: Test theme authoring and font resource boundaries
+        shell: bash
+        run: |
+          cargo test --locked -p merman-ffi --no-default-features \
+            --features svg,diagram-flowchart --test c_consumer_smoke
+          cargo test --locked -p merman-render --no-default-features \
+            --features diagram-flowchart,diagram-swimlane \
+            --test theme_font_capability --test flowchart_node_effects
+          cargo test --locked -p merman-bindings-core --no-default-features \
+            --features svg,diagram-flowchart --lib
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart \
+            --test theme_font_capability --test flowchart_edge_label_theme
+          cargo test --locked -p merman-export --no-default-features \
+            --features png,jpeg,pdf --lib
+
+      - name: Test native theme consumers
+        run: |
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,png,pdf,layout-cytoscape \
+            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
+            --test theme_composed_effects
+
+      - name: Test optimized theme evidence and qualification rejection
+        run: |
+          cargo test --release --locked -p merman-render --no-default-features \
+            --lib family::evidence_support::tests
+          python3 scripts/run_theme_acceptance.py test --release --locked \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
+            --lib preset_qualification::
+
+      - name: Verify published theme acceptance boundary
+        run: python3 scripts/verify_theme_acceptance_boundary.py
+
+      - name: Test preset qualification and family terminal behavior
+        run: |
+          python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
+            --no-default-features --features png,all-diagrams,layout-cytoscape \
+            --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
+            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
+
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
 
@@ -237,6 +291,99 @@ jobs:
         with:
           name: crate-package-lists
           path: target/package-lists/*.txt
+
+  mermaid-reference-materialized:
+    needs: validate-inputs
+    name: mermaid-reference-materialized
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Node for selected Mermaid graph
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: |
+            playground/package-lock.json
+            tools/mermaid-cli/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Materialize locked Mermaid source checkouts
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          lock = json.loads(Path("tools/upstreams/REPOS.lock.json").read_text())
+          bundle = json.loads(Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text())
+          def checkout_paths(value):
+              if isinstance(value, dict):
+                  source = value.get("source")
+                  if isinstance(source, dict) and source.get("checkoutPath"):
+                      yield source["checkoutPath"]
+                  for child in value.values():
+                      yield from checkout_paths(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from checkout_paths(child)
+
+          checkout_names = set(checkout_paths(bundle))
+          for name, repo in lock["repos"].items():
+              if repo["path"] not in checkout_names:
+                  continue
+              checkout = Path(repo["path"])
+              subprocess.run(
+                  ["git", "clone", "--no-checkout", "--filter=blob:none", repo["url"], str(checkout)],
+                  check=True,
+              )
+              subprocess.run(
+                  ["git", "-C", str(checkout), "fetch", "--no-tags", "origin", repo["commit"]],
+                  check=True,
+              )
+              subprocess.run(
+                  ["git", "-C", str(checkout), "checkout", "--detach", repo["commit"]],
+                  check=True,
+              )
+              observed = subprocess.check_output(
+                  ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+              ).strip()
+              if observed != repo["commit"]:
+                  raise SystemExit(
+                      f"{repo['path']} resolved to {observed}, expected {repo['commit']}"
+                  )
+          if checkout_names != {
+              repo["path"]
+              for repo in lock["repos"].values()
+              if repo["path"] in checkout_names
+          }:
+              raise SystemExit("not all bundle source checkouts were materialized")
+          PY
+
+      - name: Install selected npm graphs without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --prefix playground
+          npm ci --ignore-scripts --prefix tools/mermaid-cli
+
+      - name: Verify materialized Mermaid reference graph
+        run: cargo run --locked -p xtask -- verify-mermaid-reference --materialized
+
+      - name: Verify installed npm graph closure
+        run: |
+          npm ls --all --prefix playground
+          npm ls --all --prefix tools/mermaid-cli
 
   cli-and-lsp-archives:
     needs: validate-inputs
@@ -298,12 +445,19 @@ jobs:
       - name: Verify non-publishing cargo-dist plan
         run: |
           set -euo pipefail
-          dist plan "--tag=$RELEASE_TAG" --output-format=json > plan-dist-manifest.json
-          python3 scripts/release_artifact_bundle.py verify-plan plan-dist-manifest.json \
+          mkdir -p target
+          dist plan "--tag=$RELEASE_TAG" --output-format=json > target/plan-dist-manifest.json
+          python3 scripts/release_artifact_bundle.py verify-plan target/plan-dist-manifest.json \
             --tag "$RELEASE_TAG" \
             --version "$VERSION" \
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
+
+      - name: Install native qualification fonts
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes fonts-dejavu-core
 
       - name: Prepare ARM64 system resource probes
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -327,7 +481,7 @@ jobs:
           sudo update-ca-certificates
           openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$RUNNER_TEMP/merman-resource.crt"
 
-      - name: Build and execute final native archives
+      - name: Build final native archives
         run: |
           set -euo pipefail
           mkdir -p target/distrib
@@ -335,18 +489,31 @@ jobs:
             "--tag=$RELEASE_TAG" \
             --artifacts=local \
             --target="$TARGET" \
-            --output-format=json > native-dist-manifest.json
-          resource_args=()
-          if [[ "$TARGET" == 'aarch64-unknown-linux-gnu' ]]; then
-            resource_args=(--resource-certificate "$RUNNER_TEMP/merman-resource.crt" --resource-key "$RUNNER_TEMP/merman-resource.key")
+            --output-format=json > target/native-dist-manifest.json
+
+      - name: Execute final native archives
+        run: |
+          set -euo pipefail
+          archive="target/distrib/merman-cli-$TARGET.tar.xz"
+          verification_args=(
+            "$archive" --checksum "$archive.sha256"
+            --target "$TARGET" --version "$VERSION"
+            --repo-root . --execute
+          )
+          if [[ "$TARGET" == aarch64-unknown-linux-gnu ]]; then
+            verification_args+=(
+              --resource-certificate "$RUNNER_TEMP/merman-resource.crt"
+              --resource-key "$RUNNER_TEMP/merman-resource.key"
+            )
           fi
-          python3 scripts/verify_cli_release_archive.py \
-            "target/distrib/merman-cli-$TARGET.tar.xz" \
-            --checksum "target/distrib/merman-cli-$TARGET.tar.xz.sha256" \
-            --target "$TARGET" \
-            --version "$VERSION" \
-            --repo-root . \
-            --execute "${resource_args[@]}"
+          if [[ "$TARGET" == x86_64-unknown-linux-gnu ]]; then
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
+              --preset-qualification-output target/preset-qualification.json
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
+              --preset-qualification-check target/preset-qualification.json
+          else
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}"
+          fi
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \
@@ -355,13 +522,23 @@ jobs:
             --repo-root . \
             --execute
 
+      - name: Upload scoped native preset qualification
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preset-qualification-${{ needs.validate-inputs.outputs.source_sha }}-${{ matrix.target }}
+          path: |
+            target/preset-qualification.json
+            target/preset-qualification.catalog.json
+          if-no-files-found: error
+
       - name: Upload native archive evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preflight-cli-lsp-${{ matrix.target }}
           path: |
-            plan-dist-manifest.json
-            native-dist-manifest.json
+            target/plan-dist-manifest.json
+            target/native-dist-manifest.json
             target/distrib/merman-*-${{ matrix.target }}.tar.xz
             target/distrib/merman-*-${{ matrix.target }}.tar.xz.sha256
           if-no-files-found: error
@@ -404,8 +581,8 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: Build and smoke wheel
-        run: python scripts/build-python-uniffi-wheel.py --run-smoke
+      - name: Build wheel
+        run: python scripts/build-python-uniffi-wheel.py
 
       - name: Install Linux wheel repair tools
         if: runner.os == 'Linux'
@@ -417,6 +594,7 @@ jobs:
           python -m pip install --upgrade auditwheel
 
       - name: Repair Linux wheel
+        id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
           mkdir -p target/python-wheels/repaired
@@ -424,6 +602,20 @@ jobs:
           rm target/python-wheels/merman-*.whl
           mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
           rmdir target/python-wheels/repaired
+
+      - name: Run final wheel install smoke
+        id: smoke-final-wheel
+        run: |
+          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+            PYTHON="$VENV_DIR/Scripts/python.exe"
+          else
+            PYTHON="$VENV_DIR/bin/python"
+          fi
+          "$PYTHON" -m ensurepip --upgrade
+          "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
+          "$PYTHON" platforms/python/merman/examples/smoke.py
 
       - name: Check wheel metadata
         run: |
@@ -458,7 +650,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup JDK
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
@@ -565,7 +757,7 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
-      - name: Install pinned npm
+      - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install wasm-tools
@@ -645,7 +837,7 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
-      - name: Install pinned npm
+      - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Verify Node package contracts
@@ -705,7 +897,7 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
-      - name: Install pinned npm
+      - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Node build dependencies
@@ -889,7 +1081,7 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
-      - name: Install pinned npm
+      - name: Install npm toolchain
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
@@ -1033,7 +1225,7 @@ jobs:
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
 
-      - name: Install pinned npm
+      - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install extension dependencies
@@ -1188,12 +1380,16 @@ jobs:
         working-directory: platforms/flutter
         run: |
           flutter pub get
+          dart run ffigen --config ffigen.yaml
+          git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
+          git diff --exit-code -- lib/src/generated/native_abi.dart
           flutter analyze
           dart format --set-exit-if-changed \
             lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
             example tool hook
           dart run tool/abi3_contract_test.dart
           dart run example/main.dart
+          dart run tool/theme_authoring_smoke.dart
           python3 ../../scripts/verify_flutter_pub_package.py \
             --package-root . \
             --max-compressed-mb 99
@@ -1202,6 +1398,7 @@ jobs:
     needs:
       - validate-inputs
       - versions-and-packages
+      - mermaid-reference-materialized
       - cli-and-lsp-archives
       - python-wheel
       - android-aar

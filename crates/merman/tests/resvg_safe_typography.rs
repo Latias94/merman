@@ -181,19 +181,24 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
 
 #[test]
 fn fallback_text_isolated_from_svg_only_source_selectors() {
-    let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>g.classGroup text { font-size:10px !important; fill:#ebdbb2 !important; }</style><g class="classGroup"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"##;
-    let svg = foreign_object_label_fallback_svg_text(source, &DeterministicTextMeasurer::default());
+    for filter in ["", r##" filter="url(#blur)""##] {
+        let source = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="blur"><feGaussianBlur stdDeviation="1"/></filter></defs><style>g.classGroup text {{ font-size:10px !important; fill:#ebdbb2 !important; }}</style><g class="classGroup"{filter}><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Alpha</span></div></foreignObject></g></svg>"##
+        );
+        let svg =
+            foreign_object_label_fallback_svg_text(&source, &DeterministicTextMeasurer::default());
 
-    assert_eq!(
-        usvg_fallback_text_font_size(&svg, "Alpha"),
-        16.0,
-        "an SVG-only selector must not change the fallback size after measurement: {svg}"
-    );
-    assert_eq!(
-        usvg_fallback_text_fill(&svg, "Alpha"),
-        Some((0x33, 0x33, 0x33)),
-        "an SVG-only selector must not change the fallback paint after resolution: {svg}"
-    );
+        assert_eq!(
+            usvg_fallback_text_font_size(&svg, "Alpha"),
+            16.0,
+            "an SVG-only selector must not change the fallback size after measurement: {svg}"
+        );
+        assert_eq!(
+            usvg_fallback_text_fill(&svg, "Alpha"),
+            Some((0x33, 0x33, 0x33)),
+            "an SVG-only selector must not change the fallback paint after resolution: {svg}"
+        );
+    }
 }
 
 #[test]
@@ -296,4 +301,98 @@ venn-beta
         "Venn text must paint at the inherited 20px size"
     );
     assert_usvg_parseable(&svg);
+}
+
+#[test]
+fn filtered_html_fallback_rejects_new_svg_only_visibility_rules() {
+    for selector in [
+        ".classGroup text",
+        ".classGroup > g",
+        ".classGroup [data-merman-foreignobject]",
+        "text:not(.absent)",
+    ] {
+        for declaration in [
+            "visibility:hidden !important",
+            "display:none",
+            "opacity:0",
+            "filter:url(#blur)",
+        ] {
+            let source = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="blur"><feGaussianBlur stdDeviation="1"/></filter></defs><style>{selector} {{{declaration}}}</style><g class="classGroup" filter="url(#blur)"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject></g></svg>"##
+            );
+            let out = foreign_object_label_fallback_svg_text(
+                &source,
+                &DeterministicTextMeasurer::default(),
+            );
+            let xml = roxmltree::Document::parse(&out).unwrap();
+            let text = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Alpha"))
+                .unwrap();
+            assert!(
+                !text
+                    .ancestors()
+                    .any(|node| node.attribute("class") == Some("classGroup")),
+                "new CSS must not silently alter fallback paint: {out}"
+            );
+        }
+    }
+}
+
+#[test]
+fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
+    for rules in [
+        "@media all { .classGroup text {visibility:hidden!important} }",
+        "@supports(display:grid) { .classGroup text {opacity:0} }",
+        ".classGroup text {filter:url(#blur)}",
+    ] {
+        let source = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{rules}</style><g class="classGroup" filter="url(#blur)" transform="translate(100,200)"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject></g></svg>"##
+        );
+        let out =
+            foreign_object_label_fallback_svg_text(&source, &DeterministicTextMeasurer::default());
+        let xml = roxmltree::Document::parse(&out).unwrap();
+        let text = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        let fallback = text.parent_element().unwrap();
+        assert_eq!(fallback.parent_element().unwrap(), xml.root_element());
+        assert_eq!(fallback.attribute("transform"), Some("translate(100,200)"));
+    }
+}
+
+#[test]
+#[cfg(feature = "png")]
+fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
+    let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-theme-effect-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-theme-effect-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+    let (bytes, report) =
+        merman::svg::export::svg_to_png_with_report(&sealed, &Default::default()).unwrap();
+    let receipt = report
+        .native_filter_receipt()
+        .expect("actual filtered glyphs must reach the exporter");
+    assert_eq!(receipt.filter_count(), 1);
+    assert_eq!(receipt.reference_count(), 1);
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, png::ColorType::Rgba);
+    assert!(
+        pixels[..info.buffer_size()]
+            .chunks_exact(4)
+            .any(|pixel| pixel[3] > 0 && pixel[0] > pixel[1] && pixel[2] > pixel[1]),
+        "pink glow must reach native pixels"
+    );
+    #[cfg(feature = "pdf")]
+    {
+        let (_, report) =
+            merman::svg::export::svg_to_pdf_with_report(&sealed, &Default::default()).unwrap();
+        assert_eq!(report.native_filter_receipt(), Some(receipt));
+    }
 }

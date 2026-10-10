@@ -771,14 +771,9 @@ fn compute_node_label_metrics_for_intersection(
         .unwrap_or_default();
     let label_type = flow_node.label_type.as_deref().unwrap_or("text");
 
-    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-        &ctx.html_label_text_style
-    } else {
-        &ctx.text_style
-    };
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        label_base_style,
-        ctx.class_defs,
+    let node_text_style = super::super::render::node::helpers::node_source_text_style(
+        ctx,
+        Some(node_id),
         &flow_node.classes,
         &flow_node.styles,
     );

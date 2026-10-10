@@ -1,13 +1,13 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
 use crate::svg::icon_registry::mermaid_unknown_icon_svg;
+use crate::svg::parity::flowchart::document_ids::FlowchartDocumentId;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use merman_core::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
-use std::fmt::Write as _;
 
 pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     ctx: &FlowchartRenderCtx<'_>,
@@ -15,12 +15,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     icon_name: &str,
     icon_size: f64,
 ) -> crate::Result<String> {
+    let id_scope =
+        ctx.document_ids
+            .icon_scope(node_id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart icon scope for node `{node_id}`"),
+            })?;
     let icon = match ctx.icon_registry {
         Some(registry) => {
-            let prefix = ctx.icon_scope_prefix.ok_or_else(|| {
-                crate::Error::icon_processing("flowchart icon scope prefix is unavailable")
-            })?;
-            let id_scope = prefix.scope_parts(&[node_id], ctx.work_meter)?;
+            let id_scope = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                &[id_scope.as_str()],
+                ctx.work_meter,
+            )?
+            .scope_parts(&[], ctx.work_meter)?;
             registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
                 icon_name,
                 width_px: icon_size,
@@ -54,8 +61,9 @@ fn is_self_loop_label_node_id(id: &str) -> bool {
 }
 
 pub(super) fn try_render_self_loop_label_placeholder(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     node_id: &str,
+    dom_id: FlowchartDocumentId<'_>,
     x: f64,
     y: f64,
     html_labels: bool,
@@ -66,7 +74,8 @@ pub(super) fn try_render_self_loop_label_placeholder(
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        dom_id,
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y)
@@ -84,25 +93,48 @@ pub(super) fn try_render_self_loop_label_placeholder(
     true
 }
 
-fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
-    escape_xml_into(out, base);
-    for c in classes {
-        let t = c.trim();
-        if t.is_empty() {
-            continue;
+#[derive(Clone, Copy)]
+pub(in crate::svg::parity::flowchart) struct NodeWrapperClasses<'a> {
+    base: &'a str,
+    assigned: &'a [String],
+}
+
+impl<'a> NodeWrapperClasses<'a> {
+    pub(in crate::svg::parity::flowchart) const fn new(
+        base: &'a str,
+        assigned: &'a [String],
+    ) -> Self {
+        Self { base, assigned }
+    }
+
+    pub(in crate::svg::parity::flowchart) fn contains(self, expected: &str) -> bool {
+        self.base
+            .split_ascii_whitespace()
+            .chain(self.assigned.iter().map(String::as_str))
+            .any(|class| class.trim() == expected)
+    }
+
+    fn write(self, out: &mut impl crate::svg::parity::SvgOutput) {
+        escape_xml_into(out, self.base);
+        for c in self.assigned {
+            let t = c.trim();
+            if t.is_empty() {
+                continue;
+            }
+            out.push(' ');
+            escape_xml_into(out, t);
         }
-        out.push(' ');
-        escape_xml_into(out, t);
     }
 }
 
+fn write_class_attr(out: &mut impl crate::svg::parity::SvgOutput, classes: NodeWrapperClasses<'_>) {
+    classes.write(out);
+}
+
 pub(super) struct NodeWrapperAttrs<'a> {
-    pub(super) diagram_id: crate::svg::parity::SvgDiagramId<'a>,
-    pub(super) diagram_type: &'a str,
-    pub(super) node_id: &'a str,
-    pub(super) dom_idx: Option<usize>,
-    pub(super) class_attr_base: &'a str,
-    pub(super) node_classes: &'a [String],
+    pub(super) dom_id: FlowchartDocumentId<'a>,
+    pub(super) data_id: &'a str,
+    pub(super) classes: NodeWrapperClasses<'a>,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<&'a SerializedMermaidNavigationHref>,
     pub(super) target: Option<&'a str>,
@@ -114,14 +146,14 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) color_slot: Option<usize>,
 }
 
-pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+pub(super) fn open_node_wrapper(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    attrs: NodeWrapperAttrs<'_>,
+) {
     let NodeWrapperAttrs {
-        diagram_id,
-        diagram_type,
-        node_id,
-        dom_idx,
-        class_attr_base,
-        node_classes,
+        dom_id,
+        data_id,
+        classes,
         wrapped_in_a,
         href,
         target,
@@ -132,14 +164,6 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         look,
         color_slot,
     } = attrs;
-    // Mermaid uses the stable `flowchart` DOM namespace for ordinary flowcharts,
-    // even when the internal parser type is `flowchart-v2` or another variant.
-    let dom_diagram_type = if diagram_type == "agentflow" {
-        "agentflow"
-    } else {
-        "flowchart"
-    };
-
     if wrapped_in_a {
         if let Some(href) = href {
             out.push_str(r#"<a xlink:href=""#);
@@ -167,52 +191,26 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             out.push_str(r#"">"#);
         }
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id=""#);
-            let _ = write!(out, "{diagram_id}");
-            out.push('-');
-            escape_xml_into(out, dom_diagram_type);
-            out.push('-');
-            escape_xml_into(out, node_id);
-            let _ = write!(out, "-{dom_idx}\"");
-        } else {
-            out.push_str(r#"" id=""#);
-            let _ = write!(out, "{diagram_id}");
-            out.push('-');
-            escape_xml_into(out, node_id);
-            out.push('"');
-        }
+        write_class_attr(out, classes);
+        out.push_str(r#"" id=""#);
+        let _ = write!(out, "{dom_id}");
+        out.push_str(r#"" data-id=""#);
+        escape_xml_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
     } else {
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id=""#);
-            let _ = write!(out, "{diagram_id}");
-            out.push('-');
-            escape_xml_into(out, dom_diagram_type);
-            out.push('-');
-            escape_xml_into(out, node_id);
-            let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
-            crate::svg::parity::util::fmt_into(out, x);
-            out.push(',');
-            crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
-            out.push('"');
-        } else {
-            out.push_str(r#"" id=""#);
-            let _ = write!(out, "{diagram_id}");
-            out.push('-');
-            escape_xml_into(out, node_id);
-            out.push_str(r#"" transform="translate("#);
-            crate::svg::parity::util::fmt_into(out, x);
-            out.push(',');
-            crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
-            out.push('"');
-        }
+        write_class_attr(out, classes);
+        out.push_str(r#"" id=""#);
+        let _ = write!(out, "{dom_id}");
+        out.push_str(r#"" transform="translate("#);
+        crate::svg::parity::util::fmt_into(out, x);
+        out.push(',');
+        crate::svg::parity::util::fmt_into(out, y);
+        out.push_str(r#")" data-look=""#);
+        escape_xml_into(out, look);
+        out.push_str(r#"" data-id=""#);
+        escape_xml_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
     }
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
@@ -246,6 +244,115 @@ pub(super) fn timed_node_roughjs<T>(
     }
 }
 
+/// Generate the complete RoughJS hand-drawn pair for a node path.
+///
+/// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
+/// boundary is shared: rejected resources or empty generated paths must fall back as a whole
+/// shape instead of emitting a partial hand-drawn fragment.
+pub(super) fn hand_drawn_path_pair(
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+) -> Option<(String, String)> {
+    hand_drawn_path_pair_with_stroke(
+        common.look_is_hand_drawn(),
+        common.timing,
+        details,
+        path_data,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.work_meter,
+        common.hand_drawn_seed,
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The RoughJS adapter passes independent stroke inputs, deterministic randomness, and resource accounting through unchanged."
+)]
+pub(super) fn hand_drawn_path_pair_with_stroke(
+    hand_drawn: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
+    hand_drawn_seed: &roughr::core::RoughRandomness,
+) -> Option<(String, String)> {
+    if !hand_drawn {
+        return None;
+    }
+
+    timed_node_roughjs(timing, details, || {
+        super::roughjs::roughjs_paths_for_hand_drawn_svg_path(
+            path_data,
+            stroke_width,
+            stroke_dasharray,
+            work_meter,
+            hand_drawn_seed,
+        )
+    })
+    .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty())
+}
+
+pub(super) fn write_hand_drawn_path_pair(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    fill_d: &str,
+    stroke_d: &str,
+) {
+    write_hand_drawn_path_pair_with_colors(
+        out,
+        fill_d,
+        stroke_d,
+        common.fill_color,
+        common.stroke_color,
+        common.stroke_width,
+        common.stroke_dasharray,
+    );
+}
+
+pub(super) fn write_hand_drawn_path_pair_with_colors(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    fill_d: &str,
+    stroke_d: &str,
+    fill_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+        crate::svg::parity::flowchart::escape_attr(fill_d),
+        crate::svg::parity::flowchart::escape_attr(fill_color),
+        crate::svg::parity::flowchart::escape_attr(stroke_d),
+        crate::svg::parity::flowchart::escape_attr(stroke_color),
+        crate::svg::parity::util::fmt_display(stroke_width as f64),
+        crate::svg::parity::flowchart::escape_attr(stroke_dasharray),
+    );
+}
+
+pub(super) fn write_raw_filled_stroked_path(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    path_data: &str,
+    fill_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    style: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
+        crate::svg::parity::flowchart::escape_attr(path_data),
+        crate::svg::parity::flowchart::escape_attr(fill_color),
+        crate::svg::parity::flowchart::escape_attr(stroke_color),
+        crate::svg::parity::util::fmt_display(stroke_width as f64),
+        crate::svg::parity::flowchart::escape_attr(style),
+    );
+}
+
 pub(super) fn timed_node_label_html<T>(
     timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
@@ -261,27 +368,26 @@ pub(super) fn timed_node_label_html<T>(
     }
 }
 
-pub(super) struct ResolvedNodeRenderInfo<'a> {
-    pub(super) dom_idx: Option<usize>,
+pub(in crate::svg::parity::flowchart) struct ResolvedNodeRenderInfo<'a> {
     pub(super) class_attr_base: &'static str,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<SerializedMermaidNavigationHref>,
     pub(super) target: Option<&'a str>,
-    pub(super) label_text: &'a str,
-    pub(super) label_text_is_node_id: bool,
-    pub(super) label_type: &'a str,
-    pub(super) shape: &'a str,
+    pub(in crate::svg::parity::flowchart) label_text: &'a str,
+    pub(in crate::svg::parity::flowchart) label_text_is_node_id: bool,
+    pub(in crate::svg::parity::flowchart) label_type: &'a str,
+    pub(in crate::svg::parity::flowchart) shape: &'a str,
     pub(super) node_icon: Option<&'a str>,
     pub(super) node_img: Option<&'a str>,
     pub(super) node_pos: Option<&'a str>,
     pub(super) node_constraint: Option<&'a str>,
     pub(super) node_asset_width: Option<f64>,
     pub(super) node_asset_height: Option<f64>,
-    pub(super) node_styles: &'a [String],
-    pub(super) node_classes: &'a [String],
+    pub(in crate::svg::parity::flowchart) node_styles: &'a [String],
+    pub(in crate::svg::parity::flowchart) node_classes: &'a [String],
 }
 
-pub(super) fn resolve_node_render_info<'a>(
+pub(in crate::svg::parity::flowchart) fn resolve_node_render_info<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     node_id: &str,
 ) -> Option<ResolvedNodeRenderInfo<'a>> {
@@ -291,9 +397,6 @@ pub(super) fn resolve_node_render_info<'a>(
         let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
         let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
-            // Mermaid's collapsed subgraph is emitted as a synthetic leaf node and therefore has
-            // the plain diagram-id suffix rather than a FlowDB vertex-counter suffix.
-            dom_idx: None,
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
@@ -319,7 +422,6 @@ pub(super) fn resolve_node_render_info<'a>(
         let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
         let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
-            dom_idx: None,
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
@@ -340,7 +442,6 @@ pub(super) fn resolve_node_render_info<'a>(
     }
 
     if let Some(node) = ctx.nodes_by_id.get(node_id) {
-        let dom_idx = Some(ctx.node_dom_index.get(node_id).copied().unwrap_or(0));
         let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
 
         // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
@@ -381,7 +482,6 @@ pub(super) fn resolve_node_render_info<'a>(
             };
 
         Some(ResolvedNodeRenderInfo {
-            dom_idx,
             class_attr_base,
             wrapped_in_a,
             href,
@@ -404,8 +504,9 @@ pub(super) fn resolve_node_render_info<'a>(
     }
 }
 
-pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics(
+pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
     layout_node: Option<&crate::model::LayoutNode>,
     label_text: &str,
     label_type: &str,
@@ -414,22 +515,53 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
 ) -> crate::text::TextMetrics {
     // Layout metrics are authoritative. Callers without them can reuse a prepared label or
     // measure with the same effective styles as layout.
+    let node_text_style = node_source_text_style(ctx, Some(node_id), node_classes, node_styles);
+    compute_node_label_metrics_with_style(
+        ctx,
+        layout_node,
+        label_text,
+        label_type,
+        node_text_style.as_ref(),
+    )
+}
+
+pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    node_id: Option<&str>,
+    node_classes: &[String],
+    node_styles: &[String],
+) -> std::borrow::Cow<'a, crate::text::TextStyle> {
+    if let Some(prepared) = node_id.and_then(|id| ctx.prepared_nodes.node(id)) {
+        return std::borrow::Cow::Borrowed(prepared.source_text_style.as_ref());
+    }
+    // Standalone geometry probes may not have a scheduled terminal node. Complete renders
+    // always prepare their source typography, including when SVG label preparation is disabled.
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
         &ctx.text_style
     };
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        label_base_style,
-        ctx.class_defs,
-        node_classes,
-        node_styles,
-    );
-    // Shapes such as hourglass clear their label after layout. Its cached bounds then belong
-    // to a different label; let the measurement layer handle the actual empty render payload.
+    std::borrow::Cow::Owned(
+        crate::flowchart::flowchart_effective_text_style_for_node_classes(
+            label_base_style,
+            ctx.class_defs,
+            node_classes,
+            node_styles,
+        )
+        .into_owned(),
+    )
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics_with_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    layout_node: Option<&crate::model::LayoutNode>,
+    label_text: &str,
+    label_type: &str,
+    node_text_style: &crate::text::TextStyle,
+) -> crate::text::TextMetrics {
     let layout_node = layout_node.filter(|_| !label_text.is_empty());
     let prepared_metrics =
-        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, &node_text_style);
+        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, node_text_style);
     let metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
@@ -445,7 +577,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     measurer: ctx.measurer,
                     raw_label: label_text,
                     label_type,
-                    style: &node_text_style,
+                    style: node_text_style,
                     max_width_px: Some(ctx.wrapping_width),
                     wrap_mode: ctx.node_wrap_mode,
                     config: ctx.config,
@@ -461,7 +593,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 measurer: ctx.measurer,
                 raw_label: label_text,
                 label_type,
-                style: &node_text_style,
+                style: node_text_style,
                 max_width_px: Some(ctx.wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
@@ -486,7 +618,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     metrics.with_label_min_width(label_text, min_width, None)
 }
 
-pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metrics(
+fn prepared_node_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
     label_text: &str,

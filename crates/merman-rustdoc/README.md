@@ -56,6 +56,28 @@ The source code still contains the original Mermaid fence. Only the rustdoc outp
 
 ![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
 
+## Re-exporting The Attribute (Unreleased)
+
+A renamed direct Cargo dependency is detected automatically. When an application depends only on
+an intermediary crate, that facade must re-export both the attribute and its deferred helper:
+
+```rust,ignore
+// In the facade crate:
+pub use merman_rustdoc::{merman, __render_doc};
+```
+
+The application selects that public path explicitly; it needs no direct `merman-rustdoc` dependency:
+
+```rust,ignore
+#[facade::merman(crate_path = "::facade")]
+/// Application documentation, including Mermaid fences.
+pub struct Example;
+```
+
+`crate_path` is resolved as a Rust path, without searching the facade's dependency graph. It belongs
+to each attribute invocation and is not an inherited rendering option. Conditional `cfg_attr`
+documentation remains in source order and is expanded by Rust, including nested conditions.
+
 ## Choose Between The Two Rustdoc Paths
 
 This macro is the one-step path: `cargo doc` compiles the selected native renderer closure and
@@ -234,6 +256,7 @@ pub fn configured() {}
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
 | `scope` | `item`, `tree` | `item` | Rewrite only the annotated item or recurse through an inline item tree. |
+| `crate_path` | A Rust path string such as `::facade` | Resolved direct dependency | Locate the deferred helper through a facade that re-exports both `merman` and `__render_doc`; this is invocation-local. |
 | `inherit` | `on`, `off` | `on` | Inherit parent tree rendering options, or start from defaults before applying this attribute's options. |
 | `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Select the SVG output pipeline. |
 | `fail` | `error`, `keep-source` | `error` | Fail documentation or preserve the Mermaid source after an error. |

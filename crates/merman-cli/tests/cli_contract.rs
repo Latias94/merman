@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::fs;
 use std::process::Command;
 use std::time::Duration;
-use support::{repo_root, run_with_stdin};
+use support::{repo_root, run_with_stdin, run_with_stdin_in_dir};
 
 fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
     model["tasks"]
@@ -187,12 +187,22 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         "--pdfFit",
         "--iconPacks",
         "--iconPacksNamesAndUrls",
-        "--presentation-profile",
+        "--theme",
         "--operation-timeout-ms",
     ] {
         assert!(
             stdout.contains(flag),
             "mmdc help should expose compatibility option {flag}:\n{stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("--presentation-profile") && !stdout.contains("merman-modern"),
+        "removed non-upstream presentation inputs must stay absent:\n{stdout}"
+    );
+    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+        assert!(
+            !stdout.contains(removed),
+            "mmdc help must not advertise provisional native theme option {removed}:\n{stdout}"
         );
     }
 }
@@ -397,6 +407,127 @@ fn mmdc_theme_values_match_the_pinned_upstream_contract() {
 }
 
 #[test]
+fn mmdc_theme_flag_without_a_value_selects_the_official_default() {
+    for flag in ["-t", "--theme"] {
+        let output = run_with_stdin(
+            &["mmdc", flag, "-i", "-", "-o", "-"],
+            "flowchart LR\nA-->B\n",
+        );
+
+        assert!(
+            output.status.success(),
+            "{flag} without a value should select the official default theme: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("<svg"),
+            "mmdc should still emit SVG for {flag} without a value"
+        );
+    }
+}
+
+#[test]
+fn compatibility_commands_reject_native_theme_options_before_input_acquisition() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for command in ["mmdc", "layout"] {
+        for (removed, value) in [
+            ("--theme-preset", "editor-dark"),
+            ("--theme-file", "theme.json"),
+            ("--theme-definition", "theme-definition.json"),
+        ] {
+            let args = if command == "mmdc" {
+                vec![command, "-i", "missing.mmd", removed, value]
+            } else {
+                vec![command, "missing.mmd", removed, value]
+            };
+            let output = Command::new(exe).args(&args).output().expect("run cli");
+
+            assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+            assert!(output.stdout.is_empty(), "{args:?}");
+            let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+            assert!(
+                stderr.contains(removed) && !stderr.contains("missing.mmd:"),
+                "{command} must reject provisional native option during argument parsing:\n{stderr}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_theme_inputs_conflict_before_input_acquisition() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for args in [
+        [
+            "render",
+            "missing.mmd",
+            "--theme-preset",
+            "editor-dark",
+            "--theme-file",
+            "missing-theme.json",
+        ],
+        [
+            "render",
+            "missing.mmd",
+            "--theme-file",
+            "missing-theme.json",
+            "--theme-definition",
+            "missing-definition.json",
+        ],
+    ] {
+        let output = Command::new(exe).args(args).output().expect("run cli");
+
+        assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("cannot be used with") && !stderr.contains("missing.mmd:"),
+            "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn mmdc_config_file_can_explicitly_override_the_official_theme_selector() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("mermaid.json");
+    fs::write(
+        &config,
+        r##"{
+  "theme": "base",
+  "themeVariables": {
+    "mainBkg": "#123456",
+    "nodeBorder": "#654321"
+  }
+}"##,
+    )
+    .expect("write config");
+    let path = config.to_string_lossy();
+    let output = run_with_stdin(
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--theme",
+            "dark",
+            "--configFile",
+            path.as_ref(),
+        ],
+        "flowchart LR\nA-->B\n",
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    assert!(svg.contains("#654321"), "explicit config should win: {svg}");
+}
+
+#[test]
 fn native_theme_values_match_the_compiled_runtime_catalog() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let rejected = Command::new(exe)
@@ -433,42 +564,41 @@ fn native_theme_values_match_the_compiled_runtime_catalog() {
 }
 
 #[test]
-fn presentation_profile_values_match_the_compiled_runtime_catalog() {
+fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    for command in ["render", "mmdc"] {
-        let mut rejected = Command::new(exe);
-        rejected.args([command, "--presentation-profile", "not-a-runtime-profile"]);
-        if command == "mmdc" {
-            rejected.args(["-i", "missing.mmd"]);
-        } else {
-            rejected.arg("missing.mmd");
-        }
-        let rejected = rejected.output().expect("run cli");
+    let rejected = Command::new(exe)
+        .args([
+            "render",
+            "missing.mmd",
+            "--theme-preset",
+            "not-a-runtime-preset",
+        ])
+        .output()
+        .expect("run cli");
 
-        assert_eq!(support::exit_code(rejected.status), 2);
+    assert_eq!(support::exit_code(rejected.status), 2);
+    assert!(
+        rejected.stdout.is_empty(),
+        "failure must not write a payload"
+    );
+    let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("not-a-runtime-preset") && !stderr.contains("missing.mmd:"),
+        "theme preset validation must precede input acquisition:\n{stderr}"
+    );
+    for descriptor in merman::svg::theme_preset_descriptors() {
         assert!(
-            rejected.stdout.is_empty(),
-            "failure must not write a payload"
+            stderr.contains(descriptor.id()),
+            "theme preset validation should list `{}`:\n{stderr}",
+            descriptor.id()
         );
-        let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
-        assert!(
-            stderr.contains("not-a-runtime-profile") && !stderr.contains("missing.mmd:"),
-            "profile validation must precede input acquisition:\n{stderr}"
-        );
-        for descriptor in merman::svg::presentation_profile_descriptors() {
-            assert!(
-                stderr.contains(descriptor.id()),
-                "profile validation should list `{}`:\n{stderr}",
-                descriptor.id()
-            );
-        }
     }
 
     let accepted = run_with_stdin(
         &[
             "render",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--format",
             "svg",
             "-",
@@ -477,46 +607,335 @@ fn presentation_profile_values_match_the_compiled_runtime_catalog() {
     );
     assert!(
         accepted.status.success(),
-        "compiled presentation profile should be accepted: {}",
+        "compiled theme preset should be accepted: {}",
         String::from_utf8_lossy(&accepted.stderr)
     );
     let svg = String::from_utf8(accepted.stdout).expect("stdout should be utf8");
     assert!(
-        svg.contains(
-            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-        ),
-        "the profile should activate its typed Flowchart presentation policy: {svg}"
+        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        "the preset should compile into typed visual theme inputs: {svg}"
     );
-
-    let mmdc = run_with_stdin(
-        &[
-            "mmdc",
-            "-i",
-            "-",
-            "-o",
-            "-",
-            "--presentation-profile",
-            "merman-modern",
-        ],
-        "flowchart LR\nA-->B\n",
-    );
-    assert!(
-        mmdc.status.success(),
-        "mmdc presentation profile should be accepted: {}",
-        String::from_utf8_lossy(&mmdc.stderr)
-    );
-    let svg = String::from_utf8(mmdc.stdout).expect("stdout should be utf8");
-    assert!(
-        svg.contains("fill:#F8FAFC")
-            && svg.contains(
-                r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-            ),
-        "implicit mmdc defaults must not override an explicit presentation profile: {svg}"
+    let baseline = run_with_stdin(&["render", "--format", "svg", "-"], "flowchart LR\nA-->B\n");
+    assert!(baseline.status.success());
+    let baseline = String::from_utf8(baseline.stdout).expect("baseline SVG");
+    let node_looks = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid SVG")
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "node"))
+            })
+            .map(|node| node.attribute("data-look").unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let baseline_looks = node_looks(&baseline);
+    assert!(!baseline_looks.is_empty());
+    assert_eq!(
+        node_looks(&svg),
+        baseline_looks,
+        "a visual preset must preserve the configured default look"
     );
 }
 
 #[test]
-fn presentation_profile_composes_with_config_regardless_of_argument_order() {
+fn native_theme_file_uses_the_compiled_theme_contract() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    for preset in ["editor-dark", "cyberpunk"] {
+        let exported = merman_bindings_core::export_theme_preset_json(preset.as_bytes())
+            .expect("export editable recipe");
+        let selector = serde_json::to_vec(&serde_json::json!({"preset": preset})).unwrap();
+        let mut previous_svg = None;
+        for input in [selector.as_slice(), exported.as_slice()] {
+            fs::write(tmp.path().join("theme.json"), input).expect("write shared theme file");
+            let args = [
+                "render",
+                "--theme-file",
+                "theme.json",
+                "--format",
+                "svg",
+                "-",
+            ];
+            let output = run_with_stdin_in_dir(&args, "flowchart LR\nA-->B\n", Some(tmp.path()));
+            assert!(
+                output.status.success(),
+                "{preset} {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+            if preset == "editor-dark" {
+                assert!(
+                    svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8")
+                );
+            } else {
+                let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| {
+                            node.attribute("class") == Some("merman-theme-canvas-layer")
+                        })
+                        .count(),
+                    3,
+                    "the shared file retains the complete canvas"
+                );
+            }
+            if let Some(previous) = previous_svg {
+                assert_eq!(
+                    svg, previous,
+                    "{preset}: a fresh process needs no preset lookup for its saved recipe"
+                );
+            }
+            previous_svg = Some(svg);
+        }
+    }
+}
+
+#[test]
+fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let exported = merman_bindings_core::export_theme_preset_json(b"cyberpunk")
+        .expect("export complete recipe");
+    let original: Value = serde_json::from_slice(&exported).expect("recipe JSON");
+    let source = "classDiagram\nclass Account {\n +String name\n}\nclass Owned\nAccount --> Owned : link\nstyle Owned fill:#334455,stroke:#778899,stroke-width:4px\n";
+
+    let baseline = run_with_stdin(&["render", "--format", "svg", "-"], source);
+    assert!(baseline.status.success());
+    let baseline = String::from_utf8(baseline.stdout).expect("baseline SVG");
+    let baseline_doc = roxmltree::Document::parse(&baseline).expect("valid baseline XML");
+    let compatibility_fill = baseline_doc
+        .descendants()
+        .find(|node| {
+            node.attribute("id")
+                .is_some_and(|id| id.contains("-classId-Account-"))
+        })
+        .expect("baseline Account")
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("fill").is_some_and(|fill| fill != "none")
+        })
+        .and_then(|node| node.attribute("fill"))
+        .expect("baseline Account fill");
+
+    for (fill, expected) in [
+        (serde_json::json!("#22354d"), "#22354d"),
+        (Value::Null, compatibility_fill),
+        (serde_json::json!("transparent"), "transparent"),
+    ] {
+        let mut recipe = original.clone();
+        let spec = &mut recipe["complete_spec"];
+        spec["canvas"]["base"] = serde_json::json!("#142535");
+        spec["styles"].as_array_mut().expect("styles").extend([
+            serde_json::json!({"kind":"rule", "target":"node", "style":{"stroke":{"paint":"#fb7185"}}}),
+            serde_json::json!({"kind":"rule", "target":"node", "family":"class", "style":{"fill":fill}}),
+        ]);
+        fs::write(
+            tmp.path().join("custom.json"),
+            serde_json::to_vec(&recipe).unwrap(),
+        )
+        .expect("save complete recipe");
+        let output = run_with_stdin_in_dir(
+            &[
+                "render",
+                "--theme-file",
+                "custom.json",
+                "--format",
+                "svg",
+                "-",
+            ],
+            source,
+            Some(tmp.path()),
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let svg = String::from_utf8(output.stdout).expect("SVG");
+        let doc = roxmltree::Document::parse(&svg).expect("valid XML");
+        let canvas = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
+            .expect("canvas base terminal");
+        assert_eq!(canvas.attribute("fill"), Some("#142535"));
+        for (name, fill, stroke) in [
+            ("Account", expected, "#fb7185"),
+            ("Owned", "#334455", "#778899"),
+        ] {
+            let node = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-classId-{name}-")))
+                })
+                .expect("class node terminal group");
+            assert!(
+                node.descendants().any(
+                    |child| child.has_tag_name("path") && child.attribute("fill") == Some(fill)
+                ),
+                "{name} fill: {svg}"
+            );
+            assert!(
+                node.descendants()
+                    .any(|child| child.has_tag_name("path")
+                        && child.attribute("stroke") == Some(stroke)),
+                "{name} stroke: {svg}"
+            );
+            if name == "Owned" {
+                assert!(
+                    node.descendants().any(|child| child.has_tag_name("path")
+                        && child.attribute("stroke") == Some(stroke)
+                        && child.attribute("stroke-width") == Some("4")),
+                    "source width: {svg}"
+                );
+            }
+        }
+    }
+
+    // The saved Class-specific rule must not recolor a different family.
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--theme-file",
+            "custom.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA[Account] --> B[Other]\n",
+        Some(tmp.path()),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("SVG");
+    let doc = roxmltree::Document::parse(&svg).expect("valid XML");
+    let node = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("A"))
+        .expect("Flowchart node terminal group");
+    assert!(
+        node.descendants().any(|child| {
+            child.attribute("fill") == Some("#051423")
+                || child
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("fill:#051423"))
+        }),
+        "Class transparent fill must not replace Flowchart fill: {svg}"
+    );
+}
+
+#[test]
+fn native_theme_definition_materializes_and_renders_without_an_intermediate_spec() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("midnight.json"),
+        br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {
+                "canvas": "#0f172a",
+                "surface": "#111827",
+                "text": "#e5e7eb",
+                "border": "#475569",
+                "line": "#94a3b8",
+                "series": ["#60a5fa"]
+            }
+        }"##,
+    )
+    .expect("write shared theme definition");
+
+    let args = [
+        "render",
+        "--theme-definition",
+        "midnight.json",
+        "--format",
+        "svg",
+        "-",
+    ];
+    let output = run_with_stdin_in_dir(&args, "flowchart LR\nA-->B\n", Some(tmp.path()));
+    assert!(
+        output.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        svg.contains("#0f172a")
+            && svg.contains("#e5e7eb")
+            && svg.contains("#475569")
+            && svg.contains("#94a3b8")
+            && svg.contains("#60a5fa"),
+        "native render should compose decode, materialization, compilation, and rendering: {svg}"
+    );
+}
+
+#[test]
+fn theme_file_obeys_the_compiler_encoded_input_budget() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("oversized-theme.json"),
+        vec![b' '; 2_097_153],
+    )
+    .expect("write oversized theme selection");
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--resource-profile",
+            "interactive",
+            "--theme-file",
+            "oversized-theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+        Some(tmp.path()),
+    );
+
+    assert_eq!(support::exit_code(output.status), 2);
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("max_theme_encoded_bytes"),
+        "theme-file limits should use the compiler-owned resource ID:\n{stderr}"
+    );
+}
+
+#[test]
+fn unbounded_theme_file_retains_the_compiler_hard_cap() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("theme.json"),
+        br#"{"preset":"editor-dark"}"#,
+    )
+    .expect("write theme selection");
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--resource-profile",
+            "unbounded-for-trusted-input",
+            "--theme-file",
+            "theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+        Some(tmp.path()),
+    );
+
+    assert!(
+        output.status.success(),
+        "unbounded theme files must retain the compiler hard cap without panicking: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn theme_preset_composes_with_config_regardless_of_argument_order() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = tmp.path().join("mermaid.json");
     fs::write(
@@ -535,11 +954,11 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
     let path = config.to_string_lossy();
     let source = "flowchart LR\nA-->|label|B\n";
 
-    let profile_first = run_with_stdin(
+    let preset_first = run_with_stdin(
         &[
             "render",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--config-file",
             path.as_ref(),
             "--format",
@@ -553,8 +972,8 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
             "render",
             "--config-file",
             path.as_ref(),
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--format",
             "svg",
             "-",
@@ -563,29 +982,26 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
     );
 
     assert!(
-        profile_first.status.success(),
+        preset_first.status.success(),
         "stderr: {}",
-        String::from_utf8_lossy(&profile_first.stderr)
+        String::from_utf8_lossy(&preset_first.stderr)
     );
     assert!(
         config_first.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&config_first.stderr)
     );
-    assert_eq!(profile_first.stdout, config_first.stdout);
-    let svg = String::from_utf8(profile_first.stdout).expect("stdout should be utf8");
+    assert_eq!(preset_first.stdout, config_first.stdout);
+    let svg = String::from_utf8(preset_first.stdout).expect("stdout should be utf8");
     assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    assert!(svg.contains("#654321"), "explicit config should win: {svg}");
     let rendered_dom = svg
         .split_once("</style>")
         .map(|(_, dom)| dom)
         .expect("SVG should contain a style block");
     assert!(
         !rendered_dom.contains(r#"data-look="neo""#),
-        "explicit Mermaid look should override the profile default: {svg}"
-    );
-    assert!(
-        svg.contains(r#"rx="4" ry="4""#),
-        "the independent private Flowchart aspect should remain active: {svg}"
+        "theme presets must not introduce a Mermaid look: {svg}"
     );
 }
 
@@ -898,9 +1314,14 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
         ("background on text", "ascii", &["--background", "white"]),
         ("CSS on text", "ascii", &["--css-file", "missing.css"]),
         (
-            "presentation profile on text",
+            "theme preset on text",
             "ascii",
-            &["--presentation-profile", "merman-modern"],
+            &["--theme-preset", "editor-dark"],
+        ),
+        (
+            "theme file on text",
+            "ascii",
+            &["--theme-file", "missing-theme.json"],
         ),
         (
             "math renderer on text",
@@ -968,10 +1389,8 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
             "fixed local offset",
             &["--fixed-local-offset-minutes", "480"],
         ),
-        (
-            "presentation profile",
-            &["--presentation-profile", "merman-modern"],
-        ),
+        ("theme preset", &["--theme-preset", "editor-dark"]),
+        ("theme file", &["--theme-file", "missing-theme.json"]),
         ("math renderer", &["--math-renderer", "none"]),
         ("container width", &["--width", "100"]),
         ("container height", &["--height", "100"]),
@@ -1138,7 +1557,32 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 5);
+    assert_eq!(payload["cli_contract_version"], 6);
+    #[cfg(feature = "svg")]
+    {
+        assert_eq!(payload["theme_presets"]["schema_version"], 1);
+        assert!(
+            payload["theme_presets"]["presets"]
+                .as_array()
+                .is_some_and(|presets| !presets.is_empty()),
+            "SVG artifacts must expose preset discovery metadata"
+        );
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+            merman::svg::ThemeResourcePolicy::for_profile(
+                merman::svg::CLI_DEFAULT_RESOURCE_PROFILE,
+            ),
+        );
+        assert_eq!(
+            payload["theme_presets"]["presets"],
+            serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap(),
+            "spawned CLI preset metadata must match the production compiler projection"
+        );
+    }
+    #[cfg(not(feature = "svg"))]
+    assert!(
+        payload.get("theme_presets").is_none(),
+        "artifacts without SVG must omit preset discovery metadata"
+    );
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -1286,20 +1730,13 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     assert!(mappings.iter().any(|mapping| {
         mapping["detected_type"] == "swimlane" && mapping["family"] == "flowchart"
     }));
-    let render_model_families = merman::built_in_typed_render_families()
-        .iter()
-        .map(|family| (family.render_model_kind, family.diagram_type))
-        .collect::<std::collections::BTreeMap<_, _>>();
     for capability in merman::diagram_family_capabilities()
         .iter()
         .filter(|capability| capability.has_detector)
     {
-        let Some(render_model_kind) = capability.render_model_kind else {
-            continue;
-        };
-        let Some(family) = render_model_families.get(render_model_kind).copied() else {
-            continue;
-        };
+        let family = capability
+            .render_model_kind
+            .unwrap_or(capability.family_id.as_str());
         if !family_ids.contains(&family) {
             continue;
         }

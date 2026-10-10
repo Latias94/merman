@@ -2546,10 +2546,28 @@ fn collect_element_presentation(
             Some(namespace) => format!("{{{namespace}}}{}", attribute.name()),
             None => attribute.name().to_string(),
         };
-        attributes.insert(
-            format!("{scope}@{attribute_name}"),
-            attribute.value().to_string(),
-        );
+        let mut attribute_value = attribute.value().to_string();
+        if is_unqualified {
+            if attribute.name() == "id"
+                && let Some(canonical) = crate::svgdom::canonical_flowchart_identifier(
+                    element,
+                    attribute.name(),
+                    &attribute_value,
+                )
+            {
+                attribute_value = canonical;
+            } else if matches!(
+                attribute.name(),
+                "marker-start" | "marker-mid" | "marker-end" | "clip-path" | "filter"
+            ) {
+                attribute_value = crate::svgdom::canonical_flowchart_reference(
+                    element,
+                    attribute.name(),
+                    &attribute_value,
+                );
+            }
+        }
+        attributes.insert(format!("{scope}@{attribute_name}"), attribute_value);
     }
     class_tokens.extend(
         element
@@ -2615,6 +2633,16 @@ fn parse_inline_style_declarations(
     style: &str,
     context: &str,
 ) -> Result<Vec<(String, String)>, SemanticLabelError> {
+    Ok(parse_inline_style_declarations_with_ranges(style, context)?
+        .into_iter()
+        .map(|(property, value, _)| (property, value))
+        .collect())
+}
+
+fn parse_inline_style_declarations_with_ranges(
+    style: &str,
+    context: &str,
+) -> Result<Vec<(String, String, std::ops::Range<usize>)>, SemanticLabelError> {
     // Mermaid 11.16 serializes this exact sentinel on ER relationship paths when both style
     // fragments are absent. Browsers ignore it as invalid CSS; retain the source bytes in the
     // signature without broadening acceptance to any other invalid declaration.
@@ -2622,6 +2650,7 @@ fn parse_inline_style_declarations(
         return Ok(vec![(
             "@mermaid-invalid-style-sentinel".to_string(),
             "undefined;;;undefined".to_string(),
+            0..style.len(),
         )]);
     }
 
@@ -2643,11 +2672,14 @@ fn parse_inline_style_declarations(
             declaration.expect_colon()?;
             let value_start = declaration.position();
             while declaration.next_including_whitespace_and_comments().is_ok() {}
-            let value = declaration.slice_from(value_start).trim().to_string();
+            let raw_value = declaration.slice_from(value_start);
+            let value = raw_value.trim().to_string();
             if value.is_empty() {
                 return Err(cssparser::ParseError::custom(()));
             }
-            Ok::<_, cssparser::ParseError<()>>((property, value))
+            let start = value_start.byte_index() + raw_value.len() - raw_value.trim_start().len();
+            let range = start..start + value.len();
+            Ok::<_, cssparser::ParseError<()>>((property, value, range))
         });
         match parsed {
             Ok(declaration) => declarations.push(declaration),
@@ -2668,6 +2700,7 @@ fn parse_inline_style_declarations(
 struct StylesheetRule {
     selector: String,
     body: String,
+    body_start: usize,
     kind: StylesheetRuleKind,
 }
 
@@ -2711,9 +2744,11 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for SemanticStylesheetParser {
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
+        let raw_body = input.slice_from(start);
         Ok(Some(StylesheetRule {
             selector,
-            body: input.slice_from(start).trim().to_string(),
+            body: raw_body.trim().to_string(),
+            body_start: start.byte_index() + raw_body.len() - raw_body.trim_start().len(),
             kind: StylesheetRuleKind::Qualified,
         }))
     }
@@ -2749,6 +2784,7 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
         Ok(Some(StylesheetRule {
             selector,
             body: String::new(),
+            body_start: 0,
             kind: StylesheetRuleKind::AtRuleWithoutBlock,
         }))
     }
@@ -2763,9 +2799,11 @@ impl<'i> cssparser::AtRuleParser<'i> for SemanticStylesheetParser {
         while !input.is_exhausted() {
             input.next_including_whitespace_and_comments()?;
         }
+        let raw_body = input.slice_from(start);
         Ok(Some(StylesheetRule {
             selector,
-            body: input.slice_from(start).trim().to_string(),
+            body: raw_body.trim().to_string(),
+            body_start: start.byte_index() + raw_body.len() - raw_body.trim_start().len(),
             kind: StylesheetRuleKind::AtRuleWithBlock,
         }))
     }
@@ -2778,7 +2816,7 @@ fn extract_stylesheet_signature(
     let normalized = crate::svgdom::normalize_xml_entities(svg);
     let document = roxmltree::Document::parse(normalized.as_ref())
         .map_err(|error| SemanticLabelError::InvalidSvg(error.to_string()))?;
-    let stylesheets = document
+    let mut stylesheets = document
         .descendants()
         .filter(|node| node.is_element() && node.has_tag_name("style"))
         .map(|node| {
@@ -2794,7 +2832,9 @@ fn extract_stylesheet_signature(
         return Err(SemanticLabelError::MissingStylesheet);
     }
 
+    let filter_definitions = bind_flowchart_stylesheet_filters(&document, &mut stylesheets);
     if scope == StylesheetScope::Full {
+        stylesheets.extend(filter_definitions);
         return Ok(stylesheets);
     }
 
@@ -2857,8 +2897,112 @@ fn extract_stylesheet_signature(
     if signature.is_empty() {
         Err(SemanticLabelError::MissingRelevantStylesheet)
     } else {
+        signature.extend(filter_definitions);
         Ok(signature)
     }
+}
+
+fn bind_flowchart_stylesheet_filters(
+    document: &roxmltree::Document<'_>,
+    stylesheets: &mut [String],
+) -> Vec<String> {
+    let mut definitions = BTreeMap::new();
+    for filter in document
+        .descendants()
+        .filter(|node| node.has_tag_name("filter"))
+    {
+        let Some(id) = filter.attribute("id") else {
+            continue;
+        };
+        let reference = format!("url(#{id})");
+        let canonical = crate::svgdom::canonical_flowchart_reference(filter, "filter", &reference);
+        if canonical == reference
+            || !matches!(
+                canonical.as_str(),
+                "url(#filter-drop-shadow)" | "url(#filter-drop-shadow-small)"
+            )
+        {
+            continue;
+        }
+        let mut referenced = false;
+        for stylesheet in stylesheets.iter_mut() {
+            if let Some(normalized) =
+                normalize_stylesheet_filter_values(stylesheet, &reference, &canonical)
+            {
+                *stylesheet = normalized;
+                referenced = true;
+            }
+        }
+        if referenced {
+            // Resource names are producer-owned, but their complete structure and paint remain
+            // part of the stylesheet contract. Keep duplicate canonical roles observable too.
+            let definition = filter
+                .descendants()
+                .map(|node| {
+                    let attributes = node
+                        .attributes()
+                        .filter(|attribute| {
+                            node != filter
+                                || attribute.name() != "id"
+                                || attribute.namespace().is_some()
+                        })
+                        .map(|attribute| {
+                            ((attribute.namespace(), attribute.name()), attribute.value())
+                        })
+                        .collect::<BTreeMap<_, _>>();
+                    format!(
+                        "{:?}:{:?}:{attributes:?}:{:?}",
+                        node.ancestors()
+                            .take_while(|ancestor| *ancestor != filter)
+                            .count(),
+                        node.tag_name(),
+                        node.is_text().then(|| node.text()).flatten()
+                    )
+                })
+                .collect::<Vec<_>>();
+            definitions
+                .entry(canonical)
+                .or_insert_with(Vec::new)
+                .push(definition);
+        }
+    }
+    definitions
+        .into_iter()
+        .map(|entry| format!("{entry:?}"))
+        .collect()
+}
+
+fn normalize_stylesheet_filter_values(
+    stylesheet: &str,
+    reference: &str,
+    canonical: &str,
+) -> Option<String> {
+    let mut input = cssparser::Parser::new(stylesheet);
+    let mut rule_parser = SemanticStylesheetParser;
+    let mut replacements = Vec::new();
+    for parsed in cssparser::StyleSheetParser::new(&mut input, &mut rule_parser) {
+        let Some(rule) = parsed.ok()? else {
+            continue;
+        };
+        if rule.kind != StylesheetRuleKind::Qualified {
+            continue;
+        }
+        for (property, value, range) in
+            parse_inline_style_declarations_with_ranges(&rule.body, &rule.selector).ok()?
+        {
+            if property == "filter" && value == reference {
+                replacements.push(rule.body_start + range.start..rule.body_start + range.end);
+            }
+        }
+    }
+    if replacements.is_empty() {
+        return None;
+    }
+    let mut normalized = stylesheet.to_string();
+    for range in replacements.into_iter().rev() {
+        normalized.replace_range(range, canonical);
+    }
+    Some(normalized)
 }
 
 fn classic_dagre_stylesheet_rule_is_relevant(
@@ -4087,9 +4231,83 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert!(outcome.issues.is_empty(), "{:?}", outcome.issues);
+        assert!(outcome.issues.is_empty(), "{:#?}", outcome.issues);
         assert_eq!(outcome.evidence.compared_samples, 2);
         assert_eq!(outcome.evidence.accepted_residuals, 2);
+    }
+
+    #[test]
+    fn flowchart_stylesheet_filter_names_require_exact_closed_definitions() {
+        let upstream = r##"<svg id="fixture" aria-roledescription="flowchart-elk"><style>#fixture .node{filter:url(#fixture-drop-shadow);}</style><defs><filter id="fixture-drop-shadow" width="130%" height="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs></svg>"##;
+        for scope in [StylesheetScope::Full, StylesheetScope::ClassicDagre] {
+            let local = upstream.replace(
+                "fixture-drop-shadow",
+                "fixture-merman-flowchart-document-filter-drop-shadow",
+            );
+            let signature = |svg: &str| extract_stylesheet_signature(svg, scope).unwrap();
+            assert_eq!(signature(upstream), signature(&local));
+
+            let quoted_content = r#"#fixture::before{content:"filter:url(#fixture-drop-shadow)";}"#;
+            let upstream_with_content =
+                upstream.replace("</style>", &format!("{quoted_content}</style>"));
+            let local_with_content =
+                local.replace("</style>", &format!("{quoted_content}</style>"));
+            assert_eq!(
+                signature(&upstream_with_content),
+                signature(&local_with_content)
+            );
+            let changed_content = local_with_content.replace(
+                quoted_content,
+                &quoted_content.replace(
+                    "fixture-drop-shadow",
+                    "fixture-merman-flowchart-document-filter-drop-shadow",
+                ),
+            );
+            assert_ne!(
+                signature(&upstream_with_content),
+                signature(&changed_content)
+            );
+
+            let filter_start = local.find("<filter ").unwrap();
+            let filter_end = local.find("</filter>").unwrap() + "</filter>".len();
+            let filter = &local[filter_start..filter_end];
+            let missing = local.replace(filter, "");
+            let duplicate = local.replace(filter, &format!("{filter}{filter}"));
+            let wrong_kind = local
+                .replace("<filter ", "<clipPath ")
+                .replace("</filter>", "</clipPath>");
+            for changed in [
+                missing,
+                duplicate,
+                wrong_kind,
+                local.replace("dx=\"4\"", "dx=\"5\""),
+                local.replace("flood-color=\"#000000\"", "flood-color=\"#ff0000\""),
+                local.replace("height=\"130%\"", "height=\"150%\""),
+                local.replace("<feDropShadow ", "<feGaussianBlur "),
+                local.replace(".node{", ".cluster{"),
+                local.replace("drop-shadow)", "drop-shadow-missing)"),
+            ] {
+                assert_ne!(signature(upstream), signature(&changed), "{changed}");
+            }
+        }
+    }
+
+    #[test]
+    fn stylesheet_filter_replacement_preserves_all_other_source_bytes() {
+        let stylesheet = "/* π */#fixture[data-value=\"filter:url(#fixture-drop-shadow)\"] {\n  content: \"filter:url(#fixture-drop-shadow)\"; filter : url(#fixture-drop-shadow) ; --value: 'filter:url(#fixture-drop-shadow)';}\n@supports (filter:url(#fixture-drop-shadow)) {}";
+        let expected = stylesheet.replacen(
+            "filter : url(#fixture-drop-shadow)",
+            "filter : url(#filter-drop-shadow)",
+            1,
+        );
+        assert_eq!(
+            normalize_stylesheet_filter_values(
+                stylesheet,
+                "url(#fixture-drop-shadow)",
+                "url(#filter-drop-shadow)",
+            ),
+            Some(expected)
+        );
     }
 
     #[test]

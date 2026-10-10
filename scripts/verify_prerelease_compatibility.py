@@ -23,7 +23,7 @@ from tools.publish import cargo_metadata, publish_field_allows_crates_io
 
 TOP_LEVEL_PACKAGE = "merman"
 PACKAGE_EDITION = "2024"
-FEATURES = ("ascii",)
+FEATURES = ("ascii", "svg")
 PROJECT_PREFIX = "merman-prerelease-compatibility"
 
 
@@ -222,11 +222,21 @@ def verify(
     previous_version: str | None = None,
     *,
     allow_missing_previous: bool = False,
+    accept_alpha6_transition: bool = False,
     target_directory: Path | None = None,
     run_check=run_cargo_check,
 ) -> None:
     """Verify the candidate lane and, when available, the previous lane."""
     candidate = _validate_version(version, option="--version")
+    if accept_alpha6_transition and (
+        candidate.canonical != "0.8.0-alpha.7"
+        or previous_version != "0.8.0-alpha.6"
+        or allow_missing_previous
+    ):
+        raise PrereleaseCompatibilityError(
+            "--accept-alpha6-transition requires candidate 0.8.0-alpha.7 and "
+            "previous 0.8.0-alpha.6, without --allow-missing-previous"
+        )
     if candidate.kind != "prerelease":
         print(f"stable release {candidate.canonical}: prerelease compatibility check skipped")
         return
@@ -267,7 +277,13 @@ def verify(
             and previous.kind == "prerelease"
             and same_compatibility_line(candidate, previous)
         )
-        if same_line_previous:
+        if accept_alpha6_transition:
+            print(
+                "previous lane: NOT VERIFIED; known incompatible alpha.6 facade with "
+                "alpha.7 siblings. Transition accepted by the maintainer on 2026-09-16; "
+                "see docs/release/PUBLISH_ORDER.md. Only candidate compilation passed."
+            )
+        elif same_line_previous:
             _run_lane(
                 "previous-with-candidate-siblings",
                 previous.canonical,
@@ -298,6 +314,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="allow the first prerelease to run only the candidate lane",
     )
     parser.add_argument(
+        "--accept-alpha6-transition",
+        action="store_true",
+        help="apply the recorded alpha.6-to-alpha.7 break decision; does not verify old consumers",
+    )
+    parser.add_argument(
         "--repo-root",
         type=Path,
         default=ROOT,
@@ -320,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
             args.version,
             args.previous_version,
             allow_missing_previous=args.allow_missing_previous,
+            accept_alpha6_transition=args.accept_alpha6_transition,
             target_directory=args.repo_root.resolve() / "target" / "prerelease-compatibility",
         )
     except (OSError, PrereleaseCompatibilityError, RuntimeError, ValueError) as error:

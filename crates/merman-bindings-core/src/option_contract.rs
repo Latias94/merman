@@ -47,12 +47,12 @@ pub enum BindingOptionGroupKey {
     Lint,
     Parse,
     Pdf,
-    Presentation,
     Raster,
     Resources,
     RuntimePolicy,
     SiteConfig,
     Svg,
+    Theme,
     Version,
 }
 
@@ -67,12 +67,12 @@ impl BindingOptionGroupKey {
         Self::Lint,
         Self::Parse,
         Self::Pdf,
-        Self::Presentation,
         Self::Raster,
         Self::Resources,
         Self::RuntimePolicy,
         Self::SiteConfig,
         Self::Svg,
+        Self::Theme,
         Self::Version,
     ];
 
@@ -88,12 +88,12 @@ impl BindingOptionGroupKey {
             Self::Lint => "lint",
             Self::Parse => "parse",
             Self::Pdf => "pdf",
-            Self::Presentation => "presentation",
             Self::Raster => "raster",
             Self::Resources => "resources",
             Self::RuntimePolicy => "runtime_policy",
             Self::SiteConfig => "site_config",
             Self::Svg => "svg",
+            Self::Theme => "theme",
             Self::Version => "version",
         }
     }
@@ -110,12 +110,12 @@ impl BindingOptionGroupKey {
             Self::Lint => &OPTION_GROUP_SPECS[6],
             Self::Parse => &OPTION_GROUP_SPECS[7],
             Self::Pdf => &OPTION_GROUP_SPECS[8],
-            Self::Presentation => &OPTION_GROUP_SPECS[9],
-            Self::Raster => &OPTION_GROUP_SPECS[10],
-            Self::Resources => &OPTION_GROUP_SPECS[11],
-            Self::RuntimePolicy => &OPTION_GROUP_SPECS[12],
-            Self::SiteConfig => &OPTION_GROUP_SPECS[13],
-            Self::Svg => &OPTION_GROUP_SPECS[14],
+            Self::Raster => &OPTION_GROUP_SPECS[9],
+            Self::Resources => &OPTION_GROUP_SPECS[10],
+            Self::RuntimePolicy => &OPTION_GROUP_SPECS[11],
+            Self::SiteConfig => &OPTION_GROUP_SPECS[12],
+            Self::Svg => &OPTION_GROUP_SPECS[13],
+            Self::Theme => &OPTION_GROUP_SPECS[14],
             Self::Version => &OPTION_GROUP_SPECS[15],
         }
     }
@@ -194,12 +194,6 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
         requires_svg_pipeline: false,
     },
     BindingOptionGroupSpec {
-        key: BindingOptionGroupKey::Presentation,
-        always_available: false,
-        any_capabilities: &[],
-        requires_svg_pipeline: true,
-    },
-    BindingOptionGroupSpec {
         key: BindingOptionGroupKey::Raster,
         always_available: false,
         any_capabilities: &[CapabilityKey::Jpeg, CapabilityKey::Png],
@@ -225,6 +219,12 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
     },
     BindingOptionGroupSpec {
         key: BindingOptionGroupKey::Svg,
+        always_available: false,
+        any_capabilities: &[],
+        requires_svg_pipeline: true,
+    },
+    BindingOptionGroupSpec {
+        key: BindingOptionGroupKey::Theme,
         always_available: false,
         any_capabilities: &[],
         requires_svg_pipeline: true,

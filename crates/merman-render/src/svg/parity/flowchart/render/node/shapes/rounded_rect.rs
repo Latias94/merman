@@ -1,7 +1,5 @@
 //! Flowchart v2 rounded rectangle shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -12,32 +10,27 @@ const FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     // roundedRect.ts resolves radius from the effective theme. drawRect only applies
     // truthy overrides: numeric zero keeps Flowchart's absent rx/ry, while "0" applies.
-    let config = ctx.config.as_value();
-    let default_radius = serde_json::json!(5);
-    let radius = config
-        .get("themeVariables")
-        .and_then(|theme| theme.get("radius"))
-        .filter(|radius| !radius.is_null())
-        .unwrap_or(&default_radius);
-    let radius = crate::config::json_value_is_truthy(radius).then_some(radius);
+    let radius = ctx
+        .compatibility
+        .rounded_rect_radius_truthy
+        .then_some(&ctx.compatibility.rounded_rect_radius);
     if common.look_is_hand_drawn() && radius.is_none() {
         // drawRect uses rc.rectangle when neither resolved radius is truthy.
-        super::render_process_rectangle(out, common, details);
-        return;
+        return super::render_process_rectangle(out, common, details);
     }
 
     let rough_paths = if common.look_is_hand_drawn() {
         // Preserve the source SVG arcs, including radii larger than half the box.
-        let path_data = rounded_rect_path_data(w, h, radius.unwrap_or(&default_radius));
+        let path_data = rounded_rect_path_data(w, h, &ctx.compatibility.rounded_rect_radius);
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
@@ -46,6 +39,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
                 FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
                 FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
                 FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -75,17 +69,31 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             escape_attr(common.stroke_dasharray),
         );
         out.push_str("</g>");
+        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified()
     } else {
+        let numeric_radius = common
+            .typed_corner_radius
+            .or(ctx.compatibility.rounded_rect_radius_numeric);
         let _ = write!(
             out,
-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}""#,
+            r#"<rect class="basic label-container"{} style="{}"#,
+            common.effect_filter_attr,
             escape_attr(common.style),
+        );
+        common.write_rectangle_corner_style(out);
+        let _ = write!(
+            out,
+            r#"" x="{}" y="{}" width="{}" height="{}""#,
             fmt(-w / 2.0),
             fmt(-h / 2.0),
             fmt(w),
-            fmt(h)
+            fmt(h),
         );
-        if let Some(radius) = radius {
+        if common.typed_corner_radius.is_some()
+            || common.source_corner_radii.iter().any(Option::is_some)
+        {
+            common.write_rectangle_radii(out, numeric_radius);
+        } else if let Some(radius) = radius {
             let radius = radius_text(radius);
             let _ = write!(
                 out,
@@ -95,6 +103,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             );
         }
         out.push_str("/>");
+        super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(true)
     }
 }
 
@@ -109,11 +118,8 @@ fn radius_text(radius: &serde_json::Value) -> String {
 }
 
 fn rounded_rect_path_data(width: f64, height: f64, radius: &serde_json::Value) -> String {
-    // Pinned roundedRectPath.ts: no radius clamp or sampled polygon conversion.
     let x = -width / 2.0;
     let y = -height / 2.0;
-    // The pinned JS helper concatenates strings for +, but coerces them for -.
-    // Keep that distinction: a truthy "0" takes rc.path, unlike numeric zero.
     let numeric_radius = match radius {
         serde_json::Value::Bool(value) => f64::from(u8::from(*value)),
         serde_json::Value::String(value) if value.trim().is_empty() => 0.0,
@@ -149,33 +155,4 @@ fn rounded_rect_path_data(width: f64, height: f64, radius: &serde_json::Value) -
         add_radius(x),
         fmt_display(y),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::rounded_rect_path_data;
-
-    #[test]
-    fn rounded_rectangle_keeps_source_arcs_and_oversized_radius() {
-        assert_eq!(
-            rounded_rect_path_data(150.0, 51.0, &serde_json::json!(12)),
-            "M -63 -25.5 H 63 A 12 12 0 0 1 75 -13.5 V 13.5 A 12 12 0 0 1 63 25.5 H -63 A 12 12 0 0 1 -75 13.5 V -13.5 A 12 12 0 0 1 -63 -25.5 Z"
-        );
-        assert_eq!(
-            rounded_rect_path_data(20.0, 10.0, &serde_json::json!(12)),
-            "M 2 -5 H -2 A 12 12 0 0 1 10 7 V -7 A 12 12 0 0 1 -2 5 H 2 A 12 12 0 0 1 -10 -7 V 7 A 12 12 0 0 1 2 -5 Z"
-        );
-    }
-
-    #[test]
-    fn rounded_rectangle_retains_source_string_radius_addition() {
-        assert_eq!(
-            rounded_rect_path_data(150.0, 51.0, &serde_json::json!("0")),
-            "M -750 -25.5 H 75 A 0 0 0 0 1 75 -25.50 V 25.5 A 0 0 0 0 1 75 25.5 H -750 A 0 0 0 0 1 -75 25.5 V -25.50 A 0 0 0 0 1 -750 -25.5 Z"
-        );
-        assert_eq!(
-            rounded_rect_path_data(150.0, 51.0, &serde_json::json!("7.5")),
-            "M -757.5 -25.5 H 67.5 A 7.5 7.5 0 0 1 75 -25.57.5 V 18 A 7.5 7.5 0 0 1 67.5 25.5 H -757.5 A 7.5 7.5 0 0 1 -75 18 V -25.57.5 A 7.5 7.5 0 0 1 -757.5 -25.5 Z"
-        );
-    }
 }

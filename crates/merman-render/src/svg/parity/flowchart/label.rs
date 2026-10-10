@@ -2,13 +2,115 @@
 
 use super::*;
 
-pub(in crate::svg::parity) fn flowchart_label_html(
-    label: &str,
+#[inline]
+fn starts_with_ascii_case_insensitive(input: &str, prefix: &[u8]) -> bool {
+    input
+        .as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+}
+
+#[inline]
+fn find_ascii_case_insensitive(input: &str, needle: &[u8]) -> Option<usize> {
+    debug_assert!(!needle.is_empty());
+    input
+        .as_bytes()
+        .windows(needle.len())
+        .position(|candidate| candidate.eq_ignore_ascii_case(needle))
+}
+
+fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
+    let idx = find_ascii_case_insensitive(tag, b"src=")?;
+    let rest = tag.get(idx + 4..)?.trim_start();
+    let quote = *rest.as_bytes().first()?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+
+    let value = rest.get(1..)?;
+    let end = value
+        .as_bytes()
+        .iter()
+        .position(|candidate| *candidate == quote)
+        .unwrap_or(value.len());
+    let value = value.get(..end)?.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
+    // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
+    // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
+    if find_ascii_case_insensitive(input, b"<img").is_none() {
+        return input.to_string();
+    }
+
+    let style = if fixed_width {
+        "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
+    } else {
+        "display: flex; flex-direction: column; width: 100%;"
+    };
+
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'<' && starts_with_ascii_case_insensitive(&input[i..], b"<img") {
+            let rest = &input[i..];
+            let Some(rel_end) = rest.find('>') else {
+                out.push_str(rest);
+                break;
+            };
+            let tag = &rest[..=rel_end];
+            let src = extract_flowchart_img_src(tag);
+            out.push_str("<img");
+            if let Some(src) = src {
+                let _ = write!(out, r#" src="{}""#, escape_attr(src));
+            }
+            out.push_str(r#" style=""#);
+            out.push_str(style);
+            out.push('"');
+            out.push('>');
+            i += rel_end + 1;
+            continue;
+        }
+        let Some(ch) = input[i..].chars().next() else {
+            break;
+        };
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn is_single_img_label(label: &str) -> bool {
+    let label = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
+    if !starts_with_ascii_case_insensitive(label, b"<img") {
+        return false;
+    }
+    let Some(end) = label.find('>') else {
+        return false;
+    };
+    crate::flowchart::flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
+}
+
+pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_math<'a>(
+    label: &'a str,
     label_type: &str,
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-) -> String {
-    flowchart_label_html_impl(label, label_type, config, math_renderer)
+    prepared_math: crate::flowchart::FlowchartPreparedMathResolution<'a>,
+) -> std::borrow::Cow<'a, str> {
+    match prepared_math {
+        crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) => {
+            std::borrow::Cow::Borrowed(prepared.browser_xhtml())
+        }
+        crate::flowchart::FlowchartPreparedMathResolution::Unavailable(_reason) => {
+            std::borrow::Cow::Owned(flowchart_label_html_impl(label, label_type, config, None))
+        }
+        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared => std::borrow::Cow::Owned(
+            flowchart_label_html_impl(label, label_type, config, math_renderer),
+        ),
+    }
 }
 
 fn flowchart_label_html_impl(
@@ -19,87 +121,6 @@ fn flowchart_label_html_impl(
 ) -> String {
     if crate::flowchart::flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
-    }
-
-    fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
-        // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
-        // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
-        if !input.to_ascii_lowercase().contains("<img") {
-            return input.to_string();
-        }
-
-        let style = if fixed_width {
-            "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
-        } else {
-            "display: flex; flex-direction: column; width: 100%;"
-        };
-
-        fn extract_img_src(tag: &str) -> Option<String> {
-            let lower = tag.to_ascii_lowercase();
-            let idx = lower.find("src=")?;
-            let rest = &tag[idx + 4..];
-            let rest = rest.trim_start();
-            let quote = rest.chars().next()?;
-            if quote != '"' && quote != '\'' {
-                return None;
-            }
-            let mut val = String::new();
-            let mut it = rest.chars();
-            let _ = it.next(); // consume quote
-            for ch in it {
-                if ch == quote {
-                    break;
-                }
-                val.push(ch);
-            }
-            let val = val.trim().to_string();
-            if val.is_empty() { None } else { Some(val) }
-        }
-
-        let mut out = String::with_capacity(input.len());
-        let bytes = input.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'<' && i + 3 < bytes.len() {
-                let rest = &input[i..];
-                if bytes[i..i + 4].eq_ignore_ascii_case(b"<img") {
-                    let Some(rel_end) = rest.find('>') else {
-                        out.push_str(rest);
-                        break;
-                    };
-                    let tag = &rest[..=rel_end];
-                    let src = extract_img_src(tag);
-                    out.push_str("<img");
-                    if let Some(src) = src {
-                        let _ = write!(out, r#" src="{}""#, escape_attr(&src));
-                    }
-                    out.push_str(r#" style=""#);
-                    out.push_str(style);
-                    out.push('"');
-                    out.push('>');
-                    i += rel_end + 1;
-                    continue;
-                }
-            }
-            let Some(ch) = input[i..].chars().next() else {
-                break;
-            };
-            out.push(ch);
-            i += ch.len_utf8();
-        }
-        out
-    }
-
-    fn is_single_img_label(label: &str) -> bool {
-        let t = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
-        let lower = t.to_ascii_lowercase();
-        if !lower.starts_with("<img") {
-            return false;
-        }
-        let Some(end) = t.find('>') else {
-            return false;
-        };
-        crate::flowchart::flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
     }
 
     fn trim_markdown_trailing_newlines(
@@ -375,8 +396,20 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
+pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    text: &str,
+    include_style: bool,
+) {
+    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
+        out,
+        text,
+        include_style,
+    );
+}
+
 pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     include_style: bool,
 ) {
     crate::svg::parity::label::write_svg_text_source_word_lines(
@@ -388,7 +421,7 @@ pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
     include_style: bool,
 ) {
@@ -396,11 +429,130 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
     style: &str,
 ) {
-    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(out, lines, style, true);
+    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+        out, lines, style, true, None,
+    );
+}
+
+pub(crate) fn write_flowchart_svg_label_plan(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    include_style: bool,
+) {
+    write_flowchart_svg_label_plan_with_style(out, plan, include_style, None);
+}
+
+pub(crate) fn write_flowchart_svg_label_plan_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    include_style: bool,
+    extra_style: Option<&str>,
+) {
+    let lines = plan.wrapped_lines();
+    let label_id = plan.prepared_text_label_id();
+    let style = plan
+        .merge_emission_font_style(include_style.then_some(""))
+        .map(|style| append_svg_label_style(style, extra_style));
+    if let Some(style) = style.as_deref() {
+        if let Some(label_id) = label_id {
+            crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                style,
+                false,
+                label_id,
+                plan.emitted_admitted_typography(),
+                plan.line_height_em(),
+                plan.font_weight(),
+            );
+        } else {
+            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                style,
+                false,
+                plan.font_weight(),
+            );
+        }
+    } else if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
+        if let Some(label_id) = label_id {
+            crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                extra_style,
+                false,
+                label_id,
+                false,
+                plan.line_height_em(),
+                plan.font_weight(),
+            );
+        } else {
+            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                extra_style,
+                false,
+                plan.font_weight(),
+            );
+        }
+    } else if let Some(label_id) = label_id {
+        crate::svg::parity::label::write_prepared_svg_text_source_word_lines(
+            out,
+            &lines,
+            include_style,
+            false,
+            label_id,
+        );
+    } else {
+        write_flowchart_svg_source_word_lines(out, &lines, include_style);
+    }
+}
+
+fn append_svg_label_style(mut style: String, extra_style: Option<&str>) -> String {
+    let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) else {
+        return style;
+    };
+    if !style.trim_end().ends_with(';') {
+        style.push(';');
+    }
+    style.push_str(extra_style);
+    style
+}
+
+pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    style: &str,
+) {
+    let lines = plan.wrapped_lines();
+    let label_id = plan.prepared_text_label_id();
+    let admitted_style = plan.merge_emission_font_style(Some(style));
+    let inherits_admitted_font = plan.emitted_admitted_typography();
+    let style = admitted_style.unwrap_or_else(|| style.to_string());
+    if let Some(label_id) = label_id {
+        crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
+            out,
+            &lines,
+            &style,
+            true,
+            label_id,
+            inherits_admitted_font,
+            plan.line_height_em(),
+            plan.font_weight(),
+        );
+    } else {
+        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+            out,
+            &lines,
+            &style,
+            true,
+            plan.font_weight(),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -421,7 +573,7 @@ pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
 ) {
@@ -433,7 +585,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,
@@ -451,7 +603,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,
@@ -468,12 +620,114 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
     );
 }
 
+pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    style: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    text_style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+        out,
+        markdown,
+        style,
+        measurer,
+        text_style,
+        max_width_px,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_label_html_impl, wrap_flowchart_svg_source_word_lines,
-        write_flowchart_svg_source_word_lines,
+        flowchart_label_html_impl, flowchart_label_html_with_prepared_math, is_single_img_label,
+        normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
+        wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
     };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct ReentryProbe<'a>(&'a AtomicUsize);
+
+    impl crate::math::MathRenderer for ReentryProbe<'_> {
+        fn render_html_label(
+            &self,
+            _text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Some("unexpected backend reentry".to_string())
+        }
+    }
+
+    #[test]
+    fn unavailable_prepared_math_reason_prevents_writer_backend_reentry() {
+        let calls = AtomicUsize::new(0);
+        let renderer = ReentryProbe(&calls);
+        let html = flowchart_label_html_with_prepared_math(
+            "value $$x$$",
+            "text",
+            &merman_core::MermaidConfig::default(),
+            Some(&renderer),
+            crate::flowchart::FlowchartPreparedMathResolution::Unavailable(
+                crate::math::MathPreparationUnavailable::BackendDeclined,
+            ),
+        );
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(!html.contains("unexpected backend reentry"));
+        assert!(html.contains("$$x$$"));
+    }
+
+    #[test]
+    fn flowchart_img_normalization_matches_ascii_case_without_touching_non_img_tags() {
+        assert_eq!(
+            normalize_flowchart_img_tags(r#"<IMG SRC='diagram.svg'>"#, true),
+            concat!(
+                r#"<img src="diagram.svg" style="display: flex; flex-direction: column; "#,
+                r#"min-width: 80px; max-width: 80px;">"#,
+            ),
+        );
+        assert!(is_single_img_label(" \n<IMG SRC='diagram.svg'>\t"));
+        assert!(!is_single_img_label("<IMG SRC='diagram.svg'><br>"));
+
+        let without_img = r#"<br><im src='x'><div data-kind='IMG'>body</div>"#;
+        assert_eq!(
+            normalize_flowchart_img_tags(without_img, false),
+            without_img,
+        );
+    }
+
+    #[test]
+    fn flowchart_img_normalization_scans_many_prior_tags_once() {
+        const BREAK_COUNT: usize = 8_192;
+
+        let mut input = "<br>".repeat(BREAK_COUNT);
+        input.push_str(r#"<ImG SrC='tail.svg'>"#);
+
+        let output = normalize_flowchart_img_tags(&input, false);
+        assert_eq!(output.matches("<br>").count(), BREAK_COUNT);
+        assert!(output.ends_with(concat!(
+            r#"<img src="tail.svg" style="display: flex; flex-direction: column; "#,
+            r#"width: 100%;">"#,
+        )));
+    }
+
+    #[test]
+    fn flowchart_img_prefix_match_handles_mixed_case_and_truncated_boundaries() {
+        for input in ["<img", "<IMG", "<ImG src='diagram.svg'>"] {
+            assert!(starts_with_ascii_case_insensitive(input, b"<img"));
+        }
+        for input in ["", "<", "<i", "<im", "<imx"] {
+            assert!(!starts_with_ascii_case_insensitive(input, b"<img"));
+            assert_eq!(normalize_flowchart_img_tags(input, false), input);
+            assert!(!is_single_img_label(input));
+        }
+
+        assert_eq!(normalize_flowchart_img_tags("<IMG", false), "<IMG");
+        assert!(!is_single_img_label("<IMG"));
+    }
 
     #[test]
     fn html_image_prefix_matching_preserves_unicode_and_malformed_tags() {

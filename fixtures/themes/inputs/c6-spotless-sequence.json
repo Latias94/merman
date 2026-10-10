@@ -1,0 +1,37 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-c6-spotless-sequence",
+  "tokens": {
+    "background": "#ede8dc",
+    "surface": "#f5f1e8",
+    "primary": "#2c2416",
+    "text": "#1a1a1a"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#2c2416",
+      "widthPx": 2
+    },
+    "dashPattern": [],
+    "cornerRadiusPx": null,
+    "shadow": null
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

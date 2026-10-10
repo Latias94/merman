@@ -1,7 +1,5 @@
-import type {
-  MermanWasmModule,
-  SvgBindingOptions,
-} from "@mermanjs/web";
+import type { MermanWasmModule, HostTextMeasurerSvgBindingOptions } from "@mermanjs/web";
+import { BINDING_OPTIONS_SCHEMA_VERSION } from "../../../../../platforms/web/packages/full/dist/generated/resource-contract.js";
 import { createBrowserTextMeasurementSession } from "../../../../../platforms/web/packages/full/dist/runtime-render.js";
 
 import { buildMermaidOperationInput, type MermaidConfigObject } from "../../../lib/mermaid-config.ts";
@@ -138,8 +136,8 @@ function bindingOptions(
   viewport: RealmViewport
 ): string {
   const screenAvailableWidth = window.screen.availWidth;
-  const options: SvgBindingOptions = {
-    version: 2,
+  const options: HostTextMeasurerSvgBindingOptions = {
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     site_config: initializationConfig,
     layout: {
       container_width: viewport.width,

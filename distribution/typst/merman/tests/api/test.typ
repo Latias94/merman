@@ -1,6 +1,11 @@
 #import "@preview/merman:0.4.0": (
   analyze-mermaid,
+  describe-theme-support,
+  export-theme-preset,
+  materialize-theme,
+  theme-catalog,
   mermaid,
+  mermaid-theme-definition,
   mermaid-figure,
   mermaid-profile,
   mermaid-result,
@@ -57,11 +62,10 @@
   profile: svg-profile,
   id: "api-direct",
   typography: (font: "API Direct Sans", size: "19px"),
-  host-theme: (font_family: "API Host Sans", font_size: "20px"),
 )
 #assert(direct-svg.contains("api-direct"), message: "direct id should override profile id")
-#assert(direct-svg.contains("API Host Sans"), message: "host-theme should override typography")
-#assert(not direct-svg.contains("API Direct Sans"), message: "typography should not override host-theme")
+#assert(direct-svg.contains("API Direct Sans"), message: "direct typography should override profile typography")
+#assert(not direct-svg.contains("API Profile Sans"), message: "profile typography should not override direct typography")
 
 #let low-level-id-svg = mermaid-svg(
   source,
@@ -134,7 +138,7 @@
 #let resource-limited-result = mermaid-result(
   source,
   options: (
-    version: 2,
+    version: 3,
     resources: (limits: (max_source_bytes: 1)),
   ),
 )
@@ -154,9 +158,13 @@
   profile: svg-profile,
   id: "api-direct",
   options: (
-    version: 2,
-    presentation: (
-      theme: (font_family: "API Options Sans", font_size: "17px"),
+    version: 3,
+    theme: (
+      spec: (
+        typography: (
+          default: (font_stack: ("API Options Sans",), font_size_px: 17),
+        ),
+      ),
     ),
     svg: (diagram_id: "api-options", pipeline: "readable"),
   ),
@@ -164,6 +172,34 @@
 #assert(options-svg.contains("api-options"), message: "options should override direct and profile id")
 #assert(options-svg.contains("API Options Sans"), message: "options should bypass high-level fields")
 #assert(not options-svg.contains("api-direct"), message: "direct id should not override options")
+
+#let raw-scoped-css-result = mermaid-result(
+  source,
+  options: (version: 3, svg: (scoped_css: ".node rect { fill: red; }")),
+)
+#assert(
+  not raw-scoped-css-result.ok,
+  message: "raw scoped CSS must remain rejected by the general binding boundary",
+)
+#assert.eq(raw-scoped-css-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
+#assert(
+  raw-scoped-css-result.message.contains("svg.scoped_css"),
+  message: "raw scoped CSS errors should identify the rejected binding field",
+)
+
+#let raw-css-override-policy-result = mermaid-result(
+  source,
+  options: (version: 3, svg: (css_override_policy: "preserve")),
+)
+#assert(
+  not raw-css-override-policy-result.ok,
+  message: "raw CSS override policy must remain rejected by the general binding boundary",
+)
+#assert.eq(raw-css-override-policy-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
+#assert(
+  raw-css-override-policy-result.message.contains("svg.css_override_policy"),
+  message: "raw CSS override errors should identify the rejected binding field",
+)
 
 #let forest-svg = mermaid-svg(
   source,
@@ -201,14 +237,154 @@
 
 #let capabilities = merman-capabilities()
 #assert.eq(capabilities.schema_version, 1)
-#assert.eq(capabilities.transport_api_version, 2)
+#assert.eq(capabilities.transport_api_version, 3)
 #assert(
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",
 )
 #assert.eq(
   capabilities.capabilities.operation_ids,
-  ("analysis-json", "svg"),
+  (
+    "analysis-json",
+    "describe-theme-support-json",
+    "export-theme-preset-json",
+    "materialize-theme-json",
+    "svg",
+  ),
+)
+
+#let theme-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (text: "#123456", accent: "#abcdef"),
+)
+#let materialized-theme = materialize-theme(theme-definition)
+#assert.eq(materialized-theme.schema_version, 1)
+#assert.eq(materialized-theme.authoring_schema_version, 1)
+#assert.eq(materialized-theme.expansion_version, 1)
+#assert.eq(materialized-theme.spec_schema_version, 1)
+#assert(materialized-theme.spec.styles.len() > 0)
+
+#let materialization-limit = materialize-theme(
+  theme-definition,
+  options: (
+    version: 3,
+    resources: (
+      profile: "constrained",
+      limits: (max_theme_encoded_bytes: 1),
+    ),
+  ),
+)
+#assert(
+  not ("spec" in materialization-limit),
+  message: "materialization must enforce caller resource limits before decoding",
+)
+
+#let theme-support = describe-theme-support((
+  schema_version: 1,
+  family: "sequence",
+  output: "standalone-svg",
+  subject: (kind: "base-typography", property: "font-stack"),
+))
+#assert.eq(theme-support.schema_version, 1)
+#assert.eq(theme-support.query.family, "sequence")
+
+#let preset-export = export-theme-preset("editor-light")
+#assert.eq(preset-export.kind, "complete_spec")
+#assert(type(preset-export.complete_spec) == dictionary)
+
+#let light-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (
+    canvas: "#f8fafc",
+    surface: "#ffffff",
+    text: "#0f172a",
+    border: "#cbd5e1",
+    line: "#64748b",
+    accent: "#2563eb",
+  ),
+  styles: (
+    (
+      kind: "rule",
+      family: "flowchart",
+      target: "node",
+      style: (fill: "#dbeafe"),
+    ),
+  ),
+)
+#let dark-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (
+    canvas: "#0f172a",
+    surface: "#1e293b",
+    text: "#e2e8f0",
+    border: "#475569",
+    line: "#94a3b8",
+    accent: "#38bdf8",
+  ),
+  styles: (
+    (
+      kind: "rule",
+      family: "flowchart",
+      target: "node",
+      style: (fill: "#1e3a8a"),
+    ),
+  ),
+)
+#let light-json = json.encode(light-definition)
+#let light-from-json = materialize-theme(light-json)
+#let light-from-typed = materialize-theme(light-definition)
+#let dark-json = json.encode(dark-definition)
+#let dark-from-json = materialize-theme(dark-json)
+#let dark-from-typed = materialize-theme(dark-definition)
+#assert.eq(
+  light-from-json.spec,
+  light-from-typed.spec,
+  message: "JSON import and typed construction must materialize identically",
+)
+#assert.eq(
+  dark-from-json.spec,
+  dark-from-typed.spec,
+  message: "dark JSON import and typed construction must materialize identically",
+)
+#assert(light-json != "", message: "the authoring definition must have a readable JSON export")
+#assert(dark-json != "", message: "the dark authoring definition must have a readable JSON export")
+
+#let unknown-support = describe-theme-support((
+  schema_version: 1,
+  family: "future-family",
+  output: "standalone-svg",
+  subject: (kind: "rule", target: "node", facet: "fill"),
+))
+#assert.eq(unknown-support.state, "unverified")
+#assert(unknown-support.reason_ids.contains("theme-support.unknown-family"))
+
+#set text(font: "Definition Context Sans", size: 12pt)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Light] --> B[Authored]",
+  light-json,
+  document-context: true,
+  width: 80%,
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Dark] --> B[Authored]",
+  dark-definition,
+  width: 80%,
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Invalid] --> B[Theme]",
+  (:),
+  document-context: true,
+  error-mode: "text",
+)
+#mermaid-theme-definition(
+  "flowchart LR\nA[Invalid] --> B[Theme]",
+  (:),
+  document-context: true,
+  error-mode: "placeholder",
+  width: 80%,
 )
 #assert(
   capabilities.capabilities.text_measurement.provider_ids.contains("deterministic"),
@@ -250,3 +426,15 @@ flowchart LR
 ```
 
 API fixture passed.
+
+#let catalog = theme-catalog()
+#assert.eq(catalog.schema_version, 1)
+#assert(catalog.structured_spec_available)
+#assert.eq(catalog.supported_output_ids, ("svg",))
+#assert.eq(catalog.presets.len(), 10)
+#assert.eq(catalog.presets.at(0).id, "editor-light")
+#assert.eq(catalog.presets.at(0).qualified_cells, ())
+#assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))
+#let catalog-preset = export-theme-preset(catalog.presets.at(0).id)
+#assert.eq(catalog-preset.kind, catalog.presets.at(0).export_kind)
+#assert(type(catalog-preset.complete_spec) == dictionary)

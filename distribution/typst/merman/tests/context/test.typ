@@ -1,5 +1,5 @@
 #import "@preview/merman:0.4.0": mermaid, mermaid-svg
-#import "../../src/options.typ": config-with-context-width, context-host-theme, mermaid-profile, render-config
+#import "../../src/options.typ": config-with-context-width, context-text-style, mermaid-profile, render-config
 #import "../../src/units.typ": context-width-css-px, typst-length-to-css-px
 
 #set page(width: 12cm, margin: 10mm)
@@ -7,35 +7,42 @@
 
 #assert.eq(typst-length-to-css-px(72pt), 96)
 #assert.eq(context-width-css-px(float.inf * 1pt), none)
-#assert.eq(context-host-theme("Arial", 12pt).font_size, "16px")
+#assert.eq(context-text-style("Arial", 12pt).font_size_px, 16)
 #assert.eq(
-  context-host-theme((name: "Inria Serif", covers: "latin-in-cjk"), 12pt).font_family,
-  "Inria Serif",
+  context-text-style((name: "Inria Serif", covers: "latin-in-cjk"), 12pt).font_stack,
+  ("Inria Serif",),
 )
 #let inferred-width-config = config-with-context-width(render-config(), typst-length-to-css-px(72pt))
 #assert.eq(inferred-width-config.binding_options.layout.container_width, 96)
-#assert.eq(inferred-width-config.binding_options.version, 2)
+#assert.eq(inferred-width-config.binding_options.version, 3)
 #assert(not "presentation" in inferred-width-config.binding_options)
-#let presentation-config = render-config(
-  presentation-profile: "merman-modern",
-  host-theme: (preset: "ayu-dark", font-family: "Presentation Sans"),
+#assert(not "host_theme" in inferred-width-config.binding_options)
+#let preset-config = render-config(
+  theme-preset: "ayu-dark",
   pipeline: "readable",
 )
-#assert.eq(presentation-config.binding_options.presentation.profile, "merman-modern")
-#assert.eq(presentation-config.binding_options.presentation.theme.preset, "ayu-dark")
-#assert.eq(presentation-config.binding_options.presentation.theme.font_family, "Presentation Sans")
-#assert.eq(presentation-config.binding_options.svg.pipeline, "readable")
-#assert(not "host_theme" in presentation-config.binding_options)
-#let profile-presentation-config = render-config(
+#assert.eq(preset-config.binding_options.theme.preset, "ayu-dark")
+#assert.eq(preset-config.binding_options.svg.pipeline, "readable")
+#assert(not "presentation" in preset-config.binding_options)
+#assert(not "host_theme" in preset-config.binding_options)
+#let profile-theme-config = render-config(
   profile: mermaid-profile(
-    presentation-profile: "merman-modern",
-    host-theme: (font-family: "Profile Presentation Sans"),
+    diagram-theme: (
+      typography: (default: (font_weight: 600)),
+    ),
+    typography: (font: "Profile Diagram Sans", size: "18px"),
     pipeline: "parity",
   ),
 )
-#assert.eq(profile-presentation-config.binding_options.presentation.profile, "merman-modern")
-#assert.eq(profile-presentation-config.binding_options.presentation.theme.font_family, "Profile Presentation Sans")
-#assert.eq(profile-presentation-config.binding_options.svg.pipeline, "parity")
+#assert.eq(
+  profile-theme-config.binding_options.theme.spec.typography.default.font_stack,
+  ("Profile Diagram Sans",),
+)
+#assert.eq(profile-theme-config.binding_options.theme.spec.typography.default.font_size_px, 18)
+#assert.eq(profile-theme-config.binding_options.theme.spec.typography.default.font_weight, 600)
+#assert.eq(profile-theme-config.binding_options.svg.pipeline, "parity")
+#assert(not "presentation" in profile-theme-config.binding_options)
+#assert(not "host_theme" in profile-theme-config.binding_options)
 #let profile-layout-width-config = config-with-context-width(
   render-config(profile: mermaid-profile(layout: (container_width: 333))),
   typst-length-to-css-px(72pt),
@@ -59,12 +66,12 @@
   typography: (font: "Direct Sans"),
 )
 #assert.eq(
-  partial-typography-config.binding_options.presentation.theme.font_family,
-  "Direct Sans",
+  partial-typography-config.binding_options.theme.spec.typography.default.font_stack,
+  ("Direct Sans",),
 )
 #assert.eq(
-  partial-typography-config.binding_options.presentation.theme.font_size,
-  "16px",
+  partial-typography-config.binding_options.theme.spec.typography.default.font_size_px,
+  16,
   message: "partial direct typography should preserve the profile size",
 )
 #let replacement-site-config = render-config(
@@ -92,11 +99,11 @@
 #assert.eq(full-layout-config.binding_options.layout.container_width, 444)
 #assert.eq(full-layout-config.binding_options.layout.container_height, 555)
 #assert.eq(
-  context-host-theme(
+  context-text-style(
     ((name: "Inria Serif", covers: "latin-in-cjk"), "Noto Serif CJK SC"),
     12pt,
-  ).font_family,
-  "Inria Serif, Noto Serif CJK SC",
+  ).font_stack,
+  ("Inria Serif", "Noto Serif CJK SC"),
 )
 
 #let source = "flowchart LR

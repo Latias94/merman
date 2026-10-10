@@ -7,11 +7,12 @@
 //! optional operation deadline before dispatch.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
-    CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey, RuntimeCatalog,
-    RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingOperationResult,
+    BindingTransportKey, CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey,
+    RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey,
+    ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
@@ -31,14 +32,12 @@ pub use editor_language::{
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use merman_bindings_core::{TextStyle, WrapMode};
-#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
-use serde::Deserialize;
 
 /// Breaking API version for the wasm-bindgen transport.
 ///
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
-pub const WASM_TRANSPORT_API_VERSION: u32 = 5;
+pub const WASM_TRANSPORT_API_VERSION: u32 = WEB_TRANSPORT_API_VERSION;
 const WASM_TIMEOUT_MS_MAX: u64 = u32::MAX as u64;
 const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
@@ -52,9 +51,15 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::DocumentAnalysisJson,
     #[cfg(feature = "svg")]
+    OperationKey::DescribeThemeSupportJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePresetJson,
+    #[cfg(feature = "svg")]
     OperationKey::EdgeGeometryJson,
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
+    #[cfg(feature = "svg")]
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -124,6 +129,17 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
     ))
 }
 
+/// Renders once and retains the execution metadata for the returned SVG.
+#[wasm_bindgen(js_name = renderSvgResult)]
+pub fn render_svg_result(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    svg_result(execute_wasm_operation_result(
+        "svg",
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
 #[wasm_bindgen(js_name = svgPlanJson)]
 pub fn svg_plan_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
     json_value_result(execute_wasm_operation(
@@ -145,6 +161,25 @@ pub fn render_svg_with_text_measurer(
         let services = merman_bindings_core::BindingEngineServices::new()
             .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
         string_result(execute_wasm_operation_with_services(
+            "svg",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            services,
+        ))
+    })
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = renderSvgResultWithTextMeasurer)]
+pub fn render_svg_result_with_text_measurer(
+    source: &str,
+    options_json: Option<String>,
+    callback: js_sys::Function,
+) -> Result<JsValue, JsValue> {
+    with_host_text_measure_callback(callback, || {
+        let services = merman_bindings_core::BindingEngineServices::new()
+            .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        svg_result(execute_wasm_operation_result_with_services(
             "svg",
             source.as_bytes(),
             options_bytes(options_json.as_deref()),
@@ -321,9 +356,48 @@ pub fn supported_themes() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("supported-themes"))
 }
 
-#[wasm_bindgen(js_name = presentationCatalog)]
-pub fn presentation_catalog() -> Result<JsValue, JsValue> {
-    json_value_result(wasm_artifact_contract().metadata_json("presentation-catalog"))
+#[wasm_bindgen(js_name = themeCatalog)]
+pub fn theme_catalog() -> Result<JsValue, JsValue> {
+    json_value_result(wasm_artifact_contract().metadata_json("theme-catalog"))
+}
+
+#[wasm_bindgen(js_name = materializeTheme)]
+pub fn materialize_theme(
+    definition_json: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "materialize-theme-json",
+        definition_json.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[wasm_bindgen(js_name = describeThemeSupport)]
+pub fn describe_theme_support(
+    query_json: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "describe-theme-support-json",
+        query_json.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[wasm_bindgen(js_name = exportThemePreset)]
+pub fn export_theme_preset(
+    preset_id: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "export-theme-preset-json",
+        preset_id.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
 }
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
@@ -359,6 +433,7 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 /// `OperationControl` deadline. Invalid JSON and invalid UTF-8 remain untouched so the binding
 /// layer preserves its established error classification and precedence.
 fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), BindingError> {
+    merman_bindings_core::enforce_options_json_byte_budget(options_json)?;
     if options_json.is_empty() {
         return Ok((Vec::new(), None));
     }
@@ -366,27 +441,74 @@ fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), Bind
     let Ok(text) = std::str::from_utf8(options_json) else {
         return Ok((options_json.to_vec(), None));
     };
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
+    let Ok(mut fields) = serde_json::from_str::<WasmOptionsFields<'_>>(text) else {
         return Ok((options_json.to_vec(), None));
     };
-    let Some(object) = value.as_object_mut() else {
-        return Ok((options_json.to_vec(), None));
-    };
-    let Some(timeout_ms) = object.remove("timeout_ms") else {
-        return Ok((options_json.to_vec(), None));
-    };
-    let Some(timeout_ms) = timeout_ms.as_u64() else {
-        return Err(invalid_wasm_timeout());
-    };
-    if timeout_ms > WASM_TIMEOUT_MS_MAX {
-        return Err(invalid_wasm_timeout());
+    let mut timeout = None;
+    for (key, value) in &fields.0 {
+        if key != "timeout_ms" {
+            continue;
+        }
+        let timeout_ms =
+            serde_json::from_str::<u64>(value.get()).map_err(|_| invalid_wasm_timeout())?;
+        if timeout.is_some() || timeout_ms > WASM_TIMEOUT_MS_MAX {
+            return Err(invalid_wasm_timeout());
+        }
+        timeout = Some(Duration::from_millis(timeout_ms));
     }
-    let normalized = serde_json::to_vec(&value).map_err(|error| {
+    if timeout.is_none() {
+        return Ok((options_json.to_vec(), None));
+    }
+    fields.0.retain(|(key, _)| key != "timeout_ms");
+    let normalized = serde_json::to_vec(&fields).map_err(|error| {
         BindingError::internal(format!(
             "failed to normalize WASM transport options: {error}"
         ))
     })?;
-    Ok((normalized, Some(Duration::from_millis(timeout_ms))))
+    Ok((normalized, timeout))
+}
+
+// Preserve member order, duplicate keys, and nested raw values for shared admission.
+// A Value or Map round trip would erase malformed recipes before they can be rejected.
+struct WasmOptionsFields<'a>(Vec<(String, &'a serde_json::value::RawValue)>);
+
+impl<'de> Deserialize<'de> for WasmOptionsFields<'de> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FieldsVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for FieldsVisitor {
+            type Value = WasmOptionsFields<'de>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("an options object")
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let mut fields = Vec::new();
+                while let Some(field) = map.next_entry()? {
+                    fields.push(field);
+                }
+                Ok(WasmOptionsFields(fields))
+            }
+        }
+
+        deserializer.deserialize_map(FieldsVisitor)
+    }
+}
+
+impl Serialize for WasmOptionsFields<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (key, value) in &self.0 {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
 }
 
 fn invalid_wasm_timeout() -> BindingError {
@@ -407,15 +529,23 @@ fn execute_wasm_operation(
     options_json: &[u8],
     uri: Option<&[u8]>,
 ) -> Result<Vec<u8>, BindingError> {
+    execute_wasm_operation_result(operation_id, source, options_json, uri)
+        .map(BindingOperationResult::into_data)
+}
+
+fn execute_wasm_operation_result(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    uri: Option<&[u8]>,
+) -> Result<BindingOperationResult, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
-    wasm_artifact_contract()
-        .execute_once(
-            BindingOperationRequest::new(operation_id, source)
-                .with_optional_uri(uri)
-                .with_options_json(&normalized_options)
-                .with_control(wasm_operation_control(timeout)),
-        )
-        .map(merman_bindings_core::BindingOperationResult::into_data)
+    wasm_artifact_contract().execute_once(
+        BindingOperationRequest::new(operation_id, source)
+            .with_optional_uri(uri)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+    )
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -425,15 +555,35 @@ fn execute_wasm_operation_with_services(
     options_json: &[u8],
     services: merman_bindings_core::BindingEngineServices,
 ) -> Result<Vec<u8>, BindingError> {
+    execute_wasm_operation_result_with_services(operation_id, source, options_json, services)
+        .map(BindingOperationResult::into_data)
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+fn execute_wasm_operation_result_with_services(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    services: merman_bindings_core::BindingEngineServices,
+) -> Result<BindingOperationResult, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
-    wasm_artifact_contract()
-        .execute_once_with_services(
-            BindingOperationRequest::new(operation_id, source)
-                .with_options_json(&normalized_options)
-                .with_control(wasm_operation_control(timeout)),
-            services,
-        )
-        .map(merman_bindings_core::BindingOperationResult::into_data)
+    wasm_artifact_contract().execute_once_with_services(
+        BindingOperationRequest::new(operation_id, source)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+        services,
+    )
+}
+
+fn svg_result(result: Result<BindingOperationResult, BindingError>) -> Result<JsValue, JsValue> {
+    let output = result.map_err(binding_error_to_js)?;
+    let (_, _, data, metadata) = output.into_parts();
+    let svg = String::from_utf8(data).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let metadata: serde_json::Value = serde_json::from_slice(metadata.json_bytes())
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    serde_json::json!({ "svg": svg, "metadata": metadata })
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {
@@ -761,13 +911,20 @@ mod tests {
     #[test]
     fn wasm_timeout_option_becomes_a_relative_deadline_and_is_removed_from_shared_options() {
         let (options, timeout) = wasm_options(
-            br#"{"version":2,"timeout_ms":125,"resources":{"profile":"constrained"}}"#,
+            format!(
+                r#"{{"version":{},"timeout_ms":125,"resources":{{"profile":"constrained"}}}}"#,
+                merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+            )
+            .as_bytes(),
         )
         .unwrap();
 
         assert_eq!(timeout, Some(Duration::from_millis(125)));
         let value: serde_json::Value = serde_json::from_slice(&options).unwrap();
-        assert_eq!(value["version"], 2);
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+        );
         assert_eq!(value["resources"]["profile"], "constrained");
         assert!(value.get("timeout_ms").is_none());
     }
@@ -788,6 +945,58 @@ mod tests {
             );
             assert!(error.message().contains("timeout_ms"));
         }
+    }
+
+    #[test]
+    fn wasm_timeout_preserves_raw_options_members_for_shared_admission() {
+        let raw_theme = r#"{"schema_version":2,"schema_version":1,"kind":"definition","definition":{"tokens":{}}}"#;
+        let raw_options =
+            format!(r#"{{"theme":{raw_theme},"theme":{raw_theme},"timeout_ms":125}}"#);
+        let (normalized, timeout) = wasm_options(raw_options.as_bytes()).unwrap();
+        assert_eq!(timeout, Some(Duration::from_millis(125)));
+        assert_eq!(
+            String::from_utf8(normalized).unwrap(),
+            format!(r#"{{"theme":{raw_theme},"theme":{raw_theme}}}"#)
+        );
+        assert!(wasm_options(br#"{"timeout_ms":1,"timeout_ms":2}"#).is_err());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_timeout_does_not_hide_duplicate_recipe_fields() {
+        let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        for recipe in [
+            format!(r#"{{"schema_version":2,"schema_version":1,"kind":"definition","definition":{definition}}}"#),
+            format!(r#"{{"schema_version":2,"schema_\u0076ersion":1,"kind":"definition","definition":{definition}}}"#),
+            r#"{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
+        ] {
+            let options = format!(r#"{{"theme":{recipe}}}"#);
+            let timed_options = format!(r#"{{"theme":{recipe},"timeout_ms":60000}}"#);
+            let plain = execute_wasm_operation(
+                "svg", b"flowchart LR\nA --> B", options.as_bytes(), None,
+            ).expect_err("duplicate recipe fields must be rejected");
+            let timed = execute_wasm_operation(
+                "svg", b"flowchart LR\nA --> B", timed_options.as_bytes(), None,
+            ).expect_err("transport timeout must preserve duplicate recipe rejection");
+            assert_eq!(timed.status(), plain.status());
+            assert_eq!(timed.message(), plain.message());
+            assert!(plain.message().contains("duplicate"), "{plain:?}");
+        }
+    }
+
+    #[test]
+    fn wasm_options_rejects_oversized_documents_before_transport_parsing() {
+        let oversized = vec![b' '; merman_bindings_core::BINDING_OPTIONS_JSON_MAX_BYTES + 1];
+        let error = wasm_options(&oversized).expect_err("oversized options must fail closed");
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        let details = error
+            .resource_details()
+            .expect("options byte-limit details");
+        assert_eq!(details.limit_id, "max_options_json_bytes");
+        assert_eq!(details.phase, "options-json-preflight");
     }
 
     #[test]
@@ -893,6 +1102,53 @@ mod tests {
         assert_eq!(plan["planned_operation_id"], "svg");
         assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
         assert_eq!(plan["ready"], true);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_theme_authoring_operations_share_the_canonical_operation_surface() {
+        let operation_ids = &wasm_runtime_catalog().capabilities.operation_ids;
+        for operation_id in [
+            "materialize-theme-json",
+            "describe-theme-support-json",
+            "export-theme-preset-json",
+        ] {
+            assert!(
+                operation_ids.contains(&operation_id),
+                "the Web catalog must advertise {operation_id}"
+            );
+        }
+
+        let materialized = execute_wasm_operation(
+            "materialize-theme-json",
+            br##"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": { "text": "#123456", "accent": "#abcdef" }
+            }"##,
+            b"",
+            None,
+        )
+        .expect("WASM should materialize a theme definition");
+        let materialized: serde_json::Value = serde_json::from_slice(&materialized).unwrap();
+        assert_eq!(materialized["schema_version"], 1);
+        assert!(materialized["spec"]["styles"].is_array());
+
+        let support = execute_wasm_operation(
+            "describe-theme-support-json",
+            br#"{"schema_version":1,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+            b"",
+            None,
+        )
+        .expect("WASM should expose theme support discovery");
+        let support: serde_json::Value = serde_json::from_slice(&support).unwrap();
+        assert_eq!(support["schema_version"], 1);
+        assert_eq!(support["query"]["family"], "sequence");
+
+        let preset = execute_wasm_operation("export-theme-preset-json", b"editor-light", b"", None)
+            .expect("WASM should export a built-in preset");
+        let preset: serde_json::Value = serde_json::from_slice(&preset).unwrap();
+        assert_eq!(preset["kind"], "complete_spec");
     }
 
     #[cfg(all(
@@ -1296,6 +1552,7 @@ mod tests {
             !cfg!(feature = "ascii")
         );
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        assert!(!capabilities.has_capability("embedded-fonts"));
         #[cfg(feature = "svg")]
         {
             assert_eq!(
@@ -1396,7 +1653,7 @@ mod tests {
         let capabilities = merman_bindings_core::diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
-                && capability.logical_family_kind == "flowchart"
+                && capability.family_id.as_str() == "flowchart"
                 && capability.metadata_id == Some("flowchart")
                 && capability.render_model_kind == Some("flowchart")
                 && !capability.has_detector

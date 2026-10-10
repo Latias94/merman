@@ -3,19 +3,42 @@
 //! Upstream Mermaid renders `$$...$$` fragments via KaTeX and measures the resulting HTML in a
 //! browser DOM. Merman models math rendering as an operation-scoped backend. An operation without
 //! one rejects typed diagrams that contain delimited math instead of emitting the source as plain
-//! text. The `math` feature installs the pure-Rust RaTeX backend by default; hosts may still supply
-//! another implementation explicitly.
+//! text. The `math` feature installs the pure-Rust RaTeX backend by default; alternate adapters
+//! remain renderer-internal until their resource and evidence contracts are complete.
+
+mod evidence;
+mod prepared;
+
+pub(crate) use evidence::{
+    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, PreparedMathEvidenceLease,
+    PreparedMathExpectation, PreparedMathOccurrenceId, PreparedMathProjectionFingerprint,
+    PreparedMathStyleAssurance, PreparedMathTerminalReceipt,
+};
+pub(crate) use prepared::{
+    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,
+    MathPreparationUnavailable, PREPARED_MATH_CLASS_ATTRIBUTE,
+    PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
+    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE,
+    PrepareMathLabelRequest, PreparedMathLabel,
+};
 
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
+#[cfg(test)]
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use std::collections::HashMap;
+#[cfg(any(feature = "math", test))]
 use std::fmt::Write as _;
+#[cfg(test)]
 use std::io::Write as _;
+#[cfg(test)]
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::{Command, Stdio};
+#[cfg(test)]
 use std::sync::Mutex;
 
 /// Optional math renderer used to transform label HTML and (optionally) provide measurements.
@@ -24,7 +47,7 @@ use std::sync::Mutex;
 /// - deterministic (stable output across runs),
 /// - side-effect free (no global mutations),
 /// - non-panicking (return `None` to decline handling).
-pub trait MathRenderer: std::fmt::Debug {
+pub(crate) trait MathRenderer: std::fmt::Debug {
     /// Attempts to render math fragments within an HTML label string.
     ///
     /// If the renderer declines to handle the input, it should return `None`.
@@ -68,11 +91,25 @@ pub trait MathRenderer: std::fmt::Debug {
     ) -> Option<TextMetrics> {
         None
     }
+
+    /// Optionally measures a Sequence math label under its resolved terminal text style.
+    ///
+    /// This default preserves source compatibility for existing host backends. Implementations
+    /// that can honor the resolved role font size may override it; older implementations retain
+    /// their existing Sequence-specific measurement behavior.
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        _style: &TextStyle,
+    ) -> Option<TextMetrics> {
+        self.measure_sequence_html_label(text, config)
+    }
 }
 
 /// Explicit no-op math renderer for hosts that want a backend which declines every label.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct NoopMathRenderer;
+pub(crate) struct NoopMathRenderer;
 
 impl MathRenderer for NoopMathRenderer {
     fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
@@ -125,6 +162,10 @@ pub(crate) fn contains_delimited_math(text: &str) -> bool {
     crate::text::split_html_br_lines(text)
         .into_iter()
         .any(|line| parse_delimited_math_line(line).is_some())
+}
+
+fn normalized_math_text(text: &str) -> String {
+    text.replace("\\\\", "\\")
 }
 
 pub(crate) struct MathLabelMetricsRequest<'a> {
@@ -261,6 +302,15 @@ pub(crate) fn render_math_html_label(
     ))
 }
 
+pub(crate) fn mark_math_html_native_unavailable(mut html: String) -> String {
+    let prefix = format!("<span {BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE}>");
+    const SUFFIX: &str = "</span>";
+    html.reserve(prefix.len().saturating_add(SUFFIX.len()));
+    html.insert_str(0, &prefix);
+    html.push_str(SUFFIX);
+    html
+}
+
 /// Pure-Rust math renderer backed by RaTeX.
 ///
 /// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a
@@ -268,7 +318,7 @@ pub(crate) fn render_math_html_label(
 /// prose, matching Mermaid's `drawKatex(...)` shell.
 #[cfg(feature = "math")]
 #[derive(Debug, Default, Clone, Copy)]
-pub struct RatexMathRenderer;
+pub(crate) struct RatexMathRenderer;
 
 #[cfg(feature = "math")]
 #[derive(Debug, Clone)]
@@ -280,90 +330,23 @@ struct RatexMathMetrics {
 
 #[cfg(feature = "math")]
 impl RatexMathRenderer {
-    fn normalized_text(text: &str) -> String {
-        text.replace("\\\\", "\\")
-    }
-
-    fn math_only_lines(text: &str) -> Option<Vec<String>> {
-        let normalized = Self::normalized_text(text);
-        let mut formulas = Vec::new();
-        for raw_line in split_html_br_lines(&normalized) {
-            let line = raw_line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let inner = line.strip_prefix("$$")?.strip_suffix("$$")?;
-            if inner.contains("$$") {
-                return None;
-            }
-            formulas.push(inner.to_string());
-        }
-        if formulas.is_empty() {
-            None
-        } else {
-            Some(formulas)
-        }
-    }
-
-    fn layout_formula_em(latex: &str) -> Option<(ratex_types::DisplayList, f64, f64)> {
-        let ast = ratex_parser::parse(latex).ok()?;
-        let layout_options = ratex_layout::LayoutOptions::default()
-            .with_style(ratex_types::MathStyle::Display)
-            .with_color(ratex_types::Color::BLACK);
-        let layout_box = ratex_layout::layout(&ast, &layout_options);
-        // Display-list bounds include overflowing ink (for example, smash and lap commands).
-        // Measurement must use those same rounded bounds as the emitted SVG viewport.
-        let display_list = ratex_layout::to_display_list(&layout_box);
-        let width_em = Self::emitted_em_dimension(display_list.width.max(0.0));
-        let height_em = Self::emitted_em_dimension(display_list.total_height().max(0.0));
-        Some((display_list, width_em, height_em))
-    }
-
-    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
-        let (display_list, width_em, height_em) = Self::layout_formula_em(latex)?;
-        let svg = ratex_svg::render_to_svg(
-            &display_list,
-            &ratex_svg::SvgOptions {
-                font_size: 1.0,
-                padding: 0.0,
-                stroke_width: 0.04,
-                embed_glyphs: true,
-                font_dir: String::new(),
-            },
-        );
-        Some((
-            Self::svg_with_em_size(svg, width_em, height_em),
-            width_em,
-            height_em,
-        ))
-    }
-
-    fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
-        let Some(open_end) = svg.find('>') else {
-            return svg;
-        };
-        let Some(body_with_close) = svg.get(open_end + 1..) else {
-            return svg;
-        };
-        let Some(body) = body_with_close.strip_suffix("</svg>") else {
-            return svg;
-        };
-        let width = Self::fmt_num(width_em);
-        let height = Self::fmt_num(height_em);
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
-        )
-    }
-
-    fn measure_math_only_label(text: &str) -> Option<RatexMathMetrics> {
-        let formulas = Self::math_only_lines(text)?;
+    fn measure_math_only_label(text: &str, empty_line_height_em: f64) -> Option<RatexMathMetrics> {
+        let lines = prepared::compiled_ratex_math_only_lines(text)?;
         let mut width_em: f64 = 0.0;
         let mut height_em: f64 = 0.0;
         let mut line_count = 0usize;
-        for formula in formulas {
-            let (_display_list, line_width_em, line_height_em) = Self::layout_formula_em(&formula)?;
-            width_em = width_em.max(line_width_em);
-            height_em += line_height_em;
+        for line in lines {
+            match line {
+                prepared::ClassifiedPureMathLine::Formula(formula) => {
+                    let (line_width_em, line_height_em) =
+                        prepared::measure_compiled_ratex_formula(&formula, "#000000")?;
+                    width_em = width_em.max(line_width_em);
+                    height_em += line_height_em;
+                }
+                prepared::ClassifiedPureMathLine::Empty => {
+                    height_em += empty_line_height_em.max(1.0);
+                }
+            }
             line_count += 1;
         }
         Some(RatexMathMetrics {
@@ -376,16 +359,16 @@ impl RatexMathRenderer {
     fn render_katex_like_line_html(parsed: DelimitedMathLine<'_>) -> Option<String> {
         let mut html = String::new();
         for fragment in parsed.fragments {
-            let (svg, _width_em, _height_em) = Self::render_formula_svg_em(fragment.formula)?;
+            let rendered = prepared::render_compiled_ratex_formula(fragment.formula, "#000000")?;
             html.push_str(fragment.leading_text);
-            html.push_str(&svg);
+            html.push_str(&rendered.svg);
         }
         html.push_str(parsed.trailing_text);
         Some(html)
     }
 
     fn render_katex_like_label(text: &str) -> Option<String> {
-        let normalized = Self::normalized_text(text);
+        let normalized = normalized_math_text(text);
         if !normalized.contains("$$") {
             return None;
         }
@@ -416,20 +399,6 @@ impl RatexMathRenderer {
             line_count: measured.line_count,
         }
     }
-
-    fn emitted_em_dimension(value: f64) -> f64 {
-        Self::fmt_num(value).parse().unwrap_or(0.0)
-    }
-
-    fn fmt_num(n: f64) -> String {
-        let s = format!("{n:.6}");
-        let s = s.trim_end_matches('0').trim_end_matches('.');
-        if s.is_empty() || s == "-" {
-            "0".to_string()
-        } else {
-            s.to_string()
-        }
-    }
 }
 
 #[cfg(feature = "math")]
@@ -456,26 +425,35 @@ impl MathRenderer for RatexMathRenderer {
         if wrap_mode != WrapMode::HtmlLike || !text.contains("$$") {
             return None;
         }
-        let measured = Self::measure_math_only_label(text)?;
+        let measured =
+            Self::measure_math_only_label(text, crate::text::flowchart_html_line_height_px(1.0))?;
         Some(Self::metrics_from_em(&measured, style.font_size))
     }
 
     fn measure_sequence_html_label(
         &self,
         text: &str,
+        config: &MermaidConfig,
+    ) -> Option<TextMetrics> {
+        self.measure_sequence_html_label_with_style(text, config, &TextStyle::default())
+    }
+
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
         _config: &MermaidConfig,
+        style: &TextStyle,
     ) -> Option<TextMetrics> {
         if !text.contains("$$") {
             return None;
         }
-        let measured = Self::measure_math_only_label(text)?;
-        Some(Self::metrics_from_em(
-            &measured,
-            TextStyle::default().font_size,
-        ))
+        let measured =
+            Self::measure_math_only_label(text, crate::sequence::sequence_text_line_step_px(1.0))?;
+        Some(Self::metrics_from_em(&measured, style.font_size))
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RenderCacheKey {
     text: String,
@@ -483,15 +461,18 @@ struct RenderCacheKey {
     force_legacy_mathml: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ProbeCacheKey {
     render: RenderCacheKey,
     font_family: Option<String>,
     font_size_bits: u64,
     font_weight: Option<String>,
+    font_style: Option<String>,
     max_width_bits: u64,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 struct ProbeCacheValue {
     html: String,
@@ -500,12 +481,36 @@ struct ProbeCacheValue {
     line_count: usize,
 }
 
+#[cfg(test)]
+impl ProbeCacheValue {
+    fn from_response(value: NodeProbeResponse) -> Option<Self> {
+        if !value.width.is_finite() || !value.height.is_finite() {
+            return None;
+        }
+        let height = value.height.max(0.0);
+        if value.max_line_height_px.is_some_and(|line_height| {
+            !line_height.is_finite() || line_height < 0.0 || (height > 0.0 && line_height == 0.0)
+        }) {
+            return None;
+        }
+        let line_count = value.html.match_indices("<div").count().max(1);
+        Some(Self {
+            html: value.html,
+            width: value.width.max(0.0),
+            height,
+            line_count,
+        })
+    }
+}
+
+#[cfg(test)]
 #[derive(Debug, Serialize)]
 struct NodeRenderRequest {
     text: String,
     config: NodeMathConfig,
 }
 
+#[cfg(test)]
 #[derive(Debug, Serialize)]
 struct NodeProbeRequest {
     text: String,
@@ -516,6 +521,7 @@ struct NodeProbeRequest {
     max_width_px: f64,
 }
 
+#[cfg(test)]
 #[derive(Debug, Serialize)]
 struct NodeMathConfig {
     #[serde(rename = "legacyMathML")]
@@ -524,16 +530,20 @@ struct NodeMathConfig {
     force_legacy_mathml: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct NodeRenderResponse {
     html: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct NodeProbeResponse {
     html: String,
     width: f64,
     height: f64,
+    #[serde(rename = "maxLineHeightPx")]
+    max_line_height_px: Option<f64>,
 }
 
 /// Optional KaTeX backend that shells out to a local Node.js toolchain.
@@ -545,17 +555,19 @@ struct NodeProbeResponse {
 ///
 /// The backend is completely opt-in; if the configured Node.js environment is unavailable or the
 /// probe fails, it simply returns `None` and lets callers fall back to the default text path.
+#[cfg(test)]
 #[derive(Debug)]
-pub struct NodeKatexMathRenderer {
+pub(crate) struct NodeKatexMathRenderer {
     node_cwd: PathBuf,
     node_command: PathBuf,
     render_cache: Mutex<HashMap<RenderCacheKey, Option<String>>>,
     probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
-    sequence_probe_cache: Mutex<HashMap<RenderCacheKey, Option<ProbeCacheValue>>>,
+    sequence_probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
 }
 
+#[cfg(test)]
 impl NodeKatexMathRenderer {
-    pub fn new(node_cwd: impl Into<PathBuf>) -> Self {
+    pub(crate) fn new(node_cwd: impl Into<PathBuf>) -> Self {
         Self {
             node_cwd: node_cwd.into(),
             node_command: PathBuf::from("node"),
@@ -565,7 +577,7 @@ impl NodeKatexMathRenderer {
         }
     }
 
-    pub fn with_node_command(mut self, node_command: impl Into<PathBuf>) -> Self {
+    pub(crate) fn with_node_command(mut self, node_command: impl Into<PathBuf>) -> Self {
         self.node_command = node_command.into();
         self
     }
@@ -574,10 +586,6 @@ impl NodeKatexMathRenderer {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("assets")
             .join("katex_flowchart_probe.cjs")
-    }
-
-    fn normalized_text(text: &str) -> String {
-        text.replace("\\\\", "\\")
     }
 
     fn math_config(config: &MermaidConfig) -> NodeMathConfig {
@@ -599,7 +607,7 @@ impl NodeKatexMathRenderer {
     fn render_key(text: &str, config: &MermaidConfig) -> RenderCacheKey {
         let config = Self::math_config(config);
         RenderCacheKey {
-            text: Self::normalized_text(text),
+            text: normalized_math_text(text),
             legacy_mathml: config.legacy_mathml,
             force_legacy_mathml: config.force_legacy_mathml,
         }
@@ -617,6 +625,11 @@ impl NodeKatexMathRenderer {
             && !font_weight.trim().is_empty()
         {
             let _ = write!(&mut out, "font-weight: {};", font_weight.trim());
+        }
+        if let Some(font_style) = style.font_style.as_deref()
+            && !font_style.trim().is_empty()
+        {
+            let _ = write!(&mut out, "font-style: {};", font_style.trim());
         }
         out
     }
@@ -700,6 +713,7 @@ impl NodeKatexMathRenderer {
             font_family: style.font_family.clone(),
             font_size_bits: style.font_size.to_bits(),
             font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
             max_width_bits: max_width.to_bits(),
         };
         if let Some(cached) = self
@@ -724,18 +738,7 @@ impl NodeKatexMathRenderer {
                 max_width_px: max_width,
             },
         );
-        let probed = response.and_then(|value| {
-            if !value.width.is_finite() || !value.height.is_finite() {
-                return None;
-            }
-            let line_count = value.html.match_indices("<div").count().max(1);
-            Some(ProbeCacheValue {
-                html: value.html,
-                width: value.width.max(0.0),
-                height: value.height.max(0.0),
-                line_count,
-            })
-        });
+        let probed = response.and_then(ProbeCacheValue::from_response);
 
         if let Some(probed_value) = probed.clone()
             && let Ok(mut render_cache) = self.render_cache.lock()
@@ -751,8 +754,21 @@ impl NodeKatexMathRenderer {
         probed
     }
 
-    fn sequence_probe_cached(&self, text: &str, config: &MermaidConfig) -> Option<ProbeCacheValue> {
-        let key = Self::render_key(text, config);
+    fn sequence_probe_cached(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<ProbeCacheValue> {
+        let render = Self::render_key(text, config);
+        let key = ProbeCacheKey {
+            render: render.clone(),
+            font_family: style.font_family.clone(),
+            font_size_bits: style.font_size.to_bits(),
+            font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
+            max_width_bits: 0,
+        };
         if let Some(cached) = self
             .sequence_probe_cache
             .lock()
@@ -764,32 +780,23 @@ impl NodeKatexMathRenderer {
 
         let response: Option<NodeProbeResponse> = self.run_node_request(
             "probe-sequence",
-            &NodeRenderRequest {
-                text: key.text.clone(),
+            &NodeProbeRequest {
+                text: render.text.clone(),
                 config: NodeMathConfig {
-                    legacy_mathml: key.legacy_mathml,
-                    force_legacy_mathml: key.force_legacy_mathml,
+                    legacy_mathml: render.legacy_mathml,
+                    force_legacy_mathml: render.force_legacy_mathml,
                 },
+                style_css: Self::style_css(style),
+                max_width_px: 0.0,
             },
         );
-        let probed = response.and_then(|value| {
-            if !value.width.is_finite() || !value.height.is_finite() {
-                return None;
-            }
-            let line_count = value.html.match_indices("<div").count().max(1);
-            Some(ProbeCacheValue {
-                html: value.html,
-                width: value.width.max(0.0),
-                height: value.height.max(0.0),
-                line_count,
-            })
-        });
+        let probed = response.and_then(ProbeCacheValue::from_response);
 
         if let Some(probed_value) = probed.clone()
             && let Ok(mut render_cache) = self.render_cache.lock()
         {
             render_cache
-                .entry(key.clone())
+                .entry(render)
                 .or_insert_with(|| Some(probed_value.html.clone()));
         }
         if let Ok(mut cache) = self.sequence_probe_cache.lock() {
@@ -800,6 +807,7 @@ impl NodeKatexMathRenderer {
     }
 }
 
+#[cfg(test)]
 impl MathRenderer for NodeKatexMathRenderer {
     fn render_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String> {
         if !text.contains("$$") {
@@ -835,7 +843,24 @@ impl MathRenderer for NodeKatexMathRenderer {
         if !text.contains("$$") {
             return None;
         }
-        let probed = self.sequence_probe_cached(text, config)?;
+        let probed = self.sequence_probe_cached(text, config, &TextStyle::default())?;
+        Some(TextMetrics {
+            width: probed.width,
+            height: probed.height,
+            line_count: probed.line_count,
+        })
+    }
+
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<TextMetrics> {
+        if !text.contains("$$") {
+            return None;
+        }
+        let probed = self.sequence_probe_cached(text, config, style)?;
         Some(TextMetrics {
             width: probed.width,
             height: probed.height,
@@ -849,6 +874,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn node_probe_rejects_a_zero_line_height_for_visible_content() {
+        let response = NodeProbeResponse {
+            html: "<div>x</div>".to_string(),
+            width: 12.0,
+            height: 20.0,
+            max_line_height_px: Some(0.0),
+        };
+
+        assert!(ProbeCacheValue::from_response(response).is_none());
+    }
+
+    #[test]
+    fn node_probe_style_and_cache_identity_include_font_style() {
+        let config = MermaidConfig::default();
+        let render = NodeKatexMathRenderer::render_key("$$x$$", &config);
+        let normal = TextStyle::default();
+        let italic = TextStyle {
+            font_style: Some("italic".to_string()),
+            ..normal.clone()
+        };
+        let key = |style: &TextStyle| ProbeCacheKey {
+            render: render.clone(),
+            font_family: style.font_family.clone(),
+            font_size_bits: style.font_size.to_bits(),
+            font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
+            max_width_bits: 200.0_f64.to_bits(),
+        };
+
+        assert_ne!(key(&normal), key(&italic));
+        assert!(!NodeKatexMathRenderer::style_css(&normal).contains("font-style"));
+        assert!(NodeKatexMathRenderer::style_css(&italic).contains("font-style: italic;"));
+    }
+
+    #[test]
     fn delimited_math_detection_requires_a_complete_pair_on_one_label_line() {
         assert!(contains_delimited_math("value: $$x^2$$"));
         assert!(contains_delimited_math("plain<br>value: $$x^2$$"));
@@ -860,11 +920,23 @@ mod tests {
     #[test]
     fn ratex_math_renderer_splits_math_only_labels_with_source_br_shape() {
         assert_eq!(
-            RatexMathRenderer::math_only_lines("$$x$$<BR /> $$y$$<bR\t/>$$z$$"),
-            Some(vec!["x".to_string(), "y".to_string(), "z".to_string()])
+            prepared::compiled_ratex_math_only_lines("$$x$$<BR /> $$y$$<bR\t/>$$z$$"),
+            Some(vec![
+                prepared::ClassifiedPureMathLine::Formula("x".to_string()),
+                prepared::ClassifiedPureMathLine::Formula("y".to_string()),
+                prepared::ClassifiedPureMathLine::Formula("z".to_string()),
+            ])
+        );
+        assert_eq!(
+            prepared::compiled_ratex_math_only_lines("$$x$$<br><br>$$y$$"),
+            Some(vec![
+                prepared::ClassifiedPureMathLine::Formula("x".to_string()),
+                prepared::ClassifiedPureMathLine::Empty,
+                prepared::ClassifiedPureMathLine::Formula("y".to_string()),
+            ])
         );
         assert!(
-            RatexMathRenderer::math_only_lines("$$x$$<brx>$$y$$").is_none(),
+            prepared::compiled_ratex_math_only_lines("$$x$$<brx>$$y$$").is_none(),
             "non-source <br> lookalikes must not split a same-line multi-formula label"
         );
     }
@@ -1030,20 +1102,17 @@ mod tests {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();
         let style = TextStyle::default();
-        let (svg, width_em, height_em) = RatexMathRenderer::render_formula_svg_em("x^2")
+        let rendered = prepared::render_compiled_ratex_formula("x^2", "#000000")
             .expect("ratex should emit the formula SVG");
+        let svg = rendered.svg;
+        let width_em = rendered.width_em;
+        let height_em = rendered.height_em;
         assert!(
-            svg.contains(&format!(
-                "width=\"{}em\"",
-                RatexMathRenderer::fmt_num(width_em)
-            )),
+            svg.contains(&format!("width=\"{}em\"", prepared::fmt_num(width_em))),
             "unexpected emitted SVG width: {svg}"
         );
         assert!(
-            svg.contains(&format!(
-                "height=\"{}em\"",
-                RatexMathRenderer::fmt_num(height_em)
-            )),
+            svg.contains(&format!("height=\"{}em\"", prepared::fmt_num(height_em))),
             "unexpected emitted SVG height: {svg}"
         );
 
@@ -1231,6 +1300,7 @@ mod tests {
             font_family: style.font_family.clone(),
             font_size_bits: style.font_size.to_bits(),
             font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
             max_width_bits: 200.0_f64.to_bits(),
         };
         renderer
@@ -1238,11 +1308,17 @@ mod tests {
             .lock()
             .unwrap()
             .insert(key, Some(probe.clone()));
-        renderer
-            .sequence_probe_cache
-            .lock()
-            .unwrap()
-            .insert(render, Some(probe));
+        renderer.sequence_probe_cache.lock().unwrap().insert(
+            ProbeCacheKey {
+                render,
+                font_family: style.font_family.clone(),
+                font_size_bits: style.font_size.to_bits(),
+                font_weight: style.font_weight.clone(),
+                font_style: style.font_style.clone(),
+                max_width_bits: 0,
+            },
+            Some(probe),
+        );
 
         let flowchart = renderer
             .measure_html_label("$$x$$", &config, &style, Some(200.0), WrapMode::HtmlLike)

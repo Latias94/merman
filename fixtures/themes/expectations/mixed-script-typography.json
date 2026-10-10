@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-mixed-script-typography",
+  "evidenceKind": "typed-capability",
+  "intent": "Bind parsed Latin and CJK labels to the same licensed font catalog used by export."
+}

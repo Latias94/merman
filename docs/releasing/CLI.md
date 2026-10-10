@@ -32,12 +32,14 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 ## CLI contract migration
 
 Complete releases governed by this source contract report capability document schema 2 and CLI
-contract 5. Contract 5 retains contract 4's `-f/--format` native spelling, text-first `lint`,
-narrowed `detect`, and feature-gated top-level `rustdoc` workflow. It adds the ASCII capability
-subcontract and the Plain JSON stderr failure channel selected by `--ascii-report`. The standard
-release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
-`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
-The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
+contract 6. SVG-enabled artifacts add `theme_presets` with alpha maturity, compiler-policy
+availability, and empty built-in qualification scope. Contract 6 retains contract 4's
+`-f/--format` native spelling, text-first `lint`, narrowed `detect`, and feature-gated top-level
+`rustdoc` workflow, plus contract 5's ASCII capability subcontract and Plain JSON stderr failure
+channel selected by `--ascii-report`. The complete
+release command inventory remains `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
+`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`. The archive, installation, and
+Homebrew verifiers require that exact contract.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. The separate
@@ -78,8 +80,9 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`. The `0.8.0` standard profile ships 15 manual pages, including
-Rustdoc build/check; its checked completions and manual pages match the compiled command tree.
+`completions/` and `man/`. Contract 6 retains 15 manual pages, including the top-level
+`merman-cli-rustdoc.1` page and the nested `merman-cli-rustdoc-build.1` and
+`merman-cli-rustdoc-check.1` pages.
 
 The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
 repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
@@ -273,9 +276,10 @@ is invalid and cannot fall back to the current branch's implementation. The inst
 capability schema and digest must also match that tag's declared capability authority.
 
 Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
-expose CLI contract 5, match the complete `cli-release` capability set, install four Homebrew
-completion files, and install all 15 standard-profile man pages. A later release line may
-advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+expose CLI contract 6, match the complete `cli-release` capability set, install four Homebrew
+completion files, and install all 15 man pages. The inventory includes
+`merman-cli-rustdoc.1`, `merman-cli-rustdoc-build.1`, and `merman-cli-rustdoc-check.1`. A later
+release line may advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 

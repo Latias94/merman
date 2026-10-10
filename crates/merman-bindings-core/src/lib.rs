@@ -25,12 +25,17 @@ mod services;
 mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
+#[cfg(feature = "svg")]
+mod theme_definition;
+mod theme_execution_evidence;
 mod transport_contract;
 
 #[cfg(feature = "ascii")]
 mod ascii;
 #[cfg(feature = "svg")]
 mod render;
+#[cfg(feature = "svg")]
+mod theme;
 
 pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
 pub use capability::{
@@ -42,6 +47,9 @@ pub use catalog_contract::{
     RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 };
+#[cfg(feature = "svg")]
+#[doc(hidden)]
+pub use common::prepare_theme_authoring_options_json;
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
@@ -51,7 +59,11 @@ pub use common::{
     render_resource_options_unavailable, resource_options_json,
 };
 #[doc(hidden)]
-pub use common::{BindingJsSafeResourceErrorDetails, binding_error_js_payload_json_bytes};
+pub use common::{
+    BindingJsSafeResourceErrorDetails, binding_error_js_details_json,
+    binding_error_js_payload_json_bytes, enforce_options_json_byte_budget,
+    enforce_options_json_byte_len,
+};
 pub use engine::BindingEngine;
 pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
@@ -60,12 +72,12 @@ pub use lifecycle::{
 pub use merman::{OperationControl, OperationPhase};
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
-    PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeConstructorResourceLimit,
-    RuntimeConstructorServiceContract, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
-    RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
-    RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
-    TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry, RuntimeCapabilities, RuntimeCatalog,
+    RuntimeConstructorResourceLimit, RuntimeConstructorServiceContract,
+    RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits, RuntimeOutputContract,
+    RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
+    RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC,
+    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, THEME_CATALOG_SCHEMA_VERSION,
     TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
     ascii_diagrammatic_diagrams, ascii_supported_diagrams, ascii_supported_diagrams_json,
     configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
@@ -83,15 +95,15 @@ pub use operation::{
 pub use operation_contract::{
     BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BindingJsonFieldContract,
     BindingOperationExpectation, BindingOperationMetadataContract, BindingOutputPlanContract,
-    BindingUnavailableOperationExpectation, binding_operation_expectations,
-    binding_operation_expectations_json, operation_metadata_contract,
-    operation_metadata_contract_json,
+    BindingThemeExecutionEvidenceContract, BindingUnavailableOperationExpectation,
+    binding_operation_expectations, binding_operation_expectations_json,
+    operation_metadata_contract, operation_metadata_contract_json,
 };
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
 pub use resource_contract::{
-    BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
-    binding_resource_contract,
+    BINDING_OPTIONS_JSON_MAX_BYTES, BindingResourceContract, BindingResourceLimitDescriptor,
+    BindingResourceProfileDescriptor, binding_resource_contract,
 };
 pub use service_contract::{
     ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
@@ -100,8 +112,13 @@ pub use service_contract::{
 pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
 pub use services::{BindingIconRegistry, build_icon_registry};
-pub use svg_plan::{
-    SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
+pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
+pub use theme_execution_evidence::{
+    BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
+    BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
+    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeDiagnostic,
+    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV1,
+    BindingUnknownThemeExecutionEvidence,
 };
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
@@ -114,6 +131,8 @@ pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSI
 
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
+#[cfg(feature = "svg")]
+pub use merman::svg::ThemeResourcePolicy;
 #[cfg(feature = "svg")]
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
@@ -135,7 +154,18 @@ pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
     decode_host_text_measurement, host_text_measurement_transport_fields,
 };
-pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
+#[cfg(feature = "svg")]
+pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
+#[cfg(feature = "svg")]
+pub use theme_definition::{
+    compile_theme_definition_json, compile_theme_definition_json_with, describe_theme_support_json,
+    describe_theme_support_json_with_resource_policy, export_theme_preset_json,
+    export_theme_preset_json_with, export_theme_preset_json_with_resource_policy,
+    materialize_theme_definition_json, materialize_theme_definition_json_with_resource_policy,
+};
+pub use transport_contract::{
+    BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,
+};
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

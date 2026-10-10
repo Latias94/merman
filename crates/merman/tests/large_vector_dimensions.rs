@@ -14,19 +14,6 @@ xychart-beta
   line [1, 9]
 "#;
 
-#[cfg(feature = "png")]
-const EXTREME_VECTOR_SOURCE: &str = r#"---
-config:
-  xyChart:
-    width: 1000000000000
-    height: 1000000000000
----
-xychart-beta
-  x-axis [a, b]
-  y-axis 0 --> 10
-  line [1, 9]
-"#;
-
 fn render_svg(source: &str, request: SvgRequest) -> String {
     let output = Renderer::new()
         .render(RenderRequest::svg(source, OperationControl::new(), request))
@@ -89,9 +76,9 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
     let RenderOutput::Pdf(Some(pdf)) = output else {
         panic!("XYChart should be detected");
     };
-    assert!(pdf.bytes.starts_with(b"%PDF-"));
+    assert!(pdf.bytes().starts_with(b"%PDF-"));
     assert!(
-        String::from_utf8_lossy(&pdf.bytes).contains("100000"),
+        String::from_utf8_lossy(pdf.bytes()).contains("100000"),
         "PDF should retain the intrinsic vector page size"
     );
 
@@ -112,12 +99,10 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
 fn raster_limits_apply_before_integer_encoder_dimensions() {
     use merman::svg::export::{RasterOptions, RasterSizeLimit, svg_raster_plan};
 
-    let svg = render_resvg_safe(EXTREME_VECTOR_SOURCE);
-    let bounded = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
-        Some(512),
-        Some(512),
-        Some(512 * 512),
-    ));
+    let svg = render_resvg_safe(HUGE_VECTOR_SOURCE);
+    let bounded = RasterOptions::default()
+        .with_scale(50_000.0)
+        .with_size_limit(RasterSizeLimit::new(Some(512), Some(512), Some(512 * 512)));
     let plan = svg_raster_plan(&svg, &bounded).unwrap();
 
     assert!(plan.requested_width_px > f64::from(u32::MAX), "{plan:?}");
@@ -125,6 +110,12 @@ fn raster_limits_apply_before_integer_encoder_dimensions() {
     assert_eq!((plan.width_px, plan.height_px), (512, 512));
     assert!(plan.limited, "{plan:?}");
 
-    let err = svg_raster_plan(&svg, &RasterOptions::default().with_unbounded_size()).unwrap_err();
+    let err = svg_raster_plan(
+        &svg,
+        &RasterOptions::default()
+            .with_scale(50_000.0)
+            .with_unbounded_size(),
+    )
+    .unwrap_err();
     assert!(err.to_string().contains("u32 encoder capability"), "{err}");
 }

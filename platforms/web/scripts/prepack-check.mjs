@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync,
@@ -359,8 +360,20 @@ function assertPackageTypeConsumers(checked) {
       const moduleName = `module${index}`;
       imports.push(
         `import { initMerman as init${index} } from ${JSON.stringify(item.descriptor.name)};`,
-        `import type { MermanInitInput as Init${index} } from ${JSON.stringify(item.descriptor.name)};`,
+        `import type { MermanInitInput as Init${index}, SvgBindingOptions as SvgBindingOptions${index} } from ${JSON.stringify(item.descriptor.name)};`,
         `const check${index}: (input?: Init${index}) => Promise<unknown> = init${index};`,
+        `// @ts-expect-error general bindings must not accept raw Mermaid theme CSS.`,
+        `const rawThemeCss${index}: SvgBindingOptions${index} = { site_config: { themeCSS: ".node {}" } };`,
+        `// @ts-expect-error general bindings must not let callers replace protected Mermaid keys.`,
+        `const replacedSecure${index}: SvgBindingOptions${index} = { site_config: { secure: [] } };`,
+        `// @ts-expect-error general bindings must not expose host-owned scoped CSS.`,
+        `const scopedCss${index}: SvgBindingOptions${index} = { svg: { scoped_css: ".node {}" } };`,
+        `// @ts-expect-error general bindings must not expose host-owned cascade mutation.`,
+        `const cssOverride${index}: SvgBindingOptions${index} = { svg: { css_override_policy: "preserve" } };`,
+        `void rawThemeCss${index};`,
+        `void replacedSecure${index};`,
+        `void scopedCss${index};`,
+        `void cssOverride${index};`,
         `async function checkModule${index}(): Promise<void> {`,
         `  const ${moduleName} = await init${index}();`,
       );
@@ -522,5 +535,5 @@ function treeSize(directory) {
 }
 
 function isMainModule() {
-  return process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 }

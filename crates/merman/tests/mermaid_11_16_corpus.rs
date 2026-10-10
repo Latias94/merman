@@ -280,6 +280,9 @@ fn evaluate_fixture(
         return report;
     }
     report.semantic_kind = Some(semantic.semantic_kind().to_string());
+    report.layout_family = semantic
+        .family_id()
+        .map(|family| family.as_str().to_string());
     report.pass(CapabilityStage::Semantic);
 
     let layout = match renderer.render(
@@ -310,11 +313,6 @@ fn evaluate_fixture(
             return report;
         }
     };
-    report.layout_family = layout
-        .layout()
-        .get("layout")
-        .and_then(|value| value.as_object())
-        .and_then(|value| value.keys().next().cloned());
     if layout.layout().get("layout").is_none() {
         report.fail(
             CapabilityStage::TypedLayout,

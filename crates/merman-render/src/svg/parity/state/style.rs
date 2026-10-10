@@ -1,221 +1,15 @@
 use super::*;
 
-#[derive(Debug, Clone)]
-pub(super) struct StateThemeDefaults {
-    pub(super) background: String,
-    pub(super) line_color: String,
-    pub(super) main_bkg: String,
-    pub(super) state_bkg: String,
-    pub(super) state_border: String,
-    pub(super) rect_radius: f64,
-    pub(super) node_shadow: bool,
-    pub(super) stroke_width: String,
-    pub(super) stroke_width_px: String,
-    pub(super) rough_stroke_width_value: f64,
-    pub(super) special_state_color: String,
-    pub(super) inner_end_background: String,
-    pub(super) note_bkg: String,
-    pub(super) note_border: String,
-}
-
-impl StateThemeDefaults {
-    pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
-        let theme = PresentationTheme::new(effective_config).state_diagram();
-        // Mermaid 12 roundedRect uses theme radius ?? 5. drawRect only applies a
-        // truthy override, so numeric zero preserves State dataFetcher's rx/ry=10;
-        // a numeric string such as "0" still overrides those defaults.
-        let numeric_zero = effective_config
-            .get("themeVariables")
-            .and_then(|theme| theme.get("radius"))
-            .and_then(serde_json::Value::as_f64)
-            == Some(0.0);
-        let rect_radius = if numeric_zero {
-            10.0
-        } else {
-            config_f64(effective_config, &["themeVariables", "radius"]).unwrap_or(5.0)
-        };
-
-        Self {
-            background: theme.background,
-            line_color: theme.common.line_color,
-            main_bkg: theme.main_bkg,
-            state_bkg: theme.state_bkg,
-            state_border: theme.state_border,
-            rect_radius,
-            node_shadow: effective_config
-                .get("themeVariables")
-                .and_then(|theme| theme.get("nodeShadow"))
-                .is_some_and(crate::config::json_value_is_truthy),
-            stroke_width: theme.stroke_width,
-            stroke_width_px: theme.stroke_width_px,
-            rough_stroke_width_value: theme.rough_stroke_width_value,
-            special_state_color: theme.special_state_color,
-            inner_end_background: theme.inner_end_background,
-            note_bkg: theme.note_bkg,
-            note_border: theme.note_border,
-        }
-    }
-}
-
-struct StateScopedDropShadow<'a, I> {
-    diagram_id: I,
-    source: &'a str,
-}
-
-impl<I> std::fmt::Display for StateScopedDropShadow<'_, I>
-where
-    I: Copy + std::fmt::Display,
-{
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut parts = self.source.split("url(#drop-shadow)");
-        formatter.write_str(parts.next().unwrap_or_default())?;
-        for suffix in parts {
-            write!(formatter, "url(#{}-drop-shadow)", self.diagram_id)?;
-            formatter.write_str(suffix)?;
-        }
-        Ok(())
-    }
-}
-
-fn state_shadow_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
-) {
-    let flood_color = if PresentationTheme::new(effective_config)
-        .common()
-        .is_dark_theme()
-    {
-        "#FFFFFF"
-    } else {
-        "#000000"
-    };
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id, flood_color, diagram_id, flood_color
-    );
-}
-
-fn state_gradient_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
-) {
-    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return;
-    }
-
-    let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
-        .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
-    let _ = write!(
-        out,
-        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-        diagram_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
-    );
-}
-
-pub(super) fn state_markers(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
-) {
-    let theme = PresentationTheme::new(effective_config).state_diagram();
-    let transition_color = theme.transition_color.as_str();
-
-    if theme.common.is_neo() {
-        let _ = write!(
-            out,
-            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,
-            escape_xml(transition_color)
-        );
-    } else {
-        let _ = write!(
-            out,
-            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
-        );
-    }
-}
-
-pub(super) fn state_root_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
-) {
-    state_shadow_defs(out, diagram_id, effective_config);
-    state_gradient_defs(out, diagram_id, effective_config);
-}
-
-// colorThemeGate.ts uses the same palette length for CSS and container slots.
-pub(super) fn state_palette_size(config: &serde_json::Value) -> usize {
-    if !matches!(
-        config.get("theme").and_then(serde_json::Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
-        return 0;
-    }
-    config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-        .map_or(0, Vec::len)
-}
-
 fn write_state_palette_css<I: Copy + std::fmt::Display>(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     id: I,
-    config: &serde_json::Value,
-) {
-    if state_palette_size(config) == 0 {
-        return;
+    compatibility: &crate::state::StateCompatibilityPlan,
+) -> crate::Result<()> {
+    if compatibility.redux_palette.is_empty() {
+        return out.checkpoint();
     }
-    let Some(borders) = config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return;
-    };
-    let backgrounds = config
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(serde_json::Value::as_array)
-        .filter(|colors| !colors.is_empty());
-    let look = config
-        .get("look")
-        .and_then(|value| match value {
-            serde_json::Value::String(value) => Some(value.clone()),
-            serde_json::Value::Number(value) => Some(value.to_string()),
-            _ => None,
-        })
-        .filter(|look| {
-            !look.is_empty()
-                && look
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-        })
-        .unwrap_or_else(|| "classic".into());
-    let css_color = |value: &serde_json::Value| {
-        value
-            .as_str()
-            .map(|value| value.trim().to_owned())
-            .unwrap_or_else(|| value.to_string())
-    };
-    for (index, border) in borders.iter().enumerate() {
-        let border = css_color(border);
-        let tint = backgrounds.map(|colors| css_color(&colors[index % colors.len()]));
-        // Keep the source order and leave the body fill (including rough hatching) unchanged.
+    let look = &compatibility.palette_look;
+    for (index, (border, tint)) in compatibility.redux_palette.iter().enumerate() {
         for (selector, stroke, fill) in [
             ("rect.outer", true, true),
             ("rect.inner", true, false),
@@ -225,7 +19,6 @@ fn write_state_palette_css<I: Copy + std::fmt::Display>(
             (".divider path[stroke='none']", false, true),
             (".divider path[fill='none']", true, false),
         ] {
-            // Stylis removes empty rules when an outline-only palette has no tint.
             if !stroke && tint.is_none() {
                 continue;
             }
@@ -236,37 +29,157 @@ fn write_state_palette_css<I: Copy + std::fmt::Display>(
             if stroke {
                 let _ = write!(out, "stroke:{border};");
             }
-            if fill && let Some(tint) = &tint {
+            if fill && let Some(tint) = tint {
                 let _ = write!(out, "fill:{tint};");
             }
             out.push('}');
+            out.checkpoint()?;
         }
+    }
+    Ok(())
+}
+
+fn state_shadow_defs<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    compatibility: &crate::state::StateCompatibilityPlan,
+) where
+    I: SvgDiagramIdValue,
+{
+    let flood_color = if compatibility.dark_mode {
+        "#FFFFFF"
+    } else {
+        "#000000"
+    };
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        escape_attr_display(diagram_id),
+        flood_color,
+        escape_attr_display(diagram_id),
+        flood_color
+    );
+}
+
+fn state_gradient_defs<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    compatibility: &crate::state::StateCompatibilityPlan,
+) where
+    I: SvgDiagramIdValue,
+{
+    if !compatibility.use_gradient {
+        return;
+    }
+
+    let gradient_start = escape_xml(&compatibility.gradient_start);
+    let gradient_stop = escape_xml(&compatibility.gradient_stop);
+    let _ = write!(
+        out,
+        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+        escape_attr_display(diagram_id),
+        gradient_start.as_str(),
+        gradient_stop.as_str()
+    );
+}
+
+pub(super) fn state_markers<I>(out: &mut impl SvgOutput, diagram_id: I, ctx: &StateRenderCtx<'_>)
+where
+    I: SvgDiagramIdValue,
+{
+    let style_plan = ctx.style_plan;
+    let compatibility = style_plan.compatibility();
+    let transition_color = compatibility.transition_color.as_str();
+    let marker_style_attr = if style_plan.transition_marker_style_attr().is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#" style="{}""#,
+            escape_xml(style_plan.transition_marker_style_attr())
+        )
+    };
+
+    if compatibility.is_neo() {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"{marker_style_attr}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"{marker_style_attr}/></marker></defs>"#,
+            escape_attr_display(diagram_id),
+            escape_attr_display(diagram_id),
+            escape_xml(transition_color)
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"{marker_style_attr}/></marker></defs>"#,
+            escape_attr_display(diagram_id)
+        );
+    }
+
+    for edge in ctx.edges {
+        let Some(edge_style) = style_plan.edge(edge.id.as_str()) else {
+            continue;
+        };
+        let (Some(ordinal), style) = (edge_style.marker_ordinal(), edge_style.marker_style_attr())
+        else {
+            continue;
+        };
+        if style.is_empty() {
+            continue;
+        }
+        let style = escape_attr(style);
+        let transition_color = escape_attr(transition_color);
+        let terminal_start = out.len();
+        if compatibility.is_neo() {
+            let _ = write!(
+                out,
+                r#"<defs><marker id="{}" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
+                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
+                transition_color,
+                transition_color,
+                style
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
+                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
+                transition_color,
+                transition_color,
+                style
+            );
+        }
+        style_plan.record_edge_marker_terminal_emission(
+            &mut ctx.theme_receipt.borrow_mut(),
+            edge.id.as_str(),
+            terminal_start..out.len(),
+        );
     }
 }
 
-pub(super) fn state_css<I>(
+pub(super) fn state_root_defs<I>(
+    out: &mut impl SvgOutput,
     diagram_id: I,
-    model: &StateSvgModel,
-    effective_config: &serde_json::Value,
-) -> String
-where
-    I: Copy + std::fmt::Display,
+    style_plan: &crate::state::StateStylePlan,
+) where
+    I: SvgDiagramIdValue,
 {
-    fn normalize_decl(s: &str) -> Option<(String, String)> {
-        let (k, v) = crate::mermaid_style::parse_safe_style_decl(s)?;
-        let key = if k.starts_with("--") {
-            k.to_string()
-        } else {
-            k.to_ascii_lowercase()
-        };
-        let value = v.trim();
-        let value = value
-            .rsplit_once('!')
-            .filter(|(_, priority)| priority.trim().eq_ignore_ascii_case("important"))
-            .map(|(value, _)| value.trim_end())
-            .unwrap_or(value);
+    state_shadow_defs(out, diagram_id, style_plan.compatibility());
+    state_gradient_defs(out, diagram_id, style_plan.compatibility());
+}
+
+fn write_state_class_declarations(
+    out: &mut impl SvgOutput,
+    styles: &[(
+        usize,
+        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
+    )],
+) -> crate::Result<()> {
+    for (_, declaration) in styles {
+        let semantic_key = declaration.property();
+        let key = declaration.property_css();
+        let value = declaration.value().trim();
         let value = if matches!(
-            key.as_str(),
+            semantic_key,
             "background"
                 | "background-color"
                 | "border-color"
@@ -275,76 +188,135 @@ where
                 | "outline-color"
                 | "stroke"
         ) {
-            super::super::util::cssom_color_value(value)
+            std::borrow::Cow::Owned(super::super::util::cssom_color_value(value))
         } else {
-            value.to_string()
+            std::borrow::Cow::Borrowed(value)
         };
-        Some((key, format!("{value}!important")))
-    }
-
-    fn class_decl_block(styles: &[String]) -> String {
-        let mut out = String::new();
-        for raw in styles {
-            let Some((k, v)) = normalize_decl(raw) else {
-                continue;
-            };
-            let _ = write!(&mut out, "{}:{};", k, v);
+        if write!(out, "{key}:{value}!important;").is_err() {
+            return out.checkpoint();
         }
-        out
     }
+    Ok(())
+}
 
-    let theme = PresentationTheme::new(effective_config).state_diagram();
-    let ff = theme.common.font_family_css.as_str();
-    let font_size = theme.common.font_size_px;
-    let id = diagram_id;
-    let text_color = theme.common.text_color.as_str();
-    let error_bkg = theme.common.error_bkg.as_str();
-    let error_text = theme.common.error_text.as_str();
-    let line_color = theme.common.line_color.as_str();
+fn write_state_class_rule(
+    out: &mut impl SvgOutput,
+    id: impl std::fmt::Display,
+    class_id: &str,
+    selector: std::fmt::Arguments<'_>,
+    styles: &[(
+        usize,
+        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
+    )],
+) -> crate::Result<()> {
+    if write!(out, "#{id} .{class_id}{selector}{{").is_err() {
+        return out.checkpoint();
+    }
+    write_state_class_declarations(out, styles)?;
+    out.push('}');
+    out.checkpoint()
+}
+
+pub(super) fn write_state_css<I>(
+    out: &mut impl SvgOutput,
+    diagram_id: I,
+    style_plan: &crate::state::StateStylePlan,
+) -> crate::Result<()>
+where
+    I: SvgDiagramIdValue,
+{
+    out.checkpoint()?;
+
+    let theme = style_plan.compatibility();
+    let base_text_style = style_plan.base_text_style();
+    let uses_structured_typography = style_plan.uses_structured_typography();
+    let ff = if uses_structured_typography {
+        base_text_style
+            .font_family
+            .as_deref()
+            .unwrap_or(theme.font_family_css.as_str())
+    } else {
+        theme.font_family_css.as_str()
+    };
+    let ff = crate::config::normalize_css_font_family(ff);
+    let font_size = base_text_style.font_size;
+    let font_weight_decl = if uses_structured_typography {
+        base_text_style
+            .font_weight
+            .as_deref()
+            .map(|value| format!("font-weight:{value};"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let font_style_decl = if uses_structured_typography {
+        base_text_style
+            .font_style
+            .as_deref()
+            .map(|value| format!("font-style:{value};"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let text_color = theme.text_color.as_str();
+    let error_bkg = theme.error_bkg.as_str();
+    let error_text = theme.error_text.as_str();
+    let line_color = theme.line_color.as_str();
     let transition_color = theme.transition_color.as_str();
     let node_border = theme.node_border.as_str();
     let state_label_color = theme.state_label_color.as_str();
-    let defaults = StateThemeDefaults::from_config(effective_config);
-    let main_bkg = &defaults.main_bkg;
-    let background = &defaults.background;
+    let main_bkg = &theme.main_bkg;
+    let background = &theme.background;
     let alt_background = theme.alt_background.as_str();
-    let stroke_width = &defaults.stroke_width;
-    let stroke_width_px = &defaults.stroke_width_px;
-    let note_border = &defaults.note_border;
-    let note_bkg = &defaults.note_bkg;
+    let stroke_width = &theme.stroke_width;
+    let stroke_width_px = &theme.stroke_width_px;
+    let neo_stroke_width = &theme.neo_stroke_width;
+    let neo_stroke_width_px = &theme.neo_stroke_width_px;
+    let note_border = &theme.note_border;
+    let note_bkg = &theme.note_bkg;
     let note_text = theme.note_text.as_str();
     let label_background = theme.label_background.as_str();
     let edge_label_background = theme.edge_label_background.as_str();
     let transition_label_color = theme.transition_label_color.as_str();
-    let special_state_color = &defaults.special_state_color;
-    let inner_end_background = &defaults.inner_end_background;
+    let special_state_color = &theme.special_state_color;
+    let inner_end_background = &theme.inner_end_background;
     let composite_background = theme.composite_background.as_str();
-    let state_bkg = &defaults.state_bkg;
-    let state_border = &defaults.state_border;
+    let state_bkg = &theme.state_bkg;
+    let state_border = &theme.state_border;
     let composite_title_background = theme.composite_title_background.as_str();
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-    let neo_cluster_stroke = if use_gradient {
-        format!("url(#{diagram_id}-gradient)")
-    } else {
-        state_border.clone()
-    };
-    let neo_radius =
-        crate::config::config_f64_css_px(effective_config, &["themeVariables", "radius"])
-            .unwrap_or(5.0)
-            .max(0.0);
-    let neo_drop_shadow = StateScopedDropShadow {
+    let hand_drawn_state_fill = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateHandDrawn,
+        crate::state::StateTerminalPaintProperty::Fill,
         diagram_id,
-        source: &theme.drop_shadow,
-    };
+    );
+    let hand_drawn_state_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateHandDrawn,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        diagram_id,
+    );
+    let hand_drawn_state_stroke_width =
+        theme.terminal_stroke_width_value(crate::state::StateTerminalSurface::StateHandDrawn);
+    let neo_node_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateNeo,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        diagram_id,
+    );
+    let neo_cluster_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::CompositeBodyNeo,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        diagram_id,
+    );
+    let neo_radius = theme.neo_radius;
+    let neo_drop_shadow = scoped_drop_shadow(diagram_id, &theme.drop_shadow);
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
-    let mut css = String::new();
+    let mut css = out;
     let font_size_s = fmt(font_size);
     let _ = write!(
         &mut css,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id, ff, font_size_s, text_color
+        r#"#{}{{font-family:{};font-size:{}px;{}{}fill:{};}}"#,
+        id, ff, font_size_s, font_weight_decl, font_style_decl, text_color
     );
     css.push_str("@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}");
     css.push_str("@keyframes dash{to{stroke-dashoffset:0;}}");
@@ -367,7 +339,7 @@ where
     let _ = write!(
         &mut css,
         r#"#{} .edge-thickness-normal{{stroke-width:{};}}"#,
-        id, stroke_width_px
+        id, neo_stroke_width_px
     );
     let _ = write!(
         &mut css,
@@ -406,11 +378,11 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}"#,
-        id, ff, font_size_s
+        r#"#{} svg{{font-family:{};font-size:{}px;{}{}}}"#,
+        id, ff, font_size_s, font_weight_decl, font_style_decl
     );
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
-    write_state_palette_css(&mut css, id, effective_config);
+    write_state_palette_css(css, id, theme)?;
     let _ = write!(
         &mut css,
         r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
@@ -612,17 +584,25 @@ where
         r#"#{} .statediagram-note .nodeLabel{{color:{};}}"#,
         id, note_text
     );
+    if theme.is_hand_drawn() {
+        let _ = write!(
+            &mut css,
+            r#"#{} [data-look="handDrawn"].node rect{{fill:{};stroke:{};stroke-width:{}px;}}"#,
+            id, hand_drawn_state_fill, hand_drawn_state_stroke, hand_drawn_state_stroke_width
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} [data-look="handDrawn"].node line.divider{{stroke:{};stroke-width:{}px;}}"#,
+            id, hand_drawn_state_stroke, hand_drawn_state_stroke_width
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} .statediagram .edgeLabel{{color:red;}}"#,
         id
     );
     // State's dependency rule uses `strokeWidth || 1`; the shared edge rule uses `?? 1`.
-    let dependency_stroke_width = if effective_config
-        .pointer("/themeVariables/strokeWidth")
-        .and_then(serde_json::Value::as_f64)
-        == Some(0.0)
-    {
+    let dependency_stroke_width = if theme.dependency_numeric_zero_width {
         "1"
     } else {
         stroke_width.as_str()
@@ -632,15 +612,42 @@ where
         r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:{};}}"#,
         id, id, line_color, line_color, dependency_stroke_width
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
-        id, text_color
-    );
+    let title_text_style = style_plan.title_text_style();
+    if uses_structured_typography {
+        let title_ff = crate::config::normalize_css_font_family(
+            title_text_style.font_family.as_deref().unwrap_or(&ff),
+        );
+        let title_weight_decl = title_text_style
+            .font_weight
+            .as_deref()
+            .map(|value| format!("font-weight:{value};"))
+            .unwrap_or_default();
+        let title_style_decl = title_text_style
+            .font_style
+            .as_deref()
+            .map(|value| format!("font-style:{value};"))
+            .unwrap_or_default();
+        let _ = write!(
+            &mut css,
+            r#"#{} .statediagramTitleText{{text-anchor:middle;font-family:{};font-size:{}px;{}{}fill:{};}}"#,
+            id,
+            title_ff,
+            fmt(title_text_style.font_size),
+            title_weight_decl,
+            title_style_decl,
+            text_color
+        );
+    } else {
+        let _ = write!(
+            &mut css,
+            r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+            id, text_color
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
-        id, main_bkg, neo_cluster_stroke, stroke_width
+        id, main_bkg, neo_cluster_stroke, neo_stroke_width
     );
     let _ = write!(
         &mut css,
@@ -653,12 +660,12 @@ where
     let _ = write!(
         &mut css,
         r#"#{} .node .neo-node{{stroke:{};}}"#,
-        id, state_border
+        id, neo_node_stroke
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
-        id, id, id, state_border, neo_drop_shadow
+        id, id, id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -668,7 +675,7 @@ where
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-        id, state_border, stroke_width_px
+        id, neo_node_stroke, neo_stroke_width_px
     );
     let _ = write!(
         &mut css,
@@ -678,12 +685,12 @@ where
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
-        id, state_border
+        id, neo_node_stroke
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -693,66 +700,71 @@ where
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
-    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
-        &mut css,
-        id,
-        &crate::config::config_root_font_family_css(effective_config),
-    );
+    let root_font_family = if uses_structured_typography {
+        ff.clone()
+    } else {
+        theme.root_font_family_css.clone()
+    };
+    crate::svg::parity::css::write_mermaid_base_css_root_rule_to(css, id, &root_font_family)?;
 
-    if !model.style_classes.is_empty() {
-        let html_labels = crate::state::StateConfigView::new(effective_config)
-            .render_settings()
-            .html_labels;
-        for sc in model.style_classes.values() {
-            let styles = class_decl_block(&sc.styles);
-            if !styles.is_empty() {
+    css.checkpoint()?;
+
+    if style_plan.classes().next().is_some() {
+        let html_labels = theme.html_labels();
+        for sc in style_plan.classes() {
+            if !sc.styles().is_empty() {
                 if html_labels {
-                    let _ = write!(
-                        &mut css,
-                        r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                        id, sc.id, styles, id, sc.id, styles
-                    );
+                    write_state_class_rule(
+                        &mut *css,
+                        id,
+                        sc.id(),
+                        format_args!("&gt;*"),
+                        sc.styles(),
+                    )?;
+                    write_state_class_rule(
+                        &mut *css,
+                        id,
+                        sc.id(),
+                        format_args!(" span"),
+                        sc.styles(),
+                    )?;
                 } else {
                     for element in ["rect", "polygon", "ellipse", "circle", "path"] {
-                        let _ = write!(&mut css, r#"#{} .{} {}{{{}}}"#, id, sc.id, element, styles);
+                        write_state_class_rule(
+                            &mut *css,
+                            id,
+                            sc.id(),
+                            format_args!(" {element}"),
+                            sc.styles(),
+                        )?;
                     }
                 }
             }
 
-            let text_styles = class_decl_block(&sc.text_styles);
-            if !text_styles.is_empty() {
-                let _ = write!(&mut css, r#"#{} .{} tspan{{{}}}"#, id, sc.id, text_styles);
+            if !sc.text_styles().is_empty() {
+                write_state_class_rule(
+                    &mut *css,
+                    id,
+                    sc.id(),
+                    format_args!(" tspan"),
+                    sc.text_styles(),
+                )?;
             }
         }
     }
 
-    css
+    css.checkpoint()
 }
 
 pub(super) fn state_value_to_label_text(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(a) => {
-            let mut parts: Vec<&str> = Vec::new();
-            for item in a {
-                if let Some(s) = item.as_str() {
-                    parts.push(s);
-                }
-            }
-            if parts.is_empty() {
-                return "".to_string();
-            }
-            parts.join("\n")
-        }
-        _ => "".to_string(),
-    }
+    crate::state::state_value_to_label_text(v)
 }
 
 pub(super) fn state_node_label_text(n: &StateSvgNode) -> String {
@@ -760,61 +772,6 @@ pub(super) fn state_node_label_text(n: &StateSvgNode) -> String {
         .as_ref()
         .map(state_value_to_label_text)
         .unwrap_or_else(|| n.id.clone())
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct StateInlineDecl<'a> {
-    pub(super) key: &'a str,
-    pub(super) val: &'a str,
-}
-
-pub(super) fn state_parse_inline_decl(raw: &str) -> Option<StateInlineDecl<'_>> {
-    let raw = raw.trim().trim_end_matches(';').trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let (k, v) = raw.split_once(':')?;
-    let key = k.trim();
-    let val = v.trim();
-    if key.is_empty() || val.is_empty() {
-        return None;
-    }
-    Some(StateInlineDecl { key, val })
-}
-
-pub(super) fn state_is_text_style_key(key: &str) -> bool {
-    let k = key.trim().to_ascii_lowercase();
-    k == "color" || k.starts_with("font-") || k.starts_with("text-")
-}
-
-pub(super) fn state_compact_style_attr(decls: &[StateInlineDecl<'_>]) -> String {
-    let mut out = String::new();
-    for (idx, d) in decls.iter().enumerate() {
-        if idx > 0 {
-            out.push(';');
-        }
-        out.push_str(d.key.trim());
-        out.push(':');
-        out.push_str(d.val.trim());
-        if !d.val.to_ascii_lowercase().contains("!important") {
-            out.push_str(" !important");
-        }
-    }
-    out
-}
-
-pub(super) fn state_div_style_prefix(decls: &[StateInlineDecl<'_>]) -> String {
-    let mut out = String::new();
-    for d in decls {
-        out.push_str(d.key.trim());
-        out.push_str(": ");
-        out.push_str(d.val.trim());
-        if !d.val.to_ascii_lowercase().contains("!important") {
-            out.push_str(" !important");
-        }
-        out.push_str("; ");
-    }
-    out
 }
 
 pub(super) fn state_node_label_html_with_style(
@@ -830,6 +787,19 @@ pub(super) fn state_node_label_html_with_style(
         r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
         style_attr,
         crate::state::state_node_label_xhtml(raw, font_size)
+    )
+}
+
+pub(super) fn state_prepared_node_label_html_with_style(
+    prepared: &crate::state::PreparedStateLabel,
+    span_style: Option<&str>,
+) -> String {
+    let style = prepared.merge_emission_font_style(span_style);
+    let style_attr = format!(r#" style="{}""#, escape_xml_display(&style));
+    format!(
+        r#"<span{} class="nodeLabel markdown-node-label"><p>{}</p></span>"#,
+        style_attr,
+        state_prepared_html_lines(prepared),
     )
 }
 
@@ -906,13 +876,6 @@ fn html_paragraph_with_br(raw: &str) -> String {
     state_html_with_br(raw, true)
 }
 
-pub(super) fn state_node_label_html(raw: &str, font_size: f64) -> String {
-    format!(
-        r#"<span class="nodeLabel markdown-node-label">{}</span>"#,
-        crate::state::state_node_label_xhtml(raw, font_size)
-    )
-}
-
 pub(super) fn state_node_label_plain_html(raw: &str) -> String {
     format!(
         r#"<span class="nodeLabel">{}</span>"#,
@@ -920,8 +883,84 @@ pub(super) fn state_node_label_plain_html(raw: &str) -> String {
     )
 }
 
+pub(super) fn state_prepared_node_label_plain_html(
+    prepared: &crate::state::PreparedStateLabel,
+) -> String {
+    let style = prepared.merge_emission_font_style(None);
+    format!(
+        r#"<span class="nodeLabel" style="{}"><p>{}</p></span>"#,
+        escape_xml_display(&style),
+        state_prepared_html_lines(prepared),
+    )
+}
+
 pub(super) fn state_edge_label_html(raw: &str) -> String {
     crate::state::state_edge_label_xhtml(raw)
+}
+
+pub(super) fn state_prepared_edge_label_html(
+    prepared: &crate::state::PreparedStateLabel,
+) -> String {
+    let style = prepared.merge_emission_font_style(None);
+    format!(
+        r#"<p style="{}">{}</p>"#,
+        escape_xml_display(&style),
+        state_prepared_html_lines(prepared)
+    )
+}
+
+pub(super) fn state_prepared_html_label_token_attr(
+    prepared: Option<&crate::state::PreparedStateLabel>,
+) -> String {
+    prepared
+        .and_then(crate::state::PreparedStateLabel::label_id_for_emission)
+        .map(|id| {
+            format!(
+                r#" {}="{}""#,
+                crate::svg::fallback::PREPARED_TEXT_LABEL_DATA_ATTR,
+                escape_attr(&id.as_svg_id())
+            )
+        })
+        .unwrap_or_default()
+}
+
+pub(super) fn state_prepared_html_lines(prepared: &crate::state::PreparedStateLabel) -> String {
+    let mut out = String::new();
+    for (index, line) in prepared.wrapped_lines().enumerate() {
+        if index > 0 {
+            out.push_str("<br />");
+        }
+        let _ = write!(&mut out, "{}", escape_xml_display(line));
+    }
+    out
+}
+
+fn state_svg_text_style_attr(style_attr: &str) -> String {
+    let mut out = String::with_capacity(style_attr.len());
+    for declaration in style_attr.split(';') {
+        let declaration = declaration.trim();
+        if declaration.is_empty() {
+            continue;
+        }
+        let Some((property, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let property = property.trim();
+        let value = value.trim();
+        if property.is_empty() || value.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(';');
+        }
+        let property = if property.eq_ignore_ascii_case("color") {
+            "fill"
+        } else {
+            property
+        };
+        let _ = write!(&mut out, "{property}:{value}");
+    }
+    out
 }
 
 pub(super) fn state_svg_text_label(
@@ -931,23 +970,127 @@ pub(super) fn state_svg_text_label(
 ) -> String {
     let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
     let normalized = state_normalize_br_tags(decoded.as_ref());
+    state_svg_text_label_lines(normalized.split('\n'), center_text, style_attr, None)
+}
+
+pub(crate) fn state_prepared_svg_text_label(
+    prepared: &crate::state::PreparedStateLabel,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    let geometry = prepared
+        .native_geometry()
+        .expect("native prepared State labels retain terminal geometry");
+    let style_attr = prepared.merge_emission_font_style(style_attr);
+    state_native_svg_text_label_lines(
+        prepared.wrapped_lines(),
+        geometry,
+        center_text,
+        Some(&style_attr),
+        prepared.label_id_for_emission(),
+    )
+}
+
+pub(crate) fn state_measured_svg_text_label(
+    geometry: &crate::state::StateNativeLabelGeometry,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    state_native_svg_text_label_lines(
+        geometry
+            .measured_lines()
+            .expect("measured State label geometry retains emitted rows"),
+        geometry,
+        center_text,
+        style_attr,
+        None,
+    )
+}
+
+pub(crate) fn state_native_svg_text_label(
+    raw: &str,
+    prepared: Option<&crate::state::PreparedStateLabel>,
+    measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    if let Some(prepared) = prepared {
+        state_prepared_svg_text_label(prepared, center_text, style_attr)
+    } else if let Some(geometry) = measured_geometry {
+        state_measured_svg_text_label(geometry, center_text, style_attr)
+    } else {
+        state_svg_text_label(raw, center_text, style_attr)
+    }
+}
+
+fn state_native_svg_text_label_lines<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    geometry: &crate::state::StateNativeLabelGeometry,
+    center_text: bool,
+    style_attr: Option<&str>,
+    label_id: Option<crate::text::PreparedTextLabelId>,
+) -> String {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
     } else {
         ""
     };
-    let style_attr = style_attr
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
+    let svg_style_attr = style_attr
+        .map(state_svg_text_style_attr)
+        .filter(|style| !style.is_empty())
+        .map(|style| format!(r#" style="{}""#, escape_attr(&style)))
+        .unwrap_or_default();
+    let label_id_attr = label_id
+        .map(|id| format!(r#" id="{id}""#))
+        .unwrap_or_default();
+    let mut out = format!(r#"<text{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    let mut line_count = 0usize;
+    for (line_index, line) in lines.into_iter().enumerate() {
+        let baseline_y_px = geometry
+            .baseline_y_px(line_index)
+            .expect("State native geometry covers every emitted line");
+        let _ = write!(
+            &mut out,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan></tspan>"#,
+            fmt_display(baseline_y_px),
+            svg_style_attr,
+            escape_xml_display(line)
+        );
+        line_count += 1;
+    }
+    debug_assert_eq!(line_count, geometry.line_count());
+    out.push_str("</text>");
+    out
+}
+
+fn state_svg_text_label_lines<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    center_text: bool,
+    style_attr: Option<&str>,
+    label_id: Option<crate::text::PreparedTextLabelId>,
+) -> String {
+    let text_anchor = if center_text {
+        r#" text-anchor="middle""#
+    } else {
+        ""
+    };
+    let svg_style_attr = style_attr
+        .map(state_svg_text_style_attr)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!(r#" style="{}""#, escape_attr(&s)))
+        .unwrap_or_default();
+    let label_id_attr = label_id
+        .map(|id| format!(r#" id="{id}""#))
         .unwrap_or_default();
 
-    let mut out = format!(r#"<text y="-10.1"{text_anchor}{style_attr}>"#);
-    for (idx, line) in normalized.split('\n').enumerate() {
+    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    for (idx, line) in lines.into_iter().enumerate() {
         let y = idx as f64 * 1.1 - 0.1;
         let _ = write!(
             &mut out,
-            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">{}</tspan></tspan>"#,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan></tspan>"#,
             fmt_display(y),
+            svg_style_attr,
             escape_xml_display(line)
         );
     }
@@ -958,6 +1101,7 @@ pub(super) fn state_svg_text_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
 
@@ -981,10 +1125,30 @@ mod tests {
             (json!({"themeVariables": {"radius": "invalid"}}), 5.0),
         ] {
             assert_eq!(
-                StateThemeDefaults::from_config(&config).rect_radius,
+                style_plan(&StateSvgModel::default(), &config)
+                    .compatibility()
+                    .rect_radius,
                 expected
             );
         }
+    }
+
+    fn state_theme_effect(std_deviation: f32) -> crate::diagram_theme::SvgShadowEffect {
+        crate::diagram_theme::SvgShadowEffect::from_graph(
+            &EffectGraph::new(
+                "soft-shadow",
+                [EffectPrimitive::DropShadow {
+                    input: EffectInput::SourceGraphic,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    blur_radius: std_deviation,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("rgba(0, 242, 255, 0.5)").unwrap(),
+                }],
+            )
+            .unwrap(),
+        )
+        .expect("supported State drop shadow")
     }
 
     fn model_with_hot_class() -> StateSvgModel {
@@ -1005,9 +1169,48 @@ mod tests {
         model
     }
 
+    fn style_plan(
+        model: &StateSvgModel,
+        config: &serde_json::Value,
+    ) -> crate::state::StateStylePlan {
+        crate::state::StateStylePlan::resolve_unthemed(model, config)
+    }
+
+    fn rendered_state_css(
+        diagram_id: &str,
+        plan: &crate::state::StateStylePlan,
+        _config: &serde_json::Value,
+    ) -> String {
+        let mut css = String::new();
+        write_state_css(&mut css, diagram_id, plan).expect("write State CSS");
+        css
+    }
+
+    #[test]
+    fn state_theme_effect_emits_the_authored_std_deviation() {
+        let effect = state_theme_effect(8.0);
+        let region = crate::diagram_theme::SvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
+            .expect("bounded soft-shadow region");
+        let mut svg = String::new();
+
+        let reference = write_theme_shadow_application(
+            &mut svg,
+            "diagram-state-theme-effect-soft-shadow",
+            &effect,
+            region,
+        );
+
+        assert_eq!(reference, "url(#diagram-state-theme-effect-soft-shadow)");
+        assert!(svg.contains(r#"stdDeviation="8""#));
+        assert!(svg.contains(r#"color-interpolation-filters="linearRGB""#));
+    }
+
     #[test]
     fn state_class_defs_keep_shape_and_text_styles_separate() {
-        let css = state_css("st", &model_with_hot_class(), &json!({}));
+        let model = model_with_hot_class();
+        let config = json!({});
+        let plan = style_plan(&model, &config);
+        let css = rendered_state_css("st", &plan, &config);
 
         let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
         assert!(css.ends_with(&format!(
@@ -1018,12 +1221,68 @@ mod tests {
     }
 
     #[test]
-    fn state_class_defs_use_shape_selectors_without_html_labels() {
-        let css = state_css(
-            "st",
-            &model_with_hot_class(),
-            &json!({ "htmlLabels": false }),
+    fn state_svg_text_projects_color_and_emphasis_to_inner_tspan() {
+        let svg = state_svg_text_label(
+            "Styled",
+            true,
+            Some(
+                "color:#123456 !important;font-weight:700 !important;font-style:italic !important",
+            ),
         );
+
+        assert!(svg.contains(
+            r#"<text y="-10.1" text-anchor="middle" style="fill:#123456 !important;font-weight:700 !important;font-style:italic !important">"#
+        ));
+        assert!(svg.contains(
+            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal" style="fill:#123456 !important;font-weight:700 !important;font-style:italic !important">Styled</tspan>"#
+        ));
+        assert!(!svg.contains("color:#123456"));
+    }
+
+    #[test]
+    fn state_svg_text_applies_the_prepared_style_to_each_line() {
+        let svg = state_svg_text_label(
+            "first\nsecond",
+            false,
+            Some("color:#abcdef;font-weight:bold"),
+        );
+        assert_eq!(
+            svg.matches("style=\"fill:#abcdef;font-weight:bold\"")
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn state_shadow_color_follows_theme_name_not_dark_mode_variables() {
+        let model = StateSvgModel::default();
+        let light_named_config = json!({
+            "theme": "base",
+            "darkMode": true,
+            "themeVariables": { "darkMode": true },
+        });
+        let light_named_plan = style_plan(&model, &light_named_config);
+        let mut light_named = String::new();
+        state_shadow_defs(&mut light_named, "st", light_named_plan.compatibility());
+        assert!(light_named.contains(r##"flood-color="#000000""##));
+
+        let dark_named_config = json!({
+            "theme": "dark",
+            "darkMode": false,
+            "themeVariables": { "darkMode": false },
+        });
+        let dark_named_plan = style_plan(&model, &dark_named_config);
+        let mut dark_named = String::new();
+        state_shadow_defs(&mut dark_named, "st", dark_named_plan.compatibility());
+        assert!(dark_named.contains(r##"flood-color="#FFFFFF""##));
+    }
+
+    #[test]
+    fn state_class_defs_use_shape_selectors_without_html_labels() {
+        let model = model_with_hot_class();
+        let config = json!({ "htmlLabels": false });
+        let plan = style_plan(&model, &config);
+        let css = rendered_state_css("st", &plan, &config);
 
         for element in ["rect", "polygon", "ellipse", "circle", "path"] {
             assert!(css.contains(&format!("#st .hot {element}{{")));
@@ -1045,13 +1304,42 @@ mod tests {
             },
         );
 
-        let css = state_css("st", &model, &json!({}));
+        let config = json!({});
+        let plan = style_plan(&model, &config);
+        let css = rendered_state_css("st", &plan, &config);
         assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
         assert_eq!(css.matches("#st .emphasis span{").count(), 1);
     }
 
     #[test]
-    fn state_css_honors_mermaid_12_theme_options() {
+    fn state_css_stops_at_the_class_rule_svg_byte_boundary() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+        let config = json!({});
+        let baseline_model = StateSvgModel::default();
+        let baseline_plan = style_plan(&baseline_model, &config);
+        let baseline_css = rendered_state_css("st", &baseline_plan, &config);
+
+        let model = model_with_hot_class();
+        let plan = style_plan(&model, &config);
+        let max_svg_bytes = baseline_css.len() + 16;
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, max_svg_bytes)
+            .expect("valid State CSS byte ceiling");
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+
+        let error = write_state_css(&mut out, "st", &plan)
+            .expect_err("the first class rule must cross the SVG byte ceiling");
+
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert!(out.len() <= max_svg_bytes);
+        assert!(out.as_str().starts_with(baseline_css.as_str()));
+        assert!(!out.as_str().contains("#st .hot span{"));
+    }
+
+    #[test]
+    fn state_css_honors_mermaid_11_16_theme_options() {
         let cfg = json!({
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
@@ -1081,7 +1369,9 @@ mod tests {
             }
         });
 
-        let css = state_css("st", &StateSvgModel::default(), &cfg);
+        let model = StateSvgModel::default();
+        let plan = style_plan(&model, &cfg);
+        let css = rendered_state_css("st", &plan, &cfg);
 
         assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
         assert!(css.contains(
@@ -1125,11 +1415,9 @@ mod tests {
             (json!("0"), "0px", "0"),
             (json!(null), "1px", "1"),
         ] {
-            let css = state_css(
-                "st",
-                &StateSvgModel::default(),
-                &json!({"themeVariables": {"strokeWidth": stroke_width}}),
-            );
+            let config = json!({"themeVariables": {"strokeWidth": stroke_width}});
+            let plan = style_plan(&StateSvgModel::default(), &config);
+            let css = rendered_state_css("st", &plan, &config);
             assert!(css.contains(&format!(
                 "#st .edge-thickness-normal{{stroke-width:{edge_width};}}"
             )));
@@ -1145,6 +1433,7 @@ mod tests {
             "look": "neo",
             "themeVariables": {
                 "mainBkg": "#606060",
+                "nodeBorder": "#030303",
                 "stateBorder": "#040404",
                 "strokeWidth": 4,
                 "useGradient": true,
@@ -1155,7 +1444,9 @@ mod tests {
             }
         });
 
-        let css = state_css("st", &StateSvgModel::default(), &cfg);
+        let model = StateSvgModel::default();
+        let plan = style_plan(&model, &cfg);
+        let css = rendered_state_css("st", &plan, &cfg);
 
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
@@ -1163,5 +1454,57 @@ mod tests {
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#st-drop-shadow);}"##
         ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].node path{stroke:url(#st-gradient);stroke-width:4px;}"##
+        ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].node circle{stroke:url(#st-gradient);filter:url(#st-drop-shadow);}"##
+        ));
+    }
+
+    #[test]
+    fn state_css_keeps_neo_node_and_cluster_strokes_separate_without_gradient() {
+        let cfg = json!({
+            "look": "neo",
+            "themeVariables": {
+                "mainBkg": "#606060",
+                "nodeBorder": "#112233",
+                "stateBorder": "#445566",
+                "strokeWidth": 0,
+                "useGradient": false
+            }
+        });
+
+        let model = StateSvgModel::default();
+        let plan = style_plan(&model, &cfg);
+        let css = rendered_state_css("st", &plan, &cfg);
+
+        assert!(css.contains(r#"#st .transition{stroke:#333333;stroke-width:1;fill:none;}"#));
+        assert!(css.contains(r#"#st .node rect{fill:#606060;stroke:#445566;stroke-width:1px;}"#));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:#445566;stroke-width:0;}"##
+        ));
+        assert!(
+            css.contains(r##"#st [data-look="neo"].node path{stroke:#112233;stroke-width:0px;}"##)
+        );
+        assert!(
+            css.contains(r##"#st [data-look="neo"].node circle{stroke:#112233;filter:none;}"##)
+        );
+    }
+
+    #[test]
+    fn state_css_emits_hand_drawn_rules_only_for_hand_drawn_look() {
+        let model = StateSvgModel::default();
+        let classic_css = rendered_state_css("st", &style_plan(&model, &json!({})), &json!({}));
+        assert!(!classic_css.contains(r#"[data-look="handDrawn"].node rect"#));
+        assert!(!classic_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
+
+        let hand_drawn_css = rendered_state_css(
+            "st",
+            &style_plan(&model, &json!({ "look": "handDrawn" })),
+            &json!({ "look": "handDrawn" }),
+        );
+        assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node rect"#));
+        assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
     }
 }

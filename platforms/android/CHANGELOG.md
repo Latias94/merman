@@ -31,6 +31,15 @@ This entry consolidates the previous stable integration and the 0.8 alpha migrat
 
 - Use the [package guide](README.md), [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md). A workspace release does not publish Maven coordinates, and native Rust timings are not JNI measurements.
 
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Kotlin helpers and replace presentation discovery with `themeCatalogJson()`.
+
+### Added
+
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+
 ## [0.8.0-alpha.7] - 2026-09-30
 
 ### Added
@@ -60,8 +69,11 @@ This section describes alpha.6, whose matching Android AAR was attached to the G
 ### Breaking changes
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
-- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
-- ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and native slices together.
+- Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose independent semantic coverage and primary projection fields,
+  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
+  diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
+  native slices together.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

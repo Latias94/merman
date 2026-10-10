@@ -1,0 +1,53 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-ordinal-palette",
+  "tokens": {
+    "background": "#f7f3e8",
+    "surface": "#ffffff",
+    "primary": "#facc15",
+    "text": "#111111"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#f7f3e8"
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#111111",
+      "widthPx": 3
+    },
+    "dashPattern": [],
+    "cornerRadiusPx": 2,
+    "shadow": null
+  },
+  "semanticRules": [
+    {
+      "kind": "ordinal-palette",
+      "family": "flowchart",
+      "target": "node",
+      "colors": [
+        "#facc15",
+        "#38bdf8",
+        "#fb7185"
+      ]
+    }
+  ],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

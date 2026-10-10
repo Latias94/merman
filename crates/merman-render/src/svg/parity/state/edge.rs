@@ -542,7 +542,7 @@ pub(super) fn state_edge_prepare_geometry(
 
 #[allow(clippy::too_many_arguments)]
 fn write_state_edge_path(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     edge_id: &str,
@@ -556,6 +556,7 @@ fn write_state_edge_path(
     if !ctx.uses_elk_adapter_dom && le.points.len() < 2 {
         return Ok(());
     }
+    let terminal_start = out.len();
 
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
@@ -578,6 +579,15 @@ fn write_state_edge_path(
         );
     }
     original_style.push_str("fill:none;;;fill:none");
+    if let Some(style) = ctx
+        .style_plan
+        .edge(edge_id)
+        .map(crate::state::StateEdgeStylePlan::path_style_attr)
+        .filter(|style| !style.is_empty())
+    {
+        original_style.push(';');
+        original_style.push_str(style);
+    }
     let style = if let Some(path) = hopped_d {
         super::super::line_hops::rewrite_style_after_line_hop(&original_style, path, work_meter)?
     } else {
@@ -587,7 +597,7 @@ fn write_state_edge_path(
         out,
         r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         rendered_d,
-        state_scoped_dom_id(ctx, edge_id),
+        state_scoped_dom_id(ctx, edge_id).attr(),
         escape_xml_display(classes),
         escape_xml_display(&style),
         escape_xml_display(edge_id),
@@ -598,11 +608,17 @@ fn write_state_edge_path(
         let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
     }
     out.push_str("/>");
+    out.checkpoint()?;
+    ctx.style_plan.record_edge_path_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        edge_id,
+        terminal_start..out.len(),
+    );
     Ok(())
 }
 
 pub(super) fn render_state_edge_path(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     edge: &StateSvgEdge,
     origin_x: f64,
@@ -634,10 +650,22 @@ pub(super) fn render_state_edge_path(
             } else {
                 ""
             };
-            Some(format!(
-                "url(#{}_stateDiagram-barbEnd{suffix})",
-                ctx.diagram_id
-            ))
+            ctx.style_plan
+                .edge(edge.id.as_str())
+                .filter(|style| !style.marker_style_attr().is_empty())
+                .and_then(crate::state::StateEdgeStylePlan::marker_ordinal)
+                .map(|ordinal| {
+                    format!(
+                        "url(#{})",
+                        super::state_transition_marker_id(ctx.diagram_id, ordinal)
+                    )
+                })
+                .or_else(|| {
+                    Some(format!(
+                        "url(#{}_stateDiagram-barbEnd{suffix})",
+                        ctx.diagram_id
+                    ))
+                })
         }
         _ => None,
     };
@@ -660,37 +688,61 @@ pub(super) fn render_state_edge_path(
 }
 
 pub(super) fn render_state_edge_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     edge: &StateSvgEdge,
     origin_x: f64,
     origin_y: f64,
 ) {
-    fn edge_label_div_style(label_w: f64) -> String {
+    fn fallback_background_metadata_attr(id: &str, fill: Option<&str>) -> String {
+        let Some(fill) = fill else {
+            return String::new();
+        };
+        format!(
+            r#" {}="state-transition-label-background:{}" {}="{}""#,
+            crate::svg::fallback::FALLBACK_OCCURRENCE_DATA_ATTR,
+            escape_attr(id),
+            crate::svg::fallback::FALLBACK_BACKGROUND_FILL_DATA_ATTR,
+            escape_attr(fill),
+        )
+    }
+
+    fn edge_label_div_style(label_w: f64, prefix: &str, background: &str) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
         let max_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
         if label_w >= max_width - 1e-3 {
             format!(
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                "{}{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                prefix,
+                background,
                 fmt_display(max_width),
                 fmt_display(max_width),
             )
         } else {
             format!(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                "{}{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                prefix,
+                background,
                 fmt_display(max_width),
             )
         }
     }
 
-    fn write_empty_edge_label(out: &mut String, id: &str, html_labels: bool, html_style: &str) {
+    fn write_empty_edge_label(
+        out: &mut impl SvgOutput,
+        id: &str,
+        html_labels: bool,
+        html_style: &str,
+        fallback_background_metadata_attr: &str,
+    ) {
         if html_labels {
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject{} width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
                 escape_attr(id),
-                html_style
+                fallback_background_metadata_attr,
+                escape_attr(html_style)
             );
         } else {
             let _ = write!(
@@ -701,65 +753,163 @@ pub(super) fn render_state_edge_label(
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    )]
     fn write_visible_edge_label(
-        out: &mut String,
+        out: &mut impl SvgOutput,
         id: &str,
         label_text: &str,
+        prepared: Option<&crate::state::PreparedStateLabel>,
+        measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
         label_pos: crate::model::LayoutPoint,
         w: f64,
         h: f64,
         html_labels: bool,
+        label_style: &str,
+        label_div_prefix: &str,
+        html_background_style: &str,
+        fallback_background_fill: Option<&str>,
+        svg_background_style: &str,
     ) {
         let w = w.max(0.0);
         let h = h.max(0.0);
+        let prepared_edge_geometry = if html_labels {
+            None
+        } else {
+            prepared.and_then(crate::state::PreparedStateLabel::native_geometry)
+        };
+        let measured_geometry = (!html_labels).then_some(measured_geometry).flatten();
+        let (w, h) = if let Some(geometry) = prepared_edge_geometry {
+            debug_assert!((geometry.width_px() - w).abs() <= 1e-6);
+            debug_assert!((geometry.height_px() - h).abs() <= 1e-6);
+            (geometry.width_px(), geometry.height_px())
+        } else if let Some(geometry) = measured_geometry {
+            debug_assert!((geometry.width_px() - w).abs() <= 1e-6);
+            debug_assert!((geometry.height_px() - h).abs() <= 1e-6);
+            (geometry.width_px(), geometry.height_px())
+        } else {
+            (w, h)
+        };
         if html_labels {
+            let prepared_token_attr = state_prepared_html_label_token_attr(prepared);
+            let fallback_background_metadata_attr =
+                fallback_background_metadata_attr(id, fallback_background_fill);
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{}{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                 fmt_display(label_pos.x),
                 fmt_display(label_pos.y),
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
+                prepared_token_attr,
+                fallback_background_metadata_attr,
                 fmt_display(w),
                 fmt_display(h),
-                edge_label_div_style(w),
-                state_edge_label_html(label_text)
+                escape_attr(&edge_label_div_style(
+                    w,
+                    label_div_prefix,
+                    html_background_style,
+                )),
+                prepared.map_or_else(
+                    || state_edge_label_html(label_text),
+                    state_prepared_edge_label_html,
+                )
             );
         } else {
-            let label_dom = state_svg_text_label(label_text, true, None);
+            let (label_dom, text_origin_y) = match (prepared, measured_geometry) {
+                (Some(prepared), _) => {
+                    prepared_edge_geometry
+                        .expect("native prepared State edge labels retain terminal geometry");
+                    (
+                        state_prepared_svg_text_label(
+                            prepared,
+                            true,
+                            (!label_style.is_empty()).then_some(label_style),
+                        ),
+                        0.0,
+                    )
+                }
+                (None, Some(geometry)) => (
+                    state_measured_svg_text_label(
+                        geometry,
+                        true,
+                        (!label_style.is_empty()).then_some(label_style),
+                    ),
+                    0.0,
+                ),
+                (None, None) => (
+                    state_svg_text_label(
+                        label_text,
+                        true,
+                        (!label_style.is_empty()).then_some(label_style),
+                    ),
+                    h / 2.0,
+                ),
+            };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none;{}" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
                 fmt_display(label_pos.x),
                 fmt_display(label_pos.y),
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
+                escape_attr(svg_background_style),
                 fmt_display(w),
                 fmt_display(h),
                 fmt_display(w / 2.0),
-                fmt_display(h / 2.0),
+                fmt_display(text_origin_y),
                 label_dom
             );
         }
     }
 
-    if edge.label.is_empty() {
-        // ELK uses the common renderer's hasEdgeLabel gate; Dagre's recursive renderer
-        // still inserts an empty label group for every edge.
-        if !ctx.uses_elk_adapter_dom {
-            write_empty_edge_label(out, &edge.id, ctx.html_labels, &edge_label_div_style(0.0));
-        }
-        return;
-    }
+    let edge_style = ctx.style_plan.edge(edge.id.as_str());
+    let label_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_style_attr)
+        .unwrap_or_default();
+    let label_div_prefix = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_div_style_prefix)
+        .unwrap_or_default();
+    let html_background_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_background_div_style_prefix)
+        .filter(|style| !style.is_empty())
+        .unwrap_or_else(|| {
+            ctx.style_plan
+                .transition_label_background_div_style_prefix()
+        });
+    let fallback_background_fill = edge_style
+        .and_then(crate::state::StateEdgeStylePlan::label_background_fallback_fill)
+        .or_else(|| ctx.style_plan.transition_label_background_fallback_fill());
+    let svg_background_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_background_style_attr)
+        .filter(|style| !style.is_empty())
+        .unwrap_or_else(|| ctx.style_plan.transition_label_background_style_attr());
+    let empty_edge_label_style = edge_label_div_style(0.0, label_div_prefix, html_background_style);
+    let empty_fallback_background_metadata_attr =
+        fallback_background_metadata_attr(&edge.id, fallback_background_fill);
     let label_text = if ctx.uses_elk_adapter_dom {
         crate::text::mermaid_html_breaks_to_newlines(&edge.label)
     } else {
         std::borrow::Cow::Borrowed(edge.label.as_str())
     };
     let label_text = label_text.trim();
-
+    if label_text.is_empty() {
+        if ctx.uses_elk_adapter_dom {
+            return;
+        }
+        write_empty_edge_label(
+            out,
+            &edge.id,
+            ctx.html_labels,
+            empty_edge_label_style.as_str(),
+            empty_fallback_background_metadata_attr.as_str(),
+        );
+        return;
+    }
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
         return;
     };
@@ -787,14 +937,28 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
+    let terminal_start = out.len();
     write_visible_edge_label(
         out,
         &edge.id,
         label_text,
+        ctx.label_sidecar.edge(&edge.id),
+        ctx.label_sidecar
+            .measured_native_geometry(crate::state::StateLabelOwner::Edge(&edge.id)),
         label_position,
         w,
         h,
         ctx.html_labels,
+        label_style,
+        label_div_prefix,
+        html_background_style,
+        fallback_background_fill,
+        svg_background_style,
+    );
+    ctx.style_plan.record_edge_label_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        edge.id.as_str(),
+        terminal_start..out.len(),
     );
 }
 

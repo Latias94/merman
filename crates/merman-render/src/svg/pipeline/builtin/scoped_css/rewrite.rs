@@ -591,6 +591,15 @@ fn write_selector_part<W: fmt::Write>(
         return Ok(());
     }
 
+    let root_suffix = match safe_root_selector_suffix(selector, ":root", cadence)? {
+        Some(suffix) => Some(suffix),
+        None => safe_root_selector_suffix(selector, "svg", cadence)?,
+    };
+    if let Some(suffix) = root_suffix {
+        output.write_str(scope).map_err(scoped_css_write_error)?;
+        return write_expanded_selector(suffix, scope, output, depth, cadence);
+    }
+
     let safe_root_declarations = if selector == "&" || selector == scope {
         match *safe_root_declarations {
             Some(safe) => safe,
@@ -620,7 +629,7 @@ fn selector_is_already_namespaced(
         return Ok(safe_root_declarations);
     }
     if let Some(suffix) = selector.strip_prefix(scope) {
-        return Ok(is_namespaced_suffix(suffix));
+        return is_safe_root_suffix(suffix, false, cadence);
     }
 
     let mut input = Parser::new(selector);
@@ -629,24 +638,110 @@ fn selector_is_already_namespaced(
         return Ok(false);
     }
     let suffix = &selector[input.position().byte_index()..];
-    Ok(is_namespaced_suffix(suffix))
+    is_safe_root_suffix(suffix, false, cadence)
 }
 
-fn is_namespaced_suffix(suffix: &str) -> bool {
+fn safe_root_selector_suffix<'a>(
+    selector: &'a str,
+    root: &str,
+    cadence: &mut ScopedCssCadence<'_>,
+) -> Result<Option<&'a str>> {
+    let Some(suffix) = selector.strip_prefix(root) else {
+        return Ok(None);
+    };
+    if !is_safe_root_suffix(suffix, true, cadence)? {
+        return Ok(None);
+    }
+    Ok(Some(suffix))
+}
+
+fn is_safe_root_suffix(
+    suffix: &str,
+    require_attribute_qualifier: bool,
+    cadence: &mut ScopedCssCadence<'_>,
+) -> Result<bool> {
+    cadence.tick()?;
+    if suffix.is_empty() {
+        return Ok(true);
+    }
     if suffix.starts_with('>') {
-        return true;
+        return Ok(!require_attribute_qualifier);
     }
     let Some(first) = suffix.chars().next() else {
-        return false;
+        return Ok(false);
     };
-    if !is_css_whitespace(first) {
-        return false;
+    if is_css_whitespace(first) {
+        if require_attribute_qualifier {
+            return Ok(false);
+        }
+        let descendant = suffix.trim_start_matches(is_css_whitespace);
+        return Ok(!descendant.is_empty() && !starts_with_sibling_or_comment(descendant));
     }
-    let descendant = suffix.trim_start_matches(is_css_whitespace);
-    !descendant.is_empty()
-        && !descendant.starts_with('+')
-        && !descendant.starts_with('~')
-        && !descendant.starts_with("||")
+    if !suffix.starts_with('[') {
+        return Ok(false);
+    }
+
+    let Some(rest) = consume_attribute_qualifiers(suffix, cadence)? else {
+        return Ok(false);
+    };
+    if rest.is_empty() || rest.starts_with('>') {
+        return Ok(true);
+    }
+    if rest.chars().next().is_some_and(is_css_whitespace) {
+        return Ok(!starts_with_sibling_or_comment(
+            rest.trim_start_matches(is_css_whitespace),
+        ));
+    }
+    Ok(false)
+}
+
+fn starts_with_sibling_or_comment(selector: &str) -> bool {
+    selector.starts_with('+')
+        || selector.starts_with('~')
+        || selector.starts_with("||")
+        || selector.starts_with('/')
+}
+
+fn consume_attribute_qualifiers<'a>(
+    mut selector: &'a str,
+    cadence: &mut ScopedCssCadence<'_>,
+) -> Result<Option<&'a str>> {
+    while selector.starts_with('[') {
+        let mut quote = None;
+        let mut escaped = false;
+        let mut end = None;
+        let mut chars = selector.char_indices().skip(1).peekable();
+        while let Some((index, character)) = chars.next() {
+            cadence.tick()?;
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if character == '\\' {
+                escaped = true;
+                continue;
+            }
+            if let Some(open_quote) = quote {
+                if character == open_quote {
+                    quote = None;
+                }
+                continue;
+            }
+            if matches!(character, '\'' | '"') {
+                quote = Some(character);
+            } else if character == '/' && chars.peek().is_some_and(|(_, next)| *next == '*') {
+                return Ok(None);
+            } else if character == ']' {
+                end = Some(index + character.len_utf8());
+                break;
+            }
+        }
+        let Some(end) = end else {
+            return Ok(None);
+        };
+        selector = &selector[end..];
+    }
+    Ok(Some(selector))
 }
 
 fn is_css_whitespace(character: char) -> bool {

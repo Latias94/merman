@@ -41,7 +41,10 @@ impl SvgOutputPolicy {
             pipeline.with_drop_native_duplicate_fallbacks(self.drop_native_duplicate_fallbacks);
 
         if matches!(self.preset, SvgPipelinePreset::ResvgSafe) {
-            pipeline.push_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
+            pipeline.push_family_postprocessor_preserving_prepared_math(
+                crate::DiagramFamilyId::GIT_GRAPH,
+                GitGraphBranchLabelBaselinePostprocessor,
+            );
         }
 
         if let Some(color) = self
@@ -49,7 +52,9 @@ impl SvgOutputPolicy {
             .as_deref()
             .filter(|color| !color.trim().is_empty())
         {
-            pipeline.push_postprocessor(RootBackgroundPostprocessor::new(color.trim()));
+            pipeline.push_postprocessor_preserving_prepared_math(RootBackgroundPostprocessor::new(
+                color.trim(),
+            ));
         }
 
         if let Some(css) = self
@@ -64,5 +69,73 @@ impl SvgOutputPolicy {
         }
 
         pipeline
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_resvg_passes_preserve_renderer_owned_math_evidence() {
+        let pipeline = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            root_background_color: Some("#111827".to_owned()),
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+
+        assert!(pipeline.preserves_prepared_math_evidence(None));
+    }
+
+    #[test]
+    fn caller_supplied_css_still_invalidates_renderer_owned_math_evidence() {
+        let pipeline = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            scoped_css: Some(".merman-prepared-math-native { opacity: 0; }".to_owned()),
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+
+        assert!(!pipeline.preserves_prepared_math_evidence(None));
+    }
+
+    #[test]
+    fn canonical_gitgraph_pass_only_invalidates_its_own_family() {
+        use crate::DiagramFamilyId;
+        let pipeline = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+        for family in DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .map(Some)
+            .chain([None])
+        {
+            let preserves = family.is_some_and(|family| family != DiagramFamilyId::GIT_GRAPH);
+            assert_eq!(pipeline.preserves_typed_theme_evidence(family), preserves);
+            assert_eq!(pipeline.preserves_prepared_text_evidence(family), preserves);
+            assert!(pipeline.preserves_prepared_math_evidence(family));
+        }
+    }
+
+    #[test]
+    fn family_scoping_does_not_exempt_global_or_public_postprocessors() {
+        let background = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            root_background_color: Some("#111827".to_owned()),
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+        let family = Some(crate::DiagramFamilyId::SEQUENCE);
+        assert!(!background.preserves_typed_theme_evidence(family));
+        assert!(!background.preserves_prepared_text_evidence(family));
+        let custom =
+            SvgPipeline::resvg_safe().with_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
+        assert!(!custom.preserves_typed_theme_evidence(family));
+        assert!(!custom.preserves_prepared_text_evidence(family));
+        assert!(!custom.preserves_prepared_math_evidence(family));
     }
 }

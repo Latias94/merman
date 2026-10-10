@@ -2980,7 +2980,7 @@ fn measure_markdown_with_inline_styles_impl(
     //
     // We keep the existing text-focused Markdown measurement for the common case, and only
     // special-case when we observe at least one image token.
-    if markdown.contains("![") {
+    if wrap_mode == WrapMode::HtmlLike && markdown.contains("![") {
         #[derive(Debug, Default, Clone)]
         struct Paragraph {
             text: String,

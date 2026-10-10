@@ -1,0 +1,61 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-c6-spotless-flowchart",
+  "tokens": null,
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 45,
+      "repetition": "repeating",
+      "tileWidthPx": 20,
+      "tileHeightPx": 20,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#e7e2d6"
+        },
+        {
+          "offsetPercent": 50,
+          "color": "#e7e2d6"
+        },
+        {
+          "offsetPercent": 51,
+          "color": "#d2ccc0"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#d2ccc0"
+        }
+      ]
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#2c2416",
+      "widthPx": 2
+    },
+    "dashPattern": [
+      6,
+      4
+    ],
+    "cornerRadiusPx": 4,
+    "shadow": null
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

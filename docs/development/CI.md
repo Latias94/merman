@@ -10,8 +10,8 @@ Pull requests answer whether a change is safe to review and merge:
 
 - formatting, repository hygiene, and generated-source freshness;
 - full workspace tests on Linux, plus blocking SVG parity when its explicit inputs change;
-- workspace compilation plus an explicit host-sensitive macOS/Windows inventory, including the
-  Windows ELK small-stack regression;
+- workspace compilation plus an explicit focused macOS/Windows inventory, including filesystem,
+  process, FFI, CLI and ELK small-stack contracts;
 - representative Cargo feature leaves, default surfaces, owner APIs, and feature-unification
   regressions;
 - Web package build, size budgets, package smoke, and Playground browser behavior when their inputs
@@ -45,9 +45,12 @@ them after classification, so one owner executes once and its result is availabl
 `pr-gate`. Main pushes still select every owner. A weekly and manually dispatchable core safety-net
 run executes the full workspace on Linux, macOS, and Windows; routine pull requests keep the full
 Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
-ELK stack-safety contracts. Only pull-request and merge-queue runs emit the required `pr-gate`
-status name; push, schedule, and manual lifecycles use event-specific gate names so their results
-cannot satisfy the pull-request check by identity collision.
+ELK stack-safety contracts. The historical KTD23 retirement authorization and its dedicated
+commands were removed with their witness; current theme authoring, font boundaries, preset
+qualification and support discovery remain separate checks. Only pull-request and merge-queue
+runs emit the required `pr-gate` status name;
+push, schedule, and manual lifecycles use event-specific gate names so their results cannot satisfy
+the pull-request check by identity collision.
 
 The planner records SVG parity as a selector inside the same owner plan rather than as a second
 owner. Pull requests select it for the SVG renderer and its shared parser/layout crates, the SVG
@@ -96,16 +99,20 @@ pixel area, so tall or wide moderate-area diagrams can be measured without allow
 screenshot memory.
 
 Reviewed residuals are recorded in `fixtures/_verification/root-viewport-residuals.json`.
-The out-of-domain XYChart extrapolation requires fully collected evidence and binds both SVG
-SHA-256 values. The Flowchart title 029 display-font residual additionally binds an exact paired
-audit fingerprint: both roots, geometry, painted and structural overflow, capture state, structural
-pixel hashes, and the browser environment. That admission requires `active-filter` to be the only
-indeterminate reason on both sides, with no paint reaching the capture boundary. Missing roots,
-capture limits, unbounded markers, and image failures cannot use this admission.
+The out-of-domain XYChart extrapolation binds both SVG SHA-256 values and a versioned fingerprint
+of the live Chromium decision facts: root dimensions, paint status, capture policy, indeterminate
+reasons, and maximum structural overflow depth on each edge. That decision fingerprint deliberately
+excludes raw screenshot pixels and browser patch identity.
+
+The Flowchart title 029 display-font residual additionally binds an exact paired audit fingerprint:
+both roots, geometry, painted and structural overflow, capture state, structural pixel hashes, and
+the browser environment. That admission requires `active-filter` to be the only indeterminate
+reason on both sides, with no paint reaching the capture boundary. Missing roots, capture limits,
+unbounded markers, and image failures cannot use this admission.
 
 Neither receipt is a numeric tolerance or a claim that clipping was repaired. The original
-containment classification and full paint evidence remain in the report. SVG or evidence drift,
-an unused receipt, and every other local-only, new, or worse structural result remain blocking.
+containment classification and full paint evidence remain in the report. A changed, malformed,
+or unused receipt and every other local-only, new, or worse structural result remain blocking.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
@@ -268,6 +275,57 @@ isolation, and npm provenance policy. GitHub Actions use current stable release 
 whose ref is part of their public interface retain readable tool or toolchain refs. The zizmor
 configuration accepts version refs without disabling its other workflow-security audits, and weekly
 Dependabot updates maintain the selected action versions. Release workflows also accept explicit Action release versions; moving branch names and floating major-only tags are not used for their Action dependencies. This policy concerns Action implementations, not release source commits, artifact checksums, or provenance receipts, which remain immutable.
+
+## Workspace Theme Acceptance
+
+Production crates expose no `internal-theme-acceptance` Cargo feature. The non-published
+`merman-theme-acceptance` harness and producer receipt seams use the explicit
+`merman_internal_theme_acceptance` cfg. Ordinary workspace builds omit that harness; its dedicated
+CI steps run both the library proofs and the target integration gates through:
+
+```text
+python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance
+```
+
+The launcher preserves caller Rust flags and enables the cfg for dependencies and doctests.
+Do not enable this cfg globally or use it for release builds. Public Cargo features, including
+feature unification, cannot enable it. Producer manifests exclude the independent acceptance
+modules from Cargo packages, so forcing the cfg cannot reconstruct those modules from a published
+crate. The private harness itself has `publish = false`.
+
+```text
+python3 scripts/verify_theme_acceptance_boundary.py
+```
+
+This gate checks Cargo's package file lists and the absence of the retired feature, then compiles
+an independent Cargo consumer with every public feature of the three producer crates enabled.
+Production types must resolve; acceptance imports and the explicitly listed former Rust theme
+facade imports must fail with unresolved-import diagnostics. The latter checks catch aliases and
+re-exports at their former public paths. Platform SDK removals remain owned by their respective
+consumer tests; this gate does not scan Swift, Dart, or JavaScript for visibility keywords.
+It uses compiler results rather than attempting to infer Rust visibility from source text. Both PR
+parity CI and release preflight own this gate. It is separate from native C6a and preset qualification.
+
+The `preset_qualification` integration target currently runs the admission stage over the exact
+catalog recipes (ten presets, three representative families, Standalone SVG plus PNG). Both the
+PR C6 step and release preflight include it. The test keeps current rejection reasons and recipe
+identities explicit; successful test execution means those observations were reproduced, not that
+the presets became qualified. The separate opaque qualification runner checks Flowchart/State/Sequence
+SVG/PNG output for the three exact native candidate recipes under a declared HostDependent
+system-font profile. Release Preflight and the formal Release's final Linux CLI archive job bind
+those checks to the extracted binary and archive, then replay the record before their gates pass.
+The ordinary push-only Node contract job intentionally stops at source-level contract tests; installed
+package smoke runs on pull requests and release preflight after a real candidate package is built,
+so the expensive artifact-bound check remains attached to an artifact-producing gate.
+See [scoped preset qualification](../rendering/preset-qualification.md) for the commands and evidence
+limits. Public catalog promotion remains open.
+
+PR parity CI and release preflight also run the evidence reconciliation and preset qualification
+library tests in Release mode. The reconciliation suite guards against behavior hidden inside
+`debug_assert!`; the preset suite includes missing text, paint, marker, and background rejection
+and receipt freshness checks. These negative tests complement the production runner's positive
+artifact checks. Both suites use explicit test namespaces and the qualification suite enables the
+workspace-only acceptance configuration plus PNG and Cytoscape layout features.
 
 ## Playground build identity
 

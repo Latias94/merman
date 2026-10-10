@@ -188,7 +188,7 @@ int merman_c_consumer_smoke(
         "diagram-family-capabilities",
         "lint-rule-catalog",
         "supported-themes",
-        "presentation-catalog"
+        "theme-catalog"
     };
     static const uint8_t unknown_metadata_id[] = "unknown-catalog";
     MermanNativeApiRequest discovery;
@@ -280,7 +280,7 @@ int merman_c_consumer_smoke(
             return 31;
         }
         if (
-            strcmp(metadata_id, "presentation-catalog") == 0 &&
+            strcmp(metadata_id, "theme-catalog") == 0 &&
             (
                 !bytes_contain(
                     result.metadata_or_error_json.data,
@@ -290,7 +290,12 @@ int merman_c_consumer_smoke(
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"profiles\""
+                    "\"presets\""
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"known_semantic_target_ids\""
                 )
             )
         ) {
@@ -589,4 +594,58 @@ int merman_c_consumer_smoke(
         return 9;
     }
     return 0;
+}
+
+/* Exercise theme errors using C-owned request construction and result ownership. */
+#if defined(_WIN32)
+__declspec(dllexport)
+#else
+__attribute__((visibility("default")))
+#endif
+int merman_c_theme_authoring_error(
+    const MermanNativeApi *api,
+    const uint8_t *source, size_t source_len,
+    const uint8_t *options, size_t options_len,
+    MermanNativeStatus expected_status,
+    uint8_t *output, size_t capacity, size_t *output_len
+) {
+    MermanNativeEngineConfig config = {0};
+    MermanNativeEngineToken engine = 0;
+    MermanNativeOperationRequest request = {0};
+    MermanNativeResult result = empty_result();
+    MermanNativeStatus status;
+    int failure = 0;
+
+    *output_len = 0;
+    config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
+    config.options_json = borrowed_slice(NULL, 0);
+    status = api->engine_new(&config, &engine, &result);
+    if (status != MERMAN_NATIVE_STATUS_OK || result.status != status || engine == 0) {
+        api->result_free(&result);
+        if (engine != 0) api->engine_try_close(engine);
+        return 1;
+    }
+    api->result_free(&result);
+
+    request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
+    request.operation = MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON;
+    request.source = borrowed_slice(source, source_len);
+    request.uri = borrowed_slice(NULL, 0);
+    request.options_json = borrowed_slice(options, options_len);
+    result = empty_result();
+    status = api->execute_collect(engine, &request, &result);
+    if (status != expected_status || result.status != expected_status ||
+        result.operation != request.operation || result.allocation_token == 0 ||
+        result.data.len != 0 || result.metadata_or_error_json.data == NULL ||
+        result.metadata_or_error_json.len == 0 ||
+        result.metadata_or_error_json.len > capacity) {
+        failure = 2;
+    } else {
+        *output_len = result.metadata_or_error_json.len;
+        memcpy(output, result.metadata_or_error_json.data, *output_len);
+    }
+    api->result_free(&result);
+    if (result.allocation_token != 0) failure = 3;
+    if (api->engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) failure = 4;
+    return failure;
 }

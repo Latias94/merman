@@ -8,9 +8,15 @@ import '../operation_metadata.dart';
 const int mermanRuntimeCatalogSchemaVersion = 1;
 const String mermanRuntimeCatalogIdentifierPattern = r'^[a-z0-9][a-z0-9-]*$';
 const String mermanRuntimeCatalogFieldIdentifierPattern = r'^[a-z][a-z0-9_-]*$';
-const int mermanBindingOptionsContractSchemaVersion = 2;
+const int mermanBindingOptionsContractSchemaVersion = 3;
 const int mermanOperationMetadataSchemaVersion = 1;
 const int mermanTextMeasurementContractProtocolVersion = 1;
+const String mermanDeterministicTextMeasurementProviderId = "deterministic";
+const String mermanHostCallbackTextMeasurementProviderId = "host-callback";
+const Set<String> mermanTextMeasurementProviderIds = <String>{
+  "deterministic",
+  "host-callback",
+};
 const String mermanHostTextMeasurementConstructorServiceId =
     "host-text-measurement";
 const String mermanIconRegistryConstructorServiceId = "icon-registry";
@@ -39,9 +45,9 @@ abstract final class MermanBindingMetadataId {
   static const String asciiCapabilities = "ascii-capabilities";
   static const String diagramFamilyCapabilities = "diagram-family-capabilities";
   static const String lintRuleCatalog = "lint-rule-catalog";
-  static const String presentationCatalog = "presentation-catalog";
   static const String supportedDiagrams = "supported-diagrams";
   static const String supportedThemes = "supported-themes";
+  static const String themeCatalog = "theme-catalog";
 }
 
 final class MermanBindingOptionGroupSpec {
@@ -103,19 +109,23 @@ final class MermanBindingConstructorServiceSpec {
 final class MermanBindingOperationExpectation {
   const MermanBindingOperationExpectation({
     required this.operationId,
+    required this.maturity,
     required this.outputId,
     required this.mediaType,
     required this.metadataSchemaVersion,
     required this.requiresUri,
     required this.availabilityCapabilityId,
+    required this.compiledPrerequisiteIds,
   });
 
   final String operationId;
+  final String maturity;
   final String? outputId;
   final String mediaType;
   final int metadataSchemaVersion;
   final bool requiresUri;
   final String? availabilityCapabilityId;
+  final Set<String> compiledPrerequisiteIds;
 }
 
 const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
@@ -226,16 +236,16 @@ const Map<String, MermanBindingMetadataSpec> mermanBindingMetadataSpecs =
     id: "lint-rule-catalog",
     requiredCapabilityId: "analysis",
   ),
-  "presentation-catalog": MermanBindingMetadataSpec(
-    id: "presentation-catalog",
-    requiredCapabilityId: null,
-  ),
   "supported-diagrams": MermanBindingMetadataSpec(
     id: "supported-diagrams",
     requiredCapabilityId: null,
   ),
   "supported-themes": MermanBindingMetadataSpec(
     id: "supported-themes",
+    requiredCapabilityId: null,
+  ),
+  "theme-catalog": MermanBindingMetadataSpec(
+    id: "theme-catalog",
     requiredCapabilityId: null,
   ),
 };
@@ -495,12 +505,6 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     },
     requiresSvgPipeline: false,
   ),
-  "presentation": MermanBindingOptionGroupSpec(
-    id: "presentation",
-    alwaysAvailable: false,
-    anyCapabilityIds: <String>{},
-    requiresSvgPipeline: true,
-  ),
   "raster": MermanBindingOptionGroupSpec(
     id: "raster",
     alwaysAvailable: false,
@@ -530,6 +534,12 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
   ),
   "svg": MermanBindingOptionGroupSpec(
     id: "svg",
+    alwaysAvailable: false,
+    anyCapabilityIds: <String>{},
+    requiresSvgPipeline: true,
+  ),
+  "theme": MermanBindingOptionGroupSpec(
+    id: "theme",
     alwaysAvailable: false,
     anyCapabilityIds: <String>{},
     requiresSvgPipeline: true,
@@ -617,115 +627,179 @@ const List<MermanBindingOperationExpectation>
     mermanBindingOperationExpectations = <MermanBindingOperationExpectation>[
   MermanBindingOperationExpectation(
     operationId: "analysis-facts-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "analysis-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "ascii",
+    maturity: "stable",
     outputId: "ascii",
     mediaType: "text/plain; charset=utf-8",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "ascii",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
-    operationId: "document-analysis-facts-json",
-    outputId: null,
-    mediaType: "application/json",
-    metadataSchemaVersion: 1,
-    requiresUri: true,
-    availabilityCapabilityId: "analysis",
-  ),
-  MermanBindingOperationExpectation(
-    operationId: "document-analysis-json",
-    outputId: null,
-    mediaType: "application/json",
-    metadataSchemaVersion: 1,
-    requiresUri: true,
-    availabilityCapabilityId: "analysis",
-  ),
-  MermanBindingOperationExpectation(
-    operationId: "edge-geometry-json",
+    operationId: "describe-theme-support-json",
+    maturity: "alpha",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "document-analysis-facts-json",
+    maturity: "stable",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: true,
+    availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "document-analysis-json",
+    maturity: "stable",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: true,
+    availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "edge-geometry-json",
+    maturity: "stable",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "export-theme-preset-json",
+    maturity: "alpha",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "jpeg",
+    maturity: "stable",
     outputId: "jpeg",
     mediaType: "image/jpeg",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "jpeg",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "layout-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "materialize-theme-json",
+    maturity: "alpha",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "pdf",
+    maturity: "stable",
     outputId: "pdf",
     mediaType: "application/pdf",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "pdf",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "png",
+    maturity: "stable",
     outputId: "png",
     mediaType: "image/png",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "png",
+    compiledPrerequisiteIds: <String>{
+      "svg",
+    },
   ),
   MermanBindingOperationExpectation(
     operationId: "semantic-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: null,
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "svg",
+    maturity: "stable",
     outputId: "svg",
     mediaType: "image/svg+xml",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "svg-plan-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "svg",
+    compiledPrerequisiteIds: <String>{},
   ),
   MermanBindingOperationExpectation(
     operationId: "validation-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
     requiresUri: false,
     availabilityCapabilityId: "analysis",
+    compiledPrerequisiteIds: <String>{},
   ),
 ];
 

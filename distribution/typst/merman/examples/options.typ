@@ -32,7 +32,7 @@ Failed render result: `#failed-result.code_name`
   scale: 1.05,
   background: "#f8fafc",
   theme-name: "base",
-  theme: (
+  theme-variables: (
     primaryColor: "#0f172a",
     primaryTextColor: "#f8fafc",
     primaryBorderColor: "#38bdf8",

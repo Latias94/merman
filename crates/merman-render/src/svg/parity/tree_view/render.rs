@@ -4,7 +4,7 @@ use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::tree_view::{
     TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
-    is_tree_view_highlight_class,
+    TreeViewThemePlan, TreeViewThemeReceipt, is_tree_view_highlight_class,
 };
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 
@@ -22,10 +22,10 @@ struct TreeViewNodeRenderContext<'a, 'id> {
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
+    theme: &TreeViewThemePlan,
     effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let effective_config_value = effective_config.as_value();
     let diagram_id = options.diagram_id_or("treeView");
     let acc_title = model
         .acc_title
@@ -39,31 +39,44 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .filter(|d| !d.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let root_bounds = root_svg::DiagramBounds::from_view_box(
-        -layout.line_thickness / 2.0,
-        0.0,
-        layout.total_width,
-        layout.total_height,
-    );
+    let root_bounds = if theme.additional_paint_outset_px() > 0.0 {
+        let bounds = layout.bounds.as_ref().ok_or_else(|| Error::InvalidModel {
+            message: "Tree View themed paint bounds are missing".to_string(),
+        })?;
+        root_svg::DiagramBounds::from_extents(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x,
+            bounds.max_y,
+            0.0,
+        )
+    } else {
+        root_svg::DiagramBounds::from_view_box(
+            -layout.line_thickness / 2.0,
+            0.0,
+            layout.total_width,
+            layout.total_height,
+        )
+    };
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treeView");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::TREE_VIEW, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = tree_view_css(diagram_id, effective_config_value);
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
+        out.checkpoint()?;
     }
     if let Some(descr) = acc_descr {
         let _ = write!(
@@ -71,11 +84,31 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
+        out.checkpoint()?;
     }
-    let _ = write!(&mut out, "<style>{css}</style>");
+    out.push_str("<style>");
+    let icon_count = layout
+        .nodes
+        .iter()
+        .filter(|node| node.resolved_icon.is_some())
+        .count();
+    // Icons are emitted inline for each resolved node, matching Mermaid's
+    // node-local DOM and keeping custom icon rendering scoped to that node.
+    let emitted_icon_count = icon_count;
+    let mut tree_view_receipt =
+        theme.begin_terminal_receipt(layout.nodes.len(), emitted_icon_count);
+    push_tree_view_css(
+        &mut out,
+        super::super::util::css_selector_diagram_id(diagram_id),
+        theme,
+        &mut tree_view_receipt,
+    )?;
+    out.push_str("</style>");
+    out.checkpoint()?;
     options.checkpoint_emit()?;
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
+    out.checkpoint()?;
     let mut next_node = 0usize;
     let highlighted_node_count = layout
         .nodes
@@ -91,36 +124,78 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         effective_config,
         work_meter: options.work_meter(),
     };
-    for line in &layout.lines {
+    for (line_index, line) in layout.lines.iter().enumerate() {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
-            push_tree_view_node(&mut out, node, &node_context, &mut width_before_highlight)?;
+            push_tree_view_node(
+                &mut out,
+                node,
+                &node_context,
+                &mut width_before_highlight,
+                theme,
+                &mut tree_view_receipt,
+            )?;
             next_node += 1;
         }
-        let _ = write!(
-            &mut out,
-            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-            fmt(line.x1),
-            fmt(line.y1),
-            fmt(line.x2),
-            fmt(line.y2),
-            fmt(line.stroke_width)
+        let emitted_stroke_width_token = theme.terminal_stroke_width_token(line.stroke_width);
+        // Tree View maps both semantic edge paint facets to the line's CSS stroke channel.  This
+        // renderer-owned marker lets the native raster proof bind that final line without
+        // inferring semantics from the presentation class.
+        let line_id = format!(
+            "treeView-edge-{line_index}{}",
+            crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX
         );
+        if let Some(stroke_width_token) = emitted_stroke_width_token {
+            let _ = write!(
+                &mut out,
+                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_id,
+                fmt(line.x1),
+                fmt(line.y1),
+                fmt(line.x2),
+                fmt(line.y2),
+                stroke_width_token,
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_id,
+                fmt(line.x1),
+                fmt(line.y1),
+                fmt(line.x2),
+                fmt(line.y2),
+                fmt(line.stroke_width),
+            );
+        }
+        out.checkpoint()?;
+        tree_view_receipt.record_line(theme.line_color_css(), emitted_stroke_width_token);
     }
     for node in layout.nodes.iter().skip(next_node) {
-        push_tree_view_node(&mut out, node, &node_context, &mut width_before_highlight)?;
+        push_tree_view_node(
+            &mut out,
+            node,
+            &node_context,
+            &mut width_before_highlight,
+            theme,
+            &mut tree_view_receipt,
+        )?;
     }
     out.push_str("</g></svg>\n");
-    options.checkpoint_emit()?;
-    root_document.complete(out)
+    out.checkpoint()?;
+    let rooted = root_document.complete(out.finish()?)?;
+    let _ = theme.record_terminal(tree_view_receipt);
+    Ok(rooted)
 }
 
 fn push_tree_view_node(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     node: &TreeViewNodeLayout,
     context: &TreeViewNodeRenderContext<'_, '_>,
     width_before_highlight: &mut f64,
+    theme: &TreeViewThemePlan,
+    tree_view_receipt: &mut TreeViewThemeReceipt,
 ) -> Result<()> {
     out.push_str("<g>");
     let label_classes = tree_view_label_classes(node);
@@ -138,7 +213,7 @@ fn push_tree_view_node(
         *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
     if let Some(icon) = node.resolved_icon.as_deref() {
-        let icon_svg = tree_view_icon_svg(
+        let icon = tree_view_icon_svg(
             icon,
             context.diagram_id,
             node.id,
@@ -146,22 +221,37 @@ fn push_tree_view_node(
             context.effective_config,
             context.work_meter,
         )?;
+        let current_color_use = icon.current_color_use;
+        let icon_svg = icon.svg;
+        out.push_str("<g");
+        if theme.typed_icon_color_css().is_some()
+            && current_color_use == crate::svg::IconCurrentColorUse::Consumed
+        {
+            let _ = write!(
+                out,
+                r#" id="treeView-icon-{}{}""#,
+                node.id,
+                crate::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX,
+            );
+        }
         let _ = write!(
             out,
-            r#"<g class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
+            r#" class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
             fmt(node.x + context.layout.padding_x),
             fmt(node.y + context.layout.padding_y),
             icon_svg
         );
+        tree_view_receipt.record_icon(theme.icon_color_css(), current_color_use);
     }
     let _ = write!(
         out,
         r#"<text dominant-baseline="middle" class="{}" x="{}" y="{}">{}</text>"#,
-        escape_xml(&label_classes),
+        escape_xml_display(&label_classes),
         fmt(node.label_x),
         fmt(node.label_y),
-        escape_xml(&node.name)
+        escape_xml_display(&node.name)
     );
+    tree_view_receipt.record_label(theme.label_color_css());
     if let (Some(description), Some(description_x)) =
         (node.description.as_deref(), node.description_x)
     {
@@ -170,29 +260,43 @@ fn push_tree_view_node(
             r#"<text dominant-baseline="middle" class="treeView-node-description" x="{}" y="{}">{}</text>"#,
             fmt(description_x),
             fmt(node.label_y),
-            escape_xml(description)
+            escape_xml_display(description)
         );
     }
     out.push_str("</g>");
-    Ok(())
+    out.checkpoint()
 }
 
-fn tree_view_css(diagram_id: SvgDiagramId<'_>, effective_config: &serde_json::Value) -> String {
-    let theme = PresentationTheme::new(effective_config).tree_view();
+fn push_tree_view_css(
+    out: &mut impl SvgOutput,
+    diagram_id: impl std::fmt::Display + Copy,
+    theme_plan: &TreeViewThemePlan,
+    receipt: &mut TreeViewThemeReceipt,
+) -> Result<()> {
+    let theme = theme_plan.css();
+    let font_family = &theme.font_family;
+    let label_color = &theme.label_color;
+    let line_color = &theme.line_color;
+    let icon_color = &theme.icon_color;
 
-    format!(
-        "#{diagram_id} .treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} #{diagram_id} .treeView-node-dir {{ font-weight: {}; }} #{diagram_id} .treeView-node-line {{ stroke: {}; }} #{diagram_id} .treeView-node-icon {{ color: {}; }} #{diagram_id} .treeView-node-description {{ font-size: {}; fill: {}; font-style: {}; white-space: pre; }} #{diagram_id} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+    let _ = write!(
+        out,
+        "#{diagram_id} .treeView-node-label {{ font-family: {}; font-size: {}; fill: {}; white-space: pre; }} #{diagram_id} .treeView-node-dir {{ font-weight: {}; }} #{diagram_id} .treeView-node-line {{ stroke: {}; }} #{diagram_id} .treeView-node-icon {{ color: {}; }} #{diagram_id} .treeView-node-description {{ font-family: {}; font-size: {}; fill: {}; font-style: {}; white-space: pre; }} #{diagram_id} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        font_family,
         theme.label_font_size_css,
-        theme.label_color,
+        label_color,
         TREE_VIEW_DIRECTORY_FONT_WEIGHT,
-        theme.line_color,
-        theme.icon_color,
+        line_color,
+        icon_color,
+        font_family,
         theme.label_font_size_css,
         theme.description_color,
         TREE_VIEW_DESCRIPTION_FONT_STYLE,
         theme.highlight_bg,
         theme.highlight_stroke
-    )
+    );
+    receipt.record_css(font_family, label_color, line_color, icon_color);
+    out.checkpoint()
 }
 
 fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
@@ -211,6 +315,11 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     classes.join(" ")
 }
 
+struct TreeViewRenderedIcon {
+    svg: String,
+    current_color_use: crate::svg::IconCurrentColorUse,
+}
+
 fn tree_view_icon_svg(
     icon: &str,
     diagram_id: SvgDiagramId<'_>,
@@ -218,13 +327,16 @@ fn tree_view_icon_svg(
     icon_registry: Option<&crate::svg::IconRegistry>,
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
-) -> Result<String> {
+) -> Result<TreeViewRenderedIcon> {
     if let Some(body) = tree_view_icon_body(icon) {
-        return Ok(format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 24 24">{body}</svg>"#,
-            fmt(TREE_VIEW_ICON_SIZE),
-            fmt(TREE_VIEW_ICON_SIZE)
-        ));
+        return Ok(TreeViewRenderedIcon {
+            svg: format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 24 24">{body}</svg>"#,
+                fmt(TREE_VIEW_ICON_SIZE),
+                fmt(TREE_VIEW_ICON_SIZE)
+            ),
+            current_color_use: crate::svg::IconCurrentColorUse::Consumed,
+        });
     }
 
     let node_id = node_id.to_string();
@@ -235,7 +347,7 @@ fn tree_view_icon_svg(
                 work_meter,
             )?;
             let id_scope = prefix.scope_parts(&[&node_id], work_meter)?;
-            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+            registry.render_icon_with_paint_fact(crate::svg::icon_registry::IconRenderRequest {
                 icon_name: icon,
                 width_px: TREE_VIEW_ICON_SIZE,
                 height_px: TREE_VIEW_ICON_SIZE,
@@ -248,8 +360,16 @@ fn tree_view_icon_svg(
         }
         None => None,
     }
-    .unwrap_or_else(|| {
-        mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
+    .map(|rendered| {
+        let current_color_use = rendered.current_color_use();
+        TreeViewRenderedIcon {
+            current_color_use,
+            svg: rendered.into_svg(),
+        }
+    })
+    .unwrap_or_else(|| TreeViewRenderedIcon {
+        svg: mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE)),
+        current_color_use: crate::svg::IconCurrentColorUse::NotConsumed,
     });
     Ok(icon_svg)
 }

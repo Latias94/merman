@@ -1,0 +1,12 @@
+erDiagram
+    ACCOUNT {
+        string name
+    }
+    CUSTOMER {
+        string id
+    }
+    ACCOUNT ||--o| CUSTOMER : owns
+    classDef default fill:#f8fafc,stroke:#64748b,color:#0f172a,font-size:12px
+    classDef assigned fill:#d1fae5,stroke:#047857,color:#064e3b,font-size:16px
+    class ACCOUNT assigned
+    style ACCOUNT fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,font-size:20px

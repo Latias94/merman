@@ -226,11 +226,13 @@ impl<'input> ParsedSvgDom<'input> {
                     .descendants()
                     .find(|node| node.has_tag_name("svg"))
                     .expect("parsed SVG document invariant");
+                let eventmodeling_root_fill = eventmodeling_root_fill_value(root);
                 let mut signature = build_node(
                     root,
                     key.descendants,
                     key.decimals,
                     key.normalize_browser_text_wrapping,
+                    eventmodeling_root_fill.as_deref(),
                     document_may_have_start_or_mid_markers(document),
                 );
                 if key.normalize_browser_text_wrapping {
@@ -449,6 +451,160 @@ fn extract_style_prop_value(style: &str, prop_name: &str) -> Option<String> {
         return Some(v.to_string());
     }
     None
+}
+
+/// Returns the fill from Event Modeling's exact root rule, when the stylesheet proves one.
+///
+/// Event Modeling's upstream renderer keeps swimlane text color in the diagram root rule while
+/// Merman emits the same effective value directly on each text terminal. This deliberately narrow
+/// lookup aligns those two representations without turning the comparator into a CSS engine.
+fn eventmodeling_root_fill_value(root: roxmltree::Node<'_, '_>) -> Option<String> {
+    if root.attribute("aria-roledescription") != Some("eventmodeling") {
+        return None;
+    }
+    let diagram_id = root.attribute("id")?;
+    let selector = format!("#{diagram_id}");
+    let mut fill = None;
+
+    for style in root
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "style")
+    {
+        let css = style.text()?;
+        let mut parser = cssparser::Parser::new(css);
+        while !parser.is_exhausted() {
+            let start = parser.position();
+            let selectors_end = loop {
+                let position = parser.position();
+                if matches!(parser.next().ok()?, cssparser::Token::CurlyBracketBlock) {
+                    break position;
+                }
+            };
+            let selectors = parser.slice(start..selectors_end).trim();
+            let declarations = parser
+                .parse_nested_block(|body| {
+                    let start = body.position();
+                    while body.next().is_ok() {}
+                    Ok::<_, cssparser::ParseError<()>>(body.slice_from(start))
+                })
+                .ok()?;
+            // These pinned upstream rules only animate stroke offset. Unknown nested rules fail
+            // closed; their inner selectors must never be reinterpreted as unconditional rules.
+            if matches!(
+                (selectors, declarations.trim()),
+                (
+                    "@keyframes edge-animation-frame",
+                    "from{stroke-dashoffset:0;}"
+                ) | ("@keyframes dash", "to{stroke-dashoffset:0;}")
+            ) {
+                continue;
+            }
+            if selectors.starts_with('@') || declarations.contains('{') {
+                return None;
+            }
+            let mut rule_fill = None;
+            eventmodeling_collect_unique_fill(declarations, &mut rule_fill)?;
+            if rule_fill.is_none() {
+                continue;
+            }
+            let mut matches_root = false;
+            for candidate in selectors.split(',').map(str::trim) {
+                if candidate == selector {
+                    matches_root = true;
+                } else if !eventmodeling_selector_excludes_swimlane_inheritance(root, candidate) {
+                    return None;
+                }
+            }
+            if matches_root {
+                eventmodeling_collect_unique_fill(declarations, &mut fill)?;
+            }
+        }
+    }
+    fill
+}
+
+// Only prove exclusion for descendant selectors ending in a class requirement. Pseudo-classes,
+// functions, combinators and other unknown syntax fail closed without resolving their semantics.
+fn eventmodeling_selector_excludes_swimlane_inheritance(
+    root: roxmltree::Node<'_, '_>,
+    selector: &str,
+) -> bool {
+    let mut parser = cssparser::Parser::new(selector);
+    while !parser.is_exhausted() {
+        if let Ok(class) = parser.try_parse(|input| {
+            input.expect_delim('.')?;
+            let class = input.expect_ident_cloned()?;
+            input.expect_exhausted()?;
+            Ok::<_, cssparser::BasicParseError>(class)
+        }) {
+            return root
+                .descendants()
+                .filter(|node| is_eventmodeling_swimlane_text(*node))
+                .all(|node| {
+                    node.ancestors()
+                        .all(|ancestor| !has_class_token(ancestor, &class))
+                });
+        }
+        if !matches!(
+            parser.next(),
+            Ok(cssparser::Token::IDHash(_)
+                | cssparser::Token::Ident(_)
+                | cssparser::Token::Delim('.')
+                | cssparser::Token::SquareBracketBlock)
+        ) {
+            return false;
+        }
+    }
+    false
+}
+
+// Only enumerate declarations: a competing fill or an `all` reset makes inheritance unproven.
+// CSS tokenization keeps quoted semicolons and escaped property names out of the decision logic.
+fn eventmodeling_collect_unique_fill(style: &str, fill: &mut Option<String>) -> Option<()> {
+    let mut parser = cssparser::Parser::new(style);
+    while !parser.is_exhausted() {
+        if parser.try_parse(|input| input.expect_semicolon()).is_ok() {
+            continue;
+        }
+        parser
+            .parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
+                let property = declaration.expect_ident_cloned()?;
+                declaration.expect_colon()?;
+                let start = declaration.position();
+                while declaration.next_including_whitespace_and_comments().is_ok() {}
+                let value = declaration.slice_from(start).trim();
+                if value.is_empty() || property.eq_ignore_ascii_case("all") {
+                    return Err(cssparser::ParseError::custom(()));
+                }
+                if property.eq_ignore_ascii_case("fill") {
+                    if fill.is_some() {
+                        return Err(cssparser::ParseError::custom(()));
+                    }
+                    *fill = Some(value.to_owned());
+                }
+                Ok::<_, cssparser::ParseError<()>>(())
+            })
+            .ok()?;
+    }
+    Some(())
+}
+
+fn eventmodeling_has_unoverridden_inheritance(node: roxmltree::Node<'_, '_>) -> bool {
+    for ancestor in node.ancestors().filter(|node| node.is_element()) {
+        if ancestor.attribute("fill").is_some() {
+            return false;
+        }
+        if let Some(style) = ancestor.attribute("style") {
+            let mut fill = None;
+            if eventmodeling_collect_unique_fill(style, &mut fill).is_none() || fill.is_some() {
+                return false;
+            }
+        }
+        if ancestor.tag_name().name() == "svg" {
+            return true;
+        }
+    }
+    false
 }
 
 fn normalize_style_font_size_for_parity(style: &str, decimals: u32) -> Option<String> {
@@ -671,11 +827,885 @@ fn is_geometry_attr(name: &str) -> bool {
     )
 }
 
+fn flowchart_svg_root<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    fn is_flowchart_root(candidate: roxmltree::Node<'_, '_>) -> bool {
+        candidate.is_element()
+            && candidate.tag_name().name() == "svg"
+            && (candidate
+                .attribute("aria-roledescription")
+                .is_some_and(|value| value.starts_with("flowchart") || value == "agentflow")
+                || candidate.attribute("class").is_some_and(|class| {
+                    class.split_whitespace().any(|token| token == "flowchart")
+                }))
+    }
+
+    is_flowchart_root(node).then_some(node).or_else(|| {
+        node.ancestors()
+            .find(|&ancestor| is_flowchart_root(ancestor))
+    })
+}
+
+fn is_flowchart_diagram(node: roxmltree::Node<'_, '_>) -> bool {
+    flowchart_svg_root(node).is_some()
+}
+
+fn has_class_token(node: roxmltree::Node<'_, '_>, token: &str) -> bool {
+    node.attribute("class")
+        .is_some_and(|class| class.split_whitespace().any(|value| value == token))
+}
+
+fn is_flowchart_node_shell(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node)
+        && node.tag_name().name() == "g"
+        && ["node", "rough-node", "icon-shape", "image-shape"]
+            .into_iter()
+            .any(|class| has_class_token(node, class))
+}
+
+fn is_flowchart_cluster(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node) && node.tag_name().name() == "g" && has_class_token(node, "cluster")
+}
+
+fn is_eventmodeling_swimlane_text(node: roxmltree::Node<'_, '_>) -> bool {
+    if !(node.tag_name().name() == "text"
+        && node.parent().is_some_and(|parent| {
+            parent.is_element()
+                && parent.tag_name().name() == "g"
+                && parent
+                    .attribute("class")
+                    .is_some_and(|class| has_class_token_value(class, "em-swimlane"))
+        }))
+    {
+        return false;
+    }
+
+    node.ancestors().any(|ancestor| {
+        ancestor.is_element()
+            && ancestor.tag_name().name() == "svg"
+            && ancestor.attribute("aria-roledescription") == Some("eventmodeling")
+    })
+}
+
+fn is_ishikawa_text_bbox_attr(node: roxmltree::Node<'_, '_>, key: &str) -> bool {
+    key == "data-merman-text-bbox"
+        && node.is_element()
+        && node.tag_name().name() == "text"
+        && node.ancestors().any(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor.attribute("aria-roledescription") == Some("ishikawa")
+        })
+}
+
+fn is_tree_view_renderer_paint_marker_id(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> bool {
+    key == "id"
+        && node.is_element()
+        && node.tag_name().name() == "line"
+        && has_class_token(node, "treeView-node-line")
+        && value.starts_with("treeView-edge-")
+        && value.ends_with("-merman-fill-stroke-paint")
+        && node.ancestors().any(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor.attribute("aria-roledescription") == Some("treeView")
+        })
+}
+
+fn has_class_token_value(class: &str, token: &str) -> bool {
+    class.split_whitespace().any(|value| value == token)
+}
+
+fn root_layout_group_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    let is_root = is_flowchart_diagram(parent)
+        && parent.tag_name().name() == "g"
+        && parent
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "root"));
+    if !is_root {
+        return 4;
+    }
+
+    let Some(class) = child.attrs.get("class") else {
+        return 4;
+    };
+    if has_class_token_value(class, "clusters") {
+        0
+    } else if has_class_token_value(class, "edgePaths") || has_class_token_value(class, "edgePath")
+    {
+        1
+    } else if has_class_token_value(class, "edgeLabels") {
+        2
+    } else if has_class_token_value(class, "nodes") {
+        3
+    } else {
+        4
+    }
+}
+
+fn flowchart_cluster_child_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    if !is_flowchart_cluster(parent) {
+        return 2;
+    }
+
+    if child.name == "g"
+        && child
+            .attrs
+            .get("class")
+            .is_none_or(|class| class.is_empty())
+    {
+        return 0;
+    }
+    if child.name == "g"
+        && child
+            .attrs
+            .get("class")
+            .is_some_and(|class| has_class_token_value(class, "cluster-label"))
+    {
+        return 1;
+    }
+    2
+}
+
+fn flowchart_nodes_child_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    if !(is_flowchart_diagram(parent)
+        && parent.tag_name().name() == "g"
+        && parent
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "nodes")))
+    {
+        return 2;
+    }
+
+    let class = child.attrs.get("class").map(String::as_str).unwrap_or("");
+    if ["node", "rough-node", "icon-shape", "image-shape"]
+        .into_iter()
+        .any(|token| has_class_token_value(class, token))
+    {
+        return 0;
+    }
+    if has_class_token_value(class, "edgeLabel") {
+        return 1;
+    }
+    2
+}
+
+fn is_non_elk_flowchart_nodes_group(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node)
+        && flowchart_svg_root(node)
+            .is_some_and(|root| root.attribute("aria-roledescription") != Some("flowchart-elk"))
+        && node.tag_name().name() == "g"
+        && node
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "nodes"))
+}
+
+fn flowchart_descendant_text(node: roxmltree::Node<'_, '_>) -> String {
+    let mut text = String::new();
+    for segment in node
+        .descendants()
+        .filter(|candidate| candidate.is_text())
+        .filter_map(|candidate| candidate.text())
+    {
+        for word in segment.split_whitespace() {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(word);
+        }
+    }
+    text
+}
+
+fn flowchart_role_label_text(node: roxmltree::Node<'_, '_>, role_class: &str) -> Option<String> {
+    node.descendants()
+        .find(|candidate| {
+            candidate.is_element()
+                && candidate.tag_name().name() == "g"
+                && has_class_token(*candidate, role_class)
+        })
+        .map(flowchart_descendant_text)
+        .filter(|text| !text.is_empty())
+}
+
+fn flowchart_role_label_matches(
+    node: roxmltree::Node<'_, '_>,
+    role_class: &str,
+    expected: &str,
+) -> bool {
+    flowchart_role_label_text(node, role_class).is_some_and(|text| text == expected)
+}
+
+fn flowchart_compound_subgraph_node_semantic_id<'a>(
+    node: roxmltree::Node<'_, '_>,
+    value: &'a str,
+) -> Option<&'a str> {
+    // Mermaid v2 uses a directly scoped ID for an external node only when the containing `nodes`
+    // group also owns a nested subgraph root. The visible label closes that scoped ID back to the
+    // author semantic; ordinary authored node IDs remain untouched.
+    let root = flowchart_svg_root(node)?;
+    let role = root.attribute("aria-roledescription")?;
+    if !role.starts_with("flowchart") || role == "flowchart-elk" {
+        return None;
+    }
+    if node.attribute("data-et").is_some() || node.attribute("data-look") != Some("classic") {
+        return None;
+    }
+
+    let nodes_group = node.parent().filter(|parent| {
+        parent.is_element() && parent.tag_name().name() == "g" && has_class_token(*parent, "nodes")
+    })?;
+    let contains_subgraph_root = nodes_group.children().any(|candidate| {
+        candidate.is_element()
+            && candidate.tag_name().name() == "g"
+            && has_class_token(candidate, "root")
+            && candidate.descendants().any(is_flowchart_cluster)
+    });
+    if !contains_subgraph_root {
+        return None;
+    }
+
+    let diagram_id = root.attribute("id")?;
+    let semantic_id = value.strip_prefix(diagram_id)?.strip_prefix('-')?;
+    if semantic_id.is_empty()
+        || semantic_id.chars().any(char::is_whitespace)
+        || !flowchart_role_label_matches(node, "label", semantic_id)
+    {
+        return None;
+    }
+    Some(semantic_id)
+}
+
+fn flowchart_edge_endpoint_pair(value: &str) -> Option<(&str, &str)> {
+    let value = value.strip_prefix("L_")?;
+    let (endpoints, ordinal) = value.rsplit_once('_')?;
+    if ordinal.is_empty() || !ordinal.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let mut parts = endpoints.split('_');
+    let source = parts.next()?.trim();
+    let target = parts.next()?.trim();
+    if parts.next().is_some()
+        || source.is_empty()
+        || target.is_empty()
+        || source.chars().any(char::is_whitespace)
+        || target.chars().any(char::is_whitespace)
+    {
+        return None;
+    }
+    Some((source, target))
+}
+
+fn agentflow_collapsed_flow_semantic_id<'a>(
+    node: roxmltree::Node<'_, '_>,
+    value: &'a str,
+) -> Option<&'a str> {
+    let root = flowchart_svg_root(node)?;
+    if root.attribute("aria-roledescription") != Some("agentflow")
+        || node.attribute("data-et").is_some()
+        || node.attribute("class") != Some("node")
+        || !node
+            .parent()
+            .is_some_and(|parent| parent.has_tag_name("g") && has_class_token(parent, "nodes"))
+        || !node
+            .children()
+            .any(|child| child.has_tag_name("rect") && has_class_token(child, "flow-collapsed"))
+        || !node.children().any(|child| {
+            child.has_tag_name("line") && has_class_token(child, "collapsed-separator")
+        })
+        || flowchart_role_label_text(node, "label").is_none()
+    {
+        return None;
+    }
+
+    // Agentflow's collapsed flow writer scopes the semantic flow ID directly, unlike
+    // ordinary vertices' `agentflow-{id}-{ordinal}`. The shape terminal proves this role;
+    // the displayed title is authored independently and must not be used as its identity.
+    let semantic_id = value
+        .strip_prefix(root.attribute("id")?)?
+        .strip_prefix('-')?;
+    (!semantic_id.is_empty() && !semantic_id.chars().any(char::is_whitespace))
+        .then_some(semantic_id)
+}
+
+fn flowchart_has_unique_node_terminal(node: roxmltree::Node<'_, '_>, semantic_id: &str) -> bool {
+    let Some(root) = flowchart_svg_root(node) else {
+        return false;
+    };
+    let expected_id = format!("node-{semantic_id}");
+    let mut matches = root.descendants().filter(|candidate| {
+        if !is_flowchart_node_shell(*candidate)
+            || candidate
+                .attribute("data-et")
+                .is_some_and(|kind| kind != "node")
+        {
+            return false;
+        }
+        candidate.attribute("data-id") == Some(semantic_id)
+            || candidate
+                .attribute("id")
+                .is_some_and(|value| canonical_flowchart_fragment(*candidate, value) == expected_id)
+    });
+    matches.next().is_some() && matches.next().is_none()
+}
+
+fn flowchart_has_closed_edge_label(node: roxmltree::Node<'_, '_>, semantic_id: &str) -> bool {
+    let Some(edge_paths) = node.parent().filter(|parent| {
+        parent.is_element()
+            && parent.tag_name().name() == "g"
+            && has_class_token(*parent, "edgePaths")
+    }) else {
+        return false;
+    };
+    let Some(graph_root) = edge_paths.parent().filter(|parent| {
+        parent.is_element() && parent.tag_name().name() == "g" && has_class_token(*parent, "root")
+    }) else {
+        return false;
+    };
+
+    let mut label_groups = graph_root.children().filter(|candidate| {
+        candidate.is_element()
+            && candidate.tag_name().name() == "g"
+            && has_class_token(*candidate, "edgeLabels")
+    });
+    let Some(labels) = label_groups.next() else {
+        return false;
+    };
+    if label_groups.next().is_some() {
+        return false;
+    }
+    // Mermaid 12 omits unlabeled Neo edge terminals entirely. Admit only the closed empty
+    // label layer here; an absent layer or an unmatched label still exposes malformed output.
+    if node.attribute("data-look") == Some("neo")
+        && !labels.children().any(|child| {
+            child.is_element() || child.text().is_some_and(|text| !text.trim().is_empty())
+        })
+    {
+        return true;
+    }
+    let mut matches = labels.descendants().filter(|candidate| {
+        candidate.is_element()
+            && candidate.tag_name().name() == "g"
+            && has_class_token(*candidate, "label")
+            && candidate.attribute("data-id") == Some(semantic_id)
+    });
+    matches.next().is_some() && matches.next().is_none()
+}
+
+fn is_flowchart_closed_invisible_edge(node: roxmltree::Node<'_, '_>) -> bool {
+    // Invisible links omit the normal `flowchart-link` class. Admit their producer ID only after
+    // the semantic edge ID, sibling label layer, and unique source/target terminals close the
+    // same route; generated ordinals alone are not evidence.
+    if !(is_flowchart_diagram(node)
+        && node.tag_name().name() == "path"
+        && has_class_token(node, "edge-thickness-invisible")
+        && has_class_token(node, "edge-pattern-solid")
+        && node.attribute("data-edge") == Some("true")
+        && node.attribute("data-et") == Some("edge")
+        && node
+            .attribute("data-look")
+            .is_some_and(|look| matches!(look, "classic" | "neo")))
+    {
+        return false;
+    }
+    let Some(root) = flowchart_svg_root(node) else {
+        return false;
+    };
+    if root.attribute("aria-roledescription") != Some("flowchart-v2") {
+        return false;
+    }
+    let Some(semantic_id) = node
+        .attribute("data-id")
+        .filter(|value| !value.is_empty() && flowchart_edge_endpoint_pair(value).is_some())
+    else {
+        return false;
+    };
+    let Some(id) = node.attribute("id") else {
+        return false;
+    };
+    let producer_id = strip_flowchart_document_scope(node, id);
+    if producer_id != semantic_id
+        && !producer_id.strip_prefix("edge-").is_some_and(|ordinal| {
+            !ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return false;
+    }
+    let Some((source, target)) = flowchart_edge_endpoint_pair(semantic_id) else {
+        return false;
+    };
+    flowchart_has_closed_edge_label(node, semantic_id)
+        && flowchart_has_unique_node_terminal(node, source)
+        && flowchart_has_unique_node_terminal(node, target)
+}
+
+fn is_flowchart_edge(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node)
+        && node.tag_name().name() == "path"
+        && (has_class_token(node, "flowchart-link") || is_flowchart_closed_invisible_edge(node))
+}
+
+fn is_flowchart_self_loop_label_id(value: &str) -> bool {
+    let Some((endpoints, ordinal)) = value.rsplit_once("---") else {
+        return false;
+    };
+    let Some((source, target)) = endpoints.split_once("---") else {
+        return false;
+    };
+    !source.is_empty()
+        && source == target
+        && !source.chars().any(char::is_whitespace)
+        && !ordinal.is_empty()
+        && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn flowchart_synthetic_label_semantic_id<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+) -> Option<&'a str> {
+    if !(is_flowchart_diagram(node)
+        && node.tag_name().name() == "g"
+        && has_class_token(node, "label")
+        && has_class_token(node, "edgeLabel"))
+    {
+        return None;
+    }
+
+    fn upstream_edge_label_semantic_id(value: &str) -> Option<&str> {
+        let offset = value.rfind("-L_")?.saturating_add(1);
+        let semantic_id = value.get(offset..)?;
+        flowchart_edge_endpoint_pair(semantic_id).map(|_| semantic_id)
+    }
+
+    match (node.attribute("data-et"), node.attribute("data-id")) {
+        (None, None) => node.attribute("id").and_then(|value| {
+            upstream_edge_label_semantic_id(value)
+                .or_else(|| is_flowchart_self_loop_label_id(value).then_some(value))
+        }),
+        (Some("edge-label"), Some(data_id))
+            if flowchart_edge_endpoint_pair(data_id).is_some()
+                || is_flowchart_self_loop_label_id(data_id) =>
+        {
+            let generated_id = strip_flowchart_document_scope(node, node.attribute("id")?);
+            generated_id
+                .strip_prefix("synthetic-label-")
+                .is_some_and(|ordinal| {
+                    !ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+                })
+                .then_some(data_id)
+        }
+        _ => None,
+    }
+}
+
+fn is_flowchart_synthetic_label(node: roxmltree::Node<'_, '_>) -> bool {
+    flowchart_synthetic_label_semantic_id(node).is_some()
+}
+
+fn is_flowchart_typed_synthetic_label(node: roxmltree::Node<'_, '_>) -> bool {
+    node.attribute("data-et") == Some("edge-label")
+        && flowchart_synthetic_label_semantic_id(node).is_some()
+}
+
+fn has_flowchart_typed_duplicate_identity(node: roxmltree::Node<'_, '_>) -> bool {
+    if is_flowchart_typed_synthetic_label(node) {
+        return true;
+    }
+    if !node
+        .attribute("data-id")
+        .is_some_and(|value| !value.is_empty())
+    {
+        return false;
+    }
+    match node.attribute("data-et") {
+        Some("node") => is_flowchart_node_shell(node),
+        Some("cluster") => is_flowchart_cluster(node),
+        _ => false,
+    }
+}
+
+fn is_flowchart_semantic_element(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_node_shell(node)
+        || is_flowchart_cluster(node)
+        || is_flowchart_edge(node)
+        || is_flowchart_synthetic_label(node)
+        || (is_flowchart_diagram(node)
+            && node.tag_name().name() == "g"
+            && has_class_token(node, "edgeLabel"))
+}
+
+fn is_flowchart_nested_edge_label_data_id(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node)
+        && node.tag_name().name() == "g"
+        && has_class_token(node, "label")
+        && node.attribute("data-id").is_some()
+        && node.ancestors().any(|ancestor| {
+            ancestor.is_element()
+                && (ancestor
+                    .attribute("data-et")
+                    .is_some_and(|kind| kind == "edge-label")
+                    || has_class_token(ancestor, "edgeLabel"))
+        })
+}
+
+fn flowchart_diagram_id<'a, 'input>(node: roxmltree::Node<'a, 'input>) -> Option<&'a str> {
+    flowchart_svg_root(node)?.attribute("id")
+}
+
+fn strip_flowchart_scope<'a>(node: roxmltree::Node<'_, '_>, value: &'a str) -> &'a str {
+    let Some(diagram_id) = flowchart_diagram_id(node) else {
+        return value;
+    };
+    value
+        .strip_prefix(diagram_id)
+        .and_then(|suffix| {
+            suffix
+                .strip_prefix('-')
+                .or_else(|| suffix.strip_prefix('_'))
+        })
+        .unwrap_or(value)
+}
+
+fn strip_flowchart_document_scope<'a>(node: roxmltree::Node<'_, '_>, value: &'a str) -> &'a str {
+    let value = strip_flowchart_scope(node, value);
+    value
+        .strip_prefix("merman-flowchart-document-")
+        .or_else(|| value.strip_prefix("merman-flowchart-document_"))
+        .unwrap_or(value)
+}
+
+fn canonical_flowchart_fragment(node: roxmltree::Node<'_, '_>, value: &str) -> String {
+    let value = strip_flowchart_document_scope(node, value);
+
+    if matches!(value, "drop-shadow" | "drop-shadow-small") {
+        return format!("filter-{value}");
+    }
+
+    let node_prefix = if flowchart_svg_root(node)
+        .is_some_and(|root| root.attribute("aria-roledescription") == Some("agentflow"))
+    {
+        "agentflow-"
+    } else {
+        "flowchart-"
+    };
+    if let Some(raw) = value.strip_prefix(node_prefix)
+        && let Some((node_id, ordinal)) = raw.rsplit_once('-')
+        && !node_id.is_empty()
+        && !ordinal.is_empty()
+        && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return format!("node-{node_id}");
+    }
+
+    if value.starts_with("L_") {
+        return format!("edge-{value}");
+    }
+    if value.starts_with("edge-")
+        || value.starts_with("node-")
+        || value.starts_with("cluster-")
+        || value.starts_with("filter-")
+        || value.starts_with("gradient-")
+        || value.starts_with("a11y-")
+        || value.starts_with("flowchart-")
+    {
+        return value.to_string();
+    }
+
+    value.to_string()
+}
+
+fn is_flowchart_elk_cluster_container(node: roxmltree::Node<'_, '_>) -> bool {
+    let Some(root) = flowchart_svg_root(node) else {
+        return false;
+    };
+    if root.attribute("aria-roledescription") != Some("flowchart-elk") {
+        return false;
+    }
+
+    let Some(subgraph) = node.parent().filter(|parent| {
+        parent.is_element()
+            && parent.tag_name().name() == "g"
+            && has_class_token(*parent, "subgraph")
+    }) else {
+        return false;
+    };
+    subgraph.parent().is_some_and(|parent| {
+        parent.is_element()
+            && parent.tag_name().name() == "g"
+            && has_class_token(parent, "subgraphs")
+    })
+}
+
+fn canonical_flowchart_elk_cluster_identifier(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+) -> Option<String> {
+    if !is_flowchart_cluster(node) || !is_flowchart_elk_cluster_container(node) {
+        return None;
+    }
+    if node.attribute("data-look") != Some("classic")
+        || flowchart_role_label_text(node, "cluster-label").is_none()
+    {
+        return None;
+    }
+    // ELK collapses the upstream producer ID to the JavaScript object sentinel. Restrict this to
+    // the exact subgraph producer role and keep the independently rendered cluster label in the
+    // signature so author semantics remain observable.
+    if value == "[object Object]"
+        && node.attribute("data-et").is_none()
+        && node.attribute("data-id").is_none()
+    {
+        return Some("cluster-<elk-object-sentinel>".to_string());
+    }
+
+    let data_id = node
+        .attribute("data-id")
+        .filter(|value| !value.is_empty())?;
+    if flowchart_role_label_text(node, "cluster-label").as_deref() != Some(data_id) {
+        return None;
+    }
+    let generated_cluster_id = strip_flowchart_document_scope(node, value)
+        .strip_prefix("cluster-")
+        .is_some_and(|ordinal| {
+            !ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+        });
+    (node.attribute("data-et") == Some("cluster")
+        && !data_id.trim().is_empty()
+        && generated_cluster_id)
+        .then(|| "cluster-<elk-object-sentinel>".to_string())
+}
+
+fn canonical_flowchart_a11y_identifier(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+) -> Option<String> {
+    let root = flowchart_svg_root(node)?;
+    if node.parent() != Some(root) {
+        return None;
+    }
+    let diagram_id = root.attribute("id")?;
+    let (reference_attr, upstream_id, local_id, canonical) = match node.tag_name().name() {
+        "title" => (
+            "aria-labelledby",
+            format!("chart-title-{diagram_id}"),
+            "a11y-title",
+            "a11y-title",
+        ),
+        "desc" => (
+            "aria-describedby",
+            format!("chart-desc-{diagram_id}"),
+            "a11y-description",
+            "a11y-description",
+        ),
+        _ => return None,
+    };
+    if root.attribute(reference_attr) != Some(value) {
+        return None;
+    }
+
+    (value == upstream_id.as_str() || strip_flowchart_document_scope(node, value) == local_id)
+        .then(|| canonical.to_string())
+}
+
+fn canonical_flowchart_a11y_reference(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> Option<String> {
+    let root = flowchart_svg_root(node)?;
+    if node != root {
+        return None;
+    }
+    let expected_tag = match key {
+        "aria-labelledby" => "title",
+        "aria-describedby" => "desc",
+        _ => return None,
+    };
+    let mut targets = root
+        .children()
+        .filter(|candidate| candidate.is_element() && candidate.attribute("id") == Some(value));
+    let target = targets.next()?;
+    if targets.next().is_some() || target.tag_name().name() != expected_tag {
+        return None;
+    }
+    canonical_flowchart_a11y_identifier(target, value)
+}
+
+fn canonical_flowchart_root_gradient_identifier(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+) -> Option<String> {
+    let root = flowchart_svg_root(node)?;
+    if node.tag_name().name() != "linearGradient" || node.parent() != Some(root) {
+        return None;
+    }
+
+    matches!(
+        strip_flowchart_document_scope(node, value),
+        "gradient" | "gradient-root"
+    )
+    .then(|| "gradient-root".to_string())
+}
+
+/// Returns a canonical identity only for a recognized Flowchart producer role.
+///
+/// `None` is intentional: callers must retain the original value so authored IDs and malformed
+/// producer output remain observable.
+pub(crate) fn canonical_flowchart_identifier(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> Option<String> {
+    if key != "id" || !is_flowchart_diagram(node) {
+        return None;
+    }
+
+    if let Some(canonical) = canonical_flowchart_a11y_identifier(node, value) {
+        return Some(canonical);
+    }
+    if let Some(canonical) = canonical_flowchart_elk_cluster_identifier(node, value) {
+        return Some(canonical);
+    }
+
+    if is_flowchart_node_shell(node) && node.attribute("data-et").is_none_or(|kind| kind == "node")
+    {
+        if let Some(semantic_id) = flowchart_compound_subgraph_node_semantic_id(node, value)
+            .or_else(|| agentflow_collapsed_flow_semantic_id(node, value))
+        {
+            return Some(format!("node-{semantic_id}"));
+        }
+        if node.attribute("data-et") == Some("node")
+            && let Some(data_id) = node.attribute("data-id").filter(|value| !value.is_empty())
+        {
+            return Some(format!("node-{data_id}"));
+        }
+        let canonical = canonical_flowchart_fragment(node, value);
+        if canonical.starts_with("node-") {
+            return Some(canonical);
+        }
+    }
+
+    if is_flowchart_cluster(node)
+        && node
+            .attribute("data-et")
+            .is_none_or(|kind| kind == "cluster")
+    {
+        if node.attribute("data-et") == Some("cluster")
+            && let Some(data_id) = node.attribute("data-id").filter(|value| !value.is_empty())
+        {
+            return Some(format!("cluster-{data_id}"));
+        }
+        let fragment = canonical_flowchart_fragment(node, value);
+        if !fragment.is_empty() {
+            return Some(if fragment.starts_with("cluster-") {
+                fragment
+            } else {
+                format!("cluster-{fragment}")
+            });
+        }
+    }
+
+    if is_flowchart_edge(node) && node.attribute("data-et").is_none_or(|kind| kind == "edge") {
+        if node.attribute("data-et") == Some("edge")
+            && let Some(data_id) = node.attribute("data-id").filter(|value| !value.is_empty())
+        {
+            return Some(format!("edge-{data_id}"));
+        }
+        let canonical = canonical_flowchart_fragment(node, value);
+        if canonical.starts_with("edge-") {
+            return Some(canonical);
+        }
+    }
+
+    if is_flowchart_synthetic_label(node) {
+        let data_id = flowchart_synthetic_label_semantic_id(node)?;
+        return Some(format!("edge-label-{data_id}"));
+    }
+
+    match node.tag_name().name() {
+        "marker" | "filter" | "clipPath" => Some(canonical_flowchart_fragment(node, value)),
+        "linearGradient" => canonical_flowchart_root_gradient_identifier(node, value),
+        _ => None,
+    }
+}
+
+/// Canonicalizes a closed reference to the expected producer-owned resource kind.
+///
+/// Missing, ambiguous, wrong-kind, and unrecognized targets retain their original reference.
+pub(crate) fn canonical_flowchart_reference(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> String {
+    let expected_target = match key {
+        "marker-start" | "marker-mid" | "marker-end" => "marker",
+        "clip-path" => "clipPath",
+        "filter" => "filter",
+        "fill" | "stroke" => "linearGradient",
+        _ => return value.to_string(),
+    };
+    let Some(fragment) = value
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return value.to_string();
+    };
+    let Some(root) = flowchart_svg_root(node) else {
+        return value.to_string();
+    };
+    let mut targets = root
+        .descendants()
+        .filter(|candidate| candidate.is_element() && candidate.attribute("id") == Some(fragment));
+    let Some(target) = targets.next() else {
+        return value.to_string();
+    };
+    if targets.next().is_some() || target.tag_name().name() != expected_target {
+        return value.to_string();
+    }
+    let Some(canonical) = canonical_flowchart_identifier(target, "id", fragment) else {
+        return value.to_string();
+    };
+    format!("url(#{canonical})")
+}
+
+fn preserves_flowchart_identity_attribute(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> bool {
+    if !is_flowchart_diagram(node) {
+        return false;
+    }
+    match key {
+        "data-id" => {
+            is_flowchart_semantic_element(node) || is_flowchart_nested_edge_label_data_id(node)
+        }
+        "aria-labelledby" | "aria-describedby" => flowchart_svg_root(node) == Some(node),
+        "id" => {
+            let fragment = strip_flowchart_document_scope(node, value);
+            canonical_flowchart_identifier(node, key, value).is_some()
+                || is_flowchart_semantic_element(node)
+                || matches!(
+                    node.tag_name().name(),
+                    "title" | "desc" | "marker" | "filter" | "clipPath" | "linearGradient"
+                )
+                || fragment.starts_with("flowchart-")
+                || fragment.starts_with("L_")
+        }
+        _ => false,
+    }
+}
+
 fn build_node(
     n: roxmltree::Node<'_, '_>,
     mode: DomMode,
     decimals: u32,
     preserve_browser_text_rows: bool,
+    eventmodeling_root_fill: Option<&str>,
     preserve_path_vertices: bool,
 ) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
@@ -839,19 +1869,6 @@ fn build_node(
             false
         }
 
-        fn is_flowchart_diagram(n: roxmltree::Node<'_, '_>) -> bool {
-            for a in n.ancestors() {
-                if a.is_element() && a.tag_name().name() == "svg" {
-                    return a
-                        .attribute("aria-roledescription")
-                        .is_some_and(|v| v == "flowchart-v2")
-                        || a.attribute("class")
-                            .is_some_and(|c| c.split_whitespace().any(|t| t == "flowchart"));
-                }
-            }
-            false
-        }
-
         fn is_architecture_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
             let mut svg_count = 0;
             for a in n.ancestors() {
@@ -876,11 +1893,6 @@ fn build_node(
                         })
                     })
             })
-        }
-
-        fn has_class_token(n: roxmltree::Node<'_, '_>, token: &str) -> bool {
-            n.attribute("class")
-                .is_some_and(|c| c.split_whitespace().any(|t| t == token))
         }
 
         fn is_flowchart_label_container_path(n: roxmltree::Node<'_, '_>) -> bool {
@@ -914,6 +1926,12 @@ fn build_node(
                         && has_class_token(a, "cluster")
                         && a.attribute("data-look").is_some_and(|v| v == "handDrawn")
                 })
+        }
+
+        fn is_flowchart_renderer_paint_marker_id(n: roxmltree::Node<'_, '_>, value: &str) -> bool {
+            is_flowchart_hand_drawn_cluster_path(n)
+                && (value.ends_with("-merman-fill-paint")
+                    || value.ends_with("-merman-fill-stroke-paint"))
         }
 
         fn is_architecture_edge_arrow(n: roxmltree::Node<'_, '_>) -> bool {
@@ -978,6 +1996,64 @@ fn build_node(
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
+
+            if mode != DomMode::Strict && is_flowchart_diagram(n) {
+                if matches!(key.as_str(), "data-et" | "data-id")
+                    && has_flowchart_typed_duplicate_identity(n)
+                {
+                    // Typed node, cluster, and verified synthetic-label metadata duplicates
+                    // the canonical role identity. Edge-path and unrecognized edge-label
+                    // metadata remains observable and fails closed.
+                    continue;
+                }
+                if matches!(
+                    key.as_str(),
+                    "marker-start"
+                        | "marker-mid"
+                        | "marker-end"
+                        | "clip-path"
+                        | "filter"
+                        | "fill"
+                        | "stroke"
+                ) {
+                    val = canonical_flowchart_reference(n, &key, &val);
+                }
+                if matches!(key.as_str(), "aria-labelledby" | "aria-describedby")
+                    && let Some(canonical) = canonical_flowchart_a11y_reference(n, &key, &val)
+                {
+                    val = canonical;
+                }
+                if key == "id"
+                    && let Some(normalized) = canonical_flowchart_identifier(n, &key, &val)
+                {
+                    val = normalized;
+                }
+            }
+
+            if mode != DomMode::Strict
+                && key == "id"
+                && is_flowchart_renderer_paint_marker_id(n, &val)
+            {
+                // Renderer-owned paint markers are an internal evidence channel. Mermaid's
+                // reference path has no corresponding id, so keep the marker out of non-strict
+                // DOM parity while strict mode still detects its presence exactly.
+                continue;
+            }
+
+            if mode != DomMode::Strict && is_tree_view_renderer_paint_marker_id(n, &key, &val) {
+                // Tree View's line carries a renderer-owned dual-paint marker so native raster
+                // evidence can bind both semantic edge facets to the final stroke terminal.
+                // Mermaid's reference DOM has no equivalent id; strict mode still compares it.
+                continue;
+            }
+
+            if mode != DomMode::Strict && is_ishikawa_text_bbox_attr(n, &key) {
+                // Ishikawa's renderer-owned text bbox is evidence metadata for the local
+                // receipt, not an upstream Mermaid DOM semantic. Keep it in strict signatures
+                // and final SVG output, but do not make non-strict upstream DOM parity depend on
+                // this private attribute.
+                continue;
+            }
 
             if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && n.tag_name().name() == "foreignObject"
@@ -1187,11 +2263,15 @@ fn build_node(
                 val = normalize_class_edge_note_ids(&val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
-                val = normalize_identifier_tokens(&val);
+                if !preserves_flowchart_identity_attribute(n, &key, &val) {
+                    val = normalize_identifier_tokens(&val);
+                }
             } else if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && is_identifier_like_attr(&key)
             {
-                val = normalize_mermaid_generated_id_only(&val);
+                if !preserves_flowchart_identity_attribute(n, &key, &val) {
+                    val = normalize_mermaid_generated_id_only(&val);
+                }
             } else if mode == DomMode::Strict && is_identifier_like_attr(&key) {
                 if is_block_diagram(n) {
                     val = normalize_mermaid_generated_id_only(&val);
@@ -1222,6 +2302,18 @@ fn build_node(
 
             attrs.insert(key, val);
         }
+
+        if mode != DomMode::Strict
+            && is_eventmodeling_swimlane_text(n)
+            && !attrs.contains_key("fill")
+            && let Some(fill) = eventmodeling_root_fill
+            && eventmodeling_has_unoverridden_inheritance(n)
+        {
+            attrs.insert(
+                "fill".to_string(),
+                normalize_numeric_tokens_mode(fill, decimals, mode),
+            );
+        }
     }
 
     fn normalize_text_node_text(t: &str) -> Option<String> {
@@ -1244,6 +2336,7 @@ fn build_node(
                         mode,
                         decimals,
                         preserve_browser_text_rows,
+                        eventmodeling_root_fill,
                         preserve_path_vertices,
                     ));
                 } else if c.is_text()
@@ -1265,6 +2358,7 @@ fn build_node(
                     mode,
                     decimals,
                     preserve_browser_text_rows,
+                    eventmodeling_root_fill,
                     preserve_path_vertices,
                 ));
             }
@@ -1277,6 +2371,7 @@ fn build_node(
                 mode,
                 decimals,
                 preserve_browser_text_rows,
+                eventmodeling_root_fill,
                 preserve_path_vertices,
             ));
         }
@@ -1516,53 +2611,79 @@ fn build_node(
             flatten_ishikawa_nonsemantic_wrappers(&mut children);
         }
 
-        children.sort_by(|a, b| {
-            let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-            let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-            let ahint = sort_hint(a);
-            let bhint = sort_hint(b);
-            let a_is_c4_shape_group =
-                a.name == "g" && aclass.split_whitespace().any(|c| c == "person-man");
-            let b_is_c4_shape_group =
-                b.name == "g" && bclass.split_whitespace().any(|c| c == "person-man");
-            a.name
-                .cmp(&b.name)
-                .then_with(|| ahint.cmp(bhint))
-                .then_with(|| aclass.cmp(bclass))
-                .then_with(|| a.attrs.cmp(&b.attrs))
-                .then_with(|| {
-                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let a_fill = find_first_attr(a, "rect", "fill").unwrap_or("");
-                    let b_fill = find_first_attr(b, "rect", "fill").unwrap_or("");
-                    a_fill.cmp(b_fill)
-                })
-                .then_with(|| {
-                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let a_len = find_first_attr(a, "text", "textLength").unwrap_or("");
-                    let b_len = find_first_attr(b, "text", "textLength").unwrap_or("");
-                    a_len.cmp(b_len)
-                })
-                .then_with(|| {
-                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let at = count_tag(a, "tspan");
-                    let bt = count_tag(b, "tspan");
-                    at.cmp(&bt)
-                })
-                .then_with(|| {
-                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let ady = min_tspan_dy(a).unwrap_or(0.0);
-                    let bdy = min_tspan_dy(b).unwrap_or(0.0);
-                    ady.partial_cmp(&bdy).unwrap_or(std::cmp::Ordering::Equal)
-                })
-        });
+        if is_non_elk_flowchart_nodes_group(n) {
+            // Dagre Flowchart and Swimlane emit node shells in source order. Keep that order
+            // within each semantic role and only move synthetic edge labels after node shells;
+            // sorting by generated IDs would otherwise make `answer` precede `request` in
+            // Swimlane DOM. ELK intentionally remains in the generic semantic-id order below:
+            // its layout adapter owns render order rather than the source sequence.
+            children.sort_by_key(|child| flowchart_nodes_child_rank(n, child));
+        } else {
+            children.sort_by(|a, b| {
+                let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let ahint = sort_hint(a);
+                let bhint = sort_hint(b);
+                let a_root_rank = root_layout_group_rank(n, a);
+                let b_root_rank = root_layout_group_rank(n, b);
+                let a_cluster_rank = flowchart_cluster_child_rank(n, a);
+                let b_cluster_rank = flowchart_cluster_child_rank(n, b);
+                let a_nodes_rank = flowchart_nodes_child_rank(n, a);
+                let b_nodes_rank = flowchart_nodes_child_rank(n, b);
+                let a_is_c4_shape_group =
+                    a.name == "g" && aclass.split_whitespace().any(|c| c == "person-man");
+                let b_is_c4_shape_group =
+                    b.name == "g" && bclass.split_whitespace().any(|c| c == "person-man");
+                a_root_rank
+                    .cmp(&b_root_rank)
+                    .then_with(|| a_cluster_rank.cmp(&b_cluster_rank))
+                    .then_with(|| a_nodes_rank.cmp(&b_nodes_rank))
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| ahint.cmp(bhint))
+                    .then_with(|| aclass.cmp(bclass))
+                    .then_with(|| a.attrs.cmp(&b.attrs))
+                    .then_with(|| {
+                        if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let a_fill = find_first_attr(a, "rect", "fill").unwrap_or("");
+                        let b_fill = find_first_attr(b, "rect", "fill").unwrap_or("");
+                        a_fill.cmp(b_fill)
+                    })
+                    .then_with(|| {
+                        if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let a_len = find_first_attr(a, "text", "textLength").unwrap_or("");
+                        let b_len = find_first_attr(b, "text", "textLength").unwrap_or("");
+                        a_len.cmp(b_len)
+                    })
+                    .then_with(|| {
+                        if a.name != "g"
+                            || b.name != "g"
+                            || !aclass.is_empty()
+                            || !bclass.is_empty()
+                        {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let at = count_tag(a, "tspan");
+                        let bt = count_tag(b, "tspan");
+                        at.cmp(&bt)
+                    })
+                    .then_with(|| {
+                        if a.name != "g"
+                            || b.name != "g"
+                            || !aclass.is_empty()
+                            || !bclass.is_empty()
+                        {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let ady = min_tspan_dy(a).unwrap_or(0.0);
+                        let bdy = min_tspan_dy(b).unwrap_or(0.0);
+                        ady.partial_cmp(&bdy).unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            });
+        }
     }
 
     SvgDomNode {
@@ -2035,6 +3156,23 @@ pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
 mod tests {
     use super::*;
 
+    const NON_STRICT_FLOWCHART_MODES: [DomMode; 3] =
+        [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot];
+
+    fn assert_flowchart_non_strict_equivalent(upstream: &str, local: &str) {
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
     #[test]
     fn canonical_local_svg_signature_rejects_xml_declarations() {
         for svg in [
@@ -2099,6 +3237,769 @@ mod tests {
             dom.children[1].attrs.get("id").map(|s| s.as_str()),
             Some("flowchart-A-0")
         );
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_scoped_roles_but_preserves_authored_ids() {
+        let legacy = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="clusters"><g class="cluster" id="diagram-A"><rect/></g></g><g class="nodes"><g class="node" id="diagram-flowchart-A-0"><rect/></g></g><g class="edgePaths"><path class="flowchart-link" id="diagram-L_A_B_0" data-et="edge" data-id="L_A_B_0"/></g></svg>"#;
+        let typed = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="clusters"><g class="cluster" id="diagram-merman-flowchart-document-cluster-0" data-id="A" data-et="cluster"><rect/></g></g><g class="nodes"><g class="node" id="diagram-merman-flowchart-document-node-0" data-id="A" data-et="node"><rect/></g></g><g class="edgePaths"><path class="flowchart-link" id="diagram-merman-flowchart-document-edge-0" data-et="edge" data-id="L_A_B_0"/></g></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(legacy, typed);
+
+        let authored_a = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="legend" id="flowchart-custom-0"/></svg>"#;
+        let authored_b = authored_a.replace("flowchart-custom-0", "flowchart-custom-1");
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(authored_a, mode, 3).unwrap(),
+                dom_signature(&authored_b, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn agentflow_non_strict_normalizes_closed_producer_ids_and_references() {
+        let upstream = r##"<svg id="diagram" aria-roledescription="agentflow"><defs><filter id="diagram-drop-shadow"/><marker id="diagram_agentflow-pointEnd-margin"/></defs><g class="nodes"><g class="node default af-kind-input" id="diagram-agentflow-input-0"><rect filter="url(#diagram-drop-shadow)"/></g><g class="node default af-kind-task" id="diagram-agentflow-task-2"><rect/></g></g><g class="edgePaths"><path class="flowchart-link" id="diagram-L_input_task_0" data-et="edge" data-id="L_input_task_0" marker-end="url(#diagram_agentflow-pointEnd-margin)"/></g></svg>"##;
+        let local = upstream
+            .replace(
+                "diagram-drop-shadow",
+                "diagram-merman-flowchart-document-filter-drop-shadow",
+            )
+            .replace(
+                "diagram_agentflow-pointEnd-margin",
+                "diagram-merman-flowchart-document_agentflow-pointEnd-margin",
+            )
+            .replace(
+                r#"id="diagram-agentflow-input-0""#,
+                r#"id="diagram-merman-flowchart-document-node-0" data-et="node" data-id="input""#,
+            )
+            .replace(
+                r#"id="diagram-agentflow-task-2""#,
+                r#"id="diagram-merman-flowchart-document-node-2" data-et="node" data-id="task""#,
+            )
+            .replace(
+                "diagram-L_input_task_0",
+                "diagram-merman-flowchart-document-edge-0",
+            );
+        assert_flowchart_non_strict_equivalent(upstream, &local);
+
+        for changed in [
+            local.replace(r#"data-id="task""#, r#"data-id="other""#),
+            local.replace(r#"data-et="node""#, r#"data-et="cluster""#),
+            local.replace(
+                "url(#diagram-merman-flowchart-document_agentflow-pointEnd-margin)",
+                "url(#missing-marker)",
+            ),
+            local.replace(
+                r#"data-id="L_input_task_0""#,
+                r#"data-id="L_input_other_0""#,
+            ),
+        ] {
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(upstream, mode, 3).unwrap(),
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "identity, role, and reference mutations remain observable: {mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn agentflow_collapsed_flow_identity_requires_its_shape_terminal() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="agentflow"><g class="nodes"><g class="node" id="diagram-outer"><rect class="basic label-container flow-collapsed"/><g class="label"><text>Authored title</text></g><line class="collapsed-separator"/></g></g></svg>"#;
+        let local = upstream.replace(
+            r#"id="diagram-outer""#,
+            r#"id="diagram-merman-flowchart-document-node-subgraph-0" data-et="node" data-id="outer""#,
+        );
+        assert_flowchart_non_strict_equivalent(upstream, &local);
+
+        for (unproven_upstream, unproven_local) in [
+            (
+                upstream.replace("flow-collapsed", "ordinary"),
+                local.replace("flow-collapsed", "ordinary"),
+            ),
+            (
+                upstream.replace("collapsed-separator", "ordinary"),
+                local.replace("collapsed-separator", "ordinary"),
+            ),
+            (
+                upstream.replace("agentflow", "flowchart-v2"),
+                local.replace("agentflow", "flowchart-v2"),
+            ),
+            (
+                upstream.to_string(),
+                local.replace(r#"data-id="outer""#, r#"data-id="other""#),
+            ),
+        ] {
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(&unproven_upstream, mode, 3).unwrap(),
+                    dom_signature(&unproven_local, mode, 3).unwrap(),
+                    "unproven or changed collapsed identity must remain visible: {mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_root_layout_groups_have_stable_semantic_order() {
+        let svg = r#"<svg aria-roledescription="flowchart-v2"><g class="root"><g class="nodes"/><g class="edgeLabels"/><g class="edgePath"/><g class="clusters"/></g></svg>"#;
+        let dom = dom_signature(svg, DomMode::Structure, 3).unwrap();
+        let root = &dom.children[0];
+        let classes = root
+            .children
+            .iter()
+            .map(|child| child.attrs.get("class").map(String::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            classes,
+            vec![
+                Some("clusters"),
+                Some("edgePath"),
+                Some("edgeLabels"),
+                Some("nodes")
+            ]
+        );
+    }
+
+    #[test]
+    fn flowchart_non_strict_ignores_only_renderer_paint_marker_ids() {
+        let upstream = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path d="M0 0"/></g></g></svg>"#;
+        let local = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path id="diagram-cluster-merman-fill-paint" d="M0 0"/></g></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn tree_view_non_strict_ignores_only_renderer_dual_paint_marker_ids() {
+        let upstream = r#"<svg aria-roledescription="treeView"><line x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
+        let local = r#"<svg aria-roledescription="treeView"><line id="treeView-edge-0-merman-fill-stroke-paint" x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let wrong_class = local.replace("treeView-node-line", "treeView-node-icon");
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(&wrong_class, DomMode::Structure, 3).unwrap()
+        );
+        let wrong_family = local.replace(
+            "aria-roledescription=\"treeView\"",
+            "aria-roledescription=\"flowchart-v2\"",
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(&wrong_family, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_nodes_keep_source_order_across_generated_id_shapes() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="node default" id="diagram-flowchart-request-0"/><g class="node default" id="diagram-flowchart-receive-1"/><g class="label edgeLabel" id="edge-label-triage-answer-L_triage_answer_0"/></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="node default" id="diagram-merman-flowchart-document-node-0" data-id="request" data-et="node"/><g class="node default" id="diagram-merman-flowchart-document-node-1" data-id="receive" data-et="node"/><g class="label edgeLabel" id="diagram-merman-flowchart-document-synthetic-label-12" data-id="L_triage_answer_0" data-et="edge-label"/></g></svg>"#;
+
+        for family in ["flowchart-v2", "agentflow"] {
+            let upstream = upstream.replace("flowchart-v2", family);
+            let upstream = if family == "agentflow" {
+                upstream.replace("diagram-flowchart-", "diagram-agentflow-")
+            } else {
+                upstream
+            };
+            let local = local.replace("flowchart-v2", family);
+            let reordered = local
+                .replace(r#"data-id="request""#, r#"data-id="temporary""#)
+                .replace(r#"data-id="receive""#, r#"data-id="request""#)
+                .replace(r#"data-id="temporary""#, r#"data-id="receive""#);
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_eq!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "{family}: {mode:?}"
+                );
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&reordered, mode, 3).unwrap(),
+                    "semantic node order must remain observable: {family} {mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_nodes_compare_by_semantic_identity_not_layout_order() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="nodes"><g class="node default" id="node-a"/><g class="node default" id="node-b"/></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="nodes"><g class="node default" id="diagram-merman-flowchart-document-node-1" data-id="b" data-et="node"/><g class="node default" id="diagram-merman-flowchart-document-node-0" data-id="a" data-et="node"/></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_from_competing_root_declarations() {
+        for styles in [
+            "<style>#event-diagram{fill:#333;fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;fill:#333;}</style>",
+            "<style>#event-diagram{fill:#333;}#event-diagram{fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;}</style><style>#event-diagram{fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333!important;fill:#f00!important;}</style>",
+            "<style>#event-diagram{fill:#333;FILL:#f00;}</style>",
+            r"<style>#event-diagram{fill:#333;f\69ll:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;all:initial;}</style>",
+        ] {
+            let upstream = format!(
+                r#"<svg id="event-diagram" aria-roledescription="eventmodeling">{styles}<g class="em-swimlane"><text>Events</text></g></svg>"#
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "competing root declarations must remain unnormalized: {styles}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_through_stylesheet_overrides() {
+        for rule in [
+            "#event-diagram .em-swimlane{fill:#f00;}",
+            "#event-diagram g{fill:#f00;}",
+            "#event-diagram text{fill:#f00;}",
+            "#event-diagram .absent,#event-diagram .em-swimlane{fill:#f00;}",
+            "#event-diagram,#event-diagram .em-swimlane{fill:#333;}",
+            "#event-diagram .em-swimlane{all:initial;}",
+            "#event-diagram text{all:initial;}",
+            r"#event-diagram .em-swimlane{f\69ll:#f00;}",
+            "#event-diagram :is(.em-swimlane,.absent){fill:#f00;}",
+            "#event-diagram :is(.em-swimlane) .absent{fill:#f00;}",
+            "#event-diagram > .absent{fill:#f00;}",
+            "@media screen{#event-diagram .em-swimlane{fill:#f00;}}",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{{fill:#333;}}{rule}</style><g class="em-swimlane"><text>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "stylesheet override must block root inheritance: {rule}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_from_later_nested_root_rule() {
+        for selectors in [
+            "@media print",
+            "@supports (display: grid)",
+            "@keyframes dash",
+            ".unused",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>{selectors}{{.unused{{stroke:red;}}#event-diagram{{fill:#333;}}}}</style><g class="em-swimlane"><text>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "a later nested rule must not become an unconditional root rule: {selectors}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_infers_eventmodeling_fill_with_proven_unrelated_class_rules() {
+        for rule in [
+            "",
+            "#event-diagram .em-swimlane{stroke:#f00;}",
+            "#event-diagram .marker{fill:#f00;}",
+            "#event-diagram .error-icon,#event-diagram .error-text{fill:#f00;}",
+            "#event-diagram [data-look='neo'].node circle .state-start{fill:#f00;}",
+            "@keyframes dash{to{stroke-dashoffset:0;}}",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{{fill:#333;}}{rule}</style><g class="em-swimlane"><text>Events</text></g><g class="marker"/></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_eq!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "unrelated rules must preserve root inheritance: {rule}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_infers_eventmodeling_fill_with_upstream_fixture_stylesheet() {
+        let upstream = include_str!(
+            "../../../fixtures/upstream-svgs/eventmodeling/upstream_docs_eventmodeling_minimum.svg"
+        );
+        let local = upstream.replace("<text ", "<text fill=\"#333\" ");
+        assert_ne!(upstream, local);
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(&local, mode, 3).unwrap(),
+                "upstream fixture must preserve root inheritance: {mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_through_source_overrides() {
+        for (root_style, group_attributes, text_attributes) in [
+            ("", "fill=\"#f00\"", ""),
+            ("", "style=\"fill:#f00\"", ""),
+            ("fill:#f00", "", ""),
+            ("", "style=\"all:initial\"", ""),
+            ("", "", "style=\"fill:#f00\""),
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling" style="{root_style}"><style>#event-diagram{{fill:#333;}}</style><g class="em-swimlane" {group_attributes}><text {text_attributes}>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text ", "<text fill=\"#333\" ");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "source override must block root inheritance: {upstream}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_compares_eventmodeling_swimlane_effective_fill() {
+        let upstream = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text font-weight="bold">Events</text></g></svg>"##;
+        let local = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text fill="#333" font-weight="bold">Events</text></g></svg>"##;
+
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let wrong_fill = local.replace("fill=\"#333\"", "fill=\"#f00\"");
+        assert_ne!(
+            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(&wrong_fill, DomMode::Parity, 3).unwrap()
+        );
+
+        let unproven_upstream = upstream.replace("<style>#event-diagram{fill:#333;}</style>", "");
+        assert_ne!(
+            dom_signature(&unproven_upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(local, DomMode::Parity, 3).unwrap()
+        );
+
+        let quoted_style = "font-family:'quoted;family';fill:#333;";
+        let quoted_upstream = upstream.replace("fill:#333;", quoted_style);
+        let quoted_local = local.replace("fill:#333;", quoted_style);
+        assert_eq!(
+            dom_signature(&quoted_upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(&quoted_local, DomMode::Parity, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_ignores_only_ishikawa_renderer_text_bbox_metadata() {
+        let upstream = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label">Cause</text></svg>"#;
+        let local = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label" data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let unrelated = r#"<svg aria-roledescription="flowchart-v2"><text data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(unrelated, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_all_node_shape_producer_ids() {
+        for class in ["node", "rough-node", "icon-shape", "image-shape"] {
+            let legacy = format!(
+                r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="{class} default" id="diagram-flowchart-A-0"><rect/></g></g></svg>"#
+            );
+            let typed = format!(
+                r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="{class} default" id="diagram-merman-flowchart-document-node-7" data-id="A" data-et="node"><rect/></g></g></svg>"#
+            );
+            assert_flowchart_non_strict_equivalent(&legacy, &typed);
+        }
+
+        let unrelated = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="rough-node-copy" id="diagram-flowchart-A-0"><rect/></g></g></svg>"#;
+        let falsely_typed = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="rough-node-copy" id="diagram-merman-flowchart-document-node-7" data-id="A" data-et="node"><rect/></g></g></svg>"#;
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(unrelated, mode, 3).unwrap(),
+                dom_signature(falsely_typed, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_closed_a11y_idrefs() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2" aria-labelledby="chart-title-diagram" aria-describedby="chart-desc-diagram"><title id="chart-title-diagram">Title</title><desc id="chart-desc-diagram">Description</desc></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2" aria-labelledby="diagram-merman-flowchart-document-a11y-title" aria-describedby="diagram-merman-flowchart-document-a11y-description"><title id="diagram-merman-flowchart-document-a11y-title">Title</title><desc id="diagram-merman-flowchart-document-a11y-description">Description</desc></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+    }
+
+    #[test]
+    fn flowchart_a11y_normalization_rejects_broken_or_wrong_kind_refs() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2" aria-labelledby="chart-title-diagram"><title id="chart-title-diagram">Title</title></svg>"#;
+        let broken = r#"<svg id="diagram" aria-roledescription="flowchart-v2" aria-labelledby="missing-title"><title id="diagram-merman-flowchart-document-a11y-title">Title</title></svg>"#;
+        let wrong_kind = r#"<svg id="diagram" aria-roledescription="flowchart-v2" aria-labelledby="diagram-merman-flowchart-document-a11y-title"><desc id="diagram-merman-flowchart-document-a11y-title">Title</desc></svg>"#;
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            let expected = dom_signature(upstream, mode, 3).unwrap();
+            assert_ne!(expected, dom_signature(broken, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(wrong_kind, mode, 3).unwrap());
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_root_gradient_id_and_reference() {
+        let upstream = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-gradient"><stop/></linearGradient><rect fill="url(#diagram-gradient)"/></svg>"##;
+        let local = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-merman-flowchart-document-gradient-root"><stop/></linearGradient><rect fill="url(#diagram-merman-flowchart-document-gradient-root)"/></svg>"##;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+    }
+
+    #[test]
+    fn flowchart_gradient_normalization_rejects_nested_authored_and_broken_refs() {
+        let nested_upstream = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><defs><linearGradient id="diagram-gradient"><stop/></linearGradient></defs><rect fill="url(#diagram-gradient)"/></svg>"##;
+        let nested_local = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><defs><linearGradient id="diagram-merman-flowchart-document-gradient-root"><stop/></linearGradient></defs><rect fill="url(#diagram-merman-flowchart-document-gradient-root)"/></svg>"##;
+        let authored_a = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="authored-one"><stop/></linearGradient><rect fill="url(#authored-one)"/></svg>"##;
+        let authored_b = authored_a.replace("authored-one", "authored-two");
+        let broken = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-merman-flowchart-document-gradient-root"><stop/></linearGradient><rect fill="url(#missing-gradient)"/></svg>"##;
+        let valid = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-gradient"><stop/></linearGradient><rect fill="url(#diagram-gradient)"/></svg>"##;
+        let wrong_role_upstream = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-gradient"><stop/></linearGradient><rect filter="url(#diagram-gradient)"/></svg>"##;
+        let wrong_role_local = r##"<svg id="diagram" aria-roledescription="flowchart-v2"><linearGradient id="diagram-merman-flowchart-document-gradient-root"><stop/></linearGradient><rect filter="url(#diagram-merman-flowchart-document-gradient-root)"/></svg>"##;
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(nested_upstream, mode, 3).unwrap(),
+                dom_signature(nested_local, mode, 3).unwrap()
+            );
+            assert_ne!(
+                dom_signature(authored_a, mode, 3).unwrap(),
+                dom_signature(&authored_b, mode, 3).unwrap()
+            );
+            assert_ne!(
+                dom_signature(valid, mode, 3).unwrap(),
+                dom_signature(broken, mode, 3).unwrap()
+            );
+            assert_ne!(
+                dom_signature(wrong_role_upstream, mode, 3).unwrap(),
+                dom_signature(wrong_role_local, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_synthetic_label_producer_ids() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="edgeLabels"><g class="label edgeLabel" id="A---A---1"/></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="edgeLabels"><g class="label edgeLabel" id="diagram-merman-flowchart-document-synthetic-label-2" data-id="A---A---1" data-et="edge-label"/></g></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+        assert_flowchart_non_strict_equivalent(
+            upstream,
+            &local.replace("synthetic-label-2", "synthetic-label-9"),
+        );
+
+        let changed_id = local.replace("A---A---1", "B---B---1");
+        let malformed_id = local.replace("A---A---1", "A---B---1");
+        let malformed_producer = local.replace("synthetic-label-2", "synthetic-label-x");
+        let changed_role = local.replace("data-et=\"edge-label\"", "data-et=\"edge\"");
+        let unrelated = local.replace("label edgeLabel", "edgeLabel");
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            let expected = dom_signature(upstream, mode, 3).unwrap();
+            assert_ne!(expected, dom_signature(&changed_id, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(&malformed_id, mode, 3).unwrap());
+            assert_ne!(
+                expected,
+                dom_signature(&malformed_producer, mode, 3).unwrap()
+            );
+            assert_ne!(expected, dom_signature(&changed_role, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(&unrelated, mode, 3).unwrap());
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_known_elk_cluster_sentinel() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="subgraphs"><g class="subgraph"><g class="cluster" id="[object Object]" data-look="classic"><rect/><g class="cluster-label"><foreignObject><div><span class="nodeLabel"><p>P1.5</p></span></div></foreignObject></g></g></g></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="subgraphs"><g class="subgraph"><g class="cluster" id="diagram-merman-flowchart-document-cluster-0" data-id="P1.5" data-et="cluster" data-look="classic"><rect/><g class="cluster-label"><foreignObject><div><span class="nodeLabel"><p>P1.5</p></span></div></foreignObject></g></g></g></g></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+
+        let authored_id = local.replace(
+            "diagram-merman-flowchart-document-cluster-0",
+            "diagram-authored-cluster",
+        );
+        let changed_label = local.replace("<p>P1.5</p>", "<p>Other</p>");
+        let wrong_role = local.replace("data-et=\"cluster\"", "data-et=\"node\"");
+        let sentinel_outside = upstream.replace(
+            r#"<g class="subgraphs"><g class="subgraph">"#,
+            r#"<g class="clusters"><g>"#,
+        );
+        let local_outside = local.replace(
+            r#"<g class="subgraphs"><g class="subgraph">"#,
+            r#"<g class="clusters"><g>"#,
+        );
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            let expected = dom_signature(upstream, mode, 3).unwrap();
+            assert_ne!(expected, dom_signature(&authored_id, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(&changed_label, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(&wrong_role, mode, 3).unwrap());
+            assert_ne!(
+                dom_signature(&sentinel_outside, mode, 3).unwrap(),
+                dom_signature(&local_outside, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_compound_subgraph_node_shell_id() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"><g class="node" id="diagram-B" data-look="classic"><g class="label"><span class="nodeLabel"><p>B</p></span></g></g><g class="root"><g class="clusters"><g class="cluster" id="diagram-A"><g class="cluster-label"><span class="nodeLabel"><p>A</p></span></g></g></g><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"/></g></g></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"><g class="node" id="diagram-merman-flowchart-document-node-subgraph-1" data-id="B" data-et="node" data-look="classic"><g class="label"><span class="nodeLabel"><p>B</p></span></g></g><g class="root"><g class="clusters"><g class="cluster" id="diagram-merman-flowchart-document-cluster-0" data-id="A" data-et="cluster"><g class="cluster-label"><span class="nodeLabel"><p>A</p></span></g></g></g><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"/></g></g></g></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+
+        let ordinary_upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="nodes"><g class="node" id="diagram-B" data-look="classic"><g class="label"><span class="nodeLabel"><p>B</p></span></g></g></g></g></svg>"#;
+        let ordinary_local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="nodes"><g class="node" id="diagram-merman-flowchart-document-node-0" data-id="B" data-et="node" data-look="classic"><g class="label"><span class="nodeLabel"><p>B</p></span></g></g></g></g></svg>"#;
+        let unscoped_upstream = upstream.replace("id=\"diagram-B\"", "id=\"B\"");
+        let wrong_label = upstream.replace("<p>B</p>", "<p>C</p>");
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(ordinary_upstream, mode, 3).unwrap(),
+                dom_signature(ordinary_local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+            assert_ne!(
+                dom_signature(&unscoped_upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+            assert_ne!(
+                dom_signature(&wrong_label, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_normalizes_closed_invisible_edge_id() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="clusters"/><g class="edgePaths"><path id="diagram-L_A_B_0" class="edge-thickness-invisible edge-pattern-solid" data-edge="true" data-et="edge" data-id="L_A_B_0" data-look="classic"/></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0"/></g></g><g class="nodes"><g class="node" id="diagram-flowchart-A-0"><g class="label"><p>A</p></g></g><g class="node" id="diagram-flowchart-B-1"><g class="label"><p>B</p></g></g></g></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="clusters"/><g class="edgePaths"><path id="diagram-merman-flowchart-document-edge-0" class="edge-thickness-invisible edge-pattern-solid" data-edge="true" data-et="edge" data-id="L_A_B_0" data-look="classic"/></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0"/></g></g><g class="nodes"><g class="node" id="diagram-merman-flowchart-document-node-0" data-id="A" data-et="node"><g class="label"><p>A</p></g></g><g class="node" id="diagram-merman-flowchart-document-node-1" data-id="B" data-et="node"><g class="label"><p>B</p></g></g></g></g></svg>"#;
+
+        assert_flowchart_non_strict_equivalent(upstream, local);
+        assert_flowchart_non_strict_equivalent(
+            upstream,
+            &local.replace("document-edge-0", "document-edge-9"),
+        );
+
+        let missing_label_upstream = upstream.replace(
+            r#"<g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0"/></g></g>"#,
+            r#"<g class="edgeLabels"/>"#,
+        );
+        let missing_label_local = local.replace(
+            r#"<g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0"/></g></g>"#,
+            r#"<g class="edgeLabels"/>"#,
+        );
+        let missing_terminal_upstream = upstream.replace(
+            r#"<g class="node" id="diagram-flowchart-B-1"><g class="label"><p>B</p></g></g>"#,
+            "",
+        );
+        let missing_terminal_local = local.replace(
+            r#"<g class="node" id="diagram-merman-flowchart-document-node-1" data-id="B" data-et="node"><g class="label"><p>B</p></g></g>"#,
+            "",
+        );
+        let changed_role = local.replace("data-et=\"edge\"", "data-et=\"node\"");
+        let changed_semantic_id = local.replace(
+            "data-id=\"L_A_B_0\" data-look=\"classic\"",
+            "data-id=\"L_A_C_0\" data-look=\"classic\"",
+        );
+        let authored_producer = local.replace(
+            "diagram-merman-flowchart-document-edge-0",
+            "diagram-authored-edge",
+        );
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            let expected = dom_signature(upstream, mode, 3).unwrap();
+            assert_ne!(
+                dom_signature(&missing_label_upstream, mode, 3).unwrap(),
+                dom_signature(&missing_label_local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+            assert_ne!(
+                dom_signature(&missing_terminal_upstream, mode, 3).unwrap(),
+                dom_signature(&missing_terminal_local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+            assert_ne!(expected, dom_signature(&changed_role, mode, 3).unwrap());
+            assert_ne!(
+                expected,
+                dom_signature(&changed_semantic_id, mode, 3).unwrap()
+            );
+            assert_ne!(
+                expected,
+                dom_signature(&authored_producer, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_neo_invisible_edge_requires_closed_endpoints_and_label_layer() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="root"><g class="edgePaths"><path id="diagram-L_A_B_0" class="edge-thickness-invisible edge-pattern-solid" data-edge="true" data-et="edge" data-id="L_A_B_0" data-look="neo"/></g><g class="edgeLabels"/><g class="nodes"><g class="node" id="diagram-flowchart-A-0"/><g class="node" id="diagram-flowchart-B-1"/></g></g></svg>"#;
+        let local = upstream.replace(
+            "diagram-L_A_B_0",
+            "diagram-merman-flowchart-document-edge-0",
+        );
+        assert_flowchart_non_strict_equivalent(upstream, &local);
+
+        for (from, to) in [
+            (r#"<g class="edgeLabels"/>"#, ""),
+            (
+                r#"<g class="edgeLabels"/>"#,
+                r#"<g class="edgeLabels"/><g class="edgeLabels"/>"#,
+            ),
+            (
+                r#"<g class="edgeLabels"/>"#,
+                r#"<g class="edgeLabels"><g class="label" data-id="L_A_C_0"/></g>"#,
+            ),
+            (r#"<g class="node" id="diagram-flowchart-B-1"/>"#, ""),
+            (r#"data-look="neo""#, r#"data-look="classic""#),
+        ] {
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(&upstream.replace(from, to), mode, 3).unwrap(),
+                    dom_signature(&local.replace(from, to), mode, 3).unwrap(),
+                    "unclosed invisible edge must retain its original producer ID: {mode:?} {from}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_keeps_edge_role_and_semantic_id_fail_closed() {
+        let baseline = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><path class="flowchart-link" id="diagram-L_A_B_0" data-et="edge" data-id="L_A_B_0"/></svg>"#;
+        let role_changed = baseline.replace("data-et=\"edge\"", "data-et=\"node\"");
+        let id_changed = baseline.replace("data-id=\"L_A_B_0\"", "data-id=\"L_A_C_0\"");
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            let expected = dom_signature(baseline, mode, 3).unwrap();
+            assert_ne!(expected, dom_signature(&role_changed, mode, 3).unwrap());
+            assert_ne!(expected, dom_signature(&id_changed, mode, 3).unwrap());
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_preserves_semantic_edge_id_that_resembles_generated_id() {
+        let baseline = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><path class="flowchart-link" id="diagram-L_id-a-1_B_0"/></svg>"#;
+        let changed =
+            baseline.replace("id=\"diagram-L_id-a-1_B_0\"", "id=\"diagram-L_id-b-1_B_0\"");
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(baseline, mode, 3).unwrap(),
+                dom_signature(&changed, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_preserves_semantic_edge_data_id_that_resembles_generated_id() {
+        let baseline = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><path class="flowchart-link" id="diagram-L_id-a-1_B_0" data-et="edge" data-id="L_id-a-1_B_0"/></svg>"#;
+        let changed = baseline.replace("data-id=\"L_id-a-1_B_0\"", "data-id=\"L_id-b-1_B_0\"");
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(baseline, mode, 3).unwrap(),
+                dom_signature(&changed, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_non_strict_preserves_nested_edge_label_data_id() {
+        let baseline = r#"<svg aria-roledescription="flowchart-v2"><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_id-a-1_B_0"/></g></g></svg>"#;
+        let changed = baseline.replace("L_id-a-1_B_0", "L_id-b-1_B_0");
+
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(baseline, mode, 3).unwrap(),
+                dom_signature(&changed, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parity_keeps_non_flowchart_generated_id_normalization() {
+        let svg =
+            r#"<svg aria-roledescription="block"><g class="node" id="id-abc123def456-1"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(
+            dom.children[0].attrs.get("id").map(String::as_str),
+            Some("id-<id>-1")
+        );
+    }
+
+    #[test]
+    fn flowchart_parity_normalizes_nonsemantic_generated_ids_in_both_modes() {
+        let svg = r#"<svg aria-roledescription="flowchart-v2"><g class="legend" id="id-abc123def456-1"/><rect class="node" id="id-fedcba654321-2"/></svg>"#;
+
+        for mode in [DomMode::Parity, DomMode::ParityRoot] {
+            let dom = dom_signature(svg, mode, 3).unwrap();
+            assert_eq!(
+                dom.children[0].attrs.get("id").map(String::as_str),
+                Some("id-<id>-1")
+            );
+            assert_eq!(
+                dom.children[1].attrs.get("id").map(String::as_str),
+                Some("id-<id>-2")
+            );
+        }
     }
 
     #[test]

@@ -28,6 +28,15 @@ This is the cumulative migration from the 0.7.0 package to 0.8.0, including chan
 
 - Follow the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels) and [root changelog](../../CHANGELOG.md). Published alpha sections below remain historical contracts; native Rust timings do not measure Dart/Flutter transport performance.
 
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
+
+### Added
+
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+
 ## [0.8.0-alpha.7] - 2026-09-30
 
 ### Added
@@ -56,7 +65,8 @@ This section describes alpha.6, published to pub.dev on 2026-09-04 after the com
 
 ### Breaking changes
 
-- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- The current ABI 3 table appends `operation_control_new`, `operation_control_cancel`, `operation_control_release`, and `execute_collect_controlled`; the Dart wrapper now requires the complete table through slot 10 and maps status 17 to structured cancellation details. Upgrade the Dart package and native artifacts together.
+- Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
 - ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract; upgrade Dart and bundled native artifacts together.
 
 ## 0.8.0-alpha.5 - 2026-08-12

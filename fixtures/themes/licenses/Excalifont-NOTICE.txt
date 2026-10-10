@@ -1,0 +1,13 @@
+Excalifont Regular
+
+Copyright (c) 2024 by Excalidraw. All rights reserved.
+Excalifont is a trademark of Excalidraw.
+
+Original design: Your Own Font Foundry (Virgil)
+Excalifont modifications: Ján Filípek / DizajnDesign
+Version: 1.000
+PostScript name: Excalifont-Regular
+
+Licensed under the SIL Open Font License, Version 1.1.
+Source snapshot: Excalidraw e4ab626739f5f163c5eca56190f615643218b61c
+Source path: packages/excalidraw/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2

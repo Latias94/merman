@@ -24,6 +24,15 @@ This entry summarizes the package since its introduction during the 0.8 alphas; 
 
 - Use the [package guide](README.md), [stable migration guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../CHANGELOG.md) for the published contract. Native Rust benchmark observations are not Node transport measurements.
 
+### Breaking changes
+
+- Advance binding Options JSON from schema `2` to `3` for both native and Node-WASM consumers. Move styling from `presentation.theme` to the closed top-level `theme` preset-or-spec group and replace `presentation-catalog` discovery with `theme-catalog`. Removed presentation-profile and host-owned CSS/security fields are rejected.
+
+### Added
+
+- Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
+- Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
+
 ## [0.8.0-alpha.7] - 2026-09-30
 
 ### Added

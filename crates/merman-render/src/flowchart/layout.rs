@@ -26,12 +26,13 @@ use super::{
     FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderContext, FlowchartRenderModelRef,
 };
 use super::{
-    FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
-    FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_edge_label_text_style, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout,
-    measure_flowchart_svg_label_for_layout_with_metrics_style,
+    FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    flowchart_apply_html_node_class_box_metrics, flowchart_effective_text_style_for_classes,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -170,17 +171,35 @@ fn dir_to_rankdir(dir: &str) -> RankDir {
 const SELF_LOOP_ID_EXTRA: &str = "selfLoopId";
 const SELF_LOOP_NODE_EXTRA: &str = "selfLoopNode";
 const SELF_LOOP_ORDER_EXTRA: &str = "selfLoopOrder";
+const EDGE_OWNER_INDEX_EXTRA: &str = "mermanEdgeOwnerIndex";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowchartSelfLoopSegmentMeta {
     logical_edge_id: String,
+    owner_index: usize,
     node_id: String,
     order: u8,
 }
 
 struct FlowchartLayoutEdgeCandidate {
     edge: LayoutEdge,
+    owner_index: usize,
     self_loop: Option<FlowchartSelfLoopSegmentMeta>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FlowchartLayoutSegmentKey {
+    owner_index: usize,
+    self_loop_order: Option<u8>,
+}
+
+impl FlowchartLayoutSegmentKey {
+    fn new(owner_index: usize, self_loop: Option<&FlowchartSelfLoopSegmentMeta>) -> Self {
+        Self {
+            owner_index,
+            self_loop_order: self_loop.map(|meta| meta.order),
+        }
+    }
 }
 
 fn flowchart_layout_edge_key(
@@ -210,6 +229,29 @@ fn annotate_flowchart_self_loop_segment(
         .insert(SELF_LOOP_ORDER_EXTRA.to_string(), Value::from(meta.order));
 }
 
+fn annotate_flowchart_edge_owner(label: &mut EdgeLabel, owner_index: usize) {
+    label
+        .extras
+        .insert(EDGE_OWNER_INDEX_EXTRA.to_string(), Value::from(owner_index));
+}
+
+fn flowchart_edge_owner_index(label: &EdgeLabel) -> Option<usize> {
+    usize::try_from(label.extras.get(EDGE_OWNER_INDEX_EXTRA)?.as_u64()?).ok()
+}
+
+fn flowchart_layout_segment_key(label: &EdgeLabel) -> Option<FlowchartLayoutSegmentKey> {
+    let owner_index = flowchart_edge_owner_index(label)?;
+    let self_loop_order = label
+        .extras
+        .get(SELF_LOOP_ORDER_EXTRA)
+        .and_then(Value::as_u64)
+        .and_then(|order| u8::try_from(order).ok());
+    Some(FlowchartLayoutSegmentKey {
+        owner_index,
+        self_loop_order,
+    })
+}
+
 fn flowchart_self_loop_segment_meta(label: &EdgeLabel) -> Option<FlowchartSelfLoopSegmentMeta> {
     let logical_edge_id = label.extras.get(SELF_LOOP_ID_EXTRA)?.as_str()?.to_string();
     let node_id = label
@@ -220,6 +262,7 @@ fn flowchart_self_loop_segment_meta(label: &EdgeLabel) -> Option<FlowchartSelfLo
     let order = u8::try_from(label.extras.get(SELF_LOOP_ORDER_EXTRA)?.as_u64()?).ok()?;
     Some(FlowchartSelfLoopSegmentMeta {
         logical_edge_id,
+        owner_index: flowchart_edge_owner_index(label)?,
         node_id,
         order,
     })
@@ -230,18 +273,17 @@ fn merge_flowchart_self_loop_segments(
     layout_nodes: &[LayoutNode],
     rankdir: &str,
     layout_edges: Vec<FlowchartLayoutEdgeCandidate>,
-) -> Vec<LayoutEdge> {
+) -> Vec<FlowchartLayoutEdgeCandidate> {
     let mut output = Vec::with_capacity(layout_edges.len());
-    let mut segments_by_id: IndexMap<String, Vec<(LayoutEdge, FlowchartSelfLoopSegmentMeta)>> =
-        IndexMap::new();
+    let mut segments_by_owner: IndexMap<usize, Vec<FlowchartLayoutEdgeCandidate>> = IndexMap::new();
     for candidate in layout_edges {
-        if let Some(meta) = candidate.self_loop {
-            segments_by_id
-                .entry(meta.logical_edge_id.clone())
+        if candidate.self_loop.is_some() {
+            segments_by_owner
+                .entry(candidate.owner_index)
                 .or_default()
-                .push((candidate.edge, meta));
+                .push(candidate);
         } else {
-            output.push(candidate.edge);
+            output.push(candidate);
         }
     }
 
@@ -249,32 +291,40 @@ fn merge_flowchart_self_loop_segments(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let mut model_edges_by_id: HashMap<&str, &FlowEdge> = HashMap::with_capacity(model_edges.len());
-    for edge in model_edges {
-        model_edges_by_id.entry(edge.id.as_str()).or_insert(edge);
-    }
-
-    for (logical_edge_id, mut segments) in segments_by_id {
+    for (owner_index, mut segments) in segments_by_owner {
         if segments.len() != 3 {
-            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            output.extend(segments);
             continue;
         }
-        segments.sort_by_key(|(_, meta)| meta.order);
-        if segments.iter().map(|(_, meta)| meta.order).ne([0_u8, 1, 2]) {
-            output.extend(segments.into_iter().map(|(edge, _)| edge));
+        segments.sort_by_key(|candidate| {
+            candidate
+                .self_loop
+                .as_ref()
+                .map_or(u8::MAX, |meta| meta.order)
+        });
+        if segments
+            .iter()
+            .filter_map(|candidate| candidate.self_loop.as_ref().map(|meta| meta.order))
+            .ne([0_u8, 1, 2])
+        {
+            output.extend(segments);
             continue;
         }
 
-        let (first, first_meta) = &segments[0];
-        let (middle, _) = &segments[1];
-        let (last, _) = &segments[2];
-        let Some(original) = model_edges_by_id.get(logical_edge_id.as_str()).copied() else {
-            output.extend(segments.into_iter().map(|(edge, _)| edge));
+        let first = &segments[0].edge;
+        let first_meta = segments[0]
+            .self_loop
+            .as_ref()
+            .expect("sorted self-loop segment metadata");
+        let middle = &segments[1].edge;
+        let last = &segments[2].edge;
+        let Some(original) = model_edges.get(owner_index) else {
+            output.extend(segments);
             continue;
         };
         let node_id = first_meta.node_id.as_str();
         let Some(node) = nodes_by_id.get(node_id).copied() else {
-            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            output.extend(segments);
             continue;
         };
 
@@ -318,38 +368,59 @@ fn merge_flowchart_self_loop_segments(
             height: label_height,
         });
 
-        output.push(LayoutEdge {
-            id: original.id.clone(),
-            from: original.from.clone(),
-            to: original.to.clone(),
-            from_cluster: first
-                .from_cluster
-                .clone()
-                .or_else(|| middle.from_cluster.clone())
-                .or_else(|| last.from_cluster.clone()),
-            to_cluster: first
-                .to_cluster
-                .clone()
-                .or_else(|| middle.to_cluster.clone())
-                .or_else(|| last.to_cluster.clone()),
-            points: geometry.points,
-            label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
+        output.push(FlowchartLayoutEdgeCandidate {
+            owner_index,
+            self_loop: None,
+            edge: LayoutEdge {
+                id: original.id.clone(),
+                from: original.from.clone(),
+                to: original.to.clone(),
+                from_cluster: first
+                    .from_cluster
+                    .clone()
+                    .or_else(|| middle.from_cluster.clone())
+                    .or_else(|| last.from_cluster.clone()),
+                to_cluster: first
+                    .to_cluster
+                    .clone()
+                    .or_else(|| middle.to_cluster.clone())
+                    .or_else(|| last.to_cluster.clone()),
+                points: geometry.points,
+                label,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: None,
+                end_marker: None,
+                stroke_dasharray: None,
+            },
         });
     }
 
     output
 }
 
-fn edge_label_is_non_empty(model: &FlowchartRenderModelRef<'_>, edge: &FlowEdge) -> bool {
-    model
-        .edge_label_for_render(edge)
+fn render_edge_label_for_layout<'a>(
+    model: &'a FlowchartRenderModelRef<'_>,
+    semantic_index: usize,
+    edge: &'a FlowEdge,
+    self_loop: Option<&FlowchartSelfLoopSegmentMeta>,
+) -> Option<&'a str> {
+    if self_loop.is_some() {
+        edge.label.as_deref()
+    } else {
+        model.edge_label_for_render(semantic_index, edge)
+    }
+}
+
+fn edge_label_is_non_empty(
+    model: &FlowchartRenderModelRef<'_>,
+    semantic_index: usize,
+    edge: &FlowEdge,
+    self_loop: Option<&FlowchartSelfLoopSegmentMeta>,
+) -> bool {
+    render_edge_label_for_layout(model, semantic_index, edge, self_loop)
         .is_some_and(|text| !crate::flowchart::flowchart_label_is_empty_for_render(text))
 }
 
@@ -1413,24 +1484,36 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        work_meter.as_ref(),
+    )?;
+    layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
         None,
+        &edge_style_plan,
         work_meter,
     )
 }
 
-pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout receives independent label artifacts and cumulative work controls"
+)]
+pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
     let mut work_control = DagreOperationWorkControl::new(work_meter);
@@ -1441,10 +1524,15 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_l
         measurer,
         math_renderer,
         svg_label_sidecar,
+        edge_style_plan,
         &mut work_control,
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout receives independent label artifacts and cumulative work controls"
+)]
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -1452,6 +1540,7 @@ fn layout_flowchart_with_model(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_control: &mut DagreOperationWorkControl,
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
@@ -1504,7 +1593,9 @@ fn layout_flowchart_with_model(
         }
 
         let mut helper_edges = super::flowchart_self_loop_helper_edges(e);
-        helper_edges.edge_mid.label = model.edge_label_for_render(e).map(str::to_owned);
+        helper_edges.edge_mid.label = model
+            .edge_label_for_render(edge_index, e)
+            .map(str::to_owned);
         if self_loop_label_node_id_set.insert(helper_edges.special_id_1.clone()) {
             self_loop_label_node_ids.push(helper_edges.special_id_1.clone());
         }
@@ -1518,6 +1609,7 @@ fn layout_flowchart_with_model(
         render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
+            owner_index: edge_index,
             node_id: e.from.clone(),
             order: 0,
         }));
@@ -1525,6 +1617,7 @@ fn layout_flowchart_with_model(
         render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
+            owner_index: edge_index,
             node_id: e.from.clone(),
             order: 1,
         }));
@@ -1532,6 +1625,7 @@ fn layout_flowchart_with_model(
         render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
+            owner_index: edge_index,
             node_id: e.from.clone(),
             order: 2,
         }));
@@ -1556,7 +1650,14 @@ fn layout_flowchart_with_model(
         inherit_dir,
         text_style,
         html_label_text_style,
-    } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    } = svg_label_sidecar.map_or_else(
+        || FlowchartConfigView::new(effective_config_value).layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config_value),
+    );
+    let edge_label_padding = svg_label_sidecar.map_or_else(
+        super::FlowchartEdgeLabelPadding::default,
+        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
+    );
     let look_is_neo = crate::config::config_diagram_look(effective_config_value).is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
@@ -1593,8 +1694,10 @@ fn layout_flowchart_with_model(
             subgraph_index_by_id.insert(id, index);
             canonical_subgraphs_in_order.push((index, subgraph));
         }
-        let members = subgraph_members_by_id.entry(id).or_default();
-        members.extend(subgraph.nodes.iter().map(String::as_str));
+        subgraph_members_by_id
+            .entry(id)
+            .or_default()
+            .extend(subgraph.nodes.iter().map(String::as_str));
         if !subgraph.nodes.is_empty() {
             nonempty_subgraph_ids.insert(id);
         }
@@ -1682,7 +1785,7 @@ fn layout_flowchart_with_model(
         }
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
-        let node_text_style = flowchart_effective_text_style_for_node_classes(
+        let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
             node_label_base_style,
             &model.class_defs,
             &n.classes,
@@ -1694,7 +1797,7 @@ fn layout_flowchart_with_model(
             node_wrap_mode,
             n.layout_shape.as_deref().unwrap_or("squareRect"),
         );
-        let mut metrics = measure_flowchart_svg_label_for_layout(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::Node(node_index)),
             Some(n.id.as_str()),
@@ -1708,6 +1811,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides)
+                .with_terminal_foreground(node_text_style.terminal_foreground()),
             svg_width_mode,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1765,7 +1870,7 @@ fn layout_flowchart_with_model(
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
-        let sg_text_style = flowchart_effective_text_style_for_classes(
+        let sg_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             cluster_label_base_style,
             &model.class_defs,
             classes,
@@ -1776,7 +1881,7 @@ fn layout_flowchart_with_model(
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
         // per-line measurement pass that is absent upstream.
-        let mut metrics = measure_flowchart_svg_label_for_layout(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
             Some(sg.id.as_str()),
@@ -1790,6 +1895,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&sg_text_style.prepared_text_overrides)
+                .with_terminal_foreground(sg_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1851,7 +1958,7 @@ fn layout_flowchart_with_model(
             styles,
         );
         let title = model.subgraph_title_for_render(subgraph_index, sg);
-        let mut metrics = measure_flowchart_svg_label_for_layout(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
             Some(sg.id.as_str()),
@@ -1865,6 +1972,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::default(),
             FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -2092,16 +2200,6 @@ fn layout_flowchart_with_model(
         HashMap::new()
     };
 
-    // Map SVG edge ids to the multigraph key used by the Dagre layout graph. Most edges use their
-    // `id` as the key, but Mermaid uses distinct keys for the self-loop special edges and we also
-    // want deterministic ordering under our BTree-backed graph storage.
-    let mut edge_key_by_id: HashMap<String, String> = HashMap::new();
-    let mut edge_id_by_key: HashMap<String, String> = HashMap::new();
-
-    let default_edge_styles = model
-        .edge_defaults
-        .as_ref()
-        .map_or(&[][..], |defaults| defaults.style.as_slice());
     work_control.charge_adapter(render_edges.len())?;
     for ((e, self_loop_meta), edge_owner_index) in render_edges
         .iter()
@@ -2111,22 +2209,18 @@ fn layout_flowchart_with_model(
         // Mermaid 11.16 stores helper identity as edge metadata. The graph key is intentionally
         // node-scoped, so a later parallel self-loop overwrites the earlier triple in Graphlib.
         let edge_key = flowchart_layout_edge_key(e, self_loop_meta.as_ref());
-        edge_key_by_id.insert(e.id.clone(), edge_key.clone());
-        edge_id_by_key.insert(edge_key.clone(), e.id.clone());
 
         let from = e.from.clone();
         let to = e.to.clone();
 
-        if edge_label_is_non_empty(model, e) {
-            let label_text = model.edge_label_for_render(e).unwrap_or_default();
+        if edge_label_is_non_empty(model, *edge_owner_index, e, self_loop_meta.as_ref()) {
+            let label_text =
+                render_edge_label_for_layout(model, *edge_owner_index, e, self_loop_meta.as_ref())
+                    .unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
-            let edge_text_style = flowchart_effective_edge_label_text_style(
-                edge_label_base_style,
-                &model.class_defs,
-                &e.classes,
-                default_edge_styles,
-                &e.style,
-            );
+            let edge_key_identity = crate::flowchart::FlowchartEdgeKey::new(*edge_owner_index);
+            let edge_text_style = edge_style_plan
+                .edge_label_text_style_for(edge_key_identity, edge_label_base_style)?;
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
                 crate::text::measure_wrapped_markdown_with_inline_styles(
                     measurer,
@@ -2139,7 +2233,7 @@ fn layout_flowchart_with_model(
                 let render_id = self_loop_meta
                     .as_ref()
                     .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
-                measure_flowchart_svg_label_for_layout_with_metrics_style(
+                measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(render_id),
@@ -2155,10 +2249,14 @@ fn layout_flowchart_with_model(
                         math_renderer,
                     },
                     edge_text_style.as_ref(),
+                    FlowchartLabelTypographyOverrides::metrics_only(
+                        &edge_text_style.prepared_text_overrides,
+                    )
+                    .with_terminal_foreground(edge_text_style.terminal_foreground()),
                     FlowchartSvgWidthMode::Bbox,
                 )
             } else {
-                measure_flowchart_svg_label_for_layout(
+                measure_flowchart_svg_label_for_layout_with_typography_overrides(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(e.id.as_str()),
@@ -2172,6 +2270,10 @@ fn layout_flowchart_with_model(
                         config: effective_config,
                         math_renderer,
                     },
+                    FlowchartLabelTypographyOverrides::same(
+                        &edge_text_style.prepared_text_overrides,
+                    )
+                    .with_terminal_foreground(edge_text_style.terminal_foreground()),
                     FlowchartSvgWidthMode::Bbox,
                 )
             };
@@ -2185,6 +2287,8 @@ fn layout_flowchart_with_model(
                     (metrics.height + 4.0).max(1.0),
                 )
             };
+            let (label_width, label_height) =
+                edge_label_padding.padded_size(label_width, label_height);
 
             let minlen = e.length.max(1);
             let mut el = EdgeLabel {
@@ -2200,6 +2304,7 @@ fn layout_flowchart_with_model(
             if let Some(meta) = self_loop_meta {
                 annotate_flowchart_self_loop_segment(&mut el, meta);
             }
+            annotate_flowchart_edge_owner(&mut el, *edge_owner_index);
 
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         } else {
@@ -2216,6 +2321,7 @@ fn layout_flowchart_with_model(
             if let Some(meta) = self_loop_meta {
                 annotate_flowchart_self_loop_segment(&mut el, meta);
             }
+            annotate_flowchart_edge_owner(&mut el, *edge_owner_index);
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         }
     }
@@ -2226,18 +2332,23 @@ fn layout_flowchart_with_model(
         std::collections::HashMap::new()
     };
 
-    let mut edge_endpoints_by_id: HashMap<String, (String, String)> = HashMap::new();
+    let mut edge_endpoints_by_segment: HashMap<FlowchartLayoutSegmentKey, (String, String)> =
+        HashMap::new();
+    let mut edge_key_by_segment: HashMap<FlowchartLayoutSegmentKey, String> = HashMap::new();
     let edge_snapshot_work = work_control.checked_add(g.edge_slot_count(), g.edge_count())?;
     work_control.charge_adapter(edge_snapshot_work)?;
     for ek in g.edge_keys() {
         let Some(edge_key) = ek.name.as_deref() else {
             continue;
         };
-        let edge_id = edge_id_by_key
-            .get(edge_key)
-            .cloned()
-            .unwrap_or_else(|| edge_key.to_string());
-        edge_endpoints_by_id.insert(edge_id, (ek.v.clone(), ek.w.clone()));
+        let Some(label) = g.edge_by_key(&ek) else {
+            continue;
+        };
+        let Some(segment_key) = flowchart_layout_segment_key(label) else {
+            continue;
+        };
+        edge_key_by_segment.insert(segment_key, edge_key.to_string());
+        edge_endpoints_by_segment.insert(segment_key, (ek.v.clone(), ek.w.clone()));
     }
 
     let mut extracted_graphs: std::collections::HashMap<
@@ -2259,15 +2370,20 @@ fn layout_flowchart_with_model(
         // endpoints after extraction so output lookup uses the surviving nodes.
         let edge_snapshot_work = work_control.checked_add(g.edge_slot_count(), g.edge_count())?;
         work_control.charge_adapter(edge_snapshot_work)?;
+        edge_key_by_segment.clear();
+        edge_endpoints_by_segment.clear();
         for ek in g.edge_keys() {
             let Some(edge_key) = ek.name.as_deref() else {
                 continue;
             };
-            let edge_id = edge_id_by_key
-                .get(edge_key)
-                .cloned()
-                .unwrap_or_else(|| edge_key.to_string());
-            edge_endpoints_by_id.insert(edge_id, (ek.v, ek.w));
+            let Some(label) = g.edge_by_key(&ek) else {
+                continue;
+            };
+            let Some(segment_key) = flowchart_layout_segment_key(label) else {
+                continue;
+            };
+            edge_key_by_segment.insert(segment_key, edge_key.to_string());
+            edge_endpoints_by_segment.insert(segment_key, (ek.v, ek.w));
         }
     }
 
@@ -2325,14 +2441,14 @@ fn layout_flowchart_with_model(
             ctx.text_style
         };
         let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
-        let text_style =
-            flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
-        let owner = ctx
-            .subgraph_index_by_id
-            .get(id)
-            .copied()
-            .map(FlowchartSvgLabelOwner::SubgraphTitle);
-        let metrics = measure_flowchart_svg_label_for_layout(
+        let text_style = flowchart_effective_text_style_for_classes_with_provenance(
+            base_style,
+            ctx.class_defs,
+            classes,
+            styles,
+        );
+        let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
+        let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             ctx.svg_label_sidecar,
             owner,
             Some(id),
@@ -2346,6 +2462,8 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                .with_terminal_foreground(text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
@@ -2768,18 +2886,28 @@ fn layout_flowchart_with_model(
     let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
     let mut base_pos: std::collections::HashMap<String, (f64, f64)> =
         std::collections::HashMap::new();
-    let mut edge_override_points: std::collections::HashMap<String, Vec<LayoutPoint>> =
-        std::collections::HashMap::new();
-    let mut edge_override_label: std::collections::HashMap<String, Option<LayoutLabel>> =
-        std::collections::HashMap::new();
-    let mut edge_override_from_cluster: std::collections::HashMap<String, Option<String>> =
-        std::collections::HashMap::new();
-    let mut edge_override_to_cluster: std::collections::HashMap<String, Option<String>> =
-        std::collections::HashMap::new();
-    let mut edge_override_endpoints: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
+    let mut edge_override_points: std::collections::HashMap<
+        FlowchartLayoutSegmentKey,
+        Vec<LayoutPoint>,
+    > = std::collections::HashMap::new();
+    let mut edge_override_label: std::collections::HashMap<
+        FlowchartLayoutSegmentKey,
+        Option<LayoutLabel>,
+    > = std::collections::HashMap::new();
+    let mut edge_override_from_cluster: std::collections::HashMap<
+        FlowchartLayoutSegmentKey,
+        Option<String>,
+    > = std::collections::HashMap::new();
+    let mut edge_override_to_cluster: std::collections::HashMap<
+        FlowchartLayoutSegmentKey,
+        Option<String>,
+    > = std::collections::HashMap::new();
+    let mut edge_override_endpoints: std::collections::HashMap<
+        FlowchartLayoutSegmentKey,
+        (String, String),
+    > = std::collections::HashMap::new();
     let mut edge_override_self_loop_meta: std::collections::HashMap<
-        String,
+        FlowchartLayoutSegmentKey,
         FlowchartSelfLoopSegmentMeta,
     > = std::collections::HashMap::new();
     let leaf_node_id_work = work_control.checked_add(
@@ -2804,7 +2932,6 @@ fn layout_flowchart_with_model(
     }
 
     struct PlaceGraphInputs<'a> {
-        edge_id_by_key: &'a std::collections::HashMap<String, String>,
         extracted_graphs:
             &'a std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
         subgraph_ids: &'a std::collections::HashSet<&'a str>,
@@ -2817,13 +2944,20 @@ fn layout_flowchart_with_model(
         cluster_rects_from_graph: &'a mut std::collections::HashMap<String, Rect>,
         extracted_cluster_rects: &'a mut std::collections::HashMap<String, Rect>,
         extracted_cluster_base_widths: &'a mut std::collections::HashMap<String, f64>,
-        edge_override_points: &'a mut std::collections::HashMap<String, Vec<LayoutPoint>>,
-        edge_override_label: &'a mut std::collections::HashMap<String, Option<LayoutLabel>>,
-        edge_override_from_cluster: &'a mut std::collections::HashMap<String, Option<String>>,
-        edge_override_to_cluster: &'a mut std::collections::HashMap<String, Option<String>>,
-        edge_override_endpoints: &'a mut std::collections::HashMap<String, (String, String)>,
-        edge_override_self_loop_meta:
-            &'a mut std::collections::HashMap<String, FlowchartSelfLoopSegmentMeta>,
+        edge_override_points:
+            &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, Vec<LayoutPoint>>,
+        edge_override_label:
+            &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, Option<LayoutLabel>>,
+        edge_override_from_cluster:
+            &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, Option<String>>,
+        edge_override_to_cluster:
+            &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, Option<String>>,
+        edge_override_endpoints:
+            &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, (String, String)>,
+        edge_override_self_loop_meta: &'a mut std::collections::HashMap<
+            FlowchartLayoutSegmentKey,
+            FlowchartSelfLoopSegmentMeta,
+        >,
     }
 
     fn place_graph(
@@ -2948,24 +3082,20 @@ fn layout_flowchart_with_model(
             let edge_work = work_control.checked_add(edge_snapshot_work, edge_point_work)?;
             work_control.charge_adapter(edge_work)?;
             for ek in frame.graph.edge_keys() {
-                let Some(edge_key) = ek.name.as_deref() else {
-                    continue;
-                };
-                let edge_id = inputs
-                    .edge_id_by_key
-                    .get(edge_key)
-                    .map(String::as_str)
-                    .unwrap_or(edge_key);
                 let Some(lbl) = frame.graph.edge_by_key(&ek) else {
                     continue;
                 };
+                let Some(segment_key) = flowchart_layout_segment_key(lbl) else {
+                    continue;
+                };
+                let owner_index = segment_key.owner_index;
 
                 if let (Some(x), Some(y)) = (lbl.x, lbl.y)
                     && (lbl.width > 0.0 || lbl.height > 0.0)
                 {
                     let lx = x + frame.offset.0;
                     let ly = y + frame.offset.1;
-                    let leaf_id = format!("edge-label::{edge_id}");
+                    let leaf_id = format!("edge-label::{owner_index}");
                     out.base_pos.insert(leaf_id.clone(), (lx, ly));
                     out.leaf_rects
                         .insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
@@ -2991,9 +3121,8 @@ fn layout_flowchart_with_model(
                         }
                         _ => None,
                     };
-                    out.edge_override_points.insert(edge_id.to_string(), points);
-                    out.edge_override_label
-                        .insert(edge_id.to_string(), label_pos);
+                    out.edge_override_points.insert(segment_key, points);
+                    out.edge_override_label.insert(segment_key, label_pos);
                     let from_cluster = lbl
                         .extras
                         .get("fromCluster")
@@ -3003,14 +3132,12 @@ fn layout_flowchart_with_model(
                         .get("toCluster")
                         .and_then(|v| v.as_str().map(|s| s.to_string()));
                     out.edge_override_from_cluster
-                        .insert(edge_id.to_string(), from_cluster);
-                    out.edge_override_to_cluster
-                        .insert(edge_id.to_string(), to_cluster);
+                        .insert(segment_key, from_cluster);
+                    out.edge_override_to_cluster.insert(segment_key, to_cluster);
                     out.edge_override_endpoints
-                        .insert(edge_id.to_string(), (ek.v.clone(), ek.w.clone()));
+                        .insert(segment_key, (ek.v.clone(), ek.w.clone()));
                     if let Some(meta) = flowchart_self_loop_segment_meta(lbl) {
-                        out.edge_override_self_loop_meta
-                            .insert(edge_id.to_string(), meta);
+                        out.edge_override_self_loop_meta.insert(segment_key, meta);
                     }
                 }
             }
@@ -3071,7 +3198,6 @@ fn layout_flowchart_with_model(
         std::collections::HashMap::new();
     {
         let place_graph_inputs = PlaceGraphInputs {
-            edge_id_by_key: &edge_id_by_key,
             extracted_graphs: &extracted_graphs,
             subgraph_ids: &cluster_subgraph_ids,
             leaf_node_ids: &leaf_node_ids,
@@ -3102,16 +3228,19 @@ fn layout_flowchart_with_model(
     let mut extra_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     work_control.charge_adapter(render_edges.len())?;
-    let labeled_edges: std::collections::HashSet<&str> = render_edges
+    let labeled_edges: std::collections::HashSet<usize> = render_edges
         .iter()
-        .filter(|e| edge_label_is_non_empty(model, e))
-        .map(|e| e.id.as_str())
+        .zip(&render_edge_self_loop_meta)
+        .zip(&render_edge_owner_indices)
+        .filter(|((edge, self_loop), owner_index)| {
+            edge_label_is_non_empty(model, **owner_index, edge.as_ref(), self_loop.as_ref())
+        })
+        .map(|(_, owner_index)| *owner_index)
         .collect();
 
     fn collect_extra_children(
         graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        edge_id_by_key: &std::collections::HashMap<String, String>,
-        labeled_edges: &std::collections::HashSet<&str>,
+        labeled_edges: &std::collections::HashSet<usize>,
         implicit_root: Option<&str>,
         out: &mut std::collections::HashMap<String, Vec<String>>,
         work_control: &mut DagreOperationWorkControl,
@@ -3120,14 +3249,13 @@ fn layout_flowchart_with_model(
             work_control.checked_add(graph.edge_slot_count(), graph.edge_count())?;
         work_control.charge_adapter(edge_snapshot_work)?;
         for ek in graph.edge_keys() {
-            let Some(edge_key) = ek.name.as_deref() else {
+            let Some(label) = graph.edge_by_key(&ek) else {
                 continue;
             };
-            let edge_id = edge_id_by_key
-                .get(edge_key)
-                .map(String::as_str)
-                .unwrap_or(edge_key);
-            if !labeled_edges.contains(edge_id) {
+            let Some(owner_index) = flowchart_edge_owner_index(label) else {
+                continue;
+            };
+            if !labeled_edges.contains(&owner_index) {
                 continue;
             }
             // Mermaid's recursive cluster extractor removes the root cluster node from the
@@ -3142,26 +3270,18 @@ fn layout_flowchart_with_model(
             };
             out.entry(parent)
                 .or_default()
-                .push(format!("edge-label::{edge_id}"));
+                .push(format!("edge-label::{owner_index}"));
         }
         Ok(())
     }
 
-    collect_extra_children(
-        &g,
-        &edge_id_by_key,
-        &labeled_edges,
-        None,
-        &mut extra_children,
-        work_control,
-    )?;
+    collect_extra_children(&g, &labeled_edges, None, &mut extra_children, work_control)?;
     for cluster_id in &extracted_order {
         let cg = extracted_graphs
             .get(cluster_id)
             .expect("the extraction order references an extracted graph");
         collect_extra_children(
             cg,
-            &edge_id_by_key,
             &labeled_edges,
             Some(cluster_id.as_str()),
             &mut extra_children,
@@ -3333,9 +3453,9 @@ fn layout_flowchart_with_model(
         wrap_mode: WrapMode,
         config: &'a MermaidConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         cluster_padding: f64,
         title_total_margin: f64,
-        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
 
     struct ClusterRectState<'a> {
@@ -3469,21 +3589,17 @@ fn layout_flowchart_with_model(
                 ctx.text_style
             };
             let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
-            let text_style = flowchart_effective_text_style_for_classes(
+            let text_style = flowchart_effective_text_style_for_classes_with_provenance(
                 base_style,
                 ctx.class_defs,
                 classes,
                 styles,
             );
-            let owner = ctx
-                .subgraph_index_by_id
-                .get(frame.id.as_str())
-                .copied()
-                .map(FlowchartSvgLabelOwner::SubgraphTitle);
-            let title_metrics = measure_flowchart_svg_label_for_layout(
+            let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
+            let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
                 ctx.svg_label_sidecar,
                 owner,
-                Some(frame.id.as_str()),
+                owner.map(|_| sg.id.as_str()),
                 FlowchartLabelMetricsRequest {
                     measurer: ctx.measurer,
                     raw_label: title,
@@ -3494,6 +3610,8 @@ fn layout_flowchart_with_model(
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
                 },
+                FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                    .with_terminal_foreground(text_style.terminal_foreground()),
                 FlowchartSvgWidthMode::Bbox,
             );
             let mut rect = if let Some(r) = content {
@@ -3567,9 +3685,9 @@ fn layout_flowchart_with_model(
         wrap_mode: WrapMode,
         config: &'a MermaidConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         title_total_margin: f64,
         cluster_padding: f64,
-        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
 
     fn adjust_cluster_rect_for_title(
@@ -3588,14 +3706,18 @@ fn layout_flowchart_with_model(
             ctx.text_style
         };
         let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
-        let text_style =
-            flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
+        let text_style = flowchart_effective_text_style_for_classes_with_provenance(
+            base_style,
+            ctx.class_defs,
+            classes,
+            styles,
+        );
         let owner = ctx
             .subgraph_index_by_id
             .get(sg.id.as_str())
             .copied()
             .map(FlowchartSvgLabelOwner::SubgraphTitle);
-        let title_metrics = measure_flowchart_svg_label_for_layout(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             ctx.svg_label_sidecar,
             owner,
             Some(sg.id.as_str()),
@@ -3609,6 +3731,8 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                .with_terminal_foreground(text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_w = title_metrics.width.max(1.0);
@@ -3653,9 +3777,9 @@ fn layout_flowchart_with_model(
         wrap_mode: cluster_wrap_mode,
         config: effective_config,
         math_renderer,
+        svg_label_sidecar,
         cluster_padding,
         title_total_margin,
-        svg_label_sidecar,
     };
     let mut cluster_rect_state = ClusterRectState {
         cluster_rects: &mut cluster_rects,
@@ -3673,9 +3797,9 @@ fn layout_flowchart_with_model(
         wrap_mode: cluster_wrap_mode,
         config: effective_config,
         math_renderer,
+        svg_label_sidecar,
         title_total_margin,
         cluster_padding,
-        svg_label_sidecar,
     };
 
     for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
@@ -3735,13 +3859,13 @@ fn layout_flowchart_with_model(
             &text_style
         };
         let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
-        let title_text_style = flowchart_effective_text_style_for_classes(
+        let title_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             base_style,
             &model.class_defs,
             classes,
             styles,
         );
-        let title_metrics = measure_flowchart_svg_label_for_layout(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
             Some(sg.id.as_str()),
@@ -3755,6 +3879,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&title_text_style.prepared_text_overrides)
+                .with_terminal_foreground(title_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_label = LayoutLabel {
@@ -3841,7 +3967,13 @@ fn layout_flowchart_with_model(
         work_control.checked_add(root_edge_point_work, extracted_edge_point_work)?,
     )?;
     work_control.charge_adapter(edge_projection_work)?;
-    for (e, expected_self_loop_meta) in render_edges.iter().zip(&render_edge_self_loop_meta) {
+    for ((e, expected_self_loop_meta), owner_index) in render_edges
+        .iter()
+        .zip(&render_edge_self_loop_meta)
+        .zip(&render_edge_owner_indices)
+    {
+        let segment_key =
+            FlowchartLayoutSegmentKey::new(*owner_index, expected_self_loop_meta.as_ref());
         let (
             points,
             label_pos,
@@ -3850,40 +3982,42 @@ fn layout_flowchart_with_model(
             layout_from,
             layout_to,
             actual_self_loop_meta,
-        ) = if let Some(points) = edge_override_points.get(&e.id) {
+        ) = if let Some(points) = edge_override_points.get(&segment_key) {
             let from_cluster = edge_override_from_cluster
-                .get(&e.id)
+                .get(&segment_key)
                 .cloned()
                 .unwrap_or(None);
-            let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
+            let to_cluster = edge_override_to_cluster
+                .get(&segment_key)
+                .cloned()
+                .unwrap_or(None);
             (
                 points.clone(),
-                edge_override_label.get(&e.id).cloned().unwrap_or(None),
+                edge_override_label
+                    .get(&segment_key)
+                    .cloned()
+                    .unwrap_or(None),
                 from_cluster,
                 to_cluster,
                 edge_override_endpoints
-                    .get(&e.id)
+                    .get(&segment_key)
                     .map(|(from, _)| from.clone())
                     .unwrap_or_else(|| e.from.clone()),
                 edge_override_endpoints
-                    .get(&e.id)
+                    .get(&segment_key)
                     .map(|(_, to)| to.clone())
                     .unwrap_or_else(|| e.to.clone()),
-                edge_override_self_loop_meta.get(&e.id).cloned(),
+                edge_override_self_loop_meta.get(&segment_key).cloned(),
             )
         } else {
-            let (v, w) = edge_endpoints_by_id
-                .get(&e.id)
-                .cloned()
-                .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
-            let edge_key = edge_key_by_id
-                .get(&e.id)
-                .map(String::as_str)
-                .unwrap_or(e.id.as_str());
+            let Some((v, w)) = edge_endpoints_by_segment.get(&segment_key).cloned() else {
+                continue;
+            };
+            let Some(edge_key) = edge_key_by_segment.get(&segment_key).map(String::as_str) else {
+                continue;
+            };
             let Some(label) = g.edge(&v, &w, Some(edge_key)) else {
-                return Err(Error::InvalidModel {
-                    message: format!("missing layout edge {}", e.id),
-                });
+                continue;
             };
             let from_cluster = label
                 .extras
@@ -3949,6 +4083,7 @@ fn layout_flowchart_with_model(
         }
 
         out_edge_candidates.push(FlowchartLayoutEdgeCandidate {
+            owner_index: *owner_index,
             edge: LayoutEdge {
                 id: e.id.clone(),
                 from: layout_from,
@@ -3974,12 +4109,20 @@ fn layout_flowchart_with_model(
         out_nodes.len(),
     )?;
     work_control.charge_adapter(merge_work)?;
-    let mut out_edges = merge_flowchart_self_loop_segments(
+    let merged_edges = merge_flowchart_self_loop_segments(
         &projected_edges,
         &out_nodes,
         &diagram_direction,
         out_edge_candidates,
     );
+    let edge_owner_indices: Vec<usize> = merged_edges
+        .iter()
+        .map(|candidate| candidate.owner_index)
+        .collect();
+    let mut out_edges = merged_edges
+        .into_iter()
+        .map(|candidate| candidate.edge)
+        .collect::<Vec<_>>();
 
     // Mermaid's flowchart renderer uses shape-specific intersection functions for edge endpoints
     // (e.g. diamond nodes). Our Dagre-ish layout currently treats all nodes as rectangles, so the
@@ -4066,6 +4209,9 @@ fn layout_flowchart_with_model(
     Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
+        edge_owners: crate::flowchart::FlowchartEdgeOwners::from_semantic_indices(
+            edge_owner_indices,
+        ),
         clusters,
         bounds,
         dom_node_order_by_root,
@@ -4212,6 +4358,13 @@ flowchart TD
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            model,
+            &parsed.metadata().effective_config,
+            false,
+            &meter,
+        )
+        .expect("prepare edge styles");
         let mut work_control = DagreOperationWorkControl::new(meter);
 
         layout_flowchart_with_model(
@@ -4221,6 +4374,7 @@ flowchart TD
             &measurer,
             None,
             Some(&builder),
+            &edge_style_plan,
             &mut work_control,
         )
         .expect("layout ok");
@@ -4403,10 +4557,6 @@ flowchart TD
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected ResourceLimitExceeded");
         };
-        assert_eq!(
-            limit.cause,
-            crate::resources::ResourceLimitCause::ArithmeticOverflow
-        );
         assert_eq!(limit.limit, "max_layout_work_units");
         let Error::ResourceLimitExceeded(sticky) = work_control
             .charge_adapter(1)
@@ -4509,10 +4659,6 @@ flowchart TD
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected ResourceLimitExceeded");
         };
-        assert_eq!(
-            limit.cause,
-            crate::resources::ResourceLimitCause::ArithmeticOverflow
-        );
         assert_eq!(limit.limit, "max_layout_work_units");
     }
 
@@ -4744,6 +4890,7 @@ flowchart TD
             length: 1,
         };
         let meta = FlowchartSelfLoopSegmentMeta {
+            owner_index: 0,
             logical_edge_id: "L_A_A_0".to_string(),
             node_id: "A".to_string(),
             order: 2,

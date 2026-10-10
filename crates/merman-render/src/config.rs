@@ -49,6 +49,20 @@ pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
+pub(crate) fn json_bool(v: &Value) -> Option<bool> {
+    v.as_bool()
+        .or_else(|| v.as_i64().map(|n| n != 0))
+        .or_else(|| v.as_u64().map(|n| n != 0))
+        .or_else(|| {
+            v.as_str()
+                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
+                    "true" | "yes" | "on" | "1" => Some(true),
+                    "false" | "no" | "off" | "0" => Some(false),
+                    _ => None,
+                })
+        })
+}
+
 // Theme overrides retain their JSON types; source drawing guards use JavaScript truthiness.
 pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
     match value {
@@ -68,24 +82,57 @@ pub(crate) fn config_effective_html_labels(cfg: &Value) -> bool {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct DiagramLook<'a> {
+    /// The effective look used by layout and renderer behavior.
     value: &'a str,
+    /// The allow-listed token preserved when a renderer serializes `data-look`.
+    ///
+    /// Mermaid's State v2 fixtures can contain the historical `default` token. It behaves like
+    /// `classic`, but the token is still observable in the generated DOM. Keep that compatibility
+    /// spelling separate from the effective behavior so accepting it does not open an arbitrary
+    /// selector-valued input path.
+    serialized_value: &'a str,
 }
 
 impl<'a> DiagramLook<'a> {
     pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
-        let value = raw
+        let serialized_value = raw
             .map(str::trim)
-            .filter(|look| !look.is_empty())
+            .filter(|look| matches!(*look, "classic" | "handDrawn" | "neo" | "default"))
             .unwrap_or(DEFAULT_DIAGRAM_LOOK);
-        Self { value }
+        let value = match serialized_value {
+            "default" => DEFAULT_DIAGRAM_LOOK,
+            value => value,
+        };
+        Self {
+            value,
+            serialized_value,
+        }
+    }
+
+    pub(crate) fn into_static(self) -> DiagramLook<'static> {
+        let serialized_value = match self.serialized_value {
+            "handDrawn" => "handDrawn",
+            "neo" => "neo",
+            "default" => "default",
+            _ => DEFAULT_DIAGRAM_LOOK,
+        };
+        DiagramLook::from_raw(Some(serialized_value))
     }
 
     pub(crate) fn as_str(&self) -> &'a str {
         self.value
     }
 
+    pub(crate) fn serialized(&self) -> &'a str {
+        self.serialized_value
+    }
+
     pub(crate) fn is_neo(&self) -> bool {
         self.value == "neo"
+    }
+
+    pub(crate) fn is_hand_drawn(&self) -> bool {
+        self.value == "handDrawn"
     }
 }
 
@@ -389,6 +436,19 @@ mod tests {
             config_diagram_look(&json!({ "look": "" })).as_str(),
             DEFAULT_DIAGRAM_LOOK
         );
+        assert_eq!(
+            config_diagram_look(&json!({ "look": "neo\"]{color:red}" })).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
+        let default_cfg = json!({ "look": " default " });
+        let default = config_diagram_look(&default_cfg);
+        assert_eq!(default.as_str(), DEFAULT_DIAGRAM_LOOK);
+        assert_eq!(default.serialized(), "default");
+        assert_eq!(default.into_static().serialized(), "default");
+        assert_eq!(default.into_static().as_str(), DEFAULT_DIAGRAM_LOOK);
+        let missing_cfg = json!({});
+        let missing = config_diagram_look(&missing_cfg);
+        assert_eq!(missing.serialized(), DEFAULT_DIAGRAM_LOOK);
     }
 
     #[test]

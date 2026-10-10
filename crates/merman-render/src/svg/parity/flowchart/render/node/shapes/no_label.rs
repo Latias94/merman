@@ -1,7 +1,5 @@
 //! Flowchart v2 node shapes that do not emit a label group.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
@@ -12,31 +10,39 @@ use super::super::roughjs::{
 
 // stateStart.ts/stateEnd.ts apply the small filter independently of the general node filter.
 fn write_small_state_shadow_attr(
-    out: &mut String,
-    diagram_id: impl crate::svg::parity::SvgDiagramIdValue,
+    out: &mut impl crate::svg::parity::SvgOutput,
+    shadow_id: impl std::fmt::Display,
     width: f64,
     look: &str,
     node_shadow: bool,
+    theme_style: &str,
 ) {
-    if width < 25.0 && node_shadow && look != "handDrawn" {
-        if diagram_id.semantic_value().is_empty() {
-            out.push_str(r#" style="filter:url(#drop-shadow-small)""#);
-        } else {
+    let small_shadow = width < 25.0 && node_shadow && look != "handDrawn";
+    if small_shadow || !theme_style.is_empty() {
+        out.push_str(r#" style=""#);
+        if small_shadow {
             let _ = write!(
                 out,
-                r#" style="filter:{}""#,
-                crate::svg::parity::util::scoped_svg_url(diagram_id, "drop-shadow-small")
+                "filter:url(#{})",
+                crate::svg::parity::util::escape_attr_display(shadow_id)
             );
         }
+        if !theme_style.is_empty() {
+            if small_shadow {
+                out.push(';');
+            }
+            let _ = write!(out, "{}", escape_attr(theme_style));
+        }
+        out.push('"');
     }
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> bool {
+) -> Option<super::super::emission::FlowchartNodeShapeRenderOutcome> {
     match common.shape {
         // Flowchart v2 anchor: a tiny dot used as an invisible anchor node. Mermaid ignores
         // `node.label` and does not emit a label group.
@@ -50,7 +56,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 r##"<g class="anchor" style=""><path d="{}" stroke="none" stroke-width="0" fill="black"/></g>"##,
                 escape_attr(&d),
             );
-            true
+            rendered(super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified())
         }
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
@@ -58,20 +64,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.diagram_id,
+                ctx.document_ids.drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
-                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
-                    .is_some_and(crate::config::json_value_is_truthy),
+                ctx.compatibility.small_state_shadow,
+                common.theme_style,
             );
             out.push_str("/>");
-            true
+            rendered(super::super::emission::FlowchartNodeShapeEmissionReceipt::start())
         }
         "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
-            let inner_fill =
-                util::config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
+            let line_color = &ctx.compatibility.line_color;
+            let inner_fill = &ctx.compatibility.state_inner_fill;
 
             let outer_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_circle_path_d(14.0, common.hand_drawn_seed)
@@ -85,11 +89,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             out.push_str(r#"<g class="outer-path""#);
             write_small_state_shadow_attr(
                 out,
-                ctx.diagram_id,
+                ctx.document_ids.drop_shadow_small(),
                 common.layout_node.width,
                 common.look,
-                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
-                    .is_some_and(crate::config::json_value_is_truthy),
+                ctx.compatibility.small_state_shadow,
+                "",
             );
             out.push('>');
             let _ = write!(
@@ -99,18 +103,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.fill_color),
                 escape_attr(common.style),
                 outer_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
                 inner_d,
-                escape_attr(&inner_fill),
+                escape_attr(inner_fill),
                 escape_attr(common.style),
                 inner_d,
-                escape_attr(&inner_fill),
+                escape_attr(inner_fill),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 fork/join (no label; uses `lineColor` fill/stroke).
         "fork" | "join" => {
@@ -121,7 +128,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             } else {
                 (10.0, 70.0)
             };
-            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = &ctx.compatibility.line_color;
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_rect(RoughRectSpec {
@@ -138,15 +145,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 fill_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 escape_attr(common.style),
                 stroke_d,
-                escape_attr(&line_color),
+                escape_attr(line_color),
                 util::fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 "rendering-elements" alias for state diagram choice pseudo-state.
         // Mermaid ignores `node.label` and does not emit a label group.
@@ -168,7 +178,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
         // not emit a label group.
@@ -212,21 +225,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 filled circle (junction). Mermaid clears `node.label` and does not emit a
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
         // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
         "f-circ" | "junction" | "filled-circle" => {
-            let border =
-                util::config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
-
-            let effective_style: std::borrow::Cow<'_, str> = if common.style.trim().is_empty() {
-                format!("fill: {border} !important;").into()
-            } else {
-                common.style.into()
-            };
+            let effective_style = common.junction_style;
 
             let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_circle_path_d(14.0, common.hand_drawn_seed)
@@ -237,14 +245,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 escape_attr(&d),
                 escape_attr(common.fill_color),
-                escape_attr(effective_style.as_ref()),
+                escape_attr(effective_style),
                 escape_attr(&d),
                 escape_attr(common.stroke_color),
                 util::fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
-                escape_attr(effective_style.as_ref()),
+                escape_attr(effective_style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
@@ -306,12 +317,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
-        _ => false,
+        _ => None,
     }
 }
 
+fn rendered(
+    paint: super::super::emission::FlowchartNodeShapeEmissionReceipt,
+) -> Option<super::super::emission::FlowchartNodeShapeRenderOutcome> {
+    Some(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint))
+}
 #[cfg(test)]
 mod small_state_shadow_tests {
     use super::write_small_state_shadow_attr;
@@ -327,7 +346,14 @@ mod small_state_shadow_tests {
             (14.0, "handDrawn", true, false),
         ] {
             let mut out = String::new();
-            write_small_state_shadow_attr(&mut out, "diagram", width, look, enabled);
+            write_small_state_shadow_attr(
+                &mut out,
+                "diagram-drop-shadow-small",
+                width,
+                look,
+                enabled,
+                "",
+            );
             assert_eq!(
                 out,
                 if expected {
@@ -339,7 +365,24 @@ mod small_state_shadow_tests {
             );
         }
         let mut out = String::new();
-        write_small_state_shadow_attr(&mut out, "", 14.0, "classic", true);
+        write_small_state_shadow_attr(&mut out, "drop-shadow-small", 14.0, "classic", true, "");
         assert_eq!(out, r#" style="filter:url(#drop-shadow-small)""#);
+    }
+
+    #[test]
+    fn small_state_shadow_preserves_typed_theme_declarations() {
+        let mut out = String::new();
+        write_small_state_shadow_attr(
+            &mut out,
+            "allocated-shadow",
+            14.0,
+            "classic",
+            true,
+            "fill:#123456 !important;stroke:#654321 !important",
+        );
+        assert_eq!(
+            out,
+            r#" style="filter:url(#allocated-shadow);fill:#123456 !important;stroke:#654321 !important""#
+        );
     }
 }

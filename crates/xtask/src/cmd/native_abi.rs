@@ -25,6 +25,7 @@ const FLUTTER_OPERATION_FIXED_MEMBERS: &[&str] = &[
     "fromOperationId",
     "hashCode",
     "knownValues",
+    "maturity",
     "nativeCode",
     "noSuchMethod",
     "operationId",
@@ -213,6 +214,7 @@ struct CapabilityDescriptor {
 #[derive(Debug, Clone, Deserialize)]
 struct CapabilityOperationReference {
     id: String,
+    maturity: String,
     capability: Option<String>,
     media_type: String,
     requires_uri: bool,
@@ -227,6 +229,7 @@ struct ResolvedOperation {
     executable: bool,
     non_executable_failure: Option<ResolvedOperationFailure>,
     binding_operation_id: Option<String>,
+    maturity: Option<String>,
     capability_id: Option<String>,
     media_type: Option<String>,
     requires_uri: bool,
@@ -641,6 +644,10 @@ fn validate_operation_global_identifiers(
                 (
                     format!("MERMAN_NATIVE_OPERATION_ID_{suffix}"),
                     "binding operation id",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_MATURITY_{suffix}"),
+                    "operation maturity",
                 ),
                 (
                     format!("MERMAN_NATIVE_OPERATION_CAPABILITY_{suffix}"),
@@ -1209,6 +1216,7 @@ fn resolve_operations(
                 executable: operation_code.executable,
                 non_executable_failure,
                 binding_operation_id: None,
+                maturity: None,
                 capability_id: None,
                 media_type: None,
                 requires_uri: false,
@@ -1232,6 +1240,7 @@ fn resolve_operations(
             executable: operation_code.executable,
             non_executable_failure,
             binding_operation_id: Some(operation.id.clone()),
+            maturity: Some(operation.maturity.clone()),
             capability_id: operation.capability.clone(),
             media_type: Some(operation.media_type.clone()),
             requires_uri: operation.requires_uri,
@@ -1791,6 +1800,13 @@ fn render_c_operation_type(out: &mut String, values: &[ResolvedOperation]) {
                 )
                 .unwrap();
             }
+            if let Some(maturity) = &value.maturity {
+                writeln!(
+                    out,
+                    "#define MERMAN_NATIVE_OPERATION_MATURITY_{suffix} \"{maturity}\""
+                )
+                .unwrap();
+            }
             if let Some(capability_id) = &value.capability_id {
                 writeln!(
                     out,
@@ -2164,6 +2180,13 @@ fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
                     binding_operation_id,
                 );
             }
+            if let Some(maturity) = &value.maturity {
+                render_rust_string_constant(
+                    out,
+                    &format!("MERMAN_NATIVE_OPERATION_MATURITY_{suffix}"),
+                    maturity,
+                );
+            }
             if let Some(capability_id) = &value.capability_id {
                 render_rust_string_constant(
                     out,
@@ -2194,6 +2217,7 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
          \x20   pub executable: bool,\n\
          \x20   pub non_executable_failure: Option<MermanNativeOperationFailureDescriptor>,\n\
          \x20   pub operation_id: Option<&'static str>,\n\
+         \x20   pub maturity: Option<&'static str>,\n\
          \x20   pub capability_id: Option<&'static str>,\n\
          \x20   pub media_type: Option<&'static str>,\n\
          \x20   pub requires_uri: bool,\n\
@@ -2228,6 +2252,7 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
             value.binding_operation_id
         )
         .unwrap();
+        writeln!(out, "        maturity: {:?},", value.maturity).unwrap();
         writeln!(out, "        capability_id: {:?},", value.capability_id).unwrap();
         writeln!(out, "        media_type: {:?},", value.media_type).unwrap();
         writeln!(out, "        requires_uri: {},", value.requires_uri).unwrap();
@@ -2296,6 +2321,7 @@ fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
          \x20 const MermanOperation._(\n\
          \x20   this.nativeCode,\n\
          \x20   this.operationId,\n\
+         \x20   this.maturity,\n\
          \x20   this.requiresUri,\n\
          \x20 );\n\n",
     );
@@ -2305,7 +2331,7 @@ fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
         let name = lower_camel(&value.id);
         writeln!(
             out,
-            "  static const {name} = MermanOperation._(\n    native.{},\n    native.MERMAN_NATIVE_OPERATION_ID_{suffix},\n    {},\n  );",
+            "  static const {name} = MermanOperation._(\n    native.{},\n    native.MERMAN_NATIVE_OPERATION_ID_{suffix},\n    native.MERMAN_NATIVE_OPERATION_MATURITY_{suffix},\n    {},\n  );",
             value.c_name, value.requires_uri
         )
         .unwrap();
@@ -2341,6 +2367,7 @@ fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
          \x20 }\n\n\
          \x20 final int nativeCode;\n\
          \x20 final String operationId;\n\
+         \x20 final String maturity;\n\
          \x20 final bool requiresUri;\n\n\
          \x20 @override\n\
          \x20 bool operator ==(Object other) =>\n\
@@ -2645,6 +2672,7 @@ mod tests {
             .find(|operation| operation.capability_id.is_some())
             .expect("at least one native operation has a capability");
         operation.capability_id = Some("changed-capability".to_string());
+        operation.maturity = Some("changed-maturity".to_string());
         operation.media_type = Some("application/changed".to_string());
         operation.requires_uri = !operation.requires_uri;
         assert_ne!(
@@ -2694,5 +2722,35 @@ mod tests {
             full_descriptor_digest(&appended, &operations).unwrap(),
             original_full
         );
+    }
+
+    #[test]
+    fn resolved_operation_maturity_reaches_native_and_flutter_projections() {
+        let descriptor = committed_descriptor();
+        let root = crate::cmd::workspace_root();
+        let operations = resolve_operations(&root, &descriptor).unwrap();
+        let materialize = operations
+            .iter()
+            .find(|operation| operation.id == "materialize_theme_json")
+            .expect("theme materialization operation must be projected");
+        assert_eq!(materialize.maturity.as_deref(), Some("alpha"));
+
+        let mut c = String::new();
+        render_c_operation_type(&mut c, &operations);
+        assert!(
+            c.contains("#define MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON \"alpha\"")
+        );
+
+        let mut rust = String::new();
+        render_rust_operation_type(&mut rust, &operations);
+        render_rust_operation_catalog(&mut rust, &operations);
+        assert!(rust.contains(
+            "pub const MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON: &str = \"alpha\";"
+        ));
+        assert!(rust.contains("pub maturity: Option<&'static str>"));
+
+        let flutter = render_flutter_operations(&operations);
+        assert!(flutter.contains("this.maturity"));
+        assert!(flutter.contains("MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON"));
     }
 }

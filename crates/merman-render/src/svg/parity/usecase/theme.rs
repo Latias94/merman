@@ -1,137 +1,77 @@
 //! Usecase role colors and opt-in participant palettes from Mermaid 12 styles.ts.
 
 use super::*;
-use serde_json::Value;
+use crate::usecase::UsecaseCssBinding;
 
-pub(super) fn font_style(config: &Value) -> TextStyle {
-    TextStyle {
-        font_family: config_string(config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string(config, &["fontFamily"])),
-        font_size: config
-            .pointer("/themeVariables/fontSize")
-            .and_then(|value| {
-                value
-                    .as_f64()
-                    .or_else(|| value.as_str()?.trim_end_matches("px").parse().ok())
-            })
-            .unwrap_or(16.0),
-        ..Default::default()
-    }
-}
-
-fn palette(config: &Value) -> &[Value] {
-    if !matches!(
-        config.get("theme").and_then(Value::as_str),
-        Some("redux-color" | "redux-dark-color")
-    ) {
-        return &[];
-    }
-    config
-        .pointer("/themeVariables/borderColorArray")
-        .and_then(Value::as_array)
-        .map_or(&[], Vec::as_slice)
-}
-
-fn look(config: &Value) -> String {
-    let value = match config.get("look") {
-        Some(Value::String(value)) => value.clone(),
-        Some(Value::Number(value)) => value.to_string(),
-        _ => String::new(),
-    };
-    if !value.is_empty()
-        && value
-            .bytes()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-')
-    {
-        value
-    } else {
-        "classic".into()
-    }
-}
-
-pub(super) fn appearance_attributes(config: &Value, color_index: Option<usize>) -> String {
-    let mut attributes = format!(r#" data-look="{}""#, look(config));
-    if let Some(index) = color_index.filter(|_| !palette(config).is_empty()) {
+pub(super) fn appearance_attributes(
+    binding: &UsecaseCssBinding,
+    color_index: Option<usize>,
+) -> String {
+    let mut attributes = format!(r#" data-look="{}""#, binding.look);
+    if let Some(index) = color_index.filter(|_| !binding.palette.is_empty()) {
         let _ = write!(
             attributes,
             r#" data-color-id="color-{}""#,
-            index % palette(config).len()
+            index % binding.palette.len()
         );
     }
     attributes
 }
 
-pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
-    let token = |keys: &[&str], default: &str| {
-        keys.iter()
-            .find_map(|key| config_string(cfg, &["themeVariables", key]))
-            .unwrap_or_else(|| default.into())
-    };
-    let main = token(&["mainBkg", "primaryColor"], "#ECECFF");
-    let node_border = token(&["nodeBorder", "primaryColor"], "#9370DB");
-    let body = token(&["usecaseBkg", "mainBkg"], &main);
-    let border = token(
-        &["usecaseBorder", "nodeBorder", "primaryColor"],
-        &node_border,
-    );
-    let actor = token(&["usecaseActorBkg", "actorBkg", "mainBkg"], &main);
-    let actor_border = token(
-        &["usecaseActorBorder", "actorBorder", "primaryColor"],
-        &node_border,
-    );
-    let boundary = token(&["usecaseBoundaryBkg", "clusterBkg"], "#ffffde");
-    let boundary_border = token(&["usecaseBoundaryBorder", "clusterBorder"], "#aaaa33");
-    let line = token(&["lineColor"], "#333");
-    let include = token(&["usecaseIncludeLine", "lineColor"], &line);
-    let extend = token(&["usecaseExtendLine", "lineColor"], &line);
-    let text = token(&["primaryTextColor"], "#333");
-    let root_text = token(&["textColor"], "#333");
-    let actor_text = token(&["actorTextColor", "primaryTextColor"], &text);
-    let title = token(&["titleColor", "primaryTextColor"], &text);
-    let note = token(&["noteBkgColor"], "#fff5ad");
-    let note_border = token(&["noteBorderColor"], "#aaaa33");
-    let note_text = token(&["noteTextColor"], &text);
-    let edge_background = token(&["edgeLabelBackground"], &main);
+pub(super) fn write_css(
+    out: &mut String,
+    id: SvgDiagramId<'_>,
+    binding: &UsecaseCssBinding,
+) -> Result<()> {
+    let UsecaseCssBinding {
+        main,
+        node_border,
+        body,
+        border,
+        actor,
+        actor_border,
+        boundary,
+        boundary_border,
+        line,
+        include,
+        extend,
+        text,
+        root_text,
+        actor_text,
+        title,
+        note,
+        note_border,
+        note_text,
+        edge_background,
+        look,
+        ..
+    } = binding;
     let mut css = String::new();
     // HTML label metrics exclude the browser's default paragraph margins, as does
     // Mermaid's shared styles.ts reset. Apply it before the family-specific styles.
     let _ = super::super::css::write_mermaid_paragraph_css_to(&mut css, id);
-    let font = font_style(cfg);
+    let font = &binding.root_font;
     let _ = write!(
         css,
         "#{id}{{font-family:{};font-size:{}px;fill:{root_text}}}",
         font.font_family.as_deref().unwrap_or("sans-serif"),
         fmt(font.font_size)
     );
-    let look = look(cfg);
-    let rotate = cfg.pointer("/usecase/colorScheme").and_then(Value::as_str) == Some("rotate");
-    let backgrounds = cfg
-        .pointer("/themeVariables/bkgColorArray")
-        .and_then(Value::as_array);
-    for (index, color) in palette(cfg).iter().enumerate() {
-        let color = color
-            .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| color.to_string());
-        let fill = backgrounds
-            .filter(|values| !values.is_empty())
-            .map(|values| {
-                let value = &values[index % values.len()];
-                format!(
-                    "fill:{};",
-                    value
-                        .as_str()
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| value.to_string())
-                )
-            })
-            .unwrap_or_default();
+    for (index, color) in binding.palette.iter().enumerate() {
+        let fill = if binding.backgrounds.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "fill:{};",
+                binding.backgrounds[index % binding.backgrounds.len()]
+            )
+        };
         let slot = format!(r##"#{id} [data-look="{look}"][data-color-id="color-{index}"]"##);
         let _ = write!(
             css,
             "{slot}.system-boundary rect.boundary-body,{slot}.system-boundary rect.boundary-tab,{slot}.system-boundary .boundary-body path,{slot}.system-boundary .boundary-tab path{{stroke:{color};{fill}}}"
         );
-        if rotate {
+        if binding.rotate {
             let _ = write!(
                 css,
                 "{slot}.usecase-element ellipse,{slot}.usecase-element rect{{stroke:{color};{fill}}}{slot}.usecase-element .usecase-business-marker{{stroke:{color}}}{slot}.usecase-actor .usecase-actor-glyph{{stroke:{color};{fill}}}"
@@ -182,9 +122,10 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
 #{id} [data-look="{look}"].node.usecase-element .usecase-business-marker{{stroke:{border}}}"#
         );
     }
-    super::super::css::write_mermaid_common_neo_css(&mut css, id, cfg);
+    binding.neo.write(&mut css, id)?;
     // CSS is XML character data. Preserve declarations while preventing a token from closing style.
     out.push_str("<style>");
     util::escape_xml_raw_into(out, &css);
     out.push_str("</style>");
+    Ok(())
 }

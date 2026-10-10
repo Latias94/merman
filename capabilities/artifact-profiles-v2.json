@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d"
+    "digest": "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4"
   },
   "profiles": [
     {
@@ -828,7 +828,7 @@
     },
     {
       "id": "typst-wasm",
-      "description": "Published Typst WASM build for SVG and canonical analysis without uncallable export or math closures.",
+      "description": "Published Typst WASM build for SVG, canonical analysis, and theme authoring without uncallable binary-export or math closures.",
       "semantic_target": "typst",
       "cargo": {
         "package": "merman-typst-plugin",
@@ -965,8 +965,7 @@
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis",
-          "ascii",
-          "editor",
+          "ascii", "editor",
           "layout-cytoscape",
           "layout-elk",
           "math",
@@ -974,8 +973,7 @@
         ],
         "runtime_ids": [
           "analysis",
-          "ascii",
-          "editor",
+          "ascii", "editor",
           "layout-cytoscape",
           "layout-elk",
           "math",

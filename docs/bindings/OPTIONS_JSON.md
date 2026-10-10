@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-10-01
+Last updated: 2026-10-09
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -15,10 +15,10 @@ may select it while constructing their temporary engine. Resource options are de
 stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
 explicit limit must belong to the selected operation.
 
-Schema `2` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+Schema `3` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
 or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
 unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
-Omitting `version` selects the current schema `2`; explicit legacy versions are rejected rather
+Omitting `version` selects the current schema `3`; explicit legacy versions are rejected rather
 than translated implicitly.
 
 ## Full Shape
@@ -29,34 +29,16 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
-  "presentation": {
-    "profile": "merman-modern",
-    "theme": {
-      "preset": "one-dark",
-      "appearance": "dark",
-      "font_family": "Inter, system-ui, sans-serif",
-      "roles": {
-        "canvas": "#0f172a",
-        "surface": "#111827",
-        "text": "#e5e7eb",
-        "border": "#475569",
-        "line": "#94a3b8",
-        "success": "#34d399"
-      },
-      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
-    }
-  },
   "site_config": {
     "theme": "base",
     "themeVariables": {
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc"
-    },
-    "themeCSS": ".node rect { stroke-width: 2px; }"
+    }
   },
   "parse": {
     "suppress_errors": false
@@ -135,15 +117,15 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
-    "scoped_css": ".node rect { stroke-width: 2px; }",
-    "css_override_policy": "preserve",
     "root_background_color": "#0f172a",
     "drop_native_duplicate_fallbacks": false
   },
   "raster": {
     "scale": 2,
     "background": "#ffffff",
-    "fit_to": { "width": 1200 }
+    "fit_to": {
+      "width": 1200
+    }
   },
   "jpeg": {
     "quality": 85
@@ -154,6 +136,9 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
       "kind": "fit-css-width",
       "max_width_px": 1200
     }
+  },
+  "theme": {
+    "preset": "one-dark"
   }
 }
 ```
@@ -164,11 +149,11 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
+| `version` | integer | `3` | Current options-schema version. Earlier versions are rejected. Omitting the field selects the current grammar; durable integrations should send `3` explicitly and use a matching runtime artifact. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `presentation` | object | none | Optional first-party presentation profile plus independent host semantic theme data. |
+| `theme` | object or null | none | Experimental compiled diagram theme: an exact `preset`/`spec` selection or a version-1 recipe envelope. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -275,9 +260,9 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 
 ## Site Config
 
-`site_config` accepts the same Mermaid configuration object that Rust users pass through
+`site_config` accepts a bounded Mermaid configuration object applied through
 `Engine::with_site_config(...)` before constructing a `Renderer`. It is intended for host-level
-Mermaid defaults such as theme selection, `themeVariables`, and Mermaid `themeCSS`:
+defaults such as theme selection and `themeVariables`:
 
 ```json
 {
@@ -287,54 +272,174 @@ Mermaid defaults such as theme selection, `themeVariables`, and Mermaid `themeCS
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc",
       "nodeBorder": "#38bdf8"
-    },
-    "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
-  }
-}
-```
-
-`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`. This option
-does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
-postprocessing for editor-specific colors.
-
-## Presentation
-
-`presentation` has two independent inputs: an optional first-party product profile and an optional host semantic theme. It does not own raw Mermaid configuration or SVG postprocessing. Default rendering is unchanged when `presentation` is omitted or empty.
-
-```json
-{
-  "presentation": {
-    "profile": "merman-modern",
-    "theme": {
-      "preset": "one-dark",
-      "appearance": "dark",
-      "font_family": "Inter, system-ui, sans-serif",
-      "font_size": "14px",
-      "roles": {
-        "canvas": "#0f172a",
-        "surface": "#111827",
-        "surface-alt": "#1f2937",
-        "text": "#e5e7eb",
-        "subtle-text": "#cbd5e1",
-        "border": "#475569",
-        "line": "#94a3b8",
-        "note-background": "#422006",
-        "note-border": "#f59e0b",
-        "success": "#34d399"
-      },
-      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
     }
   }
 }
 ```
 
-`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. An absent ELK loader resolves to Dagre for Flowchart, Class, and ER. In that lean build, `svg-plan-json` can report the profile's ELK aspect as `blocked` while the resolved operation is `ready`. A compiled ELK backend denied by host policy still blocks admission; backend failures and missing math support do not trigger fallback.
+`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`.
+`site_config.themeCSS` and `site_config.secure` are rejected by general bindings. Raw CSS and the
+set of protected Mermaid configuration keys are host trust decisions, so callers cannot replace
+them through one-shot options, reusable constructors, or request overlays. Trusted native hosts
+must use the Rust rendering API or native CLI host configuration. Binding consumers should use the
+typed `theme` schema for diagram styling and `svg.root_background_color` for the narrow root-canvas
+override.
 
-`presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
+Official layout selection is independent of the typed theme. Under Mermaid 12's registered-loader
+resolution, an absent ELK loader falls back to Dagre for Flowchart, Class, and ER. A compiled
+backend denied by host policy remains an admission error; backend failures and missing math
+support do not trigger fallback.
 
-Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
+## Diagram Theme
 
-Merge precedence is the engine's base config, presentation profile defaults, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
+The top-level `theme` field selects one complete compiled diagram theme. Its authoring contract
+is experimental; use a runtime artifact that exposes the matching theme operations. It accepts:
+
+- `null`, to clear a compiled theme;
+- an object containing exactly one of `preset` and `spec`;
+- a version-1 `ThemeRecipeV1` envelope, with `schema_version: 1`, `kind: "definition"` or
+  `kind: "complete_spec"`, and the corresponding `definition` or `complete_spec` payload.
+
+`{}`, simultaneous `preset` and `spec`, null selection payloads, and mixtures of recipe and
+selection members are rejected. Recipe versions and payload fields are validated in Rust.
+A successful compilation validates the bounded recipe and reports its requirements; it does
+not qualify every diagram family or export target.
+
+A downloaded recipe is passed directly as the `theme` value, without adding a `recipe` wrapper:
+
+```json
+{
+  "version": 3,
+  "theme": {
+    "schema_version": 1,
+    "kind": "complete_spec",
+    "complete_spec": {
+      "mermaid": { "theme": "base" }
+    }
+  }
+}
+```
+
+See [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-themes.md)
+for exporting presets, authoring definitions, and importing saved recipes.
+
+`theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
+`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value
+compiles the corresponding Rust `ThemePreset`. It does not select `look: neo`, Flowchart ELK, an
+SVG pipeline, or a product profile.
+
+`theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
+
+| Field | Purpose |
+| --- | --- |
+| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, or `redux-dark-color`), `dark_mode`, and scalar `variables`. |
+| `typography` | Default and family-specific text styles. |
+| `styles` | Tagged semantic rules and ordinal palettes. `null` inside a style patch explicitly clears that property. |
+| `canvas` | Base paint, bounded layers, and bleed. |
+| `effects` | Tagged bounded filter graphs and semantic bindings. |
+| `requirements` | Required theme and text-layout capability IDs. |
+| `assets` | Retained exchange schema for font catalogs, aliases, generic-family mappings, sources, and embedding requirements. Caller font resources are unsupported during compilation. |
+
+The `assets` wire shape is preserved so complete recipes can be exchanged without losing fields.
+Compilation rejects caller-provided font resources after ordinary validation and resource limits;
+it does not decode font formats, decompress WOFF2, or shape embedded fonts. Use typography
+`font_stack` names to select fonts supplied by the host.
+
+An effect graph contains its recipe-local `id`, ordered `primitives`, and optional `color_space`
+(`"linear-rgb"`, the default, or `"srgb"`). A semantic binding selects the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
+safe region from final paint geometry and admits it against the effective session resource policy.
+Because the schema is closed, the removed `region` member is rejected rather than ignored.
+Unknown or null color spaces are rejected. State currently consumes ordered zero-spread drop
+shadows: `source-graphic` restarts from the painted object and `previous` uses the preceding
+stage. The first stage must use the source graphic. This does not imply effect support in every
+diagram family. Native sRGB export uses a fixed standard five-primitive expansion per shadow
+to preserve colors in the pinned backend; resource limits count those actual primitives.
+
+```json
+{
+  "effects": [
+    {
+      "kind": "graph",
+      "id": "state-shadow",
+      "primitives": [{
+        "kind": "drop-shadow",
+        "offset_x": 5,
+        "offset_y": 6,
+        "blur_radius": 0,
+        "spread": 0,
+        "color": "#111827"
+      }]
+    },
+    { "kind": "binding", "target": "state", "effect_id": "state-shadow" }
+  ]
+}
+```
+
+The binding schema rejects unknown nested fields. Mermaid compatibility variables accept only
+strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG
+output policy do not belong in `theme.spec.mermaid`; use their explicit owners instead.
+
+```json
+{
+  "theme": {
+    "spec": {
+      "mermaid": {
+        "theme": "base",
+        "dark_mode": true,
+        "variables": {
+          "primaryColor": "#2563eb"
+        }
+      },
+      "typography": {
+        "default": {
+          "font_stack": ["Inter", "system-ui", "sans-serif"],
+          "font_size_px": 14,
+          "line_height": 1.4
+        }
+      },
+      "styles": [
+        {
+          "kind": "rule",
+          "target": "node",
+          "family": "flowchart",
+          "style": {
+            "fill": "#111827",
+            "stroke": { "paint": "#60a5fa", "width": 2 }
+          }
+        },
+        {
+          "kind": "ordinal-palette",
+          "target": "chart-series",
+          "colors": ["#60a5fa", "#34d399", "#f59e0b"]
+        }
+      ],
+      "canvas": { "base": "#0f172a", "bleed": 8 },
+      "effects": [],
+      "requirements": { "capabilities": ["semantic-rules"] }
+    }
+  }
+}
+```
+
+Theme selection is not part of the generic request deep merge. For a reusable engine, omitted
+`theme` inherits the constructor's compiled value, `theme: null` clears it, and a request
+selection or recipe replaces it as one complete value. Requests cannot raise the constructor's
+theme admission or resource policies.
+
+Bounded Mermaid behavior overrides belong at top-level `site_config`; output choices belong under
+`svg`. Raw CSS is not part of either general-binding surface.
+`presentation` and `host_theme` are removed groups and return migration-oriented errors. Use
+top-level `theme`, `site_config`, explicit layout configuration, and `svg` as independent owners.
+
+Mermaid configuration precedence is the base engine config, the compiled theme's explicit
+Mermaid compatibility values, top-level `site_config`, then diagram frontmatter and directives
+subject to hardened secure keys. Typed semantic rules, typography, canvas, effects, and assets are
+resolved by the consuming family/document/output stages rather than being flattened into a second
+Mermaid JSON cascade.
+
+Use the artifact's `theme-catalog` metadata entry to discover preset IDs, semantic targets,
+capabilities, font IDs, and resource limits. This is particularly important for artifacts that do
+not compile every SVG capability.
 
 ## Parse Options
 
@@ -395,11 +500,11 @@ explicit terminal, machine-channel, SVG, and raster request composition.
 | `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
 | `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
 
-`ascii.theme` is independent of SVG `presentation.theme`. TrueColor resolves terminal roles through
+`ascii.theme` is independent of SVG `theme`. TrueColor resolves terminal roles through
 the supplied RGB palette; ANSI256 approximates those colors. ANSI16 instead uses terminal Reset and
 named ANSI colors for semantic roles, so it does not apply that RGB palette to those roles. The host
 owns any mapping of its application theme into both output-specific inputs. See
-[terminal themes](../rendering/presentation-themes.md#terminal-themes).
+[terminal theme API](../../crates/merman-ascii/README.md#terminal-theme-api).
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
@@ -417,7 +522,7 @@ partially styled compatibility projection.
 `allow` and `error` remain valid with every admitted primary encoding. The canonical ASCII output
 plan is schema `3`; it includes `encoding`, `requested_layout_profile`, `layout_profile` (the
 selected primary geometry), and `compact_attempted`. Its logical height excludes a final line
-terminator. The options JSON version remains `2`; the output schema version is independent. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
+terminator. The options JSON version is `3`; the output schema version is independent. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
 to Plain there and an explicit styled report request is rejected.
 
 Auto selects the narrower valid primary candidate and prefers Canonical on equal width. It does
@@ -621,7 +726,7 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under Options JSON schema `2`: an unknown id, a value below the
+Limit ids are closed under Options JSON schema `3`: an unknown id, a value below the
 descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
 rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
@@ -674,8 +779,6 @@ does not depend on them.
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
-| `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
-| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
@@ -704,11 +807,10 @@ Mermaid-compatible SVG and can include `<foreignObject>` HTML labels. Hosts that
 bytes into strict SVG renderers, rasterizers, or PDF converters should request `resvg-safe`
 explicitly instead of treating the default SVG as export-safe input.
 
-`svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
-root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
-`svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
-raster-safe contract as far as the built-in sanitizer can. Hosts still own CSS trust, palette
-semantics, and renderer-specific compatibility.
+General bindings reject `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and
+`svg.cssOverridePolicy`. CSS acceptance and changes to existing cascade priority are host trust
+decisions and therefore remain limited to trusted Rust and native CLI integrations. This rejection
+applies to one-shot options, reusable-engine constructors, and request-local overlays.
 
 `svg.root_background_color` is narrower than host CSS. It rewrites the root `<svg>` inline
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
@@ -772,19 +874,6 @@ native/fallback duplicate cleanup. This cleanup does not prevent HTML/fallback o
   "svg": {
     "pipeline": "readable",
     "drop_native_duplicate_fallbacks": true
-  }
-}
-```
-
-Resvg-safe SVG with host-scoped CSS:
-
-```json
-{
-  "svg": {
-    "pipeline": "resvg-safe",
-    "diagram_id": "host-preview",
-    "scoped_css": ".node rect { fill: #111827; } .merman-foreignobject-fallback-text { fill: #f8fafc; }",
-    "css_override_policy": "strip-existing-important"
   }
 }
 ```

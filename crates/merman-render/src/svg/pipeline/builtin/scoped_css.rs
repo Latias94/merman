@@ -286,6 +286,23 @@ mod tests {
             .unwrap()
     }
 
+    fn scoped_selector(selector: &str) -> String {
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        rewrite::materialize_css(
+            &format!("{selector}{{color:red;}}"),
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect("valid scoped selector");
+        output
+            .split_once(" {")
+            .map(|(selector, _)| selector.to_string())
+            .expect("materialized selector and declaration block")
+    }
+
     #[test]
     fn scoped_css_injects_after_root_svg_tag_when_no_style_exists() {
         let svg = r#"<svg id="diagram"><rect class="node"/></svg>"#;
@@ -438,6 +455,75 @@ mod tests {
                 "selector: {selector:?}; output: {out}"
             );
         }
+    }
+
+    #[test]
+    fn scoped_css_preserves_root_svg_selector_qualifiers() {
+        assert_eq!(
+            scoped_selector(
+                r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
+            ),
+            r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_does_not_escape_through_root_siblings_or_id_prefixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
+            ),
+            "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
+        );
+    }
+
+    #[test]
+    fn scoped_css_parses_repeated_and_escaped_root_attributes() {
+        assert_eq!(
+            scoped_selector(r#"svg[data-label="a]b"][data-path="a\"b"] .node"#),
+            r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_keeps_ambiguous_root_suffixes_inside_the_scope() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside",
+            ),
+            "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_fails_closed_for_attribute_comments_and_sibling_suffixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
+            ),
+            "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_handles_escaped_brackets_and_rejects_unclosed_attributes() {
+        assert_eq!(
+            scoped_selector(r"svg[data-label=a\]b] .node"),
+            r"#diagram[data-label=a\]b] .node"
+        );
+
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        let error = rewrite::materialize_css(
+            "svg[a][b{color:red;}",
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect_err("unclosed root attributes must fail before CSS injection");
+        assert!(error.to_string().contains("invalid scoped CSS"));
+        assert!(output.is_empty());
     }
 
     #[test]

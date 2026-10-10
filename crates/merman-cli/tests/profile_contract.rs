@@ -288,7 +288,32 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 5);
+    assert_eq!(payload["cli_contract_version"], 6);
+    #[cfg(feature = "svg")]
+    {
+        assert_eq!(payload["theme_presets"]["schema_version"], 1);
+        assert!(
+            payload["theme_presets"]["presets"]
+                .as_array()
+                .is_some_and(|presets| !presets.is_empty()),
+            "SVG artifacts must expose preset discovery metadata"
+        );
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+            merman::svg::ThemeResourcePolicy::for_profile(
+                merman::svg::CLI_DEFAULT_RESOURCE_PROFILE,
+            ),
+        );
+        assert_eq!(
+            payload["theme_presets"]["presets"],
+            serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap(),
+            "spawned CLI preset metadata must match the production compiler projection"
+        );
+    }
+    #[cfg(not(feature = "svg"))]
+    assert!(
+        payload.get("theme_presets").is_none(),
+        "artifacts without SVG must omit preset discovery metadata"
+    );
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -1115,14 +1140,10 @@ fn workflow_completions() {
                     .collect()
             );
 
-            let presentation_profiles =
-                bash_completion_values(&script, "render", "--presentation-profile");
-            assert_eq!(
-                presentation_profiles,
-                merman::svg::presentation_profile_descriptors()
-                    .iter()
-                    .map(|descriptor| descriptor.id().to_owned())
-                    .collect()
+            let theme_presets = bash_completion_values(&script, "render", "--theme-preset");
+            assert!(
+                theme_presets.is_empty(),
+                "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates: {theme_presets:?}"
             );
         }
     }
@@ -1164,12 +1185,15 @@ fn bash_completion_values(script: &str, command: &str, option: &str) -> BTreeSet
         .split_once(&marker)
         .map(|(_, rest)| rest)
         .unwrap_or_else(|| panic!("Bash completion omits {command} {option}"));
-    rest.split_once("compgen -W \"")
-        .and_then(|(_, rest)| rest.split_once('"').map(|(values, _)| values))
-        .unwrap_or_else(|| panic!("Bash completion omits {command} {option} values"))
-        .split_ascii_whitespace()
-        .map(str::to_owned)
-        .collect()
+    let arm_end = rest.find("\n                    ;;").unwrap_or(rest.len());
+    let arm = &rest[..arm_end];
+    let Some(values) = arm
+        .split_once("compgen -W \"")
+        .and_then(|(_, arm)| arm.split_once('"').map(|(values, _)| values))
+    else {
+        return BTreeSet::new();
+    };
+    values.split_ascii_whitespace().map(str::to_owned).collect()
 }
 
 fn workflow_adapter(flag: &str) {

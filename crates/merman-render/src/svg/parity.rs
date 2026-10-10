@@ -2,8 +2,7 @@ use super::pipeline::{
     ScopedCssPostprocessor, SvgPipeline, SvgPostprocessExecution, SvgPostprocessMetadata,
 };
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
-use crate::model::ArchitectureDiagramLayout;
+use crate::family::FamilyExecutionView;
 use crate::model::*;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -12,7 +11,7 @@ use crate::model::*;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -40,6 +39,8 @@ pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KG
 mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
+#[cfg(feature = "diagram-block")]
+pub(crate) use block::block_edge_path_data;
 #[cfg(feature = "diagram-c4")]
 mod c4;
 #[cfg(feature = "diagram-class")]
@@ -53,6 +54,25 @@ mod class;
     )
 )]
 mod css;
+pub(crate) use css::PreparedCommonCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(crate) use css::PreparedCommonNeoCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use flowchart::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
+pub(crate) use look_defs::PreparedLookDefs;
+pub(crate) use util::cssom_color_value;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -102,6 +122,14 @@ mod eventmodeling;
     feature = "diagram-agentflow"
 ))]
 mod flowchart;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use flowchart::{
+    FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes,
+};
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
 #[cfg(feature = "diagram-git-graph")]
@@ -159,8 +187,10 @@ mod look_defs;
     )
 )]
 mod markers;
+pub(crate) use markers::BaseEdgeMarkerKind;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
+mod output;
 #[cfg(feature = "diagram-packet")]
 mod packet;
 #[cfg_attr(
@@ -204,6 +234,7 @@ mod roughjs_common;
 mod sankey;
 #[cfg(feature = "diagram-sequence")]
 mod sequence;
+mod shadow;
 #[cfg(feature = "diagram-state")]
 mod state;
 #[cfg_attr(
@@ -258,20 +289,12 @@ mod wardley;
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg(feature = "diagram-pie")]
-use css::PieCss;
-#[cfg(feature = "diagram-er")]
-use css::er_css;
 #[cfg(feature = "diagram-gantt")]
 use css::gantt_css;
 #[cfg(feature = "diagram-xychart")]
 use css::push_xychart_css;
-#[cfg(feature = "diagram-requirement")]
-use css::requirement_css;
-#[cfg(feature = "diagram-sankey")]
-use css::sankey_css;
-#[cfg(feature = "diagram-treemap")]
-use css::treemap_css;
+#[cfg(feature = "diagram-pie")]
+use css::write_pie_css;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -280,15 +303,11 @@ use css::treemap_css;
     )
 )]
 use css::{
-    info_css_parts_with_config, info_css_parts_with_theme_font_size_only, info_css_with_config,
+    MermaidBaseCss, info_css_parts_from_prepared, write_mermaid_base_css_prefix_with_font_emission,
+    write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
+    write_prepared_info_css,
 };
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
+use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
@@ -321,15 +340,7 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        unused_imports,
-        reason = "Common SVG imports are consumed by the selected family emitters."
-    )
-)]
-use theme::PresentationTheme;
+use style::is_text_style_key;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -338,13 +349,13 @@ use theme::PresentationTheme;
     )
 )]
 use util::{
-    SvgTheme, config_bool, config_diagram_look, config_f64, config_f64_css_px, config_string,
-    css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
-    escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into,
-    fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
+    config_bool, config_f64, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
+    escape_attr_display, escape_attr_into, escape_xml_display, escape_xml_into, fmt, fmt_display,
+    fmt_into, fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
     json_stringify_points_into, normalize_css_font_family, scoped_drop_shadow, scoped_svg_id,
     scoped_svg_url, theme_token,
 };
+pub(crate) use util::{escape_attr, escape_xml};
 
 /// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
@@ -403,6 +414,11 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 
     if out.is_empty() || out == "m" {
         "m-untitled".to_string()
+    } else if PreparedTextLabelId::is_svg_id_candidate(&out) {
+        // Prepared-text labels use this namespace for internal evidence tokens. A caller-owned
+        // diagram id must not be allowed to enter it, because the partitioner validates every
+        // matching `id` attribute against the operation ledger.
+        format!("m-user-{out}")
     } else {
         out
     }
@@ -412,7 +428,10 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.
     pub viewbox_padding: f64,
-    /// Optional diagram id used for Mermaid-like marker ids.
+    /// Optional diagram id used for Mermaid-like marker ids and scoped styles.
+    ///
+    /// Callers embedding multiple SVGs in one host document must provide ids that remain unique
+    /// after Merman normalizes them for XML and CSS.
     pub diagram_id: Option<String>,
 }
 
@@ -629,6 +648,100 @@ pub(crate) fn normalize_svg_render_options(
     })
 }
 
+struct SvgDiagramIdProjection<'a> {
+    work_meter: &'a crate::resources::OperationWorkMeter,
+    projected_bytes: std::cell::Cell<usize>,
+    error: std::cell::RefCell<Option<Error>>,
+}
+
+impl SvgDiagramIdProjection<'_> {
+    fn write(&self, value: &str, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.error.borrow().is_some() {
+            return Ok(());
+        }
+        let Some(projected_bytes) = self.projected_bytes.get().checked_add(value.len()) else {
+            self.error.replace(Some(
+                self.work_meter
+                    .terminate_svg_byte_count_overflow(
+                        crate::resources::ResourceLimitPhase::SvgOutput,
+                        OperationPhase::Emit,
+                    )
+                    .into(),
+            ));
+            return Ok(());
+        };
+        match self.work_meter.preflight_svg_byte_count(
+            projected_bytes,
+            crate::resources::ResourceLimitPhase::SvgOutput,
+            OperationPhase::Emit,
+        ) {
+            Ok(()) => {
+                self.projected_bytes.set(projected_bytes);
+                formatter.write_str(value)
+            }
+            Err(error) => {
+                self.error.replace(Some(error.into()));
+                Ok(())
+            }
+        }
+    }
+
+    fn finish(&self) -> Result<()> {
+        match self.error.borrow_mut().take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+
+/// A normalized diagram identifier whose output occurrences are admitted before they are written.
+///
+/// The raw string is available only for semantic inputs such as deterministic seeds and ownership
+/// checks. SVG, CSS, URL, ARIA, and marker output must format this value so the operation observes
+/// the cumulative identifier contribution before caller-controlled fanout can grow the document.
+#[derive(Clone, Copy)]
+pub(super) struct SvgDiagramId<'a> {
+    value: &'a str,
+    projection: &'a SvgDiagramIdProjection<'a>,
+}
+
+impl<'a> SvgDiagramId<'a> {
+    pub(super) fn semantic_str(self) -> &'a str {
+        self.value
+    }
+}
+
+impl std::fmt::Debug for SvgDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("SvgDiagramId")
+            .field(&self.value)
+            .finish()
+    }
+}
+
+impl std::fmt::Display for SvgDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.projection.write(self.value, formatter)
+    }
+}
+
+pub(super) trait SvgDiagramIdValue: Copy + std::fmt::Display {
+    fn semantic_value(&self) -> &str;
+}
+
+impl SvgDiagramIdValue for SvgDiagramId<'_> {
+    fn semantic_value(&self) -> &str {
+        self.value
+    }
+}
+
+impl SvgDiagramIdValue for &str {
+    fn semantic_value(&self) -> &str {
+        self
+    }
+}
+
 /// A point captured while diagnosing one flowchart edge route.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct FlowchartEdgeTracePoint {
@@ -766,135 +879,45 @@ impl SvgDebugOptions {
 )]
 pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
-    session: &'a RenderSession,
+    family: FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
     diagram_id_projection: SvgDiagramIdProjection<'a>,
     timing: timing::RenderTiming,
     pub(crate) debug: &'a SvgDebugOptions,
 }
 
-struct SvgDiagramIdProjection<'a> {
-    work_meter: &'a crate::resources::OperationWorkMeter,
-    projected_bytes: std::cell::Cell<usize>,
-    error: std::cell::RefCell<Option<Error>>,
+/// Complete family SVG paired with evidence produced by the operation-owned root consumer.
+pub(crate) struct RootThemeAppliedSvg {
+    svg: String,
+    root_theme: crate::diagram_theme::RootThemeReport,
+    preserves_typed_theme_evidence: bool,
 }
 
-impl SvgDiagramIdProjection<'_> {
-    fn write(&self, value: &str, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.error.borrow().is_some() {
-            return Ok(());
-        }
-        let Some(projected_bytes) = self.projected_bytes.get().checked_add(value.len()) else {
-            self.error.replace(Some(
-                self.work_meter
-                    .terminate_svg_byte_count_overflow(
-                        crate::resources::ResourceLimitPhase::SvgOutput,
-                        OperationPhase::Emit,
-                    )
-                    .into(),
-            ));
-            return Ok(());
-        };
-        match self.work_meter.preflight_svg_byte_count(
-            projected_bytes,
-            crate::resources::ResourceLimitPhase::SvgOutput,
-            OperationPhase::Emit,
-        ) {
-            Ok(()) => {
-                self.projected_bytes.set(projected_bytes);
-                formatter.write_str(value)
-            }
-            Err(error) => {
-                self.error.replace(Some(error.into()));
-                Ok(())
-            }
-        }
+impl RootThemeAppliedSvg {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.svg
     }
 
-    fn finish(&self) -> Result<()> {
-        match self.error.borrow_mut().take() {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+    pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
+        (
+            self.svg,
+            self.root_theme,
+            self.preserves_typed_theme_evidence,
+        )
     }
 }
 
-/// A normalized diagram identifier whose output occurrences are admitted before they are written.
-///
-/// The raw string is available only for semantic inputs such as deterministic seeds and ownership
-/// checks. SVG, CSS, URL, ARIA, and marker output must format this value so the operation observes
-/// the cumulative identifier contribution before caller-controlled fanout can grow the document.
-#[derive(Clone, Copy)]
-pub(super) struct SvgDiagramId<'a> {
-    value: &'a str,
-    projection: &'a SvgDiagramIdProjection<'a>,
-}
+impl std::ops::Deref for RootThemeAppliedSvg {
+    type Target = str;
 
-impl<'a> SvgDiagramId<'a> {
-    pub(super) fn semantic_str(self) -> &'a str {
-        self.value
+    fn deref(&self) -> &Self::Target {
+        &self.svg
     }
 }
 
-impl std::fmt::Debug for SvgDiagramId<'_> {
+impl std::fmt::Display for RootThemeAppliedSvg {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_tuple("SvgDiagramId")
-            .field(&self.value)
-            .finish()
-    }
-}
-
-impl std::fmt::Display for SvgDiagramId<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.projection.write(self.value, formatter)
-    }
-}
-
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-pub(super) trait SvgDiagramIdValue: Copy + std::fmt::Display {
-    fn semantic_value(&self) -> &str;
-}
-
-impl SvgDiagramIdValue for SvgDiagramId<'_> {
-    fn semantic_value(&self) -> &str {
-        self.value
-    }
-}
-
-impl SvgDiagramIdValue for &str {
-    fn semantic_value(&self) -> &str {
-        self
-    }
-}
-
-#[derive(Default)]
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        reason = "Shared SVG execution support is used by the selected family emitters."
-    )
-)]
-struct SvgComponentByteCounter {
-    bytes: usize,
-    overflowed: bool,
-}
-
-impl std::fmt::Write for SvgComponentByteCounter {
-    fn write_str(&mut self, value: &str) -> std::fmt::Result {
-        let Some(bytes) = self.bytes.checked_add(value.len()) else {
-            self.overflowed = true;
-            return Err(std::fmt::Error);
-        };
-        self.bytes = bytes;
-        Ok(())
+        formatter.write_str(&self.svg)
     }
 }
 
@@ -909,8 +932,9 @@ impl<'a> SvgExecution<'a> {
     fn new(
         request: &'a SvgRenderOptions,
         debug: &'a SvgDebugOptions,
-        session: &'a RenderSession,
+        family: FamilyExecutionView<'a>,
     ) -> Result<Self> {
+        let session = family.session();
         let timing = if debug.include_timing_diagnostics {
             timing::RenderTiming::enabled(
                 session
@@ -921,9 +945,9 @@ impl<'a> SvgExecution<'a> {
         } else {
             timing::RenderTiming::disabled()
         };
-        Ok(Self {
+        let execution = Self {
             request,
-            session,
+            family,
             text_measurer: session
                 .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit),
             diagram_id_projection: SvgDiagramIdProjection {
@@ -933,7 +957,22 @@ impl<'a> SvgExecution<'a> {
             },
             timing,
             debug,
-        })
+        };
+        Ok(execution)
+    }
+
+    #[cfg(test)]
+    fn unthemed_for_test(
+        request: &'a SvgRenderOptions,
+        debug: &'a SvgDebugOptions,
+        session: &'a RenderSession,
+        family_id: crate::DiagramFamilyId,
+    ) -> Result<Self> {
+        Self::new(
+            request,
+            debug,
+            FamilyExecutionView::for_test(session, family_id),
+        )
     }
 
     pub(super) fn diagram_id_or<'execution>(
@@ -958,29 +997,43 @@ impl<'a> SvgExecution<'a> {
         &self.text_measurer
     }
 
+    pub(crate) const fn family_id(&self) -> crate::DiagramFamilyId {
+        self.family.family_id()
+    }
+
+    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
+        self.family.resolved_theme()
+    }
+
+    #[cfg(feature = "diagram-state")]
+    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
+        self.family.style_plan().and_then(|plan| plan.state())
+    }
+
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
-        self.session
+        self.family
+            .session()
             .controlled_text_measurer(phase, OperationPhase::Emit)
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
-        self.session.math_renderer()
+        self.family.session().math_renderer()
     }
 
     pub(crate) fn icon_registry(&self) -> Option<&super::icon_registry::IconRegistry> {
-        self.session.icon_registry()
+        self.family.session().icon_registry()
     }
 
     pub(crate) fn unix_ms(&self) -> i64 {
-        self.session.unix_millis()
+        self.family.session().unix_millis()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
-        self.session.local_time_zone()
+        self.family.session().local_time_zone()
     }
 
     pub(crate) fn seed(&self) -> u64 {
-        self.session.render_seed().get()
+        self.family.session().render_seed().get()
     }
 
     pub(crate) fn rough_randomness(
@@ -993,7 +1046,7 @@ impl<'a> SvgExecution<'a> {
         } else {
             configured_seed
         };
-        let operation = self.session.operation_context();
+        let operation = self.family.session().operation_context();
         roughr::core::RoughRandomness::new(
             roughr::core::RoughJsSeed::new(resolved_seed),
             roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
@@ -1005,7 +1058,17 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
-        self.session.work_meter().as_ref()
+        self.family.session().work_meter().as_ref()
+    }
+
+    pub(crate) fn theme_resource_policy(
+        &self,
+    ) -> std::sync::Arc<crate::diagram_theme::ThemeResourcePolicy> {
+        self.family.session().effective_theme_resource_policy()
+    }
+
+    pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
+        self.family.session().resource_policy()
     }
 
     /// Replays a terminal observed while an SVG ID was being projected.
@@ -1016,75 +1079,6 @@ impl<'a> SvgExecution<'a> {
         self.work_meter()
             .checkpoint(OperationPhase::Emit)
             .map_err(Into::into)
-    }
-
-    /// Counts a retained SVG component through its production writer, admits the exact byte count,
-    /// and only then allocates and materializes it.
-    ///
-    /// The counting pass owns no output buffer, so authored/config-sized content is not cloned just
-    /// to establish the bound. The final whole-document check remains the authoritative
-    /// `MaxSvgBytes` admission; this earlier absolute preflight prevents one amplified component
-    /// from allocating beyond the same ceiling and is not accumulated a second time.
-    fn materialize_counted_svg_component(
-        &self,
-        component_name: &'static str,
-        count_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
-        write_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
-    ) -> Result<String> {
-        if self
-            .work_meter()
-            .policy()
-            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
-            .is_none()
-        {
-            let mut output = String::new();
-            write_component(&mut output).map_err(|_| Error::InvalidModel {
-                message: format!("failed to materialize {component_name}"),
-            })?;
-            return Ok(output);
-        }
-
-        let mut counter = SvgComponentByteCounter::default();
-        let projection = count_component(&mut counter);
-        if counter.overflowed {
-            return Err(self
-                .work_meter()
-                .terminate_svg_byte_count_overflow(
-                    crate::resources::ResourceLimitPhase::SvgOutput,
-                    OperationPhase::Emit,
-                )
-                .into());
-        }
-        projection.map_err(|_| Error::InvalidModel {
-            message: format!("failed to count {component_name}"),
-        })?;
-        let projected_bytes = counter.bytes;
-        self.work_meter()
-            .preflight_svg_byte_count(
-                projected_bytes,
-                crate::resources::ResourceLimitPhase::SvgOutput,
-                OperationPhase::Emit,
-            )
-            .map_err(Error::from)?;
-
-        let mut output = String::new();
-        output
-            .try_reserve_exact(projected_bytes)
-            .map_err(|error| Error::InvalidModel {
-                message: format!("failed to allocate {component_name}: {error}"),
-            })?;
-        write_component(&mut output).map_err(|_| Error::InvalidModel {
-            message: format!("failed to materialize {component_name}"),
-        })?;
-        if output.len() != projected_bytes {
-            return Err(Error::InvalidModel {
-                message: format!(
-                    "{component_name} byte projection drifted: projected {projected_bytes} bytes but materialized {}",
-                    output.len()
-                ),
-            });
-        }
-        Ok(output)
     }
 }
 
@@ -1098,6 +1092,7 @@ impl std::ops::Deref for SvgExecution<'_> {
 
 #[cfg(test)]
 pub(crate) fn with_test_svg_execution<T>(
+    family_id: crate::DiagramFamilyId,
     request: &SvgRenderOptions,
     run: impl FnOnce(&SvgExecution<'_>) -> T,
 ) -> T {
@@ -1105,7 +1100,7 @@ pub(crate) fn with_test_svg_execution<T>(
         .begin_session()
         .expect("create test render session");
     let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(request, &debug, &session)
+    let execution = SvgExecution::unthemed_for_test(request, &debug, &session, family_id)
         .expect("default test SVG execution does not request timing");
     run(&execution)
 }
@@ -1113,45 +1108,72 @@ pub(crate) fn with_test_svg_execution<T>(
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
-    session: &RenderSession,
+    family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session)?;
+) -> Result<RootThemeAppliedSvg> {
+    let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg =
         render_builtin_family_artifact_raw(family, metadata, &execution, edge_paint_geometry);
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
-    let svg = rooted_svg.into_string_for(family.kind())?;
-    apply_theme_css(svg, metadata.effective_config.as_value(), session)
+    let (rooted_svg, root_theme) =
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
+    let svg = rooted_svg.into_string_for(execution.family_id())?;
+    let (svg, theme_css_applied) = apply_theme_css(
+        svg,
+        metadata.effective_config.as_value(),
+        family_execution.session(),
+    )?;
+    let root_theme = if theme_css_applied {
+        root_theme.invalidate_for_output_mutation()
+    } else {
+        root_theme
+    };
+    Ok(RootThemeAppliedSvg {
+        svg,
+        root_theme,
+        preserves_typed_theme_evidence: !theme_css_applied,
+    })
 }
 
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
-    pair: &crate::family::FamilyPair<
-        merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-        ArchitectureDiagramLayout,
-    >,
+    artifact: &crate::family::ArchitectureFamilyArtifact,
     effective_config: &merman_core::MermaidConfig,
-    session: &RenderSession,
+    family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<String> {
+) -> Result<RootThemeAppliedSvg> {
     // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
     // the renderer's supported low-stack worker budget.
-    let execution = SvgExecution::new(options, debug, session)?;
+    let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = architecture::render_architecture_diagram_svg_typed_with_config(
-        pair.layout(),
-        pair.semantic(),
+        artifact.pair().layout(),
+        artifact.pair().semantic(),
         effective_config,
+        artifact.group_theme(),
         &execution,
     );
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
-    let svg = rooted_svg.into_string_for(crate::family::RenderFamilyKind::Architecture)?;
-    apply_theme_css(svg, effective_config.as_value(), session)
+    let (rooted_svg, root_theme) =
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
+    let svg = rooted_svg.into_string_for(execution.family_id())?;
+    let (svg, theme_css_applied) =
+        apply_theme_css(svg, effective_config.as_value(), family_execution.session())?;
+    let root_theme = if theme_css_applied {
+        root_theme.invalidate_for_output_mutation()
+    } else {
+        root_theme
+    };
+    Ok(RootThemeAppliedSvg {
+        svg,
+        root_theme,
+        preserves_typed_theme_evidence: !theme_css_applied,
+    })
 }
 
 #[allow(
@@ -1172,19 +1194,18 @@ fn render_builtin_family_artifact_raw(
     let title = metadata.title.as_deref();
 
     match family {
-        BuiltinFamilyArtifact::Error(pair) => error::render_error_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.typography_theme(),
             options,
         ),
         #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
-        #[cfg(feature = "diagram-architecture")]
-        BuiltinFamilyArtifact::Architecture(pair) => {
+        BuiltinFamilyArtifact::Architecture(artifact) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
                 effective_config,
+                artifact.group_theme(),
                 options,
             )
         }
@@ -1207,73 +1228,83 @@ fn render_builtin_family_artifact_raw(
             edge_paint_geometry,
         ),
         #[cfg(feature = "diagram-cynefin")]
-        BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Cynefin(artifact) => cynefin::render_cynefin_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             title,
+            artifact.typography_theme(),
             options,
         ),
         #[cfg(feature = "diagram-wardley")]
-        BuiltinFamilyArtifact::Wardley(pair) => wardley::render_wardley_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             title,
+            artifact.typography_theme(),
             options,
         ),
         #[cfg(feature = "diagram-railroad")]
-        BuiltinFamilyArtifact::Railroad(pair) => railroad::render_railroad_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.typography_theme(),
             measurer,
             options,
         ),
         #[cfg(feature = "diagram-mindmap")]
-        BuiltinFamilyArtifact::Mindmap(pair) => {
+        BuiltinFamilyArtifact::Mindmap(artifact) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
                 effective_config,
+                artifact.node_palette(),
                 options,
             )
         }
         #[cfg(feature = "diagram-state")]
-        BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::State(artifact) => state::render_state_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.label_sidecar(),
+            artifact.effect_evidence(),
             effective_config_value,
             title,
             measurer,
             options,
         ),
         #[cfg(feature = "diagram-class")]
-        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_svg_model_with_config(
-            pair.layout(),
-            pair.semantic(),
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        #[cfg(feature = "diagram-sequence")]
-        BuiltinFamilyArtifact::Sequence(pair) => {
-            sequence::render_sequence_diagram_svg_model_with_config(
-                pair.layout(),
-                pair.semantic(),
+        BuiltinFamilyArtifact::Class(artifact) => {
+            class::render_class_diagram_svg_model_with_config(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.relation_theme(),
+                artifact.typography_theme(),
+                artifact.node_visual_plan(),
+                artifact.render_config(),
+                artifact.theme_evidence(),
                 effective_config,
                 title,
                 measurer,
                 options,
             )
         }
+        #[cfg(feature = "diagram-sequence")]
+        BuiltinFamilyArtifact::Sequence(pair) => {
+            sequence::render_sequence_diagram_svg_model_with_config(
+                pair.layout(),
+                pair.semantic(),
+                effective_config,
+                measurer,
+                options,
+            )
+        }
         #[cfg(feature = "diagram-zenuml")]
-        BuiltinFamilyArtifact::Zenuml(pair) => zenuml::render_zenuml_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Zenuml(artifact) => zenuml::render_zenuml_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
+            artifact.title_theme(),
             options,
         ),
         #[cfg(feature = "diagram-kanban")]
@@ -1281,50 +1312,55 @@ fn render_builtin_family_artifact_raw(
             kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
         }
         #[cfg(feature = "diagram-gantt")]
-        BuiltinFamilyArtifact::Gantt(pair) => gantt::render_gantt_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.task_theme(),
             effective_config_value,
             options,
         ),
         #[cfg(feature = "diagram-pie")]
-        BuiltinFamilyArtifact::Pie(pair) => pie::render_pie_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_diagram_svg_model_with_paint_plan(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.theme(),
             effective_config_value,
             options,
         ),
         #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(pair) => packet::render_packet_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.typography_theme(),
             effective_config_value,
             title,
             options,
         ),
         #[cfg(feature = "diagram-timeline")]
-        BuiltinFamilyArtifact::Timeline(pair) => timeline::render_timeline_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            title,
-            measurer,
+        BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.event_theme(),
+            artifact.typography_theme(),
+            artifact.text_paint(),
             options,
         ),
         #[cfg(feature = "diagram-journey")]
-        BuiltinFamilyArtifact::Journey(pair) => journey::render_journey_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Journey(artifact) => journey::render_journey_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.task_theme(),
+            artifact.typography_theme(),
+            artifact.text_paint(),
             title,
             measurer,
             options,
         ),
         #[cfg(feature = "diagram-requirement")]
-        BuiltinFamilyArtifact::Requirement(pair) => {
+        BuiltinFamilyArtifact::Requirement(artifact) => {
             requirement::render_requirement_diagram_svg_model(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.paint_theme(),
                 effective_config,
                 title,
                 measurer,
@@ -1341,101 +1377,136 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-sankey")]
-        BuiltinFamilyArtifact::Sankey(pair) => {
-            sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)
-        }
+        BuiltinFamilyArtifact::Sankey(artifact) => sankey::render_sankey_diagram_svg(
+            artifact.pair().layout(),
+            artifact.node_palette(),
+            artifact.typography_theme(),
+            effective_config_value,
+            options,
+        ),
         #[cfg(feature = "diagram-radar")]
-        BuiltinFamilyArtifact::Radar(pair) => radar::render_radar_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Radar(artifact) => {
+            radar::render_radar_diagram_svg_model_with_theme_plans(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.series_paint(),
+                artifact.title_theme(),
+                artifact.axis_paint(),
+                artifact.text_paint(),
+                artifact.typography_theme(),
+                effective_config_value,
+                title,
+                options,
+            )
+        }
         #[cfg(feature = "diagram-info")]
-        BuiltinFamilyArtifact::Info(pair) => {
-            info::render_info_diagram_svg(pair.layout(), effective_config_value, options)
-        }
-        #[cfg(feature = "diagram-treemap")]
-        BuiltinFamilyArtifact::Treemap(pair) => {
-            treemap::render_treemap_diagram_svg(pair.layout(), effective_config_value, options)
-        }
-        #[cfg(feature = "diagram-venn")]
-        BuiltinFamilyArtifact::Venn(pair) => venn::render_venn_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            title,
+        BuiltinFamilyArtifact::Info(artifact) => info::render_info_diagram_svg(
+            artifact.pair().layout(),
+            artifact.typography_theme(),
             options,
         ),
+        #[cfg(feature = "diagram-treemap")]
+        BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
+            artifact.pair().layout(),
+            artifact.title_theme(),
+            artifact.typography_theme(),
+            options,
+        ),
+        #[cfg(feature = "diagram-venn")]
+        BuiltinFamilyArtifact::Venn(artifact) => {
+            venn::render_venn_diagram_svg_model_with_title_theme(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.title_theme(),
+                artifact.typography_theme(),
+                title,
+                options,
+            )
+        }
         #[cfg(feature = "diagram-block")]
-        BuiltinFamilyArtifact::Block(pair) => block::render_block_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.node_paint_theme(),
+            artifact.node_label_paint_theme(),
+            artifact.edge_paint_theme(),
+            artifact.marker_paint_theme(),
+            artifact.label_background_theme(),
+            artifact.typography_theme(),
             options,
         ),
         #[cfg(feature = "diagram-er")]
-        BuiltinFamilyArtifact::Er(pair) => er::render_er_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.entity_theme(),
+            effective_config,
             title,
             measurer,
             options,
         ),
         #[cfg(feature = "diagram-quadrant-chart")]
-        BuiltinFamilyArtifact::QuadrantChart(pair) => {
+        BuiltinFamilyArtifact::QuadrantChart(artifact) => {
             quadrantchart::render_quadrantchart_diagram_svg(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.point_theme(),
+                artifact.text_paint(),
                 effective_config_value,
                 options,
             )
         }
         #[cfg(feature = "diagram-xychart")]
-        BuiltinFamilyArtifact::XyChart(pair) => xychart::render_xychart_diagram_svg(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            options,
-        ),
+        BuiltinFamilyArtifact::XyChart(artifact) => {
+            xychart::render_xychart_diagram_svg(artifact, options)
+        }
         #[cfg(feature = "diagram-git-graph")]
-        BuiltinFamilyArtifact::GitGraph(pair) => gitgraph::render_gitgraph_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.node_palette(),
+            artifact.static_paint(),
+            artifact.typography_theme(),
             effective_config_value,
             title,
             measurer,
             options,
         ),
         #[cfg(feature = "diagram-tree-view")]
-        BuiltinFamilyArtifact::TreeView(pair) => tree_view::render_tree_view_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.theme(),
             effective_config,
             options,
         ),
         #[cfg(feature = "diagram-ishikawa")]
-        BuiltinFamilyArtifact::Ishikawa(pair) => {
-            ishikawa::render_ishikawa_diagram_svg(pair.layout(), effective_config_value, options)
+        BuiltinFamilyArtifact::Ishikawa(artifact) => {
+            ishikawa::render_ishikawa_diagram_svg_with_theme(
+                artifact.pair().layout(),
+                artifact.text_theme(),
+                options,
+            )
         }
         #[cfg(feature = "diagram-event-modeling")]
-        BuiltinFamilyArtifact::EventModeling(pair) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
-                pair.layout(),
-                pair.semantic(),
-                effective_config_value,
+        BuiltinFamilyArtifact::EventModeling(artifact) => {
+            eventmodeling::render_eventmodeling_diagram_svg_with_text_theme(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.text_theme(),
                 options,
             )
         }
         #[cfg(feature = "diagram-c4")]
-        BuiltinFamilyArtifact::C4(pair) => c4::render_c4_diagram_svg_typed(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::C4(artifact) => c4::render_c4_diagram_svg_typed(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
             measurer,
+            artifact.typography_theme(),
+            artifact.cluster_theme(),
+            artifact.text_paint(),
             options,
         ),
     }
@@ -1445,7 +1516,7 @@ fn apply_theme_css(
     svg: String,
     effective_config: &serde_json::Value,
     session: &RenderSession,
-) -> Result<String> {
+) -> Result<(String, bool)> {
     const UNBALANCED_CSS_ERROR: &str = "{ /* ERROR: Unbalanced CSS */ }";
 
     let Some(theme_css) = effective_config
@@ -1454,16 +1525,19 @@ fn apply_theme_css(
         .map(str::trim)
         .filter(|css| !css.is_empty() && *css != UNBALANCED_CSS_ERROR)
     else {
-        return Ok(svg);
+        return Ok((svg, false));
     };
 
+    session.use_trusted_theme_lane(crate::diagram_theme::TrustedThemeLane::RawThemeCss)?;
     let metadata = SvgPostprocessMetadata::from_svg_with_execution(
         &svg,
         SvgPostprocessExecution::new(session),
     )?;
     let pipeline = SvgPipeline::parity()
         .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
-    pipeline.process_to_string_with_metadata(&svg, &metadata, session)
+    pipeline
+        .process_to_string_with_metadata(&svg, &metadata, session)
+        .map(|svg| (svg, true))
 }
 
 #[cfg_attr(
@@ -1506,7 +1580,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
 
         assert_eq!(execution.unix_ms(), session.unix_millis());
     }
@@ -1518,7 +1598,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
 
         for seed in [
             serde_json::json!(-1),
@@ -1543,7 +1629,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
 
         for seed in [0.0, -0.0] {
             assert_eq!(
@@ -1621,23 +1713,20 @@ mod diagram_id_projection_tests {
     }
 
     #[test]
-    fn controlled_diagram_id_scan_observes_preexisting_cancellation() {
+    fn controlled_diagram_id_session_rejects_preexisting_cancellation() {
         let control = merman_core::OperationControl::new();
         control.cancel();
-        let session = crate::environment::RenderEnvironment::deterministic()
+        let error = match crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_control(control)
-            .expect("begin render session");
-        let request = SvgRenderOptions {
-            diagram_id: Some("a".repeat(SVG_DIAGRAM_ID_SCAN_CHECKPOINT_BYTES * 2)),
-            ..SvgRenderOptions::default()
+        {
+            Err(error) => error,
+            Ok(_) => panic!("pre-cancelled render session must fail closed"),
         };
-
-        let error = normalize_svg_render_options(&request, &session)
-            .expect_err("cancelled normalization must stop before allocation");
-        let Error::Cancelled(cancelled) = error else {
-            panic!("expected structured cancellation");
-        };
-        assert_eq!(cancelled.phase, OperationPhase::Emit);
+        assert!(matches!(
+            error,
+            crate::environment::RenderEnvironmentError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+        ));
     }
 
     #[test]
@@ -1648,7 +1737,13 @@ mod diagram_id_projection_tests {
         };
 
         let (session, debug) = bounded_execution(6);
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
         let diagram_id = execution.diagram_id_or("fallback");
         assert_eq!(format!("{diagram_id}{diagram_id}"), "abcabc");
         execution
@@ -1656,7 +1751,13 @@ mod diagram_id_projection_tests {
             .expect("exact diagram-id contribution is admitted");
 
         let (session, debug) = bounded_execution(5);
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
         let diagram_id = execution.diagram_id_or("fallback");
         assert_eq!(format!("{diagram_id}"), "abc");
         assert_eq!(format!("{diagram_id}"), "");
@@ -1682,7 +1783,13 @@ mod diagram_id_projection_tests {
             ..SvgRenderOptions::default()
         };
         let (session, debug) = bounded_execution(2);
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
         let diagram_id = execution.diagram_id_or("fallback");
         assert_eq!(format!("{diagram_id}"), "");
 
@@ -1708,7 +1815,13 @@ mod diagram_id_projection_tests {
             ..SvgRenderOptions::default()
         };
         let (session, debug) = bounded_execution(5);
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
         let marker_url = scoped_svg_url(execution.diagram_id_or("fallback"), "arrowhead");
 
         assert_eq!(format!("{marker_url}"), "url(#abc-arrowhead)");
@@ -1731,7 +1844,13 @@ mod diagram_id_projection_tests {
             ..SvgRenderOptions::default()
         };
         let (session, debug) = bounded_execution(5);
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ERROR,
+        )
+        .expect("SVG execution");
         let drop_shadow = scoped_drop_shadow(
             execution.diagram_id_or("fallback"),
             "url(#drop-shadow) url(#drop-shadow)",

@@ -4,10 +4,11 @@ import type {
   AsciiCapability,
   AsciiDiagramType,
   DiagramDetectionFacts,
+  DiagramFamilyCapability,
   DiagramType,
-  PresentationCatalog,
   SvgPlanResult,
   ThemeName,
+  ThemeCatalog,
   RuntimeCatalog,
   ValidationResult,
 } from "@mermanjs/web";
@@ -65,8 +66,11 @@ export type MermanAsciiResult =
 
 export interface MermanDomainFacade {
   readonly packageVersion: string;
-  presentationCatalog(): PresentationCatalog;
+  exportThemePreset: typeof import("@mermanjs/web").exportThemePreset;
+  validateThemeRecipe(recipeJson: string): string;
   runtimeCatalog(): RuntimeCatalog;
+  themeCatalog(): ThemeCatalog;
+  diagramFamilyCapabilities(): DiagramFamilyCapability[];
   detectDiagram(input: ConfiguredMermanOperationInput): DiagramDetectionFacts;
   getAsciiCapabilities(): AsciiCapability[];
   getAsciiSupportedDiagrams(): AsciiDiagramType[];
@@ -148,7 +152,7 @@ export class MermanRuntimeError extends Error implements MermanRuntimeFailure {
     stage: MermanLoadStage,
     recovery: MermanRecovery,
     cause: unknown,
-    projection: ErrorProjection = projectError(cause)
+    projection: ErrorProjection = projectError(cause),
   ) {
     super(projection.summary);
     this.name = "MermanRuntimeError";
@@ -167,7 +171,7 @@ class SupersededRuntimeError extends Error {
 }
 
 export function createMermanRuntime(
-  dependencies: MermanRuntimeDependencies
+  dependencies: MermanRuntimeDependencies,
 ): MermanRuntime {
   const store = createStore<MermanRuntimeState>(() => ({
     status: "idle",
@@ -198,18 +202,14 @@ export function createMermanRuntime(
       suspended: false,
     });
 
-    const pending = runAttempt(
-      dependencies,
-      controller.signal,
-      (stage) => {
-        if (!isCurrent(currentAttempt)) return;
-        replaceState({
-          stage,
-          status: "loading",
-          suspended: false,
-        });
-      }
-    )
+    const pending = runAttempt(dependencies, controller.signal, (stage) => {
+      if (!isCurrent(currentAttempt)) return;
+      replaceState({
+        stage,
+        status: "loading",
+        suspended: false,
+      });
+    })
       .then((nextSession) => {
         if (!isCurrent(currentAttempt)) {
           nextSession.dispose();
@@ -225,7 +225,10 @@ export function createMermanRuntime(
       })
       .catch((error: unknown) => {
         controller.abort();
-        if (!isCurrent(currentAttempt) || error instanceof SupersededRuntimeError) {
+        if (
+          !isCurrent(currentAttempt) ||
+          error instanceof SupersededRuntimeError
+        ) {
           throw error instanceof SupersededRuntimeError
             ? error
             : new SupersededRuntimeError();
@@ -347,7 +350,7 @@ export function createMermanRuntime(
 async function runAttempt(
   dependencies: MermanRuntimeDependencies,
   signal: AbortSignal,
-  setStage: (stage: MermanLoadStage) => void
+  setStage: (stage: MermanLoadStage) => void,
 ): Promise<MermanSession> {
   let initialized: boolean;
   try {
@@ -366,7 +369,10 @@ async function runAttempt(
         throw new MermanRuntimeError("wasm-fetch", "retry", error);
       });
 
-    const [module, firstResponse] = await Promise.all([modulePromise, wasmPromise]);
+    const [module, firstResponse] = await Promise.all([
+      modulePromise,
+      wasmPromise,
+    ]);
     setStage("response-validation");
     validateWasmResponse(firstResponse);
     setStage("initialize");
@@ -379,7 +385,10 @@ async function runAttempt(
       let reloadResponse: Response;
       try {
         setStage("wasm-fetch");
-        reloadResponse = await dependencies.fetchWasm({ cache: "reload", signal });
+        reloadResponse = await dependencies.fetchWasm({
+          cache: "reload",
+          signal,
+        });
       } catch (reloadError) {
         throw new MermanRuntimeError("wasm-fetch", "retry", reloadError);
       }
@@ -407,7 +416,7 @@ function validateWasmResponse(response: Response): void {
     throw new MermanRuntimeError(
       "response-validation",
       "retry",
-      new Error(`WASM request failed with HTTP ${response.status}.`)
+      new Error(`WASM request failed with HTTP ${response.status}.`),
     );
   }
   const contentType = response.headers.get("content-type") ?? "";
@@ -415,7 +424,9 @@ function validateWasmResponse(response: Response): void {
     throw new MermanRuntimeError(
       "response-validation",
       "retry",
-      new Error(`WASM response must use application/wasm, received ${contentType || "none"}.`)
+      new Error(
+        `WASM response must use application/wasm, received ${contentType || "none"}.`,
+      ),
     );
   }
 }
@@ -426,11 +437,18 @@ function toStagedError(error: unknown): MermanRuntimeError {
     : new MermanRuntimeError("session", "retry", error);
 }
 
-function runtimeFailureError(failure: MermanRuntimeFailure): MermanRuntimeError {
-  return new MermanRuntimeError(failure.stage, failure.recovery, failure.cause, {
-    summary: failure.message,
-    detail: failure.detail,
-  });
+function runtimeFailureError(
+  failure: MermanRuntimeFailure,
+): MermanRuntimeError {
+  return new MermanRuntimeError(
+    failure.stage,
+    failure.recovery,
+    failure.cause,
+    {
+      summary: failure.message,
+      detail: failure.detail,
+    },
+  );
 }
 
 export interface MermanLifecycleEventTarget {
@@ -455,7 +473,7 @@ export interface MermanDocumentLifecycleCallbacks {
 export function installMermanDocumentLifecycle(
   runtime: MermanRuntime,
   target: MermanDocumentLifecycleTarget,
-  callbacks: MermanDocumentLifecycleCallbacks = {}
+  callbacks: MermanDocumentLifecycleCallbacks = {},
 ): () => void {
   let destroyed = false;
   let suspended = false;
@@ -476,11 +494,7 @@ export function installMermanDocumentLifecycle(
     void runtime
       .resume()
       .then(() => {
-        if (
-          !destroyed &&
-          !suspended &&
-          transitionId === currentTransition
-        ) {
+        if (!destroyed && !suspended && transitionId === currentTransition) {
           callbacks.onResume?.();
         }
       })
@@ -504,7 +518,9 @@ export function installMermanDocumentLifecycle(
   };
   const onVisibilityChange = () => {
     if (destroyed) return;
-    callbacks.onVisibilityChange?.(target.document.visibilityState === "visible");
+    callbacks.onVisibilityChange?.(
+      target.document.visibilityState === "visible",
+    );
   };
 
   target.window.addEventListener("pagehide", onPageHide);

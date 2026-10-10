@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-er-semantic-capabilities",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise ER node styling selected by the presence of an attribute row."
+}

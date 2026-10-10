@@ -15,6 +15,8 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
+    from .qualify_theme_presets import archive_catalog, collect as collect_preset_qualification, verify_record
+    from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -48,6 +50,8 @@ if __package__:
         target_matches_host,
     )
 else:
+    from qualify_theme_presets import archive_catalog, collect as collect_preset_qualification, verify_record
+    from theme_preset_catalog_contract import validate_unqualified_catalog
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -94,7 +98,7 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 5
+CLI_CONTRACT_VERSION = 6
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
@@ -680,12 +684,24 @@ def _validate_runtime_capabilities(
 ) -> None:
     observed_without_ascii = dict(observed)
     ascii_contract = observed_without_ascii.pop("ascii", None)
+    theme_presets = observed_without_ascii.pop("theme_presets", None)
     expected_capabilities = expected.get("capabilities")
     expects_ascii = isinstance(expected_capabilities, list) and any(
         isinstance(capability, dict) and capability.get("id") == "ascii"
         for capability in expected_capabilities
     )
     _require_exact_json("capabilities document", observed_without_ascii, expected)
+    expects_svg = isinstance(expected_capabilities, list) and any(
+        isinstance(capability, dict) and capability.get("id") == "svg"
+        for capability in expected_capabilities
+    )
+    if expects_svg:
+        try:
+            validate_unqualified_catalog(theme_presets)
+        except RuntimeError as error:
+            raise ArchiveVerificationError(str(error)) from error
+    elif theme_presets is not None:
+        raise ArchiveVerificationError("theme preset catalog requires SVG support")
     if expects_ascii:
         _validate_ascii_capabilities(ascii_contract)
     elif ascii_contract is not None:
@@ -894,6 +910,8 @@ def verify_release_archive(
     repo_root: Path,
     verified_output: Path | None = None,
     execute: bool = False,
+    preset_qualification_output: Path | None = None,
+    preset_qualification_check: Path | None = None,
     resource_certificate: Path | None = None,
     resource_key: Path | None = None,
     limits: ExtractionLimits = DEFAULT_LIMITS,
@@ -901,6 +919,14 @@ def verify_release_archive(
     host_target_checker: HostTargetChecker = target_matches_host,
 ) -> VerificationReport:
     """Verify one archive and optionally persist its checksum-bound bytes."""
+    if preset_qualification_output is not None and preset_qualification_check is not None:
+        raise ArchiveVerificationError("preset qualification output and check are mutually exclusive")
+    if (preset_qualification_output is not None or preset_qualification_check is not None) and not execute:
+        raise ArchiveVerificationError("preset qualification requires --execute on the archive host")
+    expected = (
+        json.loads(Path(preset_qualification_check).read_text(encoding="utf-8"))
+        if preset_qualification_check is not None else None
+    )
     if (resource_certificate is None) != (resource_key is None):
         raise ArchiveVerificationError("resource certificate and key must be supplied together")
     if resource_certificate is not None and (
@@ -944,6 +970,27 @@ def verify_release_archive(
                     resource_certificate.resolve(),
                     resource_key.resolve(),
                 )
+        if preset_qualification_output is not None or preset_qualification_check is not None:
+            record = collect_preset_qualification(
+                repo_root, cli_binary=archive_member_path(extracted.root, extracted.binary_path),
+            )
+            record["cli_archive"] = {
+                "sha256": extracted.digest, "target": target, "version": version,
+            }
+            # Publish a companion for these final archive bytes. Do not repack the archive
+            # with its own digest, or promote this host observation into shared SDK discovery.
+            catalog = archive_catalog(record)
+            if preset_qualification_check is not None:
+                verify_record(expected, record)
+                catalog_path = Path(preset_qualification_check).with_suffix(".catalog.json")
+                verify_record(json.loads(catalog_path.read_text(encoding="utf-8")), catalog)
+            else:
+                output = Path(preset_qualification_output)
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                output.with_suffix(".catalog.json").write_text(
+                    json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+                )
         persisted = (
             persist_verified_archive(extracted, verified_output, limits=limits)
             if verified_output is not None
@@ -985,6 +1032,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="execute the binary after structural verification when TARGET matches the host",
     )
+    qualification = parser.add_mutually_exclusive_group()
+    qualification.add_argument(
+        "--preset-qualification-output", type=Path,
+        help="record fresh Rust/CLI preset qualification for this exact host archive (requires --execute)",
+    )
+    qualification.add_argument(
+        "--preset-qualification-check", type=Path,
+        help="rerun qualification and compare an existing archive record (requires --execute)",
+    )
     parser.add_argument("--resource-certificate", type=Path, help="CI certificate trusted by the system CA store")
     parser.add_argument("--resource-key", type=Path, help="private key for the loopback HTTPS probe")
     return parser.parse_args(argv)
@@ -1001,6 +1057,8 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=args.repo_root,
         verified_output=args.verified_output,
         execute=args.execute,
+        preset_qualification_output=args.preset_qualification_output,
+        preset_qualification_check=args.preset_qualification_check,
         resource_certificate=args.resource_certificate,
         resource_key=args.resource_key,
     )
@@ -1011,6 +1069,9 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (ArchiveVerificationError, OSError, subprocess.TimeoutExpired) as error:
+    except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print(f"verify_cli_release_archive.py: {error}", file=sys.stderr)
+        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+            detail = error.stderr.decode("utf-8", errors="replace") if isinstance(error.stderr, bytes) else error.stderr
+            print(detail, file=sys.stderr)
         raise SystemExit(1) from error

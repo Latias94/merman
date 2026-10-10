@@ -24,30 +24,32 @@ export function StatusBar() {
   const {
     code,
     diagramTheme,
-    presentationProfileId,
-    presentationThemePresetId,
     svgPipeline,
     textMeasurementMode,
     diagramFont,
+    themePresetId,
+    themeRecipeJson,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramFont: state.diagramFont,
       diagramTheme: state.diagramTheme,
-      presentationProfileId: state.presentationProfileId,
-      presentationThemePresetId: state.presentationThemePresetId,
       svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
-    }))
+      themePresetId: state.themePresetId,
+      themeRecipeJson: state.themeRecipeJson,
+    })),
   );
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
-  const detectionValidity = useRenderCoordinator(selectCurrentDetectionValidity);
+  const detectionValidity = useRenderCoordinator(
+    selectCurrentDetectionValidity,
+  );
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
   const mermanRenderFailure = useRenderCoordinator(
-    selectCurrentMermanRenderFailure
+    selectCurrentMermanRenderFailure,
   );
   const mermaidRenderFailure = useRenderCoordinator(
-    selectCurrentMermaidRenderFailure
+    selectCurrentMermaidRenderFailure,
   );
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const facade = useMermanRuntime(selectMermanFacade);
@@ -56,7 +58,7 @@ export function StatusBar() {
     () => ({
       capabilities: facade?.runtimeCatalog().capabilities ?? null,
     }),
-    [facade]
+    [facade],
   );
   const { capabilities } = runtimeMetadata;
   const runtimeLabel = facade
@@ -83,7 +85,7 @@ export function StatusBar() {
                 ? "bg-green-500"
                 : detectionValidity === "recoverable-invalid"
                   ? "bg-yellow-500"
-                  : "bg-muted-foreground"
+                  : "bg-muted-foreground",
             )}
           />
           <span className="truncate">
@@ -150,20 +152,14 @@ export function StatusBar() {
           {t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })}
         </span>
         <span className="hidden shrink-0 xl:inline">
-          {t("status.presentationTheme")}:{" "}
-          {presentationThemePresetId
-            ? t(`presentationThemes.${presentationThemePresetId}`, {
-                defaultValue: presentationThemePresetId,
-              })
-            : t("presentationThemes.none")}
-        </span>
-        <span className="hidden shrink-0 xl:inline">
-          {t("status.presentationProfile")}:{" "}
-          {presentationProfileId
-            ? t(`presentationProfiles.${presentationProfileId}`, {
-                defaultValue: presentationProfileId,
-              })
-            : t("presentationProfiles.none")}
+          {t("status.themePreset")}:{" "}
+          {themeRecipeJson
+            ? t("customTheme.title")
+            : themePresetId
+              ? t(`themePresets.${themePresetId}`, {
+                  defaultValue: themePresetId,
+                })
+              : t("themePresets.none")}
         </span>
         <span className="hidden shrink-0 xl:inline">
           {t("status.svgOutput")}: {t(`svgPipelines.${svgPipeline}`)}

@@ -1,13 +1,13 @@
 use super::SequenceLayoutCheckpoints;
 use super::constants::{
-    sequence_actor_lifeline_start_y, sequence_actor_stack_height, sequence_actor_visual_height,
+    sequence_actor_lifeline_start_y, sequence_actor_prepared_math_layout_height,
+    sequence_actor_stack_height, sequence_actor_visual_height,
 };
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use super::wrap_sequence_label_like_mermaid_lines;
-use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -24,11 +24,13 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) typography: &'a super::SequenceTypographyPlan,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
     pub(super) is_neo: bool,
     pub(super) actor_margin: f64,
+    pub(super) label_box_height: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
@@ -38,7 +40,9 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
 pub(super) struct SequenceActorLayoutPlan<'a> {
     pub(super) actor_index: HashMap<&'a str, usize>,
     pub(super) actor_widths: Vec<f64>,
+    pub(super) actor_popup_widths: HashMap<String, f64>,
     pub(super) actor_base_heights: Vec<f64>,
+    pub(super) actor_has_prepared_math: Vec<bool>,
     pub(super) actor_text_heights: Vec<f64>,
     pub(super) actor_centers_x: Vec<f64>,
     pub(super) box_layouts: Vec<super::SequenceBoxLayout>,
@@ -68,8 +72,10 @@ pub(super) fn plan_sequence_actors<'a>(
         });
     }
 
-    let (actor_widths, mut actor_base_heights, actor_text_heights) = measure_actor_boxes(&ctx)?;
+    let (actor_widths, mut actor_base_heights, actor_text_heights, actor_has_prepared_math) =
+        measure_actor_boxes(&ctx)?;
     let actor_index = actor_index(&ctx)?;
+    let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths)?;
     let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index)?;
     let actor_margins = actor_margins(&ctx, &actor_widths, &actor_to_message_width)?;
     let (mut box_layouts, box_title_height) = measure_boxes(
@@ -102,7 +108,9 @@ pub(super) fn plan_sequence_actors<'a>(
     Ok(SequenceActorLayoutPlan {
         actor_index,
         actor_widths,
+        actor_popup_widths,
         actor_base_heights,
+        actor_has_prepared_math,
         actor_text_heights,
         actor_centers_x,
         box_layouts,
@@ -114,12 +122,53 @@ pub(super) fn plan_sequence_actors<'a>(
     })
 }
 
+fn actor_popup_widths(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+    actor_index: &HashMap<&str, usize>,
+    actor_widths: &[f64],
+) -> Result<HashMap<String, f64>> {
+    let horizontal_padding = 2.0 * ctx.wrap_padding + 2.0 * ctx.box_margin;
+    let mut popup_widths = HashMap::new();
+    for (actor_position, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_position)?;
+        let Some(actor) = ctx.model.actors.get(actor_id) else {
+            continue;
+        };
+        if actor.links.is_empty() {
+            continue;
+        }
+        let actor_width = actor_index
+            .get(actor_id.as_str())
+            .and_then(|index| actor_widths.get(*index))
+            .copied()
+            .unwrap_or(ctx.actor_width_min);
+        let mut required_width = 0.0_f64;
+        for (link_index, label) in actor.links.keys().enumerate() {
+            ctx.checkpoints.checkpoint_loop(link_index)?;
+            let (width, _) = measure_svg_like_with_html_br(
+                ctx.measurer,
+                label,
+                ctx.actor_text_style,
+                ctx.checkpoints.text(),
+            )?;
+            required_width = required_width.max(width + horizontal_padding);
+        }
+        popup_widths.insert(actor_id.clone(), actor_width.max(required_width));
+    }
+    Ok(popup_widths)
+}
+
+#[allow(
+    clippy::type_complexity,
+    reason = "Parallel actor-indexed vectors are the existing layout result contract"
+)]
 fn measure_actor_boxes(
     ctx: &SequenceActorLayoutPlanContext<'_>,
-) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<bool>)> {
     // Measure participant boxes.
     let mut actor_widths: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
+    let mut actor_has_prepared_math = Vec::with_capacity(ctx.model.actor_order.len());
     let mut actor_text_heights = Vec::with_capacity(ctx.model.actor_order.len());
     for (actor_position, id) in ctx.model.actor_order.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(actor_position)?;
@@ -144,12 +193,20 @@ fn measure_actor_boxes(
         } else {
             std::borrow::Cow::Borrowed(a.description.as_str())
         };
-        let (text_w, text_h) = measure_sequence_label_for_layout(
+        let prepared_math = ctx.math_sidecar.prepare_or_get(
+            super::SequenceMathOccurrence::Actor(actor_position),
+            &description,
+            ctx.typography
+                .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
+        );
+        let has_prepared_math = prepared_math.is_some();
+        let (text_w, text_h) = measure_sequence_label_for_layout_with_prepared(
+            prepared_math.as_deref(),
             ctx.measurer,
             &description,
             ctx.actor_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Actor,
             ctx.checkpoints.text(),
         )?;
@@ -165,11 +222,28 @@ fn measure_actor_boxes(
         } else {
             0.0
         };
+        let stack_height = if has_prepared_math && !ctx.is_neo {
+            stack_height.max(sequence_actor_prepared_math_layout_height(
+                a.actor_type.as_str(),
+                width,
+                ctx.actor_height,
+                ctx.label_box_height,
+                text_h,
+            ))
+        } else {
+            stack_height
+        };
+        actor_has_prepared_math.push(has_prepared_math);
         actor_text_heights.push(text_h);
         actor_base_heights.push(ctx.actor_height.max(stack_height).max(1.0));
         actor_widths.push(width.max(1.0));
     }
-    Ok((actor_widths, actor_base_heights, actor_text_heights))
+    Ok((
+        actor_widths,
+        actor_base_heights,
+        actor_text_heights,
+        actor_has_prepared_math,
+    ))
 }
 
 fn actor_index<'a>(ctx: &SequenceActorLayoutPlanContext<'a>) -> Result<HashMap<&'a str, usize>> {
@@ -223,16 +297,26 @@ fn actor_message_widths(
         }
 
         let is_math = text.contains("$$");
-        let (w0, h0) = if is_math {
-            measure_sequence_label_for_layout(
+        let (w0, h0) = if is_math && is_message {
+            let prepared_math = ctx.math_sidecar.prepare_or_get(
+                super::SequenceMathOccurrence::Message(message_index),
+                text,
+                ctx.typography
+                    .terminal_text_style(super::SequenceTextSurface::MessageLabel),
+            );
+            measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
                 ctx.measurer,
                 text,
                 style,
                 ctx.math_config,
-                ctx.math_renderer,
+                None,
                 SequenceMathHeightMode::Bound,
                 ctx.checkpoints.text(),
             )?
+        } else if is_math {
+            // Wrapped notes bind prepared math only after their final effective source is known.
+            measure_svg_like_with_html_br(ctx.measurer, text, style, ctx.checkpoints.text())?
         } else {
             let measured_text = if msg.wrap {
                 // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when
@@ -337,6 +421,16 @@ fn measure_boxes(
     // Mermaid's `calculateActorMargins(...)` computes per-box `box.margin` based on total actor
     // widths/margins and the box title width. For totalWidth, Mermaid only counts `actor.margin`
     // if it was set (actors without messages have `margin === undefined` until render-time).
+    // Upstream measures box titles with message typography. A typed ActorLabel contribution
+    // owns both measurement and emission for this shared Sequence text surface.
+    let actor_typography = ctx.typography.actor();
+    let box_text_style = if actor_typography.has_typed_emission()
+        || !actor_typography.base_typed_properties().is_empty()
+    {
+        ctx.actor_text_style
+    } else {
+        ctx.msg_text_style
+    };
     let mut box_layouts = Vec::with_capacity(ctx.model.boxes.len());
     let mut max_title_height = 0.0_f64;
     let mut membership_index = 0usize;
@@ -371,7 +465,7 @@ fn measure_boxes(
                 *name = wrap_sequence_label_like_mermaid_lines(
                     name,
                     ctx.measurer,
-                    ctx.msg_text_style,
+                    box_text_style,
                     (total_width - 2.0 * ctx.wrap_padding).max(1.0),
                     ctx.checkpoints.text(),
                 )?
@@ -381,7 +475,7 @@ fn measure_boxes(
             let (text_w, text_h) = measure_svg_like_with_html_br(
                 ctx.measurer,
                 name,
-                ctx.msg_text_style,
+                box_text_style,
                 ctx.checkpoints.text(),
             )?;
             max_title_height = max_title_height.max(text_h);
@@ -506,6 +600,7 @@ pub(super) struct SequenceFooterActorContext<'a, 'b> {
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_text_heights: &'a [f64],
     pub(super) is_neo: bool,
     pub(super) actor_lifecycle: &'b SequenceActorLifecycle<'a>,
@@ -523,6 +618,7 @@ pub(super) struct SequenceTopActorContext<'a> {
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_text_heights: &'a [f64],
     pub(super) is_neo: bool,
     pub(super) actor_top_offset_y: f64,
@@ -641,6 +737,7 @@ pub(super) fn append_sequence_top_actors(
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
+        let has_prepared_math = ctx.actor_has_prepared_math[idx];
         let actor_type = ctx
             .actors
             .get(id)
@@ -649,7 +746,13 @@ pub(super) fn append_sequence_top_actors(
         let visual_h = if ctx.is_neo {
             base_h
         } else {
-            sequence_actor_visual_height(actor_type, w, base_h, ctx.label_box_height)
+            sequence_actor_visual_height(
+                actor_type,
+                w,
+                base_h,
+                ctx.label_box_height,
+                has_prepared_math,
+            )
         };
         let top_y = ctx.actor_top_offset_y + visual_h / 2.0;
         nodes.push(LayoutNode {
@@ -676,6 +779,7 @@ pub(super) fn append_sequence_footer_actors(
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
+        let has_prepared_math = ctx.actor_has_prepared_math[idx];
         let actor_type = ctx
             .actors
             .get(id)
@@ -684,7 +788,13 @@ pub(super) fn append_sequence_footer_actors(
         let visual_h = if ctx.is_neo {
             base_h
         } else {
-            sequence_actor_visual_height(actor_type, w, base_h, ctx.label_box_height)
+            sequence_actor_visual_height(
+                actor_type,
+                w,
+                base_h,
+                ctx.label_box_height,
+                has_prepared_math,
+            )
         };
         let bottom_top_y = ctx
             .actor_lifecycle

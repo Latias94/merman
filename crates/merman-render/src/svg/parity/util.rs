@@ -3,8 +3,53 @@
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
 use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
+use std::fmt::Write as _;
 
-pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
+use super::SvgOutput;
+
+/// CSS selector identity that preserves the renderer-owned diagram-id projection for every
+/// selector occurrence while still supporting raw test identifiers.
+#[derive(Clone, Copy)]
+pub(super) struct CssSelectorDiagramId<I>(I);
+
+impl<I> std::fmt::Display for CssSelectorDiagramId<I>
+where
+    I: super::SvgDiagramIdValue,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let semantic = self.0.semantic_value();
+        let normalized = semantic
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic)
+            && semantic
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+        if normalized {
+            std::fmt::Display::fmt(&self.0, formatter)
+        } else {
+            formatter.write_str(&crate::svg::escape_css_identifier(semantic))
+        }
+    }
+}
+
+pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiagramId<I> {
+    CssSelectorDiagramId(diagram_id)
+}
+
+/// Returns only the style attribute accepted by the output sink.
+/// Final document checkpoints still own failures in subsequent writes.
+pub(super) fn write_style_attribute<'a>(
+    out: &mut impl SvgOutput,
+    style: Option<&'a str>,
+) -> Option<&'a str> {
+    let style = style?;
+    write!(out, r#" style="{}""#, escape_attr_display(style))
+        .ok()
+        .map(|()| style)
+}
+
+pub(super) use crate::config::config_f64;
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
@@ -14,19 +59,7 @@ pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<St
     cur.as_str().map(|s| s.to_string())
 }
 
-pub(super) fn json_bool(v: &serde_json::Value) -> Option<bool> {
-    v.as_bool()
-        .or_else(|| v.as_i64().map(|n| n != 0))
-        .or_else(|| v.as_u64().map(|n| n != 0))
-        .or_else(|| {
-            v.as_str()
-                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
-                    "true" | "yes" | "on" | "1" => Some(true),
-                    "false" | "no" | "off" | "0" => Some(false),
-                    _ => None,
-                })
-        })
-}
+pub(super) use crate::config::json_bool;
 
 pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
@@ -49,115 +82,6 @@ pub(super) fn theme_token(
         .unwrap_or_else(|| fallback.to_string())
 }
 
-pub(super) struct SvgTheme<'a> {
-    effective_config: &'a serde_json::Value,
-}
-
-impl<'a> SvgTheme<'a> {
-    pub(super) fn new(effective_config: &'a serde_json::Value) -> Self {
-        Self { effective_config }
-    }
-
-    pub(super) fn optional_color(&self, key: &str) -> Option<String> {
-        config_string(self.effective_config, &["themeVariables", key])
-    }
-
-    pub(super) fn optional_nested_color(&self, diagram_key: &str, key: &str) -> Option<String> {
-        config_string(self.effective_config, &["themeVariables", diagram_key, key])
-    }
-
-    pub(super) fn optional_nested_css_value(&self, diagram_key: &str, key: &str) -> Option<String> {
-        crate::config::config_css_number_or_string(
-            self.effective_config,
-            &["themeVariables", diagram_key, key],
-        )
-    }
-
-    pub(super) fn optional_nested_css_px(&self, diagram_key: &str, key: &str) -> Option<f64> {
-        crate::config::config_f64_css_px(
-            self.effective_config,
-            &["themeVariables", diagram_key, key],
-        )
-    }
-
-    pub(super) fn optional_scoped_string(&self, scope: &str, key: &str) -> Option<String> {
-        config_string(self.effective_config, &[scope, key])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", scope, key]))
-    }
-
-    pub(super) fn optional_root_scoped_string(&self, scope: &str, key: &str) -> Option<String> {
-        config_string(self.effective_config, &[scope, key])
-    }
-
-    pub(super) fn optional_root_scoped_css_value(&self, scope: &str, key: &str) -> Option<String> {
-        crate::config::config_css_number_or_string(self.effective_config, &[scope, key])
-    }
-
-    pub(super) fn root_or_theme_string(&self, key: &str, fallback: &str) -> String {
-        config_string(self.effective_config, &[key])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", key]))
-            .unwrap_or_else(|| fallback.to_string())
-    }
-
-    pub(super) fn optional_scoped_f64(&self, scope: &str, key: &str) -> Option<f64> {
-        crate::config::config_f64(self.effective_config, &[scope, key]).or_else(|| {
-            crate::config::config_f64(self.effective_config, &["themeVariables", scope, key])
-        })
-    }
-
-    pub(super) fn bool_root_or_theme(&self, key: &str) -> Option<bool> {
-        config_bool(self.effective_config, &[key])
-            .or_else(|| config_bool(self.effective_config, &["themeVariables", key]))
-    }
-
-    pub(super) fn optional_value(&self, key: &str) -> Option<String> {
-        crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
-    }
-
-    pub(super) fn optional_f64(&self, key: &str) -> Option<f64> {
-        crate::config::config_f64(self.effective_config, &["themeVariables", key])
-    }
-
-    pub(super) fn string_array(&self, key: &str) -> Vec<String> {
-        crate::config::config_string_vec(self.effective_config, &["themeVariables", key])
-    }
-
-    pub(super) fn color(&self, key: &str, fallback: &str) -> String {
-        theme_token(self.effective_config, key, fallback)
-    }
-
-    pub(super) fn theme_name(&self) -> String {
-        config_string(self.effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
-    }
-
-    pub(super) fn look(&self) -> String {
-        crate::config::config_diagram_look(self.effective_config)
-            .as_str()
-            .to_string()
-    }
-
-    pub(super) fn css_value(&self, key: &str, fallback: &str) -> String {
-        crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
-            .unwrap_or_else(|| fallback.to_string())
-    }
-
-    pub(super) fn font_family_css(&self) -> String {
-        crate::config::config_font_family_css(self.effective_config)
-    }
-
-    pub(super) fn font_family_css_root_first(&self) -> String {
-        let font_family = config_string(self.effective_config, &["fontFamily"])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", "fontFamily"]))
-            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-        normalize_css_font_family(font_family.as_str())
-    }
-
-    pub(super) fn font_size_px(&self) -> f64 {
-        crate::config::config_theme_font_size_css_or_root_number_px(self.effective_config, 16.0)
-            .max(1.0)
-    }
-}
-
 pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
     let color = ThemeColor::parse(color.trim())?;
     let faded = rgba(
@@ -169,7 +93,7 @@ pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> 
     Ok(faded)
 }
 
-pub(in crate::svg::parity) fn cssom_color_value(value: &str) -> String {
+pub(crate) fn cssom_color_value(value: &str) -> String {
     let value = value.trim();
     let Ok(color) = ThemeColor::parse(value) else {
         // Preserve CSS variables and browser-supported syntaxes outside Khroma's parser surface.
@@ -263,15 +187,13 @@ pub(super) fn scoped_drop_shadow<I>(diagram_id: I, source: &str) -> ScopedDropSh
     ScopedDropShadow { diagram_id, source }
 }
 
-use std::fmt::Write as _;
-
 pub(super) fn fmt_string(v: f64) -> String {
     let mut out = String::new();
     fmt_into(&mut out, v);
     out
 }
 
-pub(super) fn fmt_display(v: f64) -> FmtDisplay {
+pub(super) fn fmt_display(v: f64) -> crate::number_format::CanonicalNumber {
     fmt(v)
 }
 
@@ -281,7 +203,7 @@ pub(super) fn fmt_points(points: &[crate::model::LayoutPoint]) -> String {
     out
 }
 
-pub(super) fn push_points_attr(out: &mut String, points: &[crate::model::LayoutPoint]) {
+pub(super) fn push_points_attr(out: &mut impl SvgOutput, points: &[crate::model::LayoutPoint]) {
     for (idx, point) in points.iter().enumerate() {
         if idx > 0 {
             out.push(' ');
@@ -290,71 +212,19 @@ pub(super) fn push_points_attr(out: &mut String, points: &[crate::model::LayoutP
     }
 }
 
-pub(super) fn push_point_pair(out: &mut String, x: f64, y: f64) {
+pub(super) fn push_point_pair(out: &mut impl SvgOutput, x: f64, y: f64) {
     let _ = write!(out, "{},{}", fmt_display(x), fmt_display(y));
 }
 
-pub(super) fn fmt(v: f64) -> FmtDisplay {
-    FmtDisplay(v)
+pub(super) fn fmt(v: f64) -> crate::number_format::CanonicalNumber {
+    crate::number_format::canonical_number(v)
 }
 
-const MAX_SAFE_INTEGER_F64: f64 = 9_007_199_254_740_991.0;
-
-fn fmt_fast_integer(v: f64) -> Option<i64> {
-    (v.fract() == 0.0 && v.abs() <= MAX_SAFE_INTEGER_F64).then_some(v as i64)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct FmtDisplay(f64);
-
-impl std::fmt::Display for FmtDisplay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut v = self.0;
-        if !v.is_finite() {
-            return f.write_str("0");
-        }
-
-        if v.abs() < 1e-9 {
-            v = 0.0;
-        }
-        let nearest = v.round();
-        if (v - nearest).abs() < 1e-6 {
-            v = nearest;
-        }
-        if v == -0.0 {
-            v = 0.0;
-        }
-        if let Some(i) = fmt_fast_integer(v) {
-            return write!(f, "{i}");
-        }
-
-        write!(f, "{v}")
-    }
-}
-
-pub(super) fn fmt_into(out: &mut String, v: f64) {
+pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
     // but avoid `-0` and tiny float noise from our own calculations.
-    if !v.is_finite() {
-        out.push('0');
-        return;
-    }
-
-    let mut v = if v.abs() < 1e-9 { 0.0 } else { v };
-    let nearest = v.round();
-    if (v - nearest).abs() < 1e-6 {
-        v = nearest;
-    }
-    if v == -0.0 {
-        v = 0.0;
-    }
-    if let Some(i) = fmt_fast_integer(v) {
-        let _ = write!(out, "{i}");
-        return;
-    }
-
-    let _ = write!(out, "{v}");
+    let _ = write!(out, "{}", crate::number_format::canonical_number(v));
 }
 
 pub(super) fn fmt_path(v: f64) -> String {
@@ -363,7 +233,7 @@ pub(super) fn fmt_path(v: f64) -> String {
     out
 }
 
-pub(super) fn fmt_path_into(out: &mut String, v: f64) {
+pub(super) fn fmt_path_into(out: &mut impl SvgOutput, v: f64) {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
@@ -385,7 +255,7 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     append_fixed_3dp_trimmed(out, k);
 }
 
-fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
+fn append_fixed_3dp_trimmed(out: &mut impl SvgOutput, k: i64) {
     if k == 0 {
         out.push('0');
         return;
@@ -400,7 +270,6 @@ fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
         out.push('-');
     }
 
-    use std::fmt::Write as _;
     let _ = write!(out, "{int_part}");
 
     if frac == 0 {
@@ -468,7 +337,7 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
     buf.format_finite(v)
 }
 
-pub(super) fn escape_xml(text: &str) -> String {
+pub(crate) fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     escape_xml_into(&mut out, text);
     out
@@ -521,7 +390,7 @@ fn xml_attr_replacement(ch: char) -> Option<&'static str> {
     }
 }
 
-pub(super) fn escape_xml_into(out: &mut String, text: &str) {
+pub(super) fn escape_xml_into(out: &mut impl SvgOutput, text: &str) {
     if xml_text_is_plain_ascii(text) {
         out.push_str(text);
         return;
@@ -531,18 +400,18 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
     escape_xml_raw_into(out, decoded.as_ref());
 }
 
-pub(super) fn escape_xml_raw_into(out: &mut String, text: &str) {
+pub(super) fn escape_xml_raw_into(out: &mut impl SvgOutput, text: &str) {
     escape_xml_raw_into_mode(out, text, false);
 }
 
 /// Serialize a text node with the same conservative escaping used by browser XMLSerializer.
 /// Chromium emits `&gt;` for every literal greater-than character in text content, even though
 /// XML only requires that escape when it would close a CDATA section.
-pub(super) fn escape_xml_serialized_text_into(out: &mut String, text: &str) {
+pub(super) fn escape_xml_serialized_text_into(out: &mut impl SvgOutput, text: &str) {
     escape_xml_raw_into_mode(out, text, true);
 }
 
-fn escape_xml_raw_into_mode(out: &mut String, text: &str, escape_greater_than: bool) {
+fn escape_xml_raw_into_mode(out: &mut impl SvgOutput, text: &str, escape_greater_than: bool) {
     let plain_ascii = if escape_greater_than {
         text.bytes().all(|b| {
             matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
@@ -581,6 +450,23 @@ pub(super) fn escape_xml_display(text: &str) -> EscapeXmlDisplay<'_> {
     EscapeXmlDisplay(text)
 }
 
+pub(super) fn escaped_xml_len(text: &str) -> usize {
+    if xml_text_is_plain_ascii(text) {
+        return text.len();
+    }
+
+    let decoded = decode_mermaid_entities_for_render_text(text);
+    let text = decoded.as_ref();
+    text.char_indices().fold(0usize, |len, (index, ch)| {
+        let replacement = if ch == '>' && text[..index].ends_with("]]") {
+            Some("&gt;")
+        } else {
+            xml_text_replacement(ch)
+        };
+        len.saturating_add(replacement.map_or(ch.len_utf8(), str::len))
+    })
+}
+
 pub(super) struct EscapeXmlDisplay<'a>(&'a str);
 
 impl std::fmt::Display for EscapeXmlDisplay<'_> {
@@ -614,7 +500,7 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
     }
 }
 
-pub(super) fn escape_attr(text: &str) -> String {
+pub(crate) fn escape_attr(text: &str) -> String {
     // Note: XML parsers normalize literal newlines/carriage-returns/tabs inside attribute values
     // into spaces. Mermaid's serialized SVGs typically encode those characters as numeric
     // character references (e.g. `&#10;`) to keep the attribute value stable across parsers.
@@ -626,7 +512,7 @@ pub(super) fn escape_attr(text: &str) -> String {
     out
 }
 
-pub(super) fn escape_attr_into(out: &mut String, text: &str) {
+pub(super) fn escape_attr_into(out: &mut impl SvgOutput, text: &str) {
     let mut start = 0usize;
     for (i, ch) in text.char_indices() {
         let Some(replacement) = xml_attr_replacement(ch) else {

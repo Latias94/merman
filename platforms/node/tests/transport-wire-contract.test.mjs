@@ -738,3 +738,89 @@ test("binding option normalization rejects non-JSON host values without invoking
   );
   assert.equal(getterCalled, false);
 });
+
+
+test("theme authoring diagnostics and additive details survive the public error projection", () => {
+  const details = {
+    theme_authoring: {
+      schema_version: 1,
+      diagnostics: [{
+        code: "theme-authoring.invalid-token-value",
+        severity: "error",
+        path: "/styles/0/style/typography/font_stack",
+        details: { expected_domain_id: "font-stack" },
+        message: "font stack must not be empty",
+      }],
+    },
+    future_details: { retained: true },
+  };
+  assert.throws(
+    () => decodeWireResponse(errorEnvelope({
+      code: 1,
+      codeName: "MERMAN_INVALID_ARGUMENT",
+      kind: "generic",
+      capabilityId: null,
+      details,
+    }), EXPECTATION_BY_ID.get("materialize-theme-json")),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.details, details);
+      return true;
+    },
+  );
+});
+
+
+test("nested theme version diagnostics fit the response and error document contracts", () => {
+  const diagnostic = {
+    code: "theme-authoring.unsupported-version-tuple",
+    severity: "error",
+    path: "",
+    details: {
+      actual: { authoring_schema_version: 2, expansion_version: 1 },
+      supported: [{ authoring_schema_version: 1, expansion_version: 1 }],
+    },
+    message: "unsupported theme authoring version tuple",
+  };
+  assert.throws(
+    () => decodeWireResponse(errorEnvelope({
+      code: 1,
+      codeName: "MERMAN_INVALID_ARGUMENT",
+      kind: "generic",
+      capabilityId: null,
+      details: { theme_authoring: { schema_version: 1, diagnostics: [diagnostic] } },
+    }), EXPECTATION_BY_ID.get("materialize-theme-json")),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.details.theme_authoring.diagnostics[0], diagnostic);
+      return true;
+    },
+  );
+});
+
+test("theme target diagnostics preserve the maximum escaped field without transport failure", () => {
+  const target = "\u0001".repeat(64 * 1024);
+  const diagnostic = {
+    code: "theme-authoring.duplicate-palette-target",
+    severity: "error",
+    path: "/styles/1/target",
+    details: { target_id: target, first_authored_index: 0, duplicate_authored_index: 1 },
+    message: "duplicate authored palette target",
+  };
+  const wire = errorEnvelope({
+    code: 1,
+    codeName: "MERMAN_INVALID_ARGUMENT",
+    kind: "generic",
+    capabilityId: null,
+    details: { theme_authoring: { schema_version: 1, diagnostics: [diagnostic] } },
+  });
+  assert.ok(Buffer.byteLength(wire) > 256 * 1024);
+  assert.throws(
+    () => decodeWireResponse(wire, EXPECTATION_BY_ID.get("materialize-theme-json")),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.details.theme_authoring.diagnostics[0], diagnostic);
+      return true;
+    },
+  );
+});

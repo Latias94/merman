@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,7 +22,7 @@ const PRODUCT_EXPORTS = [
   "createNodeEngine",
 ];
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   await main();
 }
 
@@ -192,10 +192,7 @@ export async function measureWarmSample({
 
 async function probeTypedErrors(engine, input) {
   const source = "flowchart TD\nA";
-  const unknownOperation = await operationError(engine, {
-    operationId: "bitmap",
-    source,
-  });
+  const unknownOperation = await publicApiUnknownOperationError(engine, source);
   const missingCapability = await operationError(engine, {
     operationId: "png",
     source,
@@ -207,6 +204,27 @@ async function probeTypedErrors(engine, input) {
   };
 }
 
+async function publicApiUnknownOperationError(engine, source) {
+  try {
+    await engine.executeOperation({ operationId: "bitmap", source });
+    return {
+      kind: null,
+      capability_id: null,
+      code_name: null,
+      error_name: null,
+      unexpected_success: true,
+    };
+  } catch (error) {
+    return {
+      kind: "public-api-rejected",
+      capability_id: null,
+      code_name: null,
+      error_name: error?.name ?? null,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function probeTextMeasurementPolicy(input) {
   try {
     const unexpected = await createProductEngine(
@@ -214,14 +232,14 @@ async function probeTextMeasurementPolicy(input) {
       {
         bindingOptions: {
           ...input.bindingOptions,
-          textMeasurement: () => ({ width: 1, height: 1 }),
+          textMeasurer: () => ({ width: 1, height: 1 }),
         },
       },
     );
     await unexpected.dispose();
     return false;
   } catch (error) {
-    return error instanceof TypeError && /text measurement callbacks are not supported/i.test(error.message);
+    return error instanceof TypeError && /JSON wire value|text measurement|callback/i.test(error.message);
   }
 }
 

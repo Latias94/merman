@@ -51,6 +51,83 @@ renderSvgToElement(target, `flowchart TD
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
 
+## Choose a preset for a diagram
+
+Read `themeCatalog().presets` from the loaded runtime. `available` means that its compiler can
+construct the recipe. `family_designs` describes curated design intent for a logical family:
+`dedicated` is a family-specific design, `base_only` is the shared base appearance (including
+necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
+states certifies readable output or portability; those depend on the actual scene and target.
+Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `family_id`.
+
+Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
+rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;
+use `renderSvgResult()` to inspect the actual request's theme and target status. `renderSvg()`
+returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
+Do not silently substitute another preset. An unknown
+saved preset ID is an explicit input error; the host can retain it for explanation and offer an
+explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
+
+## Inspect the actual rendering outcome
+
+```ts
+import { renderSvgResult } from "@mermanjs/web";
+
+const result = renderSvgResult("classDiagram\nclass Account", {
+  theme: { preset: "cyberpunk" },
+});
+const evidence = result.metadata.theme_execution_evidence;
+// Display the SVG and inspect the versioned outcome from that same execution.
+console.log(evidence);
+const svg = result.svg;
+```
+
+`metadata.byte_length` is the SVG's UTF-8 byte length, not JavaScript string length.
+For evidence version 1, `theme_status` is currently `verified`, `not_applicable`, `residual`, or
+`incomplete`. Theme verification and `target_status` are separate: a verified theme does not imply
+portable output. BestEffort may return SVG together with a `rejected` target status; strict policy
+is what turns failed admission into an operation error. IDs are open strings; unknown versions, missing evidence, and unknown statuses
+must not be interpreted as portable. The metadata is descriptive, not an independent certificate.
+It contains coarse status and target reasons, not per-rule or per-property explanations.
+Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
+
+Set `environment: { theme_portability: "require-portable" }` to require the renderer's existing
+native portability admission. Failure throws the normal structured render error; the runtime does
+not change your preset. The default is `"best-effort"`. Strict requests may reject unsupported theme
+facets, host-dependent fonts, or other target residuals; this is stronger than choosing the
+`resvg-safe` pipeline. Browser-only effects are not made portable by this option.
+
+## Save and share a theme
+
+The current source API accepts a preset ID, a complete specification, or a versioned
+`ThemeRecipeV1` document in `options.theme`. Export a preset once and keep the returned document
+intact when saving or sharing it. Use a matching artifact that exposes these experimental theme
+operations; a package version alone does not establish their availability:
+
+```ts
+import { exportThemePreset, renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
+
+const recipe: ThemeRecipeV1 = exportThemePreset("editor-light");
+const saved = JSON.stringify(recipe);
+const restored: unknown = JSON.parse(saved);
+const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", JSON.stringify({ theme: restored }));
+```
+
+Initialize the runtime before these calls. Passing the options JSON lets Rust validate a document
+loaded from storage; a TypeScript assertion cannot validate untrusted JSON. Keep `schema_version`
+and `kind` with the payload. Unknown versions and mixed recipe/preset/spec selections are rejected.
+A recipe with `kind: "definition"` exposes compact `tokens` and family-scoped `styles` under
+`definition`; a `complete_spec` recipe retains the full specification, including its canvas,
+effects, and resources. Export preserves the recipe's representation, so inspect `kind` before
+editing it. You can also select a preset directly with `{ theme: { preset: "editor-light" } }`.
+
+A reusable recipe is not a claim that every diagram family or output target supports every authored
+style. Query `describeThemeSupport()` for the relevant family, output, and mechanism. Saving a recipe
+does not switch it to another preset or embed fonts supplied separately by the host.
+
+For scoped edits, Clear/transparent semantics, simple theme creation, and redistribution, see
+[Create, Customize, and Share Diagram Themes](../../docs/rendering/custom-diagram-themes.md).
+
 ## Choose an SVG pipeline
 
 Browser previews should keep the default `parity` pipeline, which preserves Mermaid HTML labels
@@ -76,7 +153,7 @@ and CLI `--ascii-report` provide the report-oriented recipes. See the
 the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) for admitted family combinations.
 
 For known host RGB colors, supply `ascii.theme` with TrueColor, or ANSI256 for an approximation.
-ANSI16 uses terminal Reset and named colors for semantic roles. SVG `presentation.theme` does not
+ANSI16 uses terminal Reset and named colors for semantic roles. SVG's top-level `theme` does not
 configure ASCII colors; the host maps its application theme into each output independently.
 
 ## Mount SVG safely

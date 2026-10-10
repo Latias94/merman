@@ -3,7 +3,7 @@
 
 package io.merman
 
-internal const val MERMAN_BINDING_OPTIONS_SCHEMA_VERSION: Int = 2
+internal const val MERMAN_BINDING_OPTIONS_SCHEMA_VERSION: Int = 3
 
 public enum class MermanResourceProfile(public val id: String) {
     INTERACTIVE("interactive"),
@@ -33,7 +33,9 @@ public class MermanResourceLimitId private constructor(
         public val MAX_MODEL_ITEMS: MermanResourceLimitId = MermanResourceLimitId("max_model_items", "layout_model", true, 1)
         public val MAX_MODEL_TEXT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_model_text_bytes", "layout_model", true, 1)
         public val MAX_MODEL_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_model_nesting_depth", "layout_model", true, 1)
+        public val MAX_OPTIONS_JSON_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_options_json_bytes", "options-json-preflight", false, 1)
         public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
+        public val MAX_PREPARED_TEXT_RETAINED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_prepared_text_retained_bytes", "layout_model", true, 1)
         public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
         public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_postprocess", false, 1)
@@ -65,7 +67,9 @@ public class MermanResourceLimitId private constructor(
             MAX_MODEL_ITEMS,
             MAX_MODEL_TEXT_BYTES,
             MAX_MODEL_NESTING_DEPTH,
+            MAX_OPTIONS_JSON_BYTES,
             MAX_LAYOUT_WORK_UNITS,
+            MAX_PREPARED_TEXT_RETAINED_BYTES,
             MAX_SVG_BYTES,
             MAX_SVG_ELEMENTS,
             SVG_BACKEND_TREE_NODES,
@@ -109,6 +113,7 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_MODEL_TEXT_BYTES("max_model_text_bytes", 1),
     MAX_MODEL_NESTING_DEPTH("max_model_nesting_depth", 1),
     MAX_LAYOUT_WORK_UNITS("max_layout_work_units", 1),
+    MAX_PREPARED_TEXT_RETAINED_BYTES("max_prepared_text_retained_bytes", 1),
     MAX_SVG_BYTES("max_svg_bytes", 1),
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),
@@ -169,9 +174,9 @@ public class MermanResourceOptions(
             parts += "\"limits\":{${limitJson}}"
         }
         return if (parts.isEmpty()) {
-            "{\"version\":2}"
+            "{\"version\":3}"
         } else {
-            "{\"version\":2,\"resources\":{${parts.joinToString(",")}}}"
+            "{\"version\":3,\"resources\":{${parts.joinToString(",")}}}"
         }
     }
 }

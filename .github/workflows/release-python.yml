@@ -169,6 +169,7 @@ jobs:
           python -m pip install --upgrade auditwheel
 
       - name: Repair Linux wheel
+        id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
           mkdir -p target/python-wheels/repaired
@@ -178,6 +179,7 @@ jobs:
           rmdir target/python-wheels/repaired
 
       - name: Run final wheel install smoke
+        id: smoke-final-wheel
         run: |
           VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
           python -m venv "$VENV_DIR"

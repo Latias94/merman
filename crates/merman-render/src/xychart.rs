@@ -1,16 +1,24 @@
-use crate::chart_palette::plot_color_from_palette;
 use crate::config::{config_bool, config_f64_css_px as config_f64};
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
 };
 use serde_json::Value;
 use std::fmt::Write as _;
+
+mod css_binding;
+mod paint;
+mod series;
+mod theme;
+
+pub(crate) use paint::{XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId};
+
+pub(crate) use series::{XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt};
+pub(crate) use theme::{XyChartTextRole, XyChartTypographyThemePlan};
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -24,9 +32,11 @@ struct AxisThemeConfig {
 struct AxisConfig {
     show_label: bool,
     label_font_size: f64,
+    label_font_weight: Option<String>,
     label_padding: f64,
     show_title: bool,
     title_font_size: f64,
+    title_font_weight: Option<String>,
     title_padding: f64,
     show_tick: bool,
     tick_length: f64,
@@ -45,9 +55,11 @@ struct ChartConfig {
     show_data_label_outside_bar: bool,
     show_title: bool,
     title_font_size: f64,
+    title_font_weight: Option<String>,
     title_padding: f64,
     show_legend: bool,
     legend_font_size: f64,
+    legend_font_weight: Option<String>,
     legend_padding: f64,
     chart_orientation: String,
     x_axis: AxisConfig,
@@ -90,9 +102,11 @@ fn default_axis_config() -> AxisConfig {
     AxisConfig {
         show_label: true,
         label_font_size: 14.0,
+        label_font_weight: None,
         label_padding: 5.0,
         show_title: true,
         title_font_size: 16.0,
+        title_font_weight: None,
         title_padding: 5.0,
         show_tick: true,
         tick_length: 5.0,
@@ -124,12 +138,14 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
             .unwrap_or(base.show_label),
         label_font_size: config_f64(effective_config, &["xyChart", axis_key, "labelFontSize"])
             .unwrap_or(base.label_font_size),
+        label_font_weight: None,
         label_padding: config_f64(effective_config, &["xyChart", axis_key, "labelPadding"])
             .unwrap_or(base.label_padding),
         show_title: config_bool(effective_config, &["xyChart", axis_key, "showTitle"])
             .unwrap_or(base.show_title),
         title_font_size: config_f64(effective_config, &["xyChart", axis_key, "titleFontSize"])
             .unwrap_or(base.title_font_size),
+        title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", axis_key, "titlePadding"])
             .unwrap_or(base.title_padding),
         show_tick: config_bool(effective_config, &["xyChart", axis_key, "showTick"])
@@ -166,11 +182,13 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
         show_title: config_bool(effective_config, &["xyChart", "showTitle"]).unwrap_or(true),
         title_font_size: config_f64(effective_config, &["xyChart", "titleFontSize"])
             .unwrap_or(20.0),
+        title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", "titlePadding"]).unwrap_or(10.0),
         show_legend: config_bool(effective_config, &["xyChart", "showLegend"]).unwrap_or(true),
         legend_font_size: config_f64(effective_config, &["xyChart", "legendFontSize"])
             .unwrap_or(14.0)
             .max(1.0),
+        legend_font_weight: None,
         legend_padding: config_f64(effective_config, &["xyChart", "legendPadding"])
             .unwrap_or(10.0)
             .max(0.0),
@@ -183,9 +201,17 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
     }
 }
 
-fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasurer) -> Dimension {
+fn max_text_dimension(
+    texts: &[String],
+    font_size: f64,
+    font_family: &str,
+    font_weight: Option<&str>,
+    measurer: &dyn TextMeasurer,
+) -> Dimension {
     let style = TextStyle {
+        font_family: Some(font_family.to_string()),
         font_size,
+        font_weight: font_weight.map(str::to_owned),
         ..Default::default()
     };
     let mut max_w: f64 = 0.0;
@@ -212,15 +238,30 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     }
 }
 
-fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -> f64 {
+fn single_text_height(
+    text: &str,
+    font_size: f64,
+    font_family: &str,
+    font_weight: Option<&str>,
+    measurer: &dyn TextMeasurer,
+) -> f64 {
     if text.trim().is_empty() {
         return 0.0;
     }
     if text.contains('\n') || text.contains("<br") {
-        return max_text_dimension(&[text.to_string()], font_size, measurer).height;
+        return max_text_dimension(
+            &[text.to_string()],
+            font_size,
+            font_family,
+            font_weight,
+            measurer,
+        )
+        .height;
     }
     let style = TextStyle {
+        font_family: Some(font_family.to_string()),
         font_size,
+        font_weight: font_weight.map(str::to_owned),
         ..Default::default()
     };
     measurer.measure_svg_simple_text_bbox_height_px(text, &style)
@@ -234,6 +275,7 @@ fn calculate_legend_space(
     plots: &[(usize, &XyChartPlotRenderModel)],
     chart_config: &ChartConfig,
     available_space: Dimension,
+    font_family: &str,
     measurer: &dyn TextMeasurer,
 ) -> Dimension {
     if plots.is_empty() {
@@ -247,7 +289,13 @@ fn calculate_legend_space(
         .iter()
         .filter_map(|(_, plot)| plot.title.clone())
         .collect::<Vec<_>>();
-    let text_dimension = max_text_dimension(&titles, chart_config.legend_font_size, measurer);
+    let text_dimension = max_text_dimension(
+        &titles,
+        chart_config.legend_font_size,
+        font_family,
+        chart_config.legend_font_weight.as_deref(),
+        measurer,
+    );
     let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
     let marker_spacing = chart_config.legend_font_size * LEGEND_MARKER_SPACING_TO_FONT_RATIO;
     let item_spacing = chart_config.legend_font_size * LEGEND_ITEM_SPACING_TO_FONT_RATIO;
@@ -272,10 +320,10 @@ fn legend_drawable_elements(
     origin: Point,
     chart_config: &ChartConfig,
     legend_text_color: &str,
-    plot_color_palette: &[String],
-) -> Vec<XyChartDrawableElem> {
+    series_paint: &XyChartSeriesPaintPlan,
+) -> Result<Vec<XyChartDrawableElem>> {
     if plots.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
@@ -289,16 +337,28 @@ fn legend_drawable_elements(
     let mut labels = Vec::with_capacity(plots.len());
 
     for (legend_index, (plot_index, plot)) in plots.iter().enumerate() {
-        let color = plot_color_from_palette(plot_color_palette, *plot_index);
+        let fill_color = series_paint
+            .fill_css(*plot_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "XY Chart legend fill plan is incomplete".to_string(),
+            })?;
+        let stroke_color =
+            series_paint
+                .stroke_css(*plot_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "XY Chart legend stroke plan is incomplete".to_string(),
+                })?;
         match plot.plot_type {
             XyChartPlotType::Bar => bar_markers.push(XyChartRectData {
                 x: start_x,
                 y: start_y + legend_index as f64 * row_height,
                 width: marker_size,
                 height: marker_size,
-                fill: color.clone(),
-                stroke_fill: color.clone(),
-                stroke_width: 0.0,
+                fill: fill_color.to_string(),
+                stroke_fill: stroke_color.to_string(),
+                stroke_width: series_paint
+                    .stroke_width(*plot_index)
+                    .expect("resolved series width"),
             }),
             XyChartPlotType::Line => {
                 let marker_y = start_y + legend_index as f64 * row_height + marker_size / 2.0;
@@ -307,9 +367,11 @@ fn legend_drawable_elements(
                         "M {start_x},{marker_y} L {},{marker_y}",
                         start_x + marker_size
                     ),
-                    fill: None,
-                    stroke_fill: color,
-                    stroke_width: 2.0,
+                    fill: (fill_color != "none").then(|| fill_color.to_string()),
+                    stroke_fill: stroke_color.to_string(),
+                    stroke_width: series_paint
+                        .stroke_width(*plot_index)
+                        .expect("resolved series width"),
                 });
             }
         }
@@ -325,7 +387,7 @@ fn legend_drawable_elements(
         });
     }
 
-    vec![
+    Ok(vec![
         XyChartDrawableElem::Rect {
             group_texts: vec!["legend".to_string(), "markers".to_string()],
             data: bar_markers,
@@ -338,7 +400,7 @@ fn legend_drawable_elements(
             group_texts: vec!["legend".to_string(), "label".to_string()],
             data: labels,
         },
-    ]
+    ])
 }
 
 fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
@@ -660,7 +722,12 @@ impl Axis {
         rotation.sin() * dimension / 2.0
     }
 
-    fn calculate_space(&mut self, available: Dimension, measurer: &dyn TextMeasurer) -> Dimension {
+    fn calculate_space(
+        &mut self,
+        available: Dimension,
+        font_family: &str,
+        measurer: &dyn TextMeasurer,
+    ) -> Dimension {
         self.show_title = false;
         self.show_label = false;
         self.show_tick = false;
@@ -683,7 +750,13 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    font_family,
+                    self.axis_config.label_font_weight.as_deref(),
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.height;
                 self.outer_padding = (dim.height / 2.0).min(max_padding);
@@ -700,8 +773,13 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    font_family,
+                    self.axis_config.title_font_weight.as_deref(),
+                    measurer,
+                );
                 let width_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if width_required <= available_width {
@@ -728,7 +806,13 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    font_family,
+                    self.axis_config.label_font_weight.as_deref(),
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.width;
                 self.outer_padding = (dim.width / 2.0).min(max_padding);
@@ -752,8 +836,13 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    font_family,
+                    self.axis_config.title_font_weight.as_deref(),
+                    measurer,
+                );
                 let height_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if height_required <= available_height {
@@ -1090,9 +1179,15 @@ fn line_path(points: &[(f64, f64)]) -> Option<String> {
 pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     diagram_title: Option<&str>,
-    effective_config: &Value,
+    series_paint: &XyChartSeriesPaintPlan,
+    typography_theme: &theme::XyChartTypographyThemePlan,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
+    if series_paint.plot_count() != model.plots.len() {
+        return Err(Error::InvalidModel {
+            message: "XY Chart series paint plan does not match the semantic model".to_string(),
+        });
+    }
     if model
         .orientation
         .as_str()
@@ -1105,8 +1200,38 @@ pub(crate) fn layout_xychart_diagram_typed(
         });
     }
 
-    let chart_cfg = parse_chart_config(effective_config, model);
-    let theme_cfg = PresentationTheme::new(effective_config).xychart();
+    let mut chart_cfg = series_paint.chart_config().clone();
+    typography_theme.apply_font(
+        XyChartTextRole::Title,
+        &mut chart_cfg.title_font_size,
+        &mut chart_cfg.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::Legend,
+        &mut chart_cfg.legend_font_size,
+        &mut chart_cfg.legend_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::XAxisTitle,
+        &mut chart_cfg.x_axis.title_font_size,
+        &mut chart_cfg.x_axis.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::YAxisTitle,
+        &mut chart_cfg.y_axis.title_font_size,
+        &mut chart_cfg.y_axis.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::XAxisLabel,
+        &mut chart_cfg.x_axis.label_font_size,
+        &mut chart_cfg.x_axis.label_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::YAxisLabel,
+        &mut chart_cfg.y_axis.label_font_size,
+        &mut chart_cfg.y_axis.label_font_weight,
+    );
+    let theme_cfg = series_paint.css_binding();
 
     let title = model
         .title
@@ -1128,6 +1253,8 @@ pub(crate) fn layout_xychart_diagram_typed(
     let title_dimension = max_text_dimension(
         std::slice::from_ref(&title),
         chart_cfg.title_font_size,
+        typography_theme.font_family_css(),
+        chart_cfg.title_font_weight.as_deref(),
         text_measurer,
     );
     let title_height = title_dimension.height + 2.0 * chart_cfg.title_padding;
@@ -1214,6 +1341,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_width = (available_width - space_used_x.width).max(0.0);
@@ -1225,6 +1353,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_height = (available_height - space_used_y.height).max(0.0);
@@ -1237,6 +1366,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {
@@ -1277,6 +1407,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_height = (available_height - space_used_x.height).max(0.0);
@@ -1287,6 +1418,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         let plot_x = space_used_y.width;
@@ -1299,6 +1431,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {
@@ -1362,7 +1495,17 @@ pub(crate) fn layout_xychart_diagram_typed(
     }
 
     for (plot_index, plot) in model.plots.iter().enumerate() {
-        let color = plot_color_from_palette(&theme_cfg.plot_color_palette, plot_index);
+        let fill_color = series_paint
+            .fill_css(plot_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "XY Chart series fill plan is incomplete".to_string(),
+            })?;
+        let stroke_color =
+            series_paint
+                .stroke_css(plot_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "XY Chart series stroke plan is incomplete".to_string(),
+                })?;
 
         match plot.plot_type {
             XyChartPlotType::Bar => {
@@ -1381,9 +1524,11 @@ pub(crate) fn layout_xychart_diagram_typed(
                             y: x - bar_width_half,
                             width: y - plot_rect.x,
                             height: bar_width,
-                            fill: color.clone(),
-                            stroke_fill: color.clone(),
-                            stroke_width: 0.0,
+                            fill: fill_color.to_string(),
+                            stroke_fill: stroke_color.to_string(),
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         });
                     } else {
                         rects.push(XyChartRectData {
@@ -1391,9 +1536,11 @@ pub(crate) fn layout_xychart_diagram_typed(
                             y,
                             width: bar_width,
                             height: plot_rect.y + plot_rect.height - y,
-                            fill: color.clone(),
-                            stroke_fill: color.clone(),
-                            stroke_width: 0.0,
+                            fill: fill_color.to_string(),
+                            stroke_fill: stroke_color.to_string(),
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         });
                     }
                 }
@@ -1415,14 +1562,15 @@ pub(crate) fn layout_xychart_diagram_typed(
                     });
                 }
                 if let Some(path) = line_path(&points) {
-                    let line_color = color.clone();
                     drawables.push(XyChartDrawableElem::Path {
                         group_texts: vec!["plot".to_string(), format!("line-plot-{plot_index}")],
                         data: vec![XyChartPathData {
                             path,
-                            fill: None,
-                            stroke_fill: line_color.clone(),
-                            stroke_width: 2.0,
+                            fill: (fill_color != "none").then(|| fill_color.to_string()),
+                            stroke_fill: stroke_color.to_string(),
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         }],
                     });
                     if !plot.point_labels.is_empty() {
@@ -1456,7 +1604,10 @@ pub(crate) fn layout_xychart_diagram_typed(
                                     text: label.clone(),
                                     x,
                                     y,
-                                    fill: line_color.clone(),
+                                    fill: series_paint
+                                        .point_label_fill_css(plot_index)
+                                        .expect("resolved point-label paint")
+                                        .to_string(),
                                     font_size,
                                     rotation: 0.0,
                                     vertical_pos,
@@ -1480,13 +1631,18 @@ pub(crate) fn layout_xychart_diagram_typed(
         }
     }
 
+    if !series_paint.record_legend_layout(legend_plots.iter().map(|(index, _)| *index)) {
+        return Err(Error::InvalidModel {
+            message: "XY Chart legend plan was already finalized".to_owned(),
+        });
+    }
     drawables.extend(legend_drawable_elements(
         &legend_plots,
         legend_origin,
         &chart_cfg,
         &theme_cfg.legend_text_color,
-        &theme_cfg.plot_color_palette,
-    ));
+        series_paint,
+    )?);
 
     drawables.extend(x_axis.drawable_elements());
     drawables.extend(y_axis.drawable_elements());
@@ -1515,10 +1671,175 @@ pub(crate) fn layout_xychart_diagram_typed(
         chart_orientation: chart_cfg.chart_orientation,
         show_data_label: chart_cfg.show_data_label,
         show_data_label_outside_bar: chart_cfg.show_data_label_outside_bar,
-        background_color: theme_cfg.background_color,
+        background_color: theme_cfg.background_color.clone(),
         label_data,
         drawables,
     })
+}
+
+/// Shared rectangle-label selection and sizing, including Mermaid's legend-marker labels.
+/// Labels with a zero font size remain serialized but are not visible theme occurrences.
+pub(crate) struct XyChartRectDataLabels<'a> {
+    pub(crate) items: Vec<XyChartRectDataLabel<'a>>,
+    pub(crate) font_size: f64,
+}
+
+pub(crate) struct XyChartRectDataLabel<'a> {
+    pub(crate) rect: &'a XyChartRectData,
+    pub(crate) item: usize,
+    pub(crate) label: &'a str,
+}
+
+pub(crate) const XY_CHART_DATA_LABEL_INSET_PX: f64 = 10.0;
+
+pub(crate) fn rect_data_labels<'a>(
+    data: &'a [XyChartRectData],
+    labels: &'a [String],
+    orientation: &str,
+) -> XyChartRectDataLabels<'a> {
+    let items = data
+        .iter()
+        .enumerate()
+        .filter_map(|(item, rect)| {
+            let label = labels.get(item)?;
+            (rect.width > 0.0 && rect.height > 0.0).then_some(XyChartRectDataLabel {
+                rect,
+                item,
+                label,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut min_font = f64::INFINITY;
+    for item in &items {
+        let fs = if orientation == "horizontal" {
+            horizontal_label_font_size(
+                item.rect.width,
+                item.label,
+                item.rect.height * 0.7,
+                XY_CHART_DATA_LABEL_INSET_PX,
+            )
+        } else {
+            let denominator = javascript_string_length(item.label) * 0.7;
+            let initial = if denominator <= 0.0 {
+                0.0
+            } else {
+                item.rect.width / denominator
+            };
+            vertical_label_font_size(
+                item.rect.width,
+                item.rect.height,
+                item.label,
+                initial,
+                XY_CHART_DATA_LABEL_INSET_PX,
+            )
+        };
+        min_font = min_font.min(fs);
+    }
+    let font_size = if min_font.is_finite() { min_font } else { 0.0 }
+        .floor()
+        .max(0.0);
+    XyChartRectDataLabels { items, font_size }
+}
+
+/// Mermaid uses JavaScript's `String#length` for XYChart bar labels, which counts UTF-16 code
+/// units rather than Unicode scalar values.
+fn javascript_string_length(text: &str) -> f64 {
+    text.encode_utf16().count() as f64
+}
+
+/// Computes the result of Mermaid's one-pixel decrement loop without iterating once per pixel.
+///
+/// The upstream renderer decrements a candidate font size until it fits. That is observable for
+/// ordinary dimensions, but a finite value such as `1e308` cannot make numerical progress when
+/// subtracting one, so the browser algorithm never terminates. The fit predicates are monotonic;
+/// solving their upper bound directly preserves the same discrete candidate for normal values and
+/// makes extreme finite dimensions terminate in constant time.
+fn font_size_after_unit_decrements(initial: f64, maximum_that_fits: f64) -> f64 {
+    if !(initial.is_finite() && initial > 0.0) || maximum_that_fits.is_nan() {
+        return 0.0;
+    }
+    if maximum_that_fits >= initial {
+        return initial;
+    }
+    if maximum_that_fits <= 0.0 {
+        return 0.0;
+    }
+
+    let decrements = (initial - maximum_that_fits).ceil();
+    let candidate = initial - decrements;
+    if candidate.is_finite() && candidate > 0.0 {
+        candidate
+    } else {
+        0.0
+    }
+}
+
+fn horizontal_label_font_size(item_width: f64, label: &str, initial: f64, inset_px: f64) -> f64 {
+    let denominator = javascript_string_length(label) * 0.7;
+    let maximum_that_fits = if denominator > 0.0 {
+        (item_width - inset_px) / denominator
+    } else {
+        f64::INFINITY
+    };
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
+fn vertical_label_font_size(
+    item_width: f64,
+    item_height: f64,
+    label: &str,
+    initial: f64,
+    y_offset: f64,
+) -> f64 {
+    let denominator = javascript_string_length(label) * 0.7;
+    let horizontal_maximum = if denominator > 0.0 {
+        item_width / denominator
+    } else {
+        f64::INFINITY
+    };
+    let maximum_that_fits = horizontal_maximum.min(item_height - y_offset);
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
+#[cfg(test)]
+mod data_label_tests {
+    use super::*;
+
+    fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
+        let mut font_size = initial;
+        while font_size > maximum_that_fits && font_size > 0.0 {
+            font_size -= 1.0;
+        }
+        font_size
+    }
+
+    #[test]
+    fn closed_form_font_sizing_matches_mermaid_for_normal_dimensions() {
+        for (initial, maximum_that_fits) in [(10.2, 8.0), (10.0, 8.8), (8.0, 8.0), (0.5, 0.0)] {
+            assert_eq!(
+                font_size_after_unit_decrements(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+                upstream_decrement(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+            );
+        }
+    }
+
+    #[test]
+    fn huge_finite_bar_dimensions_complete_without_a_decrement_loop() {
+        let font_size = horizontal_label_font_size(1e308, "123", 7e307, 10.0);
+
+        assert!(font_size.is_finite());
+        assert!(font_size > 0.0);
+    }
+
+    #[test]
+    fn bar_label_length_uses_javascript_utf16_code_units() {
+        assert_eq!(javascript_string_length("A"), 1.0);
+        assert_eq!(javascript_string_length("\u{1F469}\u{200D}\u{1F4BB}"), 5.0);
+    }
 }
 
 #[cfg(test)]
@@ -1568,15 +1889,17 @@ mod tests {
             }],
             display: Default::default(),
         };
-        layout_xychart_diagram_typed(
-            &model,
-            None,
-            &json!({ "xyChart": {
-                "width": 700, "height": height, "showLegend": legend
-            }}),
-            &UserUnitMeasurer,
-        )
-        .unwrap()
+        let config = merman_core::MermaidConfig::from_value(json!({ "xyChart": {
+            "width": 700, "height": height, "showLegend": legend
+        }}));
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        let series_paint =
+            XyChartSeriesPaintPlan::resolve(None, &config, &model, &work_meter).unwrap();
+        let typography = XyChartTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
+        layout_xychart_diagram_typed(&model, None, &series_paint, &typography, &UserUnitMeasurer)
+            .unwrap()
     }
 
     fn title(layout: &XyChartDiagramLayout) -> Option<&XyChartTextData> {
@@ -1680,7 +2003,13 @@ mod tests {
 
     #[test]
     fn xychart_measurement_keeps_svg_user_units_without_display_rescaling() {
-        let dimensions = max_text_dimension(&["CPU".to_string()], 14.0, &UserUnitMeasurer);
+        let dimensions = max_text_dimension(
+            &["CPU".to_string()],
+            14.0,
+            "sans-serif",
+            None,
+            &UserUnitMeasurer,
+        );
         assert_eq!(dimensions.width, 42.0);
         assert_eq!(dimensions.height, 14.0);
     }

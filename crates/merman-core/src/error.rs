@@ -2,6 +2,42 @@ use crate::{SourceSpan, detect::DetectTypeError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An internal engine subsystem failed without assigning blame to authored Mermaid input.
+///
+/// Callers can classify the stable [`Error::Internal`] variant while treating the human-readable
+/// message as diagnostic context.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{message}")]
+pub struct InternalFailure {
+    message: String,
+}
+
+impl InternalFailure {
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Creates an internal subsystem failure without attributing it to authored input.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+/// A bounded Mermaid theme program requested more generated color slots than Merman admits.
+///
+/// Mermaid exposes `themeVariables.THEME_COLOR_LIMIT` as mutable input and uses it as the bound
+/// for several constructor loops. Merman preserves that behavior within a fixed work ceiling so
+/// hostile or accidental values cannot turn configuration materialization into unbounded work.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("Mermaid theme evaluation limit `{limit}` exceeded: requested={requested}, max={max}")]
+pub struct ThemeEvaluationLimitExceeded {
+    pub limit: &'static str,
+    pub requested: String,
+    pub max: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseDiagnosticSpanKind {
     Exact,
@@ -150,12 +186,19 @@ impl ParseDiagnostic {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     OperationCancelled(#[from] crate::OperationCancelled),
 
     #[error(transparent)]
+    Internal(#[from] InternalFailure),
+
+    #[error(transparent)]
     ThemeColor(#[from] crate::theme_color::ColorError),
+
+    #[error(transparent)]
+    ThemeEvaluationLimit(#[from] ThemeEvaluationLimitExceeded),
 
     #[error(transparent)]
     RuntimePolicy(#[from] crate::runtime::RuntimePolicyError),

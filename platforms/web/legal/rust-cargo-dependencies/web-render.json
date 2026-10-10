@@ -76,13 +76,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "eaa36281cd139be2af65494d4bd9e26c3a8db120021853930194eadfcfa48ab5",
+    "cargo_lock_sha256": "b54c86c7f3996fa0f25867e9805d6092402d4e146072d76a664da98527eb2175",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "caaa99d16f01ecc804757b206a5d4d1eaf3d4f0d6c7e22ac4a27e239ee7a0dd1"
   },
   "dependency_closure": {
-    "package_count": 173,
-    "packages_sha256": "4b8b40215cb6606e0321cad9555250f9ffe7bdf715e579343ea651eec3d2504a"
+    "package_count": 175,
+    "packages_sha256": "9a6e21db2e863525ae3f98f5f553c14ed2be4fbf9e6391272370f8c1fbc9f2d9"
   },
   "licenses": [
     {
@@ -699,7 +699,7 @@
         },
         {
           "name": "js-sys",
-          "version": "0.3.106",
+          "version": "0.3.105",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -977,7 +977,7 @@
         },
         {
           "name": "wasm-bindgen",
-          "version": "0.2.129",
+          "version": "0.2.128",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -987,7 +987,7 @@
         },
         {
           "name": "wasm-bindgen-macro",
-          "version": "0.2.129",
+          "version": "0.2.128",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -997,7 +997,7 @@
         },
         {
           "name": "wasm-bindgen-macro-support",
-          "version": "0.2.129",
+          "version": "0.2.128",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1007,7 +1007,7 @@
         },
         {
           "name": "wasm-bindgen-shared",
-          "version": "0.2.129",
+          "version": "0.2.128",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1017,7 +1017,7 @@
         },
         {
           "name": "web-sys",
-          "version": "0.3.106",
+          "version": "0.3.105",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1699,6 +1699,38 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186",
+      "text": "The MIT License (MIT)\n\nCopyright (c) 2015-2020 Julien Cretin\nCopyright (c) 2017-2020 Google Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "packages": [
+        {
+          "name": "data-encoding",
+          "version": "2.11.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [],
+          "repository": "https://github.com/ia0/data-encoding"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "b68d86a60d3619bfd55b89a322e8464d3f9ca1c7e2409cc6035ea290435831e0",
+      "text": "MIT License\r\n\r\nCopyright (c) 2023 Attila Mravik\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
+      "packages": [
+        {
+          "name": "serde_json_canonicalizer",
+          "version": "0.3.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [],
+          "repository": "https://github.com/evik42/serde-json-canonicalizer"
         }
       ]
     },

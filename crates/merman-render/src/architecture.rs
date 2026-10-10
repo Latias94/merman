@@ -21,6 +21,21 @@ use merman_core::diagrams::architecture::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
+mod css_binding;
+mod theme;
+
+pub(crate) use css_binding::ArchitectureCssBinding;
+
+pub(crate) use theme::{
+    ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
+    ArchitectureEdgeThemeReceipt, ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission,
+    ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt, ArchitecturePaintTerminalEmission,
+    ArchitectureServiceTerminal, ArchitectureServiceTerminalEmission,
+    ArchitectureSurfaceThemeReceipt, ArchitectureTextTerminalEmission,
+    ArchitectureTypographyCssEmission, ArchitectureTypographyTerminalInventory,
+    ArchitectureTypographyThemePlan, ArchitectureTypographyThemeReceipt,
+};
+
 struct ArchitectureManateeWorkControl<'a> {
     meter: &'a OperationWorkMeter,
     denied: Option<OperationWorkError>,
@@ -1269,7 +1284,7 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
 
 const CYTOSCAPE_DEFAULT_FONT_FAMILY: &str = "Helvetica Neue,Helvetica,sans-serif";
 
-fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
+pub(crate) fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
     TextStyle {
         // Mermaid sets only `font-size` on Architecture nodes, so Cytoscape retains its own
         // default canvas font family rather than inheriting Mermaid's root Trebuchet stack.
@@ -2617,9 +2632,7 @@ mod tests {
 
     #[test]
     fn flatten_alignment_metadata_and_sort_work_are_preflighted() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
         let mut numeric_groups = indexmap::IndexMap::new();
         numeric_groups.insert("10".to_string(), vec![0, 1]);
@@ -2650,7 +2663,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(metadata_error) = metadata_error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(metadata_error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(metadata_error.actual, 4);
         assert_eq!(metadata_meter.used(), 0);
 
@@ -2671,16 +2683,13 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(sort_error) = sort_error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(sort_error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(sort_error.actual, work_plan.work_units);
         assert_eq!(linear_meter.used(), 0);
     }
 
     #[test]
     fn flatten_alignment_budget_rejects_before_pair_expansion() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
         let alignment_obj = flatten_alignment_object(&[2, 3, 4]);
         let original = alignment_obj.clone();
@@ -2705,7 +2714,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.actual, work_plan.work_units);
         assert_eq!(error.max, work_plan.work_units - 1);
         assert_eq!(meter.used(), 0);
@@ -2833,9 +2841,7 @@ mod tests {
 
     #[test]
     fn architecture_work_admission_is_exact_and_non_consuming_on_rejection() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
         let model = single_node_model();
         let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
@@ -2859,7 +2865,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         // Admission now includes the adapter's source-sized spatial planning pass before any
         // allocation or FCoSE work. Keep the rejection assertion aligned with that full plan.
         assert_eq!(error.actual, 22);
@@ -3015,9 +3020,7 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_exact_admission_matches_layered_diamond_work() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
         let model = architecture_layered_diamond();
         let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
@@ -3039,7 +3042,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.actual, 20);
         assert_eq!(error.max, 19);
         assert_eq!(narrow_meter.used(), 0);
@@ -3047,9 +3049,7 @@ mod tests {
 
     #[test]
     fn architecture_spatial_bfs_keeps_exact_preflight_for_mixed_components() {
-        use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
         let mut model = architecture_duplicate_pop_counterexample();
         let diamond = architecture_layered_diamond();
@@ -3066,7 +3066,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.actual, 20);
         assert_eq!(error.max, 19);
         assert_eq!(meter.used(), 0);
@@ -3133,8 +3132,7 @@ mod tests {
     #[test]
     fn architecture_spatial_bfs_rejects_before_over_budget_enqueue() {
         use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-            ResourceLimitPhase,
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
         };
 
         let model = architecture_duplicate_pop_counterexample();
@@ -3150,7 +3148,6 @@ mod tests {
             panic!("expected layout work resource error");
         };
 
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(error.actual, 5);
         assert_eq!(error.max, 4);
@@ -3203,8 +3200,7 @@ mod tests {
     #[test]
     fn architecture_rejects_grid_constraint_expansion_before_duplicate_materialization() {
         use crate::resources::{
-            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-            ResourceLimitPhase,
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
         };
 
         let ids = (0..12 * 12)
@@ -3262,7 +3258,6 @@ mod tests {
             panic!("expected layout work resource error");
         };
 
-        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(error.max, 800_000);
         assert!(error.actual > 1_000_000);
@@ -3274,7 +3269,7 @@ mod tests {
 
     #[test]
     fn architecture_num_iter_overflow_fails_under_unlimited_policy() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause};
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 
         let model = single_node_model();
         let config = serde_json::json!({"architecture": {"numIter": f64::MAX}});
@@ -3286,7 +3281,6 @@ mod tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected layout work resource error");
         };
-        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
         assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(meter.used(), 0);
     }

@@ -7,6 +7,11 @@ pub(super) fn state_is_hidden(ctx: &StateRenderCtx<'_>, id: &str) -> bool {
 }
 
 pub(super) fn state_data_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
+    let look = ctx.serialized_diagram_look.trim();
+    if look.is_empty() { "classic" } else { look }
+}
+
+pub(super) fn state_effective_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
     let look = ctx.diagram_look.trim();
     if look.is_empty() { "classic" } else { look }
 }

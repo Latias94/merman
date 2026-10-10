@@ -224,7 +224,27 @@ pub(crate) fn upstream_svg_compare_skip_reason(
     diagram: &str,
     fixture_name_or_stem: &str,
 ) -> Option<&'static str> {
-    upstream_svg_baseline_skip_reason(diagram, fixture_name_or_stem)
+    let stem = normalized_fixture_stem(fixture_name_or_stem);
+
+    if let Some(reason) = upstream_svg_baseline_skip_reason(diagram, stem) {
+        return Some(reason);
+    }
+
+    if diagram == "timeline" && stem == "timeline_stress_section_name_repeated" {
+        return Some(
+            "occurrence-aware section ownership intentionally supersedes Mermaid 11.17.2 label-only grouping for duplicate section names",
+        );
+    }
+
+    if diagram == "gantt"
+        && stem == "upstream_docs_gantt_timeline_with_comments_css_config_in_frontmatter_031"
+    {
+        return Some(
+            "fixture requires the trusted raw-theme-css lane; canonical deterministic comparison keeps that host capability disabled",
+        );
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -564,6 +584,21 @@ mod tests {
         assert_eq!(
             upstream_svg_compare_skip_reason("class", "upstream_namespaces_and_generics"),
             None
+        );
+        assert_eq!(
+            upstream_svg_compare_skip_reason("timeline", "timeline_stress_section_name_repeated"),
+            Some(
+                "occurrence-aware section ownership intentionally supersedes Mermaid 11.17.2 label-only grouping for duplicate section names"
+            )
+        );
+        assert_eq!(
+            upstream_svg_compare_skip_reason(
+                "gantt",
+                "upstream_docs_gantt_timeline_with_comments_css_config_in_frontmatter_031"
+            ),
+            Some(
+                "fixture requires the trusted raw-theme-css lane; canonical deterministic comparison keeps that host capability disabled"
+            )
         );
     }
 }

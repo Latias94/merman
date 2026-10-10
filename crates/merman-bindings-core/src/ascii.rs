@@ -1,7 +1,7 @@
 use crate::common::{
     BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_resource_policy,
     binding_diagnostic_details, binding_input_resource_policy, binding_site_config,
-    no_diagram_error, parse_error, runtime_policy_error, source_text,
+    no_diagram_error, runtime_policy_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -361,7 +361,7 @@ fn classify_render_error(
         merman::RenderError::NoDiagram => no_diagram_error(),
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
-        merman::RenderError::Parse(err) => parse_error(err),
+        merman::RenderError::Parse(err) => crate::common::parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -444,6 +444,25 @@ mod tests {
         assert_eq!(details.max, expected - 1);
         assert_eq!(details.profile, "interactive");
         assert_eq!(details.cause, BindingResourceLimitCause::Ceiling);
+    }
+
+    #[test]
+    fn theme_evaluation_limits_keep_resource_status_for_ascii_output() {
+        let error = classify_render_error(
+            merman::RenderError::Parse(
+                merman::Error::ThemeEvaluationLimit(merman::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    requested: "65".to_string(),
+                    max: 64,
+                })
+                .into(),
+            ),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("THEME_COLOR_LIMIT"));
+        assert_eq!(error.resource_details(), None);
     }
 
     #[test]

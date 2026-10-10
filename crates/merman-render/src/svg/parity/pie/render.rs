@@ -29,6 +29,19 @@ fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String 
     class_name
 }
 
+fn emitted_attribute_matches(
+    output: &str,
+    element_start: usize,
+    attribute_prefix: &str,
+    expected_value: &str,
+) -> bool {
+    output
+        .get(element_start..)
+        .and_then(|element| element.split_once(attribute_prefix))
+        .and_then(|(_, value)| value.split_once('"'))
+        .is_some_and(|(value, _)| value == expected_value)
+}
+
 fn empty_pie_root_viewport_fallback(
     model: &PieDiagramRenderModel,
     min_x: f64,
@@ -54,20 +67,135 @@ fn empty_pie_root_viewport_fallback(
     ))
 }
 
+fn render_pie_slices(
+    out: &mut impl SvgOutput,
+    slices: &[crate::model::PieSliceLayout],
+    radius: f64,
+    inner_radius: f64,
+    effective_config: &serde_json::Value,
+    paint_plan: &crate::pie::PieThemePlan,
+    mut paint_receipt: Option<&mut crate::pie::PieThemeReceipt>,
+) -> Result<()> {
+    for (slice_index, slice) in slices.iter().enumerate() {
+        let slice_class = pie_slice_class(effective_config, &slice.label);
+        let emitted_fill = slice.fill.as_str();
+        let escaped_fill = escape_xml(emitted_fill);
+        let element_start = out.len();
+        if slice.is_full_circle {
+            let d = if inner_radius > 0.0 {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
+                    r = fmt(radius),
+                    ir = fmt(inner_radius)
+                )
+            } else {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
+                    r = fmt(radius)
+                )
+            };
+            let _ = write!(
+                out,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
+                d = d,
+                fill = &escaped_fill,
+                class = escape_xml(&slice_class)
+            );
+        } else {
+            let (x0, y0) = pie_polar_xy(radius, slice.start_angle);
+            let (x1, y1) = pie_polar_xy(radius, slice.end_angle);
+            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
+                1
+            } else {
+                0
+            };
+            let d = if inner_radius > 0.0 {
+                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
+                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
+                    x0 = fmt(x0),
+                    y0 = fmt(y0),
+                    r = fmt(radius),
+                    large = large,
+                    x1 = fmt(x1),
+                    y1 = fmt(y1),
+                    ix1 = fmt(ix1),
+                    iy1 = fmt(iy1),
+                    ir = fmt(inner_radius),
+                    ix0 = fmt(ix0),
+                    iy0 = fmt(iy0)
+                )
+            } else {
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
+                    x0 = fmt(x0),
+                    y0 = fmt(y0),
+                    r = fmt(radius),
+                    large = large,
+                    x1 = fmt(x1),
+                    y1 = fmt(y1)
+                )
+            };
+            let _ = write!(
+                out,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
+                d = d,
+                fill = &escaped_fill,
+                class = escape_xml(&slice_class)
+            );
+        }
+        out.checkpoint()?;
+        if let Some(receipt) = paint_receipt.as_deref_mut() {
+            let terminal_fill =
+                emitted_attribute_matches(out.as_str(), element_start, r#" fill=""#, &escaped_fill)
+                    .then_some(emitted_fill);
+            let escaped_class = escape_xml(&slice_class);
+            let terminal_class = emitted_attribute_matches(
+                out.as_str(),
+                element_start,
+                r#" class=""#,
+                &escaped_class,
+            )
+            .then_some(slice_class.as_str());
+            receipt.record_slice(
+                paint_plan,
+                slice_index,
+                slice.label.as_str(),
+                terminal_fill,
+                terminal_class,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let paint_plan = crate::pie::PieThemePlan::baseline(model, effective_config);
+    render_pie_diagram_svg_model_with_paint_plan(
+        layout,
+        model,
+        &paint_plan,
+        effective_config,
+        options,
+    )
+}
+
+pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
+    layout: &PieDiagramLayout,
+    model: &PieDiagramRenderModel,
+    paint_plan: &crate::pie::PieThemePlan,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
-    let css_plan = PieCss::new(effective_config);
-    let css = options.materialize_counted_svg_component(
-        "Pie stylesheet",
-        |out| css_plan.write_for_normalized_id(out, diagram_id.semantic_str()),
-        |out| css_plan.write_for_normalized_id(out, diagram_id),
-    )?;
-    options.checkpoint_emit()?;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -93,7 +221,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, render_settings.use_max_width)
         .with_max_width(root_max_width);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = model
         .acc_title
         .as_deref()
@@ -102,25 +230,23 @@ pub(crate) fn render_pie_diagram_svg_model(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
-            .write_open(
-                &mut out,
-                root_spec,
-                root_svg::RootChrome {
-                    aria_labelledby: aria_labelledby.as_deref(),
-                    aria_describedby: aria_describedby.as_deref(),
-                    dom: root_svg::RootDomProfile {
-                        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                        trailing_newline: false,
-                        ..Default::default()
-                    },
-                    ..root_svg::RootChrome::new(diagram_id, "pie")
+    let root_document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::PIE, diagram_id)
+        .write_open(
+            &mut out,
+            root_spec,
+            root_svg::RootChrome {
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                dom: root_svg::RootDomProfile {
+                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                    trailing_newline: false,
+                    ..Default::default()
                 },
-            )?;
-    options.checkpoint_emit()?;
+                ..root_svg::RootChrome::new(diagram_id, "pie")
+            },
+        )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -138,10 +264,61 @@ pub(crate) fn render_pie_diagram_svg_model(
             text = escape_xml(d)
         );
     }
-    options.checkpoint_emit()?;
+    out.checkpoint()?;
 
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    out.push_str(r#"<g/>"#);
+    let mut paint_receipt =
+        paint_plan.begin_terminal_receipt(layout.slices.iter().map(|slice| slice.label.as_str()));
+    out.push_str("<style>");
+    out.checkpoint()?;
+    let slice_stroke = (!layout.slices.is_empty())
+        .then(|| paint_plan.slice_stroke_css())
+        .flatten();
+    let outer_stroke = (!layout.slices.is_empty())
+        .then(|| paint_plan.outer_stroke_css())
+        .flatten();
+    let title_fill = paint_plan.title_fill_css();
+    let text_fill = paint_plan.text_fill_css();
+    let css_emission = write_pie_css(
+        &mut out,
+        diagram_id.semantic_str(),
+        paint_plan,
+        !layout.slices.is_empty(),
+    )?;
+    if let Some(receipt) = paint_receipt.as_mut() {
+        if paint_plan.typography_requested() {
+            receipt.record_typography_stylesheet(css_emission.font_family());
+        }
+        if let Some(stroke) = slice_stroke {
+            receipt.record_slice_stroke_stylesheet(
+                paint_plan,
+                "pieCircle",
+                css_emission
+                    .slice_stroke()
+                    .filter(|emitted| *emitted == stroke),
+            );
+        }
+        if let Some(stroke) = outer_stroke {
+            receipt.record_outer_stroke_stylesheet(
+                paint_plan,
+                "pieOuterCircle",
+                css_emission
+                    .outer_stroke()
+                    .filter(|emitted| *emitted == stroke),
+            );
+        }
+        if title_fill.is_some() {
+            receipt.record_title_stylesheet(
+                paint_plan,
+                crate::pie::PIE_TITLE_CLASS,
+                css_emission.title_fill(),
+            );
+        }
+        if text_fill.is_some() {
+            receipt.record_text_stylesheet(paint_plan, "slice", css_emission.section_text_fill());
+        }
+    }
+    out.push_str(r#"</style><g/>"#);
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
@@ -173,104 +350,69 @@ pub(crate) fn render_pie_diagram_svg_model(
         out.push_str("<g>");
     }
 
+    let outer_circle_start = out.len();
     let _ = write!(
         &mut out,
         r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
         r = fmt(layout.outer_radius)
     );
-    options.checkpoint_emit()?;
-
-    let inner_radius = render_settings.donut_hole * layout.radius;
-    for slice in &layout.slices {
-        options.checkpoint_emit()?;
-        let r = layout.radius;
-        let slice_class = pie_slice_class(effective_config, &slice.label);
-        if slice.is_full_circle {
-            let d = if inner_radius > 0.0 {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
-                    r = fmt(r),
-                    ir = fmt(inner_radius)
-                )
-            } else {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                    r = fmt(r)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        } else {
-            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
-            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
-            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
-                1
-            } else {
-                0
-            };
-            let d = if inner_radius > 0.0 {
-                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
-                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1),
-                    ix1 = fmt(ix1),
-                    iy1 = fmt(iy1),
-                    ir = fmt(inner_radius),
-                    ix0 = fmt(ix0),
-                    iy0 = fmt(iy0)
-                )
-            } else {
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        }
+    out.checkpoint()?;
+    if let Some(receipt) = paint_receipt.as_mut() {
+        let terminal_class = emitted_attribute_matches(
+            out.as_str(),
+            outer_circle_start,
+            r#" class=""#,
+            "pieOuterCircle",
+        )
+        .then_some("pieOuterCircle");
+        receipt.record_outer_circle(terminal_class);
     }
 
+    let inner_radius = render_settings.donut_hole * layout.radius;
+    render_pie_slices(
+        &mut out,
+        &layout.slices,
+        layout.radius,
+        inner_radius,
+        effective_config,
+        paint_plan,
+        paint_receipt.as_mut(),
+    )?;
+
     for slice in &layout.slices {
         options.checkpoint_emit()?;
+        let text = format!("{}%", slice.percent);
+        let element_start = out.len();
         let _ = write!(
             &mut out,
             r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
             x = fmt(slice.text_x),
             y = fmt(slice.text_y),
-            text = escape_xml(&format!("{}%", slice.percent))
+            text = escape_xml(&text)
         );
+        out.checkpoint()?;
+        if (text_fill.is_some() || paint_plan.typography_requested())
+            && let Some(receipt) = paint_receipt.as_mut()
+        {
+            let terminal_class =
+                emitted_attribute_matches(out.as_str(), element_start, r#" class=""#, "slice")
+                    .then_some("slice");
+            receipt.record_slice_text(terminal_class, &text);
+        }
     }
 
     out.push_str("</g>");
 
-    match layout.title.as_deref() {
+    let title_start = out.len();
+    let title_text = layout.title.as_deref();
+    match title_text {
         Some(t) => {
             options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
-                r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
+                r#"<text x="0" y="{y}" class="{class}">{text}</text>"#,
                 y = fmt(-200.0),
+                class = crate::pie::PIE_TITLE_CLASS,
                 text = escape_xml(t)
             );
         }
@@ -278,30 +420,52 @@ pub(crate) fn render_pie_diagram_svg_model(
             options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
-                r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
-                y = fmt(-200.0)
+                r#"<text x="0" y="{y}" class="{class}"/>"#,
+                y = fmt(-200.0),
+                class = crate::pie::PIE_TITLE_CLASS,
             );
         }
+    }
+    out.checkpoint()?;
+    if (paint_plan.title_fill_css().is_some() || paint_plan.typography_requested())
+        && let Some(receipt) = paint_receipt.as_mut()
+    {
+        let terminal_class = emitted_attribute_matches(
+            out.as_str(),
+            title_start,
+            r#" class=""#,
+            crate::pie::PIE_TITLE_CLASS,
+        )
+        .then_some(crate::pie::PIE_TITLE_CLASS);
+        receipt.record_title_text(terminal_class, title_text);
     }
 
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
 
-    for item in &layout.legend_items {
-        options.checkpoint_emit()?;
+    for (legend_index, item) in layout.legend_items.iter().enumerate() {
+        let legend_start = out.len();
         let _ = write!(
             &mut out,
             r#"<g class="legend" transform="translate({x},{y})">"#,
             x = fmt(layout.legend_x),
             y = fmt(item.y)
         );
-        let style = pie_legend_rect_style(&item.fill);
+        out.checkpoint()?;
+        let emitted_fill = item.fill.as_str();
+        let style = pie_legend_rect_style(emitted_fill);
+        let escaped_style = escape_xml(&style);
+        let element_start = out.len();
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" style="{style}"/>"#,
             size = fmt(legend_rect_size),
-            style = escape_xml(&style)
+            style = &escaped_style
         );
+        out.checkpoint()?;
+        let terminal_fill =
+            emitted_attribute_matches(out.as_str(), element_start, r#" style=""#, &escaped_style)
+                .then_some(emitted_fill);
         let text = if model.show_data {
             format!("{} [{}]", item.label, fmt(item.value))
         } else {
@@ -315,16 +479,139 @@ pub(crate) fn render_pie_diagram_svg_model(
             text = escape_xml(&text)
         );
         out.push_str("</g>");
+        out.checkpoint()?;
+        if let Some(receipt) = paint_receipt.as_mut() {
+            receipt.record_legend(paint_plan, legend_index, item.label.as_str(), terminal_fill);
+            if paint_plan.typography_requested() {
+                let terminal_parent_class =
+                    emitted_attribute_matches(out.as_str(), legend_start, r#" class=""#, "legend")
+                        .then_some("legend");
+                receipt.record_legend_text(terminal_parent_class, &text);
+            }
+        }
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if paint_receipt.is_some_and(|receipt| !paint_plan.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Pie slice paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use merman_core::diagrams::pie::PieDiagramRenderModel;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn pie_slices_stop_after_the_first_svg_sink_failure() {
+        let slices = (0..4)
+            .map(|index| crate::model::PieSliceLayout {
+                label: format!("slice-{index}"),
+                value: 1.0,
+                start_angle: 0.0,
+                end_angle: std::f64::consts::TAU,
+                is_full_circle: true,
+                percent: 100,
+                text_x: 0.0,
+                text_y: 0.0,
+                fill: "#ECECFF".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let mut model = PieDiagramRenderModel::default();
+        model.sections = slices
+            .iter()
+            .map(|slice| merman_core::diagrams::pie::PieRenderSection {
+                label: slice.label.clone(),
+                value: slice.value,
+            })
+            .collect();
+        let effective_config = serde_json::json!({});
+        let paint_plan = crate::pie::PieThemePlan::baseline(&model, &effective_config);
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = render_pie_slices(
+            &mut out,
+            &slices,
+            185.0,
+            0.0,
+            &effective_config,
+            &paint_plan,
+            None,
+        )
+        .expect_err("the rejecting sink must stop Pie slice rendering");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Pie slice rendering must stop after the first failed slice write"
+        );
+    }
 
     #[test]
     fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {
@@ -400,7 +687,9 @@ mod tests {
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session).expect("SVG execution");
+        let execution =
+            SvgExecution::unthemed_for_test(&options, &debug, &session, DiagramFamilyId::PIE)
+                .expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(
             &layout,

@@ -1,5 +1,6 @@
 mod create_text;
 mod deterministic;
+mod evidence;
 mod flowchart_parity;
 mod heuristic;
 mod icons;
@@ -8,20 +9,24 @@ mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
+mod prepared;
 mod svg_metrics;
+mod terminal_receipt;
 mod types;
+mod visible_style;
 mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::DeterministicTextMeasurer;
+pub(crate) use evidence::PreparedTextEvidenceLease;
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use icons::replace_fontawesome_icons;
 pub(crate) use line_break::{html_has_soft_break_opportunity, mermaid_html_breaks_to_newlines};
 pub(crate) use markdown::{
     MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
-    mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
+    mermaid_markdown_contains_html_tags, mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
 };
 pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
@@ -38,6 +43,39 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
 };
+
+#[cfg(test)]
+pub(crate) use prepared::TextByteRange;
+pub(crate) use prepared::{
+    CatalogAdmittedTextStyle, ParsedCssFontStack, PendingPreparedTextLabelLedgerEntry,
+    PreparedText, PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLayout,
+    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, PreparedTextLine,
+    PreparedTextVerticalExtents, TextLayoutBackend, TextLayoutBackendIdentity,
+    TextLayoutCapabilities, TextLayoutError, TextProjection,
+    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
+    resolve_css_font_weight, text_projection_layout_error,
+};
+
+pub(crate) use prepared::{
+    PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
+};
+
+pub(crate) use prepared::{PrepareCatalogRequest, PrepareTextRequest, PreparedTextWrap};
+pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
+pub(crate) use visible_style::VisibleTextStyleFacts;
+
+/// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.
+#[doc(hidden)]
+pub mod __private {
+    pub use super::prepared::{
+        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
+        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    };
+    pub use super::terminal_receipt::{
+        PreparedTextTerminalFace, PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
+    };
+}
+pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};
 pub(crate) use svg_metrics::{
     svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
 };

@@ -120,6 +120,21 @@ class TypeScriptContract {
     );
   }
 
+  exportedTypePropertyAnnotationText(file, exportName, propertyName) {
+    const type = this.#declaredExportType(file, exportName);
+    const property = type.getProperty(propertyName);
+    if (!property) {
+      throw new Error(`${relativeFile(file)}: ${exportName}.${propertyName} is not declared`);
+    }
+    const declaration = property.valueDeclaration ?? property.declarations?.[0];
+    if (!declaration || !declaration.type) {
+      throw new Error(
+        `${relativeFile(file)}: ${exportName}.${propertyName} has no type annotation`,
+      );
+    }
+    return declaration.type.getText(declaration.getSourceFile());
+  }
+
   exportedStringLiteralMembers(file, exportName) {
     const symbol = this.#resolvedExport(file, exportName);
     const type = this.#declaredExportType(file, exportName);

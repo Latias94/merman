@@ -7,7 +7,17 @@ type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 
 mod label;
 pub(crate) use label::{
-    measure_state_markdown_label, state_edge_label_xhtml, state_node_label_xhtml,
+    StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,
+    state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
+};
+
+mod edge_label_geometry;
+pub(crate) use edge_label_geometry::StateNativeLabelGeometry;
+
+mod label_artifact;
+pub(crate) use label_artifact::{
+    PreparedStateLabel, StateLabelMetricsRequest, StateLabelOwner, StateLabelSidecar,
+    StateLabelSidecarBuilder, StateLabelSourceKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,12 +63,27 @@ impl RectWithTitleGeometry {
     }
 }
 
+mod compatibility;
 mod config;
+mod effect_plan;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod layout;
+mod style_plan;
+mod theme_evidence;
 
-pub(crate) use config::{StateConfigView, state_text_style};
+pub(crate) use compatibility::{
+    StateCompatibilityPlan, StateTerminalPaintProperty, StateTerminalSurface,
+};
+pub(crate) use config::StateConfigView;
+pub(crate) use effect_plan::{StateEffectPlan, StateNodeEffectPlan};
+pub(crate) use style_plan::{
+    ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+};
+pub(crate) use theme_evidence::{
+    StatePendingTerminalMechanism, StateThemeTerminalExpectation, StateThemeTerminalOccurrence,
+    StateThemeTerminalPlan, StateThemeTerminalReceipt,
+};
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{

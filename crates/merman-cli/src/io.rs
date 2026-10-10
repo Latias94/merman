@@ -291,6 +291,16 @@ pub(crate) fn read_named_text_file(
     read_utf8(file, resource, limit, Some(length_hint)).map_err(CliError::auxiliary_input)
 }
 
+pub(crate) fn read_named_bytes_file(
+    path: impl AsRef<Path>,
+    label: &str,
+    limit: InputLimit,
+) -> Result<Vec<u8>, CliError> {
+    let (file, resource, length_hint) = open_named_regular_file(path.as_ref(), label)?;
+    crate::input::read_bytes_with_limit(file, resource, limit, Some(length_hint))
+        .map_err(CliError::auxiliary_input)
+}
+
 #[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) fn read_named_text_file_controlled(
     path: impl AsRef<Path>,

@@ -1,17 +1,23 @@
 #![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::family::{self, RenderFamilyKind};
+use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::TextMetrics;
+use merman_render::text::{TextMetrics, TextStyle};
+use merman_render::{DiagramFamilyId, LayoutOptions};
 use regex::Regex;
+use serde_json::json;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -28,6 +34,7 @@ const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 128 * 1024;
 struct CountingArchitectureHost {
     calls: AtomicUsize,
     operations: Mutex<Vec<TextMeasurementOperation>>,
+    styles: Mutex<Vec<TextStyle>>,
     reject_generic_svg_measurement: std::sync::atomic::AtomicBool,
 }
 
@@ -38,6 +45,10 @@ impl HostTextMeasurer for CountingArchitectureHost {
             .lock()
             .expect("Architecture host operations lock")
             .push(request.operation);
+        self.styles
+            .lock()
+            .expect("Architecture host styles lock")
+            .push(request.style.clone());
         let width = request.text.chars().count() as f64 * request.style.font_size.max(1.0);
         Ok(Some(match request.operation {
             TextMeasurementOperation::Measure | TextMeasurementOperation::Wrapped => {
@@ -126,6 +137,47 @@ fn prepare_architecture_text_with_engine(
         .begin_session()
         .expect("begin render session");
     family::prepare(parsed, &layout_options, session).expect("layout ok")
+}
+
+fn architecture_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::ARCHITECTURE, typography),
+        ))
+        .expect("compile Architecture typography theme")
+}
+
+fn architecture_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::ARCHITECTURE);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Architecture text theme")
+}
+
+fn prepare_architecture_with_theme_and_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    environment: RenderEnvironment,
+) -> family::FamilyRenderArtifact {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Architecture")
+        .expect("detect themed Architecture");
+    let session = environment
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Architecture session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed Architecture")
 }
 
 fn render_architecture_fixture(fixture_name: &str) -> String {
@@ -313,6 +365,15 @@ fn icon_text_line_clamp(svg: &str, service_id: &str) -> i64 {
         .unwrap_or_else(|| panic!("missing iconText line clamp for {service_id}"))
 }
 
+fn architecture_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Architecture SVG");
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect()
+}
+
 fn assert_close(actual: f64, expected: f64, message: &str) {
     let delta = (actual - expected).abs();
     assert!(
@@ -364,34 +425,36 @@ fn architecture_svg_handles_deep_group_chain() {
 #[test]
 fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
     const DEPTH: usize = 1_200;
-    let source = deep_icon_text_diagram(DEPTH);
-    let engine = Engine::new();
-    let handle = std::thread::Builder::new()
-        .name("architecture-deep-icon-text-svg".to_string())
-        .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
-        .spawn(move || {
-            render_architecture_text_with_engine_and_options(
-                &engine,
-                &source,
-                &SvgRenderOptions {
-                    diagram_id: Some("architecture-deep-icon-text".to_string()),
-                    ..Default::default()
-                },
-            )
-        })
-        .expect("spawn architecture deep iconText SVG test");
-    let svg = handle
-        .join()
-        .expect("architecture deep iconText SVG should finish without stack overflow");
+    for depth in [1, DEPTH] {
+        let source = deep_icon_text_diagram(depth);
+        let engine = Engine::new();
+        let handle = std::thread::Builder::new()
+            .name("architecture-deep-icon-text-svg".to_string())
+            .stack_size(DEEP_ARCHITECTURE_RENDER_STACK_SIZE)
+            .spawn(move || {
+                render_architecture_text_with_engine_and_options(
+                    &engine,
+                    &source,
+                    &SvgRenderOptions {
+                        diagram_id: Some("architecture-deep-icon-text".to_string()),
+                        ..Default::default()
+                    },
+                )
+            })
+            .expect("spawn architecture deep iconText SVG test");
+        let svg = handle
+            .join()
+            .expect("architecture deep iconText SVG should finish without stack overflow");
 
-    assert!(
-        svg.contains(r#"id="architecture-deep-icon-text-service-worker""#),
-        "expected iconText service to render"
-    );
-    assert!(
-        svg.contains("Icon"),
-        "expected deepest iconText label to render"
-    );
+        assert!(
+            svg.contains(r#"id="architecture-deep-icon-text-service-worker""#),
+            "expected iconText service to render"
+        );
+        assert!(
+            svg.contains("Icon"),
+            "expected deepest iconText label to render"
+        );
+    }
 }
 
 #[test]
@@ -428,6 +491,63 @@ architecture-beta
     assert!(!svg.contains(
         r#"#architecture-theme .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
     ));
+}
+
+#[test]
+fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_default_routes() {
+    let source = r#"architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service db(database)[DB] in platform
+  api:R -[request]- L:db
+"#;
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let theme = architecture_text_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Architecture text fill"),
+            variant,
+        );
+        let artifact = prepare_architecture_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            RenderEnvironment::deterministic(),
+        );
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("architecture-text-fill".to_string()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render themed Architecture text")
+            .into_completion();
+        let (svg, report) = rendered.into_output_and_report();
+        let document = roxmltree::Document::parse(&svg).expect("valid Architecture SVG");
+        let text_nodes = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert!(
+            !text_nodes.is_empty(),
+            "Architecture fixture must emit text terminals"
+        );
+        assert!(
+            text_nodes.iter().any(|node| {
+                node.attribute("style").is_some_and(|style| {
+                    style
+                        .split(';')
+                        .any(|declaration| declaration == "fill:#123456")
+                })
+            }),
+            "typed Architecture Text.fill must reach a final text terminal for variant {variant:?}: {svg}"
+        );
+        let evidence = merman_render::__private::family_evidence(&report);
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]
@@ -576,9 +696,16 @@ fn architecture_layout_caches_service_child_bounds() {
 }
 
 #[test]
-fn architecture_icon_text_clamp_uses_architecture_font_size() {
-    let svg = render_architecture_fixture_with_options(
-        "upstream_architecture_docs_service_icon_text.mmd",
+fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_size() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": { "fontSize": "24px" },
+        "architecture": { "fontSize": 16 }
+    })));
+    let svg = render_architecture_text_with_engine_and_options(
+        &engine,
+        include_str!(
+            "../../../fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd"
+        ),
         &SvgRenderOptions {
             diagram_id: Some("architecture-icontext".to_string()),
             ..Default::default()
@@ -587,9 +714,167 @@ fn architecture_icon_text_clamp_uses_architecture_font_size() {
 
     let clamp = icon_text_line_clamp(&svg, "architecture-icontext-service-with_icon_text");
     assert_eq!(
-        clamp, 4,
-        "iconText clamp should follow default architecture.fontSize=16 with iconSize=80"
+        clamp, 3,
+        "iconText clamp must follow the root SVG fontSize=24 rather than architecture.fontSize=16"
     );
+}
+
+#[test]
+fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_layout_owner() {
+    let font_stack =
+        FontStack::new(["Architecture Typed", "monospace"]).expect("valid Architecture font");
+    let expected_font_family = font_stack.as_css();
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(font_stack)
+            .with_font_size_px(24.0)
+            .expect("valid Architecture font size"),
+    );
+    let host = Arc::new(CountingArchitectureHost::default());
+    let source = r#"architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service icon_text "Typed icon text" [Icon text title]
+  api:R -[request]- L:icon_text
+"#;
+    let artifact = prepare_architecture_with_theme_and_environment(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "architecture": { "fontSize": 19 }
+        }))),
+        counting_architecture_environment(Arc::clone(&host)),
+    );
+
+    let layout_styles = host
+        .styles
+        .lock()
+        .expect("Architecture layout styles lock")
+        .clone();
+    assert!(
+        layout_styles.iter().any(|style| {
+            style.font_family.as_deref() == Some("Helvetica Neue,Helvetica,sans-serif")
+                && style.font_size == 19.0
+        }),
+        "Cytoscape layout must keep architecture.fontSize and its fixed font owner: {layout_styles:?}"
+    );
+    assert!(
+        layout_styles.iter().all(|style| {
+            style.font_family.as_deref() != Some(expected_font_family.as_str())
+                || style.font_size != 24.0
+        }),
+        "typed SVG typography must not leak into Cytoscape layout measurements: {layout_styles:?}"
+    );
+
+    host.calls.store(0, Ordering::Relaxed);
+    host.operations
+        .lock()
+        .expect("Architecture host operations lock")
+        .clear();
+    host.styles
+        .lock()
+        .expect("Architecture host styles lock")
+        .clear();
+
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-typed".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Architecture");
+    let stylesheet = architecture_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("Architecture Typed")
+            && stylesheet.contains("monospace")
+            && stylesheet.contains("#architecture-typed{font-family:")
+            && stylesheet.contains("font-size:24px"),
+        "typed Architecture typography must reach the final stylesheet: {stylesheet}"
+    );
+    assert_eq!(
+        icon_text_line_clamp(rendered.svg(), "architecture-typed-service-icon_text"),
+        3,
+        "iconText must inherit the typed root SVG font size"
+    );
+
+    let render_styles = host
+        .styles
+        .lock()
+        .expect("Architecture render styles lock")
+        .clone();
+    assert!(
+        render_styles.iter().any(|style| {
+            style.font_family.as_deref() == Some(expected_font_family.as_str())
+                && style.font_size == 24.0
+        }),
+        "final SVG text measurements must use the typed base typography: {render_styles:?}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_near_integer_font_size_uses_one_canonical_css_receipt() {
+    let font_stack =
+        FontStack::new(["Architecture Canonical", "monospace"]).expect("valid Architecture font");
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(font_stack)
+            // This is the largest f32 below 16.0. CSS emission canonicalizes it to 16px.
+            .with_font_size_px(f32::from_bits(0x417f_ffff))
+            .expect("valid Architecture font size"),
+    );
+    let host = Arc::new(CountingArchitectureHost::default());
+    let source = r#"architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service icon_text "Canonical icon text" [Icon text title]
+  api:R -[request]- L:icon_text
+"#;
+    let artifact = prepare_architecture_with_theme_and_environment(
+        source,
+        &theme,
+        Engine::new(),
+        counting_architecture_environment(Arc::clone(&host)),
+    );
+
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-canonical-size".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Architecture");
+    let stylesheet = architecture_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("font-size:16px")
+            && !stylesheet.contains("15.999999")
+            && !stylesheet.contains("15.999998"),
+        "near-integer typed font size must use the canonical CSS spelling: {stylesheet}"
+    );
+
+    let render_styles = host
+        .styles
+        .lock()
+        .expect("Architecture render styles lock")
+        .clone();
+    assert!(
+        render_styles.iter().any(|style| style.font_size == 16.0),
+        "text measurement must consume the same canonical font size as CSS: {render_styles:?}"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -623,8 +908,12 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Architecture artifact");
-    let (host_svg, family_kind, _, session) = rendered.into_parts();
-    assert_eq!(family_kind, RenderFamilyKind::Architecture);
+    let completion = rendered.into_completion();
+    assert_eq!(
+        completion.report().family_id(),
+        DiagramFamilyId::ARCHITECTURE
+    );
+    let (host_svg, family_report) = completion.into_output_and_report();
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
@@ -652,8 +941,9 @@ fn architecture_svg_uses_the_session_measurement_route() {
     );
     drop(operations);
     assert!(
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {
@@ -665,8 +955,9 @@ fn architecture_svg_uses_the_session_measurement_route() {
         "Architecture wrap probes must retain computed-length host provenance"
     );
     assert!(
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {
@@ -684,8 +975,12 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let parity_rendered = parity_artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render parity Architecture artifact");
-    let (parity_svg, family_kind, _, _) = parity_rendered.into_parts();
-    assert_eq!(family_kind, RenderFamilyKind::Architecture);
+    let parity_completion = parity_rendered.into_completion();
+    assert_eq!(
+        parity_completion.report().family_id(),
+        DiagramFamilyId::ARCHITECTURE
+    );
+    let parity_svg = parity_completion.into_output_and_report().0;
     assert_ne!(
         host_svg, parity_svg,
         "host metrics must change observable geometry"
@@ -721,8 +1016,12 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
                 &SvgDebugOptions::default(),
             )
             .expect("render Architecture artifact");
-        let (svg, family_kind, _, _) = rendered.into_parts();
-        assert_eq!(family_kind, RenderFamilyKind::Architecture);
+        let completion = rendered.into_completion();
+        assert_eq!(
+            completion.report().family_id(),
+            DiagramFamilyId::ARCHITECTURE
+        );
+        let svg = completion.into_output_and_report().0;
         (layout, svg)
     }
 

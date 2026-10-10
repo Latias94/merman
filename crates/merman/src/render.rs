@@ -4,17 +4,17 @@
 //! executed synchronously through the same internal operation runner. Target-specific layout and
 //! emission remain private to their adapters.
 
-#[cfg(feature = "ascii")]
+use crate::operation_runner::Operation;
+#[cfg(feature = "svg")]
+use crate::operation_runner::OperationExecution;
+use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
+#[cfg(any(feature = "ascii", feature = "svg"))]
 use merman_core::OperationPhase;
 use merman_core::{
     Engine, OperationCancelled, OperationControl, OperationResourceDomain,
     OperationResourceOverride, OperationResourceProvenance, ParseOptions,
     resources::InputResourcePolicy,
 };
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use crate::operation_runner::OperationExecution;
-use crate::{TerminalDiagnostic, TerminalRuntimePolicyError, operation_runner::Operation};
 
 #[cfg(feature = "ascii")]
 use merman_ascii::{
@@ -23,118 +23,32 @@ use merman_ascii::{
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
-use merman_render::{
-    LayoutOptions, RenderCapability, RenderCapabilityPolicy,
-    ResourceLimitExceeded as SvgResourceLimitExceeded,
-    environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
-    math::MathRenderer,
-    presentation::PresentationRenderPolicy,
-    resources::RenderResourcePolicy,
-    svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions},
-};
-
-pub use crate::operation_runner::SemanticArtifact;
-
-/// SVG host services and source-to-output resource limits.
-///
-/// Operation time, timezone, randomness, cancellation, and deadlines deliberately do not live
-/// here. [`Renderer`] owns those operation-wide concerns and injects the already captured context
-/// into the private SVG session. This keeps `SvgRequest` from becoming a second operation owner.
+mod document;
 #[cfg(feature = "svg")]
-#[derive(Debug, Clone)]
-pub struct SvgEnvironment {
-    backend: BackendRenderEnvironment,
-    text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
-    // Keep the admission projection with the backend policy so the facade can read it
-    // before creating an operation or SVG session. Both are set by the same builders.
-    input_resources: InputResourcePolicy,
-}
-
+mod environment;
 #[cfg(feature = "svg")]
-impl SvgEnvironment {
-    /// Creates the deterministic default SVG service set.
-    pub fn deterministic() -> Self {
-        let text_measurement = TextMeasurementPolicy::deterministic();
-        let resources = RenderResourcePolicy::default();
-        Self {
-            backend: BackendRenderEnvironment::deterministic()
-                .with_text_measurement_policy(text_measurement.clone())
-                .with_resource_policy(resources),
-            text_measurement_routes: text_measurement.routes(),
-            input_resources: *resources.input_policy(),
-        }
-    }
-
-    pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
-        self.text_measurement_routes = policy.routes();
-        self.backend = self.backend.with_text_measurement_policy(policy);
-        self
-    }
-
-    pub fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {
-        self.backend = self.backend.with_capability_policy(policy);
-        self
-    }
-
-    pub fn with_compiled_math_renderer(mut self) -> Self {
-        self.backend = self.backend.with_compiled_math_renderer();
-        self
-    }
-
-    pub fn with_math_renderer(
-        mut self,
-        renderer: std::sync::Arc<dyn MathRenderer + Send + Sync>,
-    ) -> Self {
-        self.backend = self.backend.with_math_renderer(renderer);
-        self
-    }
-
-    pub fn without_math_renderer(mut self) -> Self {
-        self.backend = self.backend.without_math_renderer();
-        self
-    }
-
-    pub fn with_icon_registry(mut self, registry: merman_render::svg::IconRegistry) -> Self {
-        self.backend = self.backend.with_icon_registry(registry);
-        self
-    }
-
-    /// Sets source, model, layout, and SVG limits for graphical targets in one place.
-    ///
-    /// [`Renderer::render`] uses this policy's input limits unless the renderer or request
-    /// explicitly supplies an [`InputResourcePolicy`]. Those input overrides do not change
-    /// this environment's layout or SVG limits.
-    pub fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
-        self.input_resources = *policy.input_policy();
-        self.backend = self.backend.with_resource_policy(policy);
-        self
-    }
-
-    /// Returns the configured text-measurement routes without creating an operation session.
-    pub fn text_measurement_routes(&self) -> [merman_render::environment::TextMeasurementRoute; 4] {
-        self.text_measurement_routes.clone()
-    }
-
-    fn begin_session_in_context(
-        &self,
-        context: merman_core::runtime::OperationContext,
-        control: OperationControl,
-    ) -> merman_render::environment::RenderSession {
-        self.backend.begin_session_in_context(context, control)
-    }
-}
-
+mod evidence;
 #[cfg(feature = "svg")]
-impl Default for SvgEnvironment {
-    fn default() -> Self {
-        Self::deterministic()
-    }
-}
+mod target_admission;
 
-/// Identifies the canonical source-to-target operation path that produced an artifact.
-///
-/// This deliberately describes the public facade rather than exposing an implementation type
-/// such as the former `HeadlessOperation`.
+#[cfg(feature = "jpeg")]
+pub use document::PreparedJpegExport;
+#[cfg(feature = "png")]
+pub use document::PreparedPngExport;
+#[cfg(any(feature = "png", feature = "jpeg"))]
+pub use document::RasterOutput;
+#[cfg(feature = "svg")]
+use document::finish_standalone_svg_target;
+#[cfg(feature = "pdf")]
+pub use document::{PdfOutput, PreparedPdfExport};
+#[cfg(feature = "svg")]
+pub use document::{RenderedDocument, SvgOutput};
+#[cfg(feature = "svg")]
+pub use environment::SvgEnvironment;
+#[cfg(feature = "svg")]
+pub use evidence::{RenderEvidence, ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary};
+
+/// Identifies the canonical facade path that produced a completed render artifact.
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -150,109 +64,21 @@ impl OperationExecutionPath {
         }
     }
 }
-
-/// Immutable evidence captured by a completed SVG operation.
-///
-/// The evidence is created only by the renderer after SVG emission/postprocessing succeeds. It
-/// is intentionally a narrow projection: callers can inspect preparation-owned capability
-/// requirements, measurement provenance, and runtime identity without gaining access to SVG
-/// session services or family layout internals.
+#[cfg(all(feature = "svg", merman_internal_theme_acceptance))]
+pub(crate) use evidence::{ThemeAcceptanceEvidenceProjection, ThemeEvidenceScopeProjection};
 #[cfg(feature = "svg")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenderEvidence {
-    execution_path: OperationExecutionPath,
-    required_capabilities: Vec<RenderCapability>,
-    session: Box<merman_render::environment::RenderSessionReport>,
-}
-
+use merman_render::{
+    LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,
+    diagram_theme::DiagramTheme,
+    svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions},
+};
 #[cfg(feature = "svg")]
-impl RenderEvidence {
-    fn from_session(
-        session: merman_render::environment::RenderSession,
-        required_capabilities: Vec<RenderCapability>,
-    ) -> Self {
-        Self {
-            execution_path: OperationExecutionPath::Renderer,
-            required_capabilities,
-            session: Box::new(session.report()),
-        }
-    }
+pub use target_admission::{
+    DocumentPortabilityReport, RenderArtifactKind, TargetAdmissionError, TargetAdmissionReason,
+    TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
+};
 
-    pub const fn execution_path(&self) -> OperationExecutionPath {
-        self.execution_path
-    }
-
-    /// Returns the optional renderer capabilities selected by this operation's actual preparation.
-    pub fn required_capabilities(&self) -> &[RenderCapability] {
-        &self.required_capabilities
-    }
-
-    pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
-        self.session.measurement_routes()
-    }
-
-    pub fn measurement(&self) -> &merman_render::environment::TextMeasurementReport {
-        self.session.measurement()
-    }
-
-    pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
-        self.session.operation_context()
-    }
-
-    pub const fn unix_millis(&self) -> i64 {
-        self.session.unix_millis()
-    }
-
-    pub const fn local_date(&self) -> merman_core::time::CivilDate {
-        self.session.local_date()
-    }
-
-    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
-        self.session.local_time_zone()
-    }
-
-    pub fn render_seed(&self) -> std::num::NonZeroU64 {
-        self.session.render_seed()
-    }
-
-    pub const fn layout_work_units(&self) -> usize {
-        self.session.layout_work_units()
-    }
-}
-
-/// Successful SVG output and the evidence for the operation that produced it.
-#[cfg(feature = "svg")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SvgOutput {
-    svg: String,
-    evidence: RenderEvidence,
-}
-
-#[cfg(feature = "svg")]
-impl SvgOutput {
-    fn new(
-        svg: String,
-        session: merman_render::environment::RenderSession,
-        required_capabilities: Vec<RenderCapability>,
-    ) -> Self {
-        Self {
-            svg,
-            evidence: RenderEvidence::from_session(session, required_capabilities),
-        }
-    }
-
-    pub fn svg(&self) -> &str {
-        &self.svg
-    }
-
-    pub fn evidence(&self) -> &RenderEvidence {
-        &self.evidence
-    }
-
-    pub fn into_parts(self) -> (String, RenderEvidence) {
-        (self.svg, self.evidence)
-    }
-}
+pub use crate::operation_runner::SemanticArtifact;
 
 /// Successful SVG layout inspection output.
 #[cfg(feature = "svg")]
@@ -311,6 +137,17 @@ pub enum RenderError {
     #[cfg(feature = "svg")]
     #[error(transparent)]
     Svg(merman_render::Error),
+    #[cfg(feature = "svg")]
+    #[error(transparent)]
+    SvgEnvironment(merman_render::environment::RenderEnvironmentError),
+    #[cfg(feature = "svg")]
+    #[error(transparent)]
+    TargetAdmission(#[from] TargetAdmissionError),
+    #[cfg(feature = "svg")]
+    #[error(
+        "render target `{target}` does not support RequirePortable because it has no target portability admission"
+    )]
+    PortabilityUnavailableForTarget { target: &'static str },
     #[cfg(feature = "ascii")]
     #[error(transparent)]
     Ascii(AsciiError),
@@ -349,6 +186,9 @@ impl From<merman_render::Error> for RenderError {
             }
             merman_render::Error::OperationResourceTerminal(error) => {
                 crate::operation_runner::operation_terminal_error(error)
+            }
+            merman_render::Error::ThemeResourceLimitExceeded(resource) => {
+                Self::from(ResourceLimitExceeded::from_theme(resource))
             }
             other => Self::Svg(other),
         }
@@ -464,6 +304,18 @@ impl ResourceLimitExceeded {
         }
     }
 
+    #[cfg(feature = "svg")]
+    fn from_theme(error: merman_render::diagram_theme::ThemeResourceLimitExceeded) -> Self {
+        Self {
+            id: error.limit,
+            phase: error.phase.as_str(),
+            actual: u64::try_from(error.actual).unwrap_or(u64::MAX),
+            maximum: u64::try_from(error.max).unwrap_or(u64::MAX),
+            cause: ResourceLimitCause::Ceiling,
+            provenance: None,
+        }
+    }
+
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn from_export(
         details: merman_export::ExportResourceLimitDetails,
@@ -509,6 +361,24 @@ impl From<AsciiError> for RenderError {
     }
 }
 
+#[cfg(feature = "svg")]
+impl From<merman_render::environment::RenderEnvironmentError> for RenderError {
+    fn from(error: merman_render::environment::RenderEnvironmentError) -> Self {
+        match error {
+            merman_render::environment::RenderEnvironmentError::Cancelled(cancelled) => {
+                Self::Cancelled(cancelled)
+            }
+            merman_render::environment::RenderEnvironmentError::Runtime(runtime) => {
+                Self::RuntimePolicy(TerminalRuntimePolicyError::from(runtime))
+            }
+            merman_render::environment::RenderEnvironmentError::ThemeResource(resource) => {
+                Self::ResourceLimitExceeded(ResourceLimitExceeded::from_theme(resource))
+            }
+            other => Self::SvgEnvironment(other),
+        }
+    }
+}
+
 #[cfg(feature = "ascii")]
 fn map_ascii_error(error: AsciiError) -> RenderError {
     RenderError::from(error)
@@ -535,6 +405,11 @@ impl From<ExportError> for RenderError {
     }
 }
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn map_export_error(error: ExportError) -> RenderError {
+    RenderError::from(error)
+}
+
 /// Target request for the canonical facade.
 ///
 /// The semantic target is available in every feature configuration. SVG, ASCII, and terminal
@@ -544,10 +419,13 @@ impl From<ExportError> for RenderError {
 // would make the public constructors inconsistent without reducing the actual render payload.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum RenderTarget {
     Semantic,
     #[cfg(feature = "svg")]
     Svg(SvgRequest),
+    #[cfg(feature = "svg")]
+    Document(SvgRequest),
     #[cfg(feature = "svg")]
     LayoutJson(SvgRequest),
     #[cfg(feature = "svg")]
@@ -572,6 +450,7 @@ impl RenderTarget {
             Self::Ascii(_) => None,
             #[cfg(feature = "svg")]
             Self::Svg(request)
+            | Self::Document(request)
             | Self::LayoutJson(request)
             | Self::EdgeGeometryJson(request)
             | Self::SvgPlan(request) => Some(request.environment.input_resources),
@@ -593,7 +472,6 @@ pub struct SvgRequest {
     pub options: SvgRenderOptions,
     pub debug: SvgDebugOptions,
     pub pipeline: Option<SvgPipeline>,
-    pub presentation: PresentationRenderPolicy,
 }
 
 #[cfg(feature = "svg")]
@@ -605,7 +483,6 @@ impl Default for SvgRequest {
             options: SvgRenderOptions::default(),
             debug: SvgDebugOptions::default(),
             pipeline: None,
-            presentation: PresentationRenderPolicy::default(),
         }
     }
 }
@@ -643,20 +520,6 @@ pub struct PdfRequest {
     pub options: merman_export::PdfOptions,
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
-#[derive(Debug, Clone)]
-pub struct RasterOutput {
-    pub bytes: Vec<u8>,
-    pub plan: merman_export::RasterPlan,
-}
-
-#[cfg(feature = "pdf")]
-#[derive(Debug, Clone)]
-pub struct PdfOutput {
-    pub bytes: Vec<u8>,
-    pub plan: merman_export::PdfFilterImagePlan,
-}
-
 /// One source-to-target request. The control is cloneable so a host can retain a handle and cancel
 /// the synchronous worker from another task or thread.
 #[derive(Debug, Clone)]
@@ -666,6 +529,8 @@ pub struct RenderRequest<'a> {
     control: OperationControl,
     parse_options: Option<ParseOptions>,
     resources: Option<InputResourcePolicy>,
+    #[cfg(feature = "svg")]
+    theme: Option<DiagramTheme>,
 }
 
 impl<'a> RenderRequest<'a> {
@@ -680,6 +545,8 @@ impl<'a> RenderRequest<'a> {
             control,
             parse_options: None,
             resources: None,
+            #[cfg(feature = "svg")]
+            theme: None,
         }
     }
 
@@ -690,6 +557,12 @@ impl<'a> RenderRequest<'a> {
     #[cfg(feature = "svg")]
     pub fn svg(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::Svg(request), control)
+    }
+
+    /// Requests one completed graphical document that can project every enabled native target.
+    #[cfg(feature = "svg")]
+    pub fn document(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
+        Self::new(source, RenderTarget::Document(request), control)
     }
 
     #[cfg(feature = "svg")]
@@ -742,14 +615,32 @@ impl<'a> RenderRequest<'a> {
         self.resources = Some(resources);
         self
     }
+
+    /// Binds one compiled theme to the whole parse-to-artifact operation.
+    ///
+    /// The same recipe supplies parse compatibility and family rendering evidence. Keeping the
+    /// theme on the operation prevents a semantic artifact parsed under one recipe from being
+    /// rendered under another.
+    #[cfg(feature = "svg")]
+    pub fn with_theme(mut self, theme: DiagramTheme) -> Self {
+        self.theme = Some(theme);
+        self
+    }
 }
 
 /// Successful output from a canonical request.
 #[derive(Debug)]
+#[non_exhaustive]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Output variants preserve typed ownership of target-specific render artifacts."
+)]
 pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
     Svg(Option<SvgOutput>),
+    #[cfg(feature = "svg")]
+    Document(Option<RenderedDocument>),
     #[cfg(feature = "svg")]
     LayoutJson(Option<SvgLayoutOutput>),
     #[cfg(feature = "svg")]
@@ -838,6 +729,8 @@ impl Renderer {
             control,
             parse_options,
             resources,
+            #[cfg(feature = "svg")]
+            theme,
         } = request;
         let resources = resources.unwrap_or_else(|| {
             if self.resources_explicit {
@@ -846,7 +739,23 @@ impl Renderer {
                 target.svg_input_resource_policy().unwrap_or(self.resources)
             }
         });
-        let operation = Operation::begin(&self.engine, source, control, resources)?;
+        #[cfg(feature = "svg")]
+        let operation_engine = theme
+            .as_ref()
+            .map(|theme| {
+                merman_render::__private::install_parse_compatibility(theme, self.engine.clone())
+            })
+            .unwrap_or_else(|| self.engine.clone());
+        #[cfg(not(feature = "svg"))]
+        let operation_engine = self.engine.clone();
+        let operation = Operation::begin(
+            &operation_engine,
+            source,
+            control,
+            resources,
+            #[cfg(feature = "svg")]
+            theme,
+        )?;
         let semantic =
             operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
         let Some(semantic) = semantic else {
@@ -876,7 +785,14 @@ impl Renderer {
         parse_options: ParseOptions,
         resources: InputResourcePolicy,
     ) -> Result<Option<SemanticArtifact>, RenderError> {
-        let operation = Operation::begin(&self.engine, source, control, resources)?;
+        let operation = Operation::begin(
+            &self.engine,
+            source,
+            control,
+            resources,
+            #[cfg(feature = "svg")]
+            None,
+        )?;
         operation.parse_render_model(source, parse_options)
     }
 }
@@ -897,6 +813,10 @@ impl SemanticArtifact {
             RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(request) => render_svg_target(self, request).map(RenderOutput::Svg),
+            #[cfg(feature = "svg")]
+            RenderTarget::Document(request) => {
+                render_document_target(self, request).map(RenderOutput::Document)
+            }
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(request) => {
                 render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
@@ -932,6 +852,8 @@ impl RenderOutput {
             #[cfg(feature = "svg")]
             RenderTarget::Svg(_) => Self::Svg(None),
             #[cfg(feature = "svg")]
+            RenderTarget::Document(_) => Self::Document(None),
+            #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
             #[cfg(feature = "svg")]
             RenderTarget::EdgeGeometryJson(_) => Self::EdgeGeometryJson(None),
@@ -954,29 +876,15 @@ fn render_svg_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgOutput>, RenderError> {
-    let (parsed, operation) = semantic.into_parts();
-    let session = request
-        .environment
-        .begin_session_in_context(operation.context.clone(), operation.control.clone());
-    let artifact = merman_render::family::prepare_with_render_policy(
-        parsed,
-        &request.layout,
-        session,
-        request.presentation,
+    let (rendered, _operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let required_capabilities = rendered.required_capabilities().to_vec();
+    let finalized = merman_render::__private::finalize_standalone_for_target_admission(
+        rendered,
+        request.pipeline.as_ref(),
     )
     .map_err(RenderError::from)?;
-    let rendered = artifact
-        .render_svg(&request.options, &request.debug)
-        .map_err(RenderError::from)?;
-    let rendered = match request.pipeline.as_ref() {
-        Some(pipeline) => rendered
-            .apply_pipeline(pipeline)
-            .map_err(RenderError::from)?,
-        None => rendered,
-    };
-    let required_capabilities = rendered.required_capabilities().to_vec();
-    let (svg, _, _, session) = rendered.into_parts();
-    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
+    let (svg, family) = finalized.into_completion().into_output_and_report();
+    finish_standalone_svg_target(svg, family, required_capabilities).map(Some)
 }
 
 #[cfg(feature = "svg")]
@@ -984,19 +892,33 @@ fn render_layout_json_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    // A prepared artifact keeps the operation's sticky terminal state. Observe it before
+    // rejecting a target-specific portability requirement so cancellation/deadline errors cannot
+    // be masked by a later target-admission error.
+    crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
+    if request.environment.theme_portability_requirement()
+        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+    {
+        return Err(RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json",
+        });
+    }
+    // Project the semantic payload while the facade still owns the caller's operation control.
+    // The family artifact only assembles the envelope; it must not silently re-run an
+    // uncontrolled compatibility projection during layout emission.
+    let compatibility = semantic.compatibility_json()?;
     let (parsed, operation) = semantic.into_parts();
-    let session = request
-        .environment
-        .begin_session_in_context(operation.context, operation.control);
-    let artifact = merman_render::family::prepare_with_render_policy(
-        parsed,
-        &request.layout,
-        session,
-        request.presentation,
-    )
-    .map_err(RenderError::from)?;
+    let session = request.environment.begin_session_in_context(
+        operation.theme.as_ref(),
+        operation.context,
+        operation.control,
+    )?;
+    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+        .map_err(RenderError::from)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact.layout_json().map_err(RenderError::from)?;
+    let layout = artifact
+        .layout_json_with_compatibility_json(compatibility)
+        .map_err(RenderError::from)?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
 }
 
@@ -1006,16 +928,13 @@ fn render_edge_geometry_json_target(
     request: SvgRequest,
 ) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
-    let session = request
-        .environment
-        .begin_session_in_context(operation.context, operation.control);
-    let artifact = merman_render::family::prepare_with_render_policy(
-        parsed,
-        &request.layout,
-        session,
-        request.presentation,
-    )
-    .map_err(RenderError::from)?;
+    let session = request.environment.begin_session_in_context(
+        operation.theme.as_ref(),
+        operation.context,
+        operation.control,
+    )?;
+    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+        .map_err(RenderError::from)?;
     let diagram_type = artifact.metadata().diagram_type.clone();
     let geometry = artifact.edge_geometry_json().map_err(RenderError::from)?;
     Ok(Some(merman_render::model::EdgePaintGeometryOutput::new(
@@ -1030,42 +949,79 @@ fn render_svg_plan_target(
     request: SvgRequest,
 ) -> Result<Option<merman_render::family::RenderCapabilityPlan>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
-    let session = request
-        .environment
-        .begin_session_in_context(operation.context, operation.control);
-    merman_render::family::plan_render_with_policy(&parsed, &session, request.presentation)
+    let session = request.environment.begin_session_in_context(
+        operation.theme.as_ref(),
+        operation.context,
+        operation.control,
+    )?;
+    merman_render::family::plan_render(&parsed, &session)
         .map(Some)
         .map_err(RenderError::from)
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "svg")]
+#[allow(
+    clippy::type_complexity,
+    reason = "The preparation tuple keeps completion, capability admission, and operation state together."
+)]
 fn prepare_resvg_target(
     semantic: SemanticArtifact,
     request: &SvgRequest,
-) -> Result<Option<(merman_render::svg::ResvgCompatibleSvg, OperationExecution)>, RenderError> {
-    let (parsed, operation) = semantic.into_parts();
-    let session = request
-        .environment
-        .begin_session_in_context(operation.context.clone(), operation.control.clone());
-    let artifact = merman_render::family::prepare_with_render_policy(
-        parsed,
-        &request.layout,
-        session,
-        request.presentation,
-    )
-    .map_err(RenderError::from)?;
+) -> Result<
+    Option<(
+        merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
+        Vec<merman_render::RenderCapability>,
+        OperationExecution,
+    )>,
+    RenderError,
+> {
+    let (rendered, operation) = prepare_rendered_family_svg(semantic, request)?;
+    let required_capabilities = rendered.required_capabilities().to_vec();
     let pipeline = request
         .pipeline
         .clone()
         .unwrap_or_else(SvgPipeline::resvg_safe)
         .into_resvg_safe();
-    artifact
-        .render_svg(&request.options, &request.debug)
-        .map_err(RenderError::from)?
+    rendered
         .finalize_resvg(&pipeline)
-        .map(|sealed| (sealed.into_parts().0, operation))
+        .map(|sealed| (sealed.into_completion(), required_capabilities, operation))
         .map(Some)
         .map_err(RenderError::from)
+}
+
+#[cfg(feature = "svg")]
+fn prepare_rendered_family_svg(
+    semantic: SemanticArtifact,
+    request: &SvgRequest,
+) -> Result<(merman_render::family::RenderedFamilySvg, OperationExecution), RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request.environment.begin_session_in_context(
+        operation.theme.as_ref(),
+        operation.context.clone(),
+        operation.control.clone(),
+    )?;
+    let artifact = merman_render::family::prepare(parsed, &request.layout, session)
+        .map_err(RenderError::from)?;
+    let rendered = artifact
+        .render_svg(&request.options, &request.debug)
+        .map_err(RenderError::from)?;
+    Ok((rendered, operation))
+}
+
+#[cfg(feature = "svg")]
+fn render_document_target(
+    semantic: SemanticArtifact,
+    request: SvgRequest,
+) -> Result<Option<RenderedDocument>, RenderError> {
+    let Some((completion, required_capabilities, _operation)) =
+        prepare_resvg_target(semantic, &request)?
+    else {
+        unreachable!("semantic artifact always produces a finalized SVG or an error")
+    };
+    Ok(Some(RenderedDocument::new(
+        completion,
+        required_capabilities,
+    )))
 }
 
 #[cfg(feature = "ascii")]
@@ -1105,12 +1061,14 @@ fn render_png_target(
     semantic: SemanticArtifact,
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
+    let Some((completion, required_capabilities, operation)) =
+        prepare_resvg_target(semantic, &request.svg)?
+    else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_png_with_plan_controlled(&svg, &request.options, operation.control)
-        .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(RenderError::from)
+    RenderedDocument::new(completion, required_capabilities)
+        .export_png(&request.options, operation.control)
+        .map(Some)
 }
 
 #[cfg(feature = "jpeg")]
@@ -1118,12 +1076,14 @@ fn render_jpeg_target(
     semantic: SemanticArtifact,
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
+    let Some((completion, required_capabilities, operation)) =
+        prepare_resvg_target(semantic, &request.svg)?
+    else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_jpeg_with_plan_controlled(&svg, &request.options, operation.control)
-        .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(RenderError::from)
+    RenderedDocument::new(completion, required_capabilities)
+        .export_jpeg(&request.options, operation.control)
+        .map(Some)
 }
 
 #[cfg(feature = "pdf")]
@@ -1131,10 +1091,130 @@ fn render_pdf_target(
     semantic: SemanticArtifact,
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
-    let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
+    let Some((completion, required_capabilities, operation)) =
+        prepare_resvg_target(semantic, &request.svg)?
+    else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_pdf_with_plan_controlled(&svg, &request.options, operation.control)
-        .map(|(bytes, plan)| Some(PdfOutput { bytes, plan }))
-        .map_err(RenderError::from)
+    RenderedDocument::new(completion, required_capabilities)
+        .export_pdf(&request.options, operation.control)
+        .map(Some)
+}
+
+#[cfg(all(test, feature = "svg"))]
+mod tests {
+    use super::{RenderError, ResourceLimitCause};
+
+    #[test]
+    fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {
+        use super::{RenderRequest, Renderer, SvgEnvironment, SvgRequest};
+        use merman_core::{
+            OperationControl,
+            resources::{InputResourceLimitId, InputResourcePolicy},
+        };
+        use merman_render::{
+            diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec},
+            resources::{RenderResourcePolicy, ResourceLimitId},
+        };
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = SvgEnvironment::default().with_resource_policy(
+            RenderResourcePolicy::default()
+                .with_limit(ResourceLimitId::MaxSourceBytes, 4)
+                .unwrap(),
+        );
+        let request = || {
+            RenderRequest::document(
+                "flowchart TD\nA --> B",
+                OperationControl::new(),
+                SvgRequest {
+                    environment: environment.clone(),
+                    ..Default::default()
+                },
+            )
+            .with_theme(theme.clone())
+        };
+        let input_policy = |limit| {
+            InputResourcePolicy::default()
+                .with_limit(InputResourceLimitId::MaxSourceBytes, limit)
+                .unwrap()
+        };
+        let explicit_renderer = Renderer::new().with_resource_policy(input_policy(3));
+        for (result, maximum) in [
+            (Renderer::new().render(request()), 4),
+            (explicit_renderer.render(request()), 3),
+            (
+                explicit_renderer.render(request().with_resource_policy(input_policy(2))),
+                2,
+            ),
+        ] {
+            let RenderError::ResourceLimitExceeded(resource) = result.unwrap_err() else {
+                panic!("input should be rejected before theme preparation or family admission");
+            };
+            assert_eq!(resource.id, "max_source_bytes");
+            assert_eq!(resource.maximum, maximum);
+        }
+    }
+
+    #[test]
+    fn theme_resource_environment_error_maps_to_resource_limit_exceeded() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+
+        let error = RenderError::from(
+            merman_render::environment::RenderEnvironmentError::ThemeResource(resource),
+        );
+        let RenderError::ResourceLimitExceeded(resource) = error else {
+            panic!("theme resource environment errors must use the common resource variant");
+        };
+        assert_eq!(resource.id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, (maximum + 1) as u64);
+        assert_eq!(resource.maximum, maximum as u64);
+        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
+    }
+
+    #[test]
+    fn render_environment_cancellation_maps_to_the_common_cancelled_variant() {
+        let cancelled = merman_core::OperationCancelled {
+            phase: merman_core::OperationPhase::Layout,
+            reason: merman_core::CancelReason::Requested,
+        };
+
+        let error = RenderError::from(
+            merman_render::environment::RenderEnvironmentError::Cancelled(cancelled),
+        );
+        let RenderError::Cancelled(mapped) = error else {
+            panic!("render-environment cancellation must use the common cancelled variant");
+        };
+        assert_eq!(mapped, cancelled);
+    }
+
+    #[test]
+    fn terminal_theme_resource_render_error_maps_to_resource_limit_exceeded() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+
+        let error = RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource));
+        let RenderError::ResourceLimitExceeded(resource) = error else {
+            panic!("terminal theme resource errors must use the common resource variant");
+        };
+        assert_eq!(resource.id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, (maximum + 1) as u64);
+        assert_eq!(resource.maximum, maximum as u64);
+        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
+    }
 }

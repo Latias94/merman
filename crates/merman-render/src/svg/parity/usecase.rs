@@ -51,19 +51,6 @@ fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
     }
 }
 
-fn styles(model: &UsecaseDiagramRenderModel, classes: &[String], inline: &[String]) -> String {
-    crate::usecase::compiled_styles(model, classes, inline)
-        .into_iter()
-        .filter(|(key, _)| !crate::mermaid_style::is_label_style_key(key))
-        .map(|(key, value)| {
-            format!(
-                "{key}:{} !important;",
-                value.trim_end_matches("!important").trim()
-            )
-        })
-        .collect()
-}
-
 struct UsecaseLabelRenderContext<'a> {
     config: &'a merman_core::MermaidConfig,
     measurer: &'a dyn TextMeasurer,
@@ -217,6 +204,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("usecase");
     let cfg = config.as_value();
+    let css_binding = &prepared.css_binding;
     let layout = prepared.layout();
     let geometry: HashMap<_, _> = layout
         .nodes
@@ -282,9 +270,9 @@ pub(crate) fn render_usecase_diagram_svg_model(
     let title_x = (bounds.min_x + bounds.max_x) / 2.0;
     let mut viewport_bounds = bounds.clone();
     if let Some(title) = title {
-        let style = theme::font_style(cfg);
-        let (left, right) = measurer.measure_svg_title_bbox_x(title, &style);
-        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&style);
+        let style = &css_binding.root_font;
+        let (left, right) = measurer.measure_svg_title_bbox_x(title, style);
+        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(style);
         viewport_bounds.min_x = viewport_bounds.min_x.min(title_x - left);
         viewport_bounds.max_x = viewport_bounds.max_x.max(title_x + right);
         viewport_bounds.min_y = viewport_bounds.min_y.min(-ascent);
@@ -312,8 +300,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
     chrome.class = Some("usecaseDiagram");
     chrome.aria_labelledby = acc_title_id.as_deref();
     chrome.aria_describedby = acc_descr_id.as_deref();
-    let actor_font = crate::usecase::text_style(cfg, Some(true));
-    let usecase_font = crate::usecase::text_style(cfg, Some(false));
+    let actor_font = &css_binding.actor_font;
+    let usecase_font = &css_binding.usecase_font;
     let actor_font_size = format!("{}px", fmt(actor_font.font_size));
     let usecase_font_size = format!("{}px", fmt(usecase_font.font_size));
     let font_properties = [
@@ -341,9 +329,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
     ];
     chrome.custom_properties = &font_properties;
     let mut out = String::new();
-    let document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Usecase, diagram_id)
-            .write_open(&mut out, spec, chrome)?;
+    let document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::USECASE, diagram_id)
+        .write_open(&mut out, spec, chrome)?;
     if let Some(title) = &model.acc_title {
         let _ = write!(
             out,
@@ -358,7 +345,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             escape_xml(description)
         );
     }
-    theme::write_css(&mut out, diagram_id, cfg);
+    theme::write_css(&mut out, diagram_id, css_binding)?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
     out.push_str("<g>");
     markers::push_base_edge_markers(&mut out, diagram_id, "usecase");
@@ -394,7 +381,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let boundary = boundaries[plan.id.as_str()];
         let kind = if plan.package { "package" } else { "rect" };
         let accessible = format!("{kind} system boundary {}", accessible_label(&plan.label));
-        let appearance = theme::appearance_attributes(cfg, Some(color_index));
+        let appearance = theme::appearance_attributes(css_binding, Some(color_index));
         let _ = write!(
             out,
             r#"<g id="{}-usecase-{}" class="cluster usecase-system-boundary usecase-system-boundary-{kind} default system-boundary system-boundary-{kind} {}" data-boundary-type="{kind}"{appearance} data-usecase-id="{}" data-usecase-kind="boundary" role="img" aria-label="{}">"#,
@@ -404,7 +391,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             escape_attr(&plan.id),
             escape_attr(&accessible)
         );
-        let style = styles(model, &boundary.classes, &boundary.styles);
+        let style = plan.source_style.as_str();
         let tab_height = if plan.package {
             plan.label.metrics.height + 10.0
         } else {
@@ -423,7 +410,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 top,
                 tab_width,
                 tab_height,
-                &style,
+                style,
             );
         }
         shapes::rect(
@@ -433,7 +420,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             top + tab_height,
             node.width,
             node.height - tab_height,
-            &style,
+            style,
         );
         write_label(
             &mut out,
@@ -498,7 +485,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let points = prepared.edge_points(edge);
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(crate::svg::parity::util::json_stringify_points(&points));
-        let data_look = config_string(cfg, &["look"]).unwrap_or_else(|| "neo".to_owned());
+        let data_look = &css_binding.edge_look;
         let mut points = points;
         let curve = if elk {
             if edge.points.is_empty() {
@@ -562,7 +549,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&plan.id),
-            escape_attr(&data_look),
+            escape_attr(data_look),
             escape_attr(&data_points),
             escape_attr(&classes),
             path
@@ -596,9 +583,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             };
             let _ = write!(out, r#" role="img" aria-label="{}""#, escape_attr(&name));
         }
-        let mut edge_style = relation
-            .map(|edge| styles(model, &edge.classes, &edge.styles))
-            .unwrap_or_default();
+        let mut edge_style = plan.source_style.clone();
         if plan.dotted {
             edge_style.push_str("stroke-dasharray:3;");
         }
@@ -654,7 +639,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let source = source_nodes.get(plan.id.as_str()).copied();
         let note = notes.get(plan.id.as_str()).copied();
         let json = json_nodes.get(plan.id.as_str()).copied();
-        let (kind, name, classes, inline) = if let Some(source) = source {
+        let (kind, name, classes) = if let Some(source) = source {
             let label = &source_labels[plan.id.as_str()];
             let stereotype = source
                 .stereotype
@@ -682,7 +667,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     format!("{business}use case {label}{stereotype}")
                 },
                 source.classes.as_slice(),
-                source.styles.as_slice(),
             )
         } else if let Some(note) = note {
             (
@@ -692,7 +676,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     source_labels[note.target.as_str()],
                     accessible_label(&plan.label)
                 ),
-                [].as_slice(),
                 [].as_slice(),
             )
         } else if let Some(json) = json {
@@ -716,14 +699,13 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     format!("{}: {rows}", json.id)
                 },
                 json.classes.as_slice(),
-                json.styles.as_slice(),
             )
         } else {
             return Err(Error::InvalidModel {
                 message: format!("missing Usecase node {}", plan.id),
             });
         };
-        let appearance = theme::appearance_attributes(cfg, source.map(|_| color_index));
+        let appearance = theme::appearance_attributes(css_binding, source.map(|_| color_index));
         let role_classes = match source {
             Some(node) if node.kind == UsecaseNodeKind::Actor => {
                 let variant = match node.actor_type {
@@ -766,7 +748,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
             fmt(node.x),
             fmt(node.y)
         );
-        let style = styles(model, classes, inline);
         shapes::write_node(
             &mut out,
             node,
@@ -774,7 +755,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
             &shapes::UsecaseNodeRenderContext {
                 source,
                 note: note.is_some(),
-                style: &style,
+                style: &plan.source_style,
+                css_binding,
                 config,
                 measurer,
                 diagram_id,
@@ -784,8 +766,10 @@ pub(crate) fn render_usecase_diagram_svg_model(
         out.push_str("</g>");
     }
     out.push_str("</g></g></g>");
-    super::look_defs::push_look_shadow_defs(&mut out, diagram_id, cfg);
-    super::look_defs::push_look_gradient(&mut out, diagram_id, cfg);
+    css_binding
+        .look_defs
+        .write_shadow_defs(&mut out, diagram_id)?;
+    css_binding.look_defs.write_gradient(&mut out, diagram_id)?;
     if let Some(title) = title {
         let _ = write!(
             out,

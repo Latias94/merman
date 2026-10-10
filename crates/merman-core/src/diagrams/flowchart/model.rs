@@ -44,7 +44,7 @@ impl FlowchartModel {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FlowchartRenderLabelSources {
     nodes: FxHashMap<String, String>,
-    edges: FxHashMap<String, String>,
+    edges: Vec<(usize, String)>,
     subgraphs: Vec<Option<FlowSubgraphRenderLabelSource>>,
 }
 
@@ -62,10 +62,15 @@ impl FlowchartRenderLabelSources {
             .or(node.label.as_deref())
     }
 
-    pub(crate) fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+    pub(crate) fn edge_label_for_render<'a>(
+        &'a self,
+        semantic_index: usize,
+        edge: &'a FlowEdge,
+    ) -> Option<&'a str> {
         self.edges
-            .get(&edge.id)
-            .map(String::as_str)
+            .binary_search_by_key(&semantic_index, |(index, _)| *index)
+            .ok()
+            .map(|position| self.edges[position].1.as_str())
             .or(edge.label.as_deref())
     }
 
@@ -88,8 +93,23 @@ impl FlowchartRenderLabelSources {
     }
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-    pub(crate) fn insert_edge(&mut self, id: String, source: String) {
-        self.edges.insert(id, source);
+    pub(crate) fn insert_edge(&mut self, semantic_index: usize, source: String) {
+        if self
+            .edges
+            .last()
+            .is_none_or(|(last_index, _)| *last_index < semantic_index)
+        {
+            self.edges.push((semantic_index, source));
+            return;
+        }
+
+        match self
+            .edges
+            .binary_search_by_key(&semantic_index, |(index, _)| *index)
+        {
+            Ok(position) => self.edges[position].1 = source,
+            Err(position) => self.edges.insert(position, (semantic_index, source)),
+        }
     }
 
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -112,10 +132,15 @@ impl FlowchartRenderLabelSources {
     pub(crate) fn retained_bytes(&self) -> usize {
         self.nodes
             .iter()
-            .chain(&self.edges)
             .fold(0usize, |total, (id, label)| {
                 total.saturating_add(id.len()).saturating_add(label.len())
             })
+            .saturating_add(
+                self.edges
+                    .iter()
+                    .map(|(_, source)| source.len())
+                    .sum::<usize>(),
+            )
             .saturating_add(
                 self.subgraphs
                     .iter()
@@ -266,8 +291,15 @@ impl FlowchartRenderContext {
     }
 
     #[doc(hidden)]
-    pub fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
-        self.labels.edge_label_for_render(edge)
+    /// Returns the source-faithful label for one edge at its semantic model ordinal.
+    ///
+    /// The ordinal is required because Mermaid permits duplicate edge ids.
+    pub fn edge_label_for_render<'a>(
+        &'a self,
+        semantic_index: usize,
+        edge: &'a FlowEdge,
+    ) -> Option<&'a str> {
+        self.labels.edge_label_for_render(semantic_index, edge)
     }
 
     #[doc(hidden)]

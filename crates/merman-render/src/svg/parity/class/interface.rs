@@ -1,15 +1,13 @@
-use crate::entities::decode_entities_minimal_cow;
-use crate::model::{Bounds, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use std::fmt::Write as _;
-
 use super::super::SvgDiagramId;
-use super::super::{escape_attr_display, escape_xml_into, fmt};
+use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
 use super::context::ClassEmitCheckpoint;
 use super::label::{class_html_div_style, class_math_html_label};
 use super::node::ClassNodeRenderPosition;
+use crate::entities::decode_entities_minimal_cow;
+use crate::model::{Bounds, LayoutNode};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
@@ -20,21 +18,27 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub visual_binding: &'a crate::class::ClassInterfaceVisualBinding,
     pub emit: ClassEmitCheckpoint<'a>,
 }
 
-pub(super) struct ClassInterfaceRenderState<'a> {
-    pub out: &'a mut String,
+pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
-pub(super) fn render_class_interface_node(
-    state: ClassInterfaceRenderState<'_>,
+pub(super) struct ClassInterfaceRenderResult {
+    pub theme_emission: crate::class::ClassNodeTerminalEmission,
+    pub typography: crate::class::ClassTextTerminalFacts,
+}
+
+pub(super) fn render_class_interface_node<O: SvgOutput>(
+    state: ClassInterfaceRenderState<'_, O>,
     iface: &ClassSvgInterface,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassInterfaceRenderContext<'_>,
-) -> crate::Result<()> {
+) -> crate::Result<ClassInterfaceRenderResult> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
 
@@ -63,6 +67,15 @@ pub(super) fn render_class_interface_node(
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
     let top = -h / 2.0;
+    let binding = ctx.visual_binding;
+    let emitted_label_fill = binding.emitted_label_fill();
+    let container_style = "opacity:0; !important";
+    let label_style = &binding.label_style;
+    let label_style_attr = if !label_style.is_empty() {
+        format!(r#" style="{}""#, escape_attr_display(&label_style))
+    } else {
+        String::new()
+    };
 
     include_xywh(
         content_bounds,
@@ -84,15 +97,17 @@ pub(super) fn render_class_interface_node(
     ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
+        r#"-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
         escape_attr_display(&iface.id),
         escape_attr_display(ctx.look),
         fmt(position.node_tx),
         fmt(position.node_ty),
+        escape_attr_display(container_style),
         fmt(left),
         fmt(top),
         fmt(w),
         fmt(h),
+        escape_attr_display(&label_style),
         fmt(if ctx.use_html_labels {
             -fo_w / 2.0
         } else {
@@ -100,18 +115,21 @@ pub(super) fn render_class_interface_node(
         }),
         fmt(-fo_h / 2.0),
     );
+    let math_html = ctx
+        .use_html_labels
+        .then(|| class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer))
+        .flatten();
     if ctx.use_html_labels {
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>"#,
             fmt(fo_w),
             fmt(fo_h),
             class_html_div_style(fo_w, ctx.wrapping_width as i64),
+            label_style_attr,
         );
-        if let Some(math_html) =
-            class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer)
-        {
-            out.push_str(&math_html);
+        if let Some(math_html) = math_html.as_deref() {
+            out.push_str(math_html);
         } else {
             out.push_str("<p>");
             for (idx, line) in label_text.split('\n').enumerate() {
@@ -132,5 +150,24 @@ pub(super) fn render_class_interface_node(
         out.push_str("</g>");
     }
     out.push_str("</g></g>");
-    Ok(())
+    out.checkpoint()?;
+    Ok(ClassInterfaceRenderResult {
+        theme_emission: crate::class::ClassNodeTerminalEmission::new(
+            &iface.id,
+            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
+            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
+            crate::class::ClassNodePaintTerminalEmission::new(
+                binding.source_owned,
+                emitted_label_fill,
+                label_style,
+            )
+            .with_terminal_verified(binding.verified),
+        ),
+        typography: (if math_html.is_some() {
+            crate::class::ClassTextTerminalFacts::unverified_text(label_text.as_ref())
+        } else {
+            crate::class::ClassTextTerminalFacts::inherited_text(label_text.as_ref())
+        })
+        .with_paint(emitted_label_fill, label_style),
+    })
 }

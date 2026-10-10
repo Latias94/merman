@@ -58,11 +58,13 @@ export function useToolbarArtifactActions() {
     code,
     diagramTheme,
     mermaidConfig,
+    hasMermanTheme,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramTheme: state.diagramTheme,
       mermaidConfig: state.mermaidConfig,
+      hasMermanTheme: Boolean(state.themePresetId || state.themeRecipeJson),
     })),
   );
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
@@ -121,11 +123,12 @@ export function useToolbarArtifactActions() {
       await navigator.clipboard.writeText(
         createMarkdownImageLink(code, diagramTheme, mermaidConfig),
       );
-      toast.success(t("share.copied"));
+      if (hasMermanTheme) toast.warning(t("share.themeNotIncluded"));
+      else toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [code, diagramTheme, mermaidConfig, t]);
+  }, [code, diagramTheme, mermaidConfig, hasMermanTheme, t]);
 
   const handleCopySVG = useCallback(async () => {
     try {
@@ -186,9 +189,11 @@ export function useToolbarArtifactActions() {
       "_blank",
       "noopener,noreferrer",
     );
-  }, [code, diagramTheme, mermaidConfig, t]);
+    if (hasMermanTheme) toast.warning(t("share.themeNotIncluded"));
+  }, [code, diagramTheme, mermaidConfig, hasMermanTheme, t]);
 
   return {
+    hasMermanTheme,
     artifactActionsEnabled,
     asciiExportDescription,
     asciiAvailable,
@@ -272,6 +277,9 @@ export function ToolbarArtifactActions({
             <Code className="size-4" />
             {t("export.copyCode")}
           </DropdownMenuItem>
+          {owner.hasMermanTheme && (
+            <p className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("share.externalThemeLimit")}</p>
+          )}
           <DropdownMenuItem onClick={owner.handleCopyMarkdown}>
             <FileText className="size-4" />
             {t("export.copyMarkdown")}
@@ -289,6 +297,9 @@ export function ToolbarArtifactActions({
             {t("export.copySvg")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {owner.hasMermanTheme && (
+            <p className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("share.externalThemeLimit")}</p>
+          )}
           <DropdownMenuItem onClick={owner.handleOpenMermaidLive}>
             <ExternalLink className="size-4" />
             {t("share.openMermaidLive")}

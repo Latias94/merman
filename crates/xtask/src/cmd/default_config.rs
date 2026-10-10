@@ -8,10 +8,12 @@
 //! - the key shape contributed by JSON values, functions, and explicit `undefined` values.
 
 use super::mermaid_reference::MermaidProjectionRuntime;
+use super::{sort_json_value_keys, write_pretty_json};
 use crate::XtaskError;
 use serde::Deserialize;
-use serde_json::{Map as JsonMap, Value as JsonValue, json};
+use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeSet;
+#[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -207,45 +209,6 @@ fn unique_strings(field: &str, values: Vec<String>) -> Result<BTreeSet<String>, 
         )));
     }
     Ok(values)
-}
-
-fn sort_json_value_keys(value: &mut JsonValue) {
-    match value {
-        JsonValue::Object(object) => {
-            for child in object.values_mut() {
-                sort_json_value_keys(child);
-            }
-            let mut sorted = JsonMap::new();
-            let mut keys = object.keys().cloned().collect::<Vec<_>>();
-            keys.sort();
-            for key in keys {
-                if let Some(child) = object.remove(&key) {
-                    sorted.insert(key, child);
-                }
-            }
-            *object = sorted;
-        }
-        JsonValue::Array(values) => {
-            for value in values {
-                sort_json_value_keys(value);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
-    }
-}
-
-fn write_pretty_json(path: &Path, value: &JsonValue) -> Result<(), XtaskError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-        path: parent.display().to_string(),
-        source,
-    })?;
-    let mut output = serde_json::to_string_pretty(value)?;
-    output.push('\n');
-    fs::write(path, output).map_err(|source| XtaskError::WriteFile {
-        path: path.display().to_string(),
-        source,
-    })
 }
 
 const RUNTIME_PROJECTION_SCRIPT: &str = r#"

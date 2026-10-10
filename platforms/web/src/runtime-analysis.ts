@@ -5,6 +5,7 @@ import {
   getMerman,
   UNAVAILABLE_DIAGRAM_DETECTION,
 } from "./runtime-core.js";
+import { tryAsKnownDiagramType } from "./public-catalog.js";
 import type {
   DiagramType,
   LintRuleCatalogEntry,
@@ -180,7 +181,7 @@ function diagramMetadataBySyntaxId(): ReadonlyMap<string, DiagramType | null> {
     if (index.has(syntaxId)) {
       index.set(syntaxId, null);
     } else {
-      index.set(syntaxId, capability.metadata_id);
+      index.set(syntaxId, tryAsKnownDiagramType(capability.metadata_id));
     }
   }
   cache.diagramMetadataBySyntaxId = index;

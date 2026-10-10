@@ -664,14 +664,37 @@ pub(crate) enum RuntimePolicyKind {
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "svg")]
-    /// First-party presentation profile applied below explicit Mermaid configuration.
+    /// Compiled diagram-theme preset; each value reports its catalog maturity, and explicit
+    /// Mermaid configuration takes precedence.
     #[arg(
-        long = "presentation-profile",
-        value_parser = presentation_profile_value_parser(),
+        long = "theme-preset",
+        value_parser = theme_preset_value_parser(),
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
-    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+
+    #[cfg(feature = "svg")]
+    /// Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`.
+    #[arg(
+        long = "theme-file",
+        value_hint = ValueHint::FilePath,
+        conflicts_with_all = ["theme_preset", "theme_definition"],
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_file: Option<PathBuf>,
+
+    #[cfg(feature = "svg")]
+    /// Shareable ThemeDefinitionV1 JSON materialized before rendering.
+    #[arg(
+        long = "theme-definition",
+        value_hint = ValueHint::FilePath,
+        conflicts_with_all = ["theme_preset", "theme_file"],
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_definition: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
@@ -755,7 +778,9 @@ pub(crate) struct LayoutRenderCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
-            presentation_profile: None,
+            theme_preset: None,
+            theme_file: None,
+            theme_definition: None,
             math_renderer: self.math_renderer,
             container_width: self.container_width,
             container_height: self.container_height,
@@ -800,8 +825,17 @@ pub(crate) struct MmdcParseCliArgs {
     )]
     pub(crate) config_file: Option<PathBuf>,
 
-    /// Theme of the chart.
-    #[arg(short = 't', long, value_enum, help_heading = "mmdc-compatible export")]
+    /// Official Mermaid CLI theme selector.
+    ///
+    /// The accepted values stay pinned to the upstream mmdc contract.
+    #[arg(
+        short = 't',
+        long,
+        value_enum,
+        num_args = 0..=1,
+        default_missing_value = "default",
+        help_heading = "mmdc-compatible export"
+    )]
     pub(crate) theme: Option<MmdcTheme>,
 
     #[command(flatten)]
@@ -811,15 +845,6 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
-    /// First-party presentation profile applied below explicit Mermaid configuration.
-    #[arg(
-        long = "presentation-profile",
-        value_parser = presentation_profile_value_parser(),
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
-
     /// Math renderer override. Unspecified uses the compiled default.
     #[arg(
         long = "math-renderer",
@@ -873,7 +898,6 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
-            presentation_profile: None,
             math_renderer: None,
             container_width: 800.0,
             container_height: 600.0,
@@ -1598,16 +1622,21 @@ fn theme_value_parser() -> impl TypedValueParser<Value = String> {
 }
 
 #[cfg(feature = "svg")]
-fn presentation_profile_value_parser()
--> impl TypedValueParser<Value = merman::svg::PresentationProfile> {
+fn theme_preset_value_parser() -> impl TypedValueParser<Value = merman::svg::ThemePreset> {
     PossibleValuesParser::new(
-        merman::svg::presentation_profile_descriptors()
+        merman::svg::theme_preset_descriptors()
             .iter()
-            .map(|descriptor| descriptor.id()),
+            .map(|descriptor| {
+                PossibleValue::new(descriptor.id()).help(format!(
+                    "[{}] {}",
+                    descriptor.maturity(),
+                    descriptor.display_name()
+                ))
+            }),
     )
     .map(|id| {
-        merman::svg::PresentationProfile::from_id(&id)
-            .expect("possible values come from the presentation profile descriptors")
+        merman::svg::ThemePreset::from_id(&id)
+            .expect("possible values come from the theme preset descriptors")
     })
 }
 
@@ -2024,6 +2053,37 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
 ))]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_preset_values_report_catalog_maturity() {
+        let parser = theme_preset_value_parser();
+        let actual = parser
+            .possible_values()
+            .expect("theme presets expose possible values")
+            .map(|value| {
+                (
+                    value.get_name().to_owned(),
+                    value.get_help().map(ToString::to_string),
+                )
+            })
+            .collect::<Vec<_>>();
+        let expected = merman::svg::theme_preset_descriptors()
+            .iter()
+            .map(|descriptor| {
+                (
+                    descriptor.id().to_owned(),
+                    Some(format!(
+                        "[{}] {}",
+                        descriptor.maturity(),
+                        descriptor.display_name()
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
+    }
 
     #[cfg(feature = "svg")]
     #[test]

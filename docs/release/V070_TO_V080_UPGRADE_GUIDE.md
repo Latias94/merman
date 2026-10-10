@@ -130,4 +130,9 @@ Query the installed artifact's runtime catalog before enabling optional operatio
 
 Build the actual dependency declaration outside the Merman workspace, then exercise every host-accepted family with the selected layout and output. Verify explicit rejection of an omitted family, cancellation, resource limits, and unavailable or denied backends. Run the final CSS/font/raster/DOM path and refresh snapshots only after reviewing output changes. Bind performance and size reports to the final reviewed source commit; rerun them if production code, compiler, profile, features, or lockfile changes.
 
-The reusable theme refactor remains deferred beyond this release. The stable release's theme compatibility and targeted correctness fixes should not be read as completion of that separate design effort. The [comparison report](V070_TO_V080_RELEASE_REPORT.md) keeps product growth, comparable measurements, and unmeasured surfaces distinct.
+The current source also carries the compiled theme integration described in
+[the theme migration reference](ALPHA7_TO_0_8_0_THEME_MIGRATION.md). This later integration is not
+part of the immutable published `0.8.0` artifacts and does not qualify every artifact/family
+cell. The stable release contains its own theme compatibility and targeted correctness fixes.
+The [comparison report](V070_TO_V080_RELEASE_REPORT.md) keeps product growth, comparable
+measurements, and unmeasured surfaces distinct.

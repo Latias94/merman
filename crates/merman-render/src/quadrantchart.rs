@@ -4,16 +4,38 @@ use crate::model::{
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::text::TextMeasurer;
-use crate::theme::PresentationTheme;
-use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
+use merman_core::diagrams::quadrant_chart::{
+    QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
+};
 use serde_json::Value;
 
 mod config;
+mod text_paint;
+mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
+pub(crate) use text_paint::QuadrantChartPaintPlan;
+pub(crate) use theme::QuadrantChartPointThemePlan;
 
-fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
-    PresentationTheme::new(effective_config).quadrantchart()
+fn point_class_styles<'a>(
+    model: &'a QuadrantChartRenderModel,
+    point: &QuadrantChartPointModel,
+) -> Option<&'a QuadrantChartStyles> {
+    point
+        .class_name
+        .as_deref()
+        .and_then(|class_name| model.classes.get(class_name))
+}
+
+fn point_source_fill<'a>(
+    point: &'a QuadrantChartPointModel,
+    class_styles: Option<&'a QuadrantChartStyles>,
+) -> Option<&'a str> {
+    point
+        .styles
+        .color
+        .as_deref()
+        .or_else(|| class_styles.and_then(|class_style| class_style.color.as_deref()))
 }
 
 fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
@@ -30,10 +52,17 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     model: &QuadrantChartRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
+    point_theme: &QuadrantChartPointThemePlan,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
+    if point_theme.point_count() != model.points.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Quadrant Chart point theme plan does not match the semantic model"
+                .to_string(),
+        });
+    }
     let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
-    let theme = default_quadrant_theme(effective_config);
+    let theme = point_theme.css();
 
     let title_text = model
         .title
@@ -341,36 +370,8 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     ];
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
-    for p in &model.points {
-        let class_styles = p
-            .class_name
-            .as_deref()
-            .and_then(|name| model.classes.get(name));
-
-        let radius = p
-            .styles
-            .radius
-            .map(|v| v as f64)
-            .or_else(|| class_styles.and_then(|c| c.radius.map(|v| v as f64)))
-            .unwrap_or(cfg.point_radius);
-        let fill = p
-            .styles
-            .color
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.color.clone()))
-            .unwrap_or_else(|| theme.quadrant_point_fill.clone());
-        let stroke_color = p
-            .styles
-            .stroke_color
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.stroke_color.clone()))
-            .unwrap_or_else(|| theme.quadrant_point_fill.clone());
-        let stroke_width = p
-            .styles
-            .stroke_width
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.stroke_width.clone()))
-            .unwrap_or_else(|| "0px".to_string());
+    for (point_index, p) in model.points.iter().enumerate() {
+        let binding = point_theme.point_binding(point_index);
 
         let x = scale_linear(
             (0.0, 1.0),
@@ -385,10 +386,10 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
         points.push(QuadrantChartPointData {
             x,
             y,
-            fill: fill.clone(),
-            radius,
-            stroke_color,
-            stroke_width,
+            fill: binding.fill.clone(),
+            radius: binding.radius,
+            stroke_color: binding.stroke_color.clone(),
+            stroke_width: binding.stroke_width.clone(),
             text: QuadrantChartTextData {
                 text: p.text.clone(),
                 fill: theme.quadrant_point_text_fill.clone(),
@@ -405,7 +406,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     let title = if show_title {
         Some(QuadrantChartTextData {
             text: title_text.to_string(),
-            fill: theme.quadrant_title_fill,
+            fill: theme.quadrant_title_fill.clone(),
             font_size: cfg.title_font_size,
             horizontal_pos: "top".to_string(),
             vertical_pos: "center".to_string(),

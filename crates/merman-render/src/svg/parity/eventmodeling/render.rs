@@ -1,13 +1,12 @@
-use super::super::theme::EventModelingTheme;
 use super::super::*;
 use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 
-pub(crate) fn render_eventmodeling_diagram_svg(
+pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     layout: &EventModelingDiagramLayout,
     model: &EventModelingDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("eventmodeling");
@@ -23,8 +22,9 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         .filter(|description| !description.trim().is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = PresentationTheme::new(effective_config).eventmodeling();
-    let mut out = String::new();
+    let theme = text_theme.css_binding();
+    let mut text_theme_receipt = text_theme.begin_terminal_receipt();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -37,12 +37,9 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::EventModeling,
-        diagram_id,
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
-    options.checkpoint_emit()?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::EVENT_MODELING, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -58,33 +55,43 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             escape_xml(description)
         );
     }
+    out.checkpoint()?;
 
-    let css = eventmodeling_css(diagram_id, &theme);
-    let _ = write!(&mut out, "<style>{css}</style>");
-    out.push_str("<g/>");
-    options.checkpoint_emit()?;
+    out.push_str("<style>");
+    text_theme_receipt.write_stylesheet(
+        &mut out,
+        super::super::util::css_selector_diagram_id(diagram_id),
+    );
+    out.push_str("</style><g/>");
+    out.checkpoint()?;
 
     for swimlane in &layout.swimlanes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect><text font-weight="bold" x="{}" y="{}">"#,
+            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect>"#,
             fmt(swimlane.x),
             fmt(swimlane.y),
             fmt(swimlane.width),
             fmt(swimlane.height),
             escape_attr_display(&theme.swimlane_background_fill),
             escape_attr_display(&theme.swimlane_background_stroke),
-            fmt(swimlane.x + 30.0),
-            fmt(swimlane.y + 30.0)
         );
+        text_theme_receipt.write_swimlane_text_start(
+            &mut out,
+            &swimlane.label,
+            fmt(swimlane.x + 30.0),
+            fmt(swimlane.y + 30.0),
+        );
+        out.checkpoint()?;
         escape_xml_into(&mut out, &swimlane.label);
         out.push_str("</text></g>");
+        out.checkpoint()?;
     }
 
     for box_layout in &layout.boxes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#,
+            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}">"#,
             fmt(box_layout.x),
             fmt(box_layout.y),
             fmt(box_layout.width),
@@ -94,10 +101,13 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt(box_layout.x + BOX_TEXT_PADDING),
             fmt(box_layout.y + BOX_TEXT_PADDING),
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
-            fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0))
+            fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0)),
         );
-        push_box_html_label(&mut out, &box_layout.text);
+        text_theme_receipt.write_box_text_start(&mut out, &box_layout.text);
+        out.checkpoint()?;
+        push_box_html_label(&mut out, &box_layout.text)?;
         out.push_str("</span></div></foreignObject></g>");
+        out.checkpoint()?;
     }
 
     for relation in &layout.relations {
@@ -110,7 +120,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt(relation.x2),
             fmt(relation.y2)
         );
-        options.checkpoint_emit()?;
+        out.checkpoint()?;
     }
 
     let marker_fill = &theme.arrowhead_fill;
@@ -121,11 +131,16 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    options.checkpoint_emit()?;
-    root_document.complete(out)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !text_theme.record_terminal(text_theme_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Event Modeling text theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
-fn push_box_html_label(out: &mut String, text: &str) {
+fn push_box_html_label(out: &mut impl SvgOutput, text: &str) -> Result<()> {
     let mut lines = text.lines();
     let title = lines.next().unwrap_or(text);
     let rest = lines.collect::<Vec<_>>().join("\n");
@@ -133,10 +148,11 @@ fn push_box_html_label(out: &mut String, text: &str) {
     out.push_str("<b>");
     escape_xml_into(out, title);
     out.push_str("</b>");
+    out.checkpoint()?;
 
     let code = normalize_eventmodeling_code_text(&rest);
     if code.is_empty() {
-        return;
+        return Ok(());
     }
 
     out.push_str(r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#);
@@ -145,6 +161,7 @@ fn push_box_html_label(out: &mut String, text: &str) {
         out.push_str("<br/>");
     }
     out.push_str("</code>");
+    out.checkpoint()
 }
 
 fn normalize_eventmodeling_code_text(raw: &str) -> String {
@@ -154,12 +171,4 @@ fn normalize_eventmodeling_code_text(raw: &str) -> String {
         .and_then(|s| s.strip_suffix('}'))
         .unwrap_or(trimmed);
     without_outer_braces.trim().to_string()
-}
-
-fn eventmodeling_css(diagram_id: SvgDiagramId<'_>, theme: &EventModelingTheme) -> String {
-    format!(
-        "#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {}; color: {}; }}\
-#{diagram_id} .em-relation {{ fill: none; }}",
-        theme.font_family_css, theme.text_color
-    )
 }

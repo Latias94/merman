@@ -1,21 +1,50 @@
 //! Operation-owned render services and deterministic policy.
 
-use crate::math::MathRenderer;
+use crate::diagram_theme::{
+    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy, HostMeasurementFallback,
+    HostMeasurementFallbackPolicy, ResolvedThemeAdmission, ThemeAdmissionError,
+    ThemeAdmissionPolicy, ThemeHostAdmissionReport, ThemePortabilityRequirement,
+    ThemeRecipeFingerprint, ThemeRecipeReport, ThemeResourceLimitExceeded, ThemeResourcePolicy,
+    TrustedThemeLane, TrustedThemeLanes,
+};
+use crate::math::{ConfiguredMathBackend, MathRenderer};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
+
 use crate::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    append_text_width_em, estimate_text_width_em, is_html_collapsible_ascii_whitespace,
+    DeterministicTextMeasurer, PrepareCatalogRequest, PreparedTextLayout,
+    PreparedTextLayoutBuilder, PreparedTextLayoutReport, TextLayoutBackend, TextLayoutError,
+    TextLayoutFailure, TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
+    estimate_text_width_em, is_html_collapsible_ascii_whitespace,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
+use merman_core::__private::ThemeCompatibilityRecipe;
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
 use merman_core::{OperationControl, OperationPhase};
+#[cfg(test)]
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::fmt;
 use std::num::NonZeroU64;
+#[cfg(test)]
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use unicode_segmentation::UnicodeSegmentation;
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum RenderEnvironmentError {
+    #[error(transparent)]
+    Cancelled(#[from] merman_core::OperationCancelled),
+    #[error(transparent)]
+    Runtime(#[from] RuntimePolicyError),
+    #[error(transparent)]
+    ThemeAdmission(#[from] ThemeAdmissionError),
+    #[error(transparent)]
+    ThemeResource(#[from] ThemeResourceLimitExceeded),
+}
 
 /// A render phase that may select a distinct complete text-measurement profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -259,8 +288,17 @@ impl InlineHtmlMeasurementCarrier {
 #[derive(Debug, Clone)]
 struct BuiltinInlineRawLineWidth {
     font_size: f64,
+    state: RefCell<BuiltinInlineRawLineWidthState>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BuiltinInlineRawLineWidthState {
     committed_em: f64,
     pending_grapheme: String,
+    pending_width_dirty: bool,
+    pending_em: f64,
+    #[cfg(test)]
+    grapheme_input_byte_charge: Rc<Cell<usize>>,
 }
 
 /// Streaming `getComputedTextLength()` state for a qualified built-in SVG text route.
@@ -322,8 +360,7 @@ impl BuiltinInlineRawLineWidth {
     fn new(style: &TextStyle) -> Self {
         Self {
             font_size: style.font_size.max(1.0),
-            committed_em: 0.0,
-            pending_grapheme: String::new(),
+            state: RefCell::new(BuiltinInlineRawLineWidthState::default()),
         }
     }
 
@@ -331,19 +368,41 @@ impl BuiltinInlineRawLineWidth {
         if text.is_empty() {
             return;
         }
-        self.pending_grapheme.push_str(text);
-        let last_grapheme_start = self
+        let state = self.state.get_mut();
+        state.pending_grapheme.push_str(text);
+        state.pending_width_dirty = true;
+    }
+
+    fn refresh_width(state: &mut BuiltinInlineRawLineWidthState) {
+        if !state.pending_width_dirty {
+            return;
+        }
+
+        #[cfg(test)]
+        {
+            // Charge the full pending input to both boundary discovery and width estimation. This
+            // is a conservative structural upper bound, not a count of CPU instructions.
+            let next_charge = state
+                .grapheme_input_byte_charge
+                .get()
+                .saturating_add(state.pending_grapheme.len().saturating_mul(2));
+            state.grapheme_input_byte_charge.set(next_charge);
+        }
+
+        let last_grapheme_start = state
             .pending_grapheme
             .grapheme_indices(true)
             .next_back()
             .map_or(0, |(index, _)| index);
         if last_grapheme_start > 0 {
             append_text_width_em(
-                &mut self.committed_em,
-                &self.pending_grapheme[..last_grapheme_start],
+                &mut state.committed_em,
+                &state.pending_grapheme[..last_grapheme_start],
             );
-            self.pending_grapheme.drain(..last_grapheme_start);
+            state.pending_grapheme.drain(..last_grapheme_start);
         }
+        state.pending_em = estimate_text_width_em(&state.pending_grapheme);
+        state.pending_width_dirty = false;
     }
 
     fn push_char(&mut self, ch: char) {
@@ -352,12 +411,31 @@ impl BuiltinInlineRawLineWidth {
     }
 
     fn width_px(&self) -> f64 {
-        (self.committed_em + estimate_text_width_em(&self.pending_grapheme)) * self.font_size
+        let mut state = self.state.borrow_mut();
+        Self::refresh_width(&mut state);
+        (state.committed_em + state.pending_em) * self.font_size
+    }
+
+    fn compact_pending_graphemes(&mut self) {
+        Self::refresh_width(self.state.get_mut());
     }
 
     fn reset(&mut self) {
-        self.committed_em = 0.0;
-        self.pending_grapheme.clear();
+        let state = self.state.get_mut();
+        state.committed_em = 0.0;
+        state.pending_grapheme.clear();
+        state.pending_width_dirty = false;
+        state.pending_em = 0.0;
+    }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.state.borrow().grapheme_input_byte_charge.get()
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.state.borrow().pending_grapheme.len()
     }
 }
 
@@ -448,6 +526,20 @@ impl BuiltinNormalizedTextWidth {
             self.max_width_px
         }
     }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.line.grapheme_input_byte_charge()
+    }
+
+    fn compact_pending_graphemes(&mut self) {
+        self.line.compact_pending_graphemes();
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.line.retained_grapheme_bytes()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -464,6 +556,16 @@ struct PendingInlineHtmlBreak {
     literal: BuiltinNormalizedTextWidth,
 }
 
+impl PendingInlineHtmlBreak {
+    fn push_candidate_char(&mut self, ch: char) {
+        self.literal.push_char(ch);
+        // Candidate characters are ASCII and the only multi-scalar ASCII grapheme is CRLF.
+        // Compact after every continuation so an incomplete `<br ...` cannot retain an
+        // unbounded whitespace buffer.
+        self.literal.compact_pending_graphemes();
+    }
+}
+
 /// Exact streaming width state for a qualified built-in HTML measurement route.
 ///
 /// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
@@ -476,6 +578,8 @@ struct PendingInlineHtmlBreak {
 pub(crate) struct BuiltinInlineHtmlWidth {
     normalized: BuiltinNormalizedTextWidth,
     pending_break: Option<PendingInlineHtmlBreak>,
+    #[cfg(test)]
+    speculative_clone_bytes: Rc<Cell<usize>>,
 }
 
 impl BuiltinInlineHtmlWidth {
@@ -483,6 +587,8 @@ impl BuiltinInlineHtmlWidth {
         Self {
             normalized: BuiltinNormalizedTextWidth::new(BuiltinInlineRawLineWidth::new(style)),
             pending_break: None,
+            #[cfg(test)]
+            speculative_clone_bytes: Rc::new(Cell::new(0)),
         }
     }
 
@@ -501,6 +607,18 @@ impl BuiltinInlineHtmlWidth {
         while let Some(ch) = current.take() {
             let Some(mut pending) = self.pending_break.take() else {
                 if ch == '<' {
+                    // Width compaction retains only the final extendable grapheme. Cloning this
+                    // bounded frontier keeps speculative `<br>` parsing linear without assuming
+                    // that ASCII `<` always starts a new Unicode grapheme.
+                    self.normalized.compact_pending_graphemes();
+                    #[cfg(test)]
+                    {
+                        let next_clone_bytes = self
+                            .speculative_clone_bytes
+                            .get()
+                            .saturating_add(self.normalized.retained_grapheme_bytes());
+                        self.speculative_clone_bytes.set(next_clone_bytes);
+                    }
                     let mut literal = self.normalized.clone();
                     literal.push_char(ch);
                     self.pending_break = Some(PendingInlineHtmlBreak {
@@ -515,21 +633,21 @@ impl BuiltinInlineHtmlWidth {
 
             match pending.state {
                 InlineHtmlBreakState::AfterLt if matches!(ch, 'b' | 'B') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterB;
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterB if matches!(ch, 'r' | 'R') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterBr;
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterBr if matches!(ch, ' ' | '\t' | '\r' | '\n') => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     self.pending_break = Some(pending);
                 }
                 InlineHtmlBreakState::AfterBr if ch == '/' => {
-                    pending.literal.push_char(ch);
+                    pending.push_candidate_char(ch);
                     pending.state = InlineHtmlBreakState::AfterSlash;
                     self.pending_break = Some(pending);
                 }
@@ -548,6 +666,27 @@ impl BuiltinInlineHtmlWidth {
         self.pending_break.as_ref().map_or_else(
             || self.normalized.finished_width_px(),
             |pending| pending.literal.finished_width_px(),
+        )
+    }
+
+    #[cfg(test)]
+    fn grapheme_input_byte_charge(&self) -> usize {
+        self.pending_break.as_ref().map_or_else(
+            || self.normalized.grapheme_input_byte_charge(),
+            |pending| pending.literal.grapheme_input_byte_charge(),
+        )
+    }
+
+    #[cfg(test)]
+    fn speculative_clone_bytes(&self) -> usize {
+        self.speculative_clone_bytes.get()
+    }
+
+    #[cfg(test)]
+    fn retained_grapheme_bytes(&self) -> usize {
+        self.pending_break.as_ref().map_or_else(
+            || self.normalized.retained_grapheme_bytes(),
+            |pending| pending.literal.retained_grapheme_bytes(),
         )
     }
 }
@@ -1523,39 +1662,90 @@ fn valid_extents(left: f64, right: f64) -> bool {
 }
 
 #[cfg(feature = "math")]
-fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
-    Some(Arc::new(crate::math::RatexMathRenderer))
+fn default_math_backend() -> Option<ConfiguredMathBackend> {
+    Some(ConfiguredMathBackend::compiled_ratex())
 }
 
 #[cfg(not(feature = "math"))]
-fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
+fn default_math_backend() -> Option<ConfiguredMathBackend> {
     None
+}
+
+fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
+    HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
+        .expect("static theme measurement fallback policy")
 }
 
 /// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
+    text_layout_backend: Option<ConfiguredTextLayoutBackend>,
     capability_policy: RenderCapabilityPolicy,
-    math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
+    math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
+    font_catalog: FontCatalog,
+    font_source_policy: FontSourcePolicy,
+    theme_admission_policy: ThemeAdmissionPolicy,
+    theme_resource_ceiling: Arc<ThemeResourcePolicy>,
+    theme_measurement_fallbacks: HostMeasurementFallbackPolicy,
+    theme_portability: ThemePortabilityRequirement,
+}
+
+#[derive(Clone)]
+struct ConfiguredTextLayoutBackend(Arc<dyn TextLayoutBackend>);
+
+impl ConfiguredTextLayoutBackend {
+    fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
+        self.0.identity()
+    }
+
+    fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
+        self.0.capabilities()
+    }
+
+    fn prepare_catalog(
+        &self,
+        request: &PrepareCatalogRequest,
+    ) -> Result<crate::text::PreparedTextLayoutResponse, TextLayoutError> {
+        self.0.prepare_catalog(request)
+    }
+}
+
+impl fmt::Debug for ConfiguredTextLayoutBackend {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConfiguredTextLayoutBackend")
+            .field("identity", self.identity())
+            .finish()
+    }
 }
 
 impl fmt::Debug for RenderEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RenderEnvironment")
             .field("text_measurement", &self.text_measurement)
+            .field("text_layout_backend", &self.text_layout_backend)
             .field("capability_policy", &self.capability_policy)
             .field(
                 "has_math_renderer",
                 &(self.capability_policy.allows(RenderCapability::Math)
-                    && self.math_renderer.is_some()),
+                    && self.math_backend.is_some()),
             )
             .field("has_icon_registry", &self.icon_registry.is_some())
             .field("runtime_policy", &self.runtime_policy)
             .field("resource_policy", &self.resource_policy)
+            .field("font_catalog", &self.font_catalog.fingerprint())
+            .field("font_source_policy", &self.font_source_policy)
+            .field("theme_admission_policy", &self.theme_admission_policy)
+            .field("theme_resource_ceiling", &self.theme_resource_ceiling)
+            .field(
+                "theme_measurement_fallbacks",
+                &self.theme_measurement_fallbacks,
+            )
+            .field("theme_portability", &self.theme_portability)
             .finish_non_exhaustive()
     }
 }
@@ -1569,11 +1759,19 @@ impl RenderEnvironment {
     pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::deterministic(),
+
+            text_layout_backend: None,
             capability_policy: RenderCapabilityPolicy::unrestricted(),
-            math_renderer: default_math_renderer(),
+            math_backend: default_math_backend(),
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
+            font_catalog: FontCatalog::system_fonts(),
+            font_source_policy: FontSourcePolicy::default(),
+            theme_admission_policy: ThemeAdmissionPolicy::default(),
+            theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
+            theme_measurement_fallbacks: default_theme_measurement_fallbacks(),
+            theme_portability: ThemePortabilityRequirement::BestEffort,
         }
     }
 
@@ -1603,17 +1801,21 @@ impl RenderEnvironment {
     /// Facades use this to select the canonical compiled capability instead of duplicating Cargo
     /// feature checks in each transport layer.
     pub fn with_compiled_math_renderer(mut self) -> Self {
-        self.math_renderer = default_math_renderer();
+        self.math_backend = default_math_backend();
         self
     }
 
-    pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
-        self.math_renderer = Some(renderer);
+    #[cfg(any(test, merman_internal_theme_acceptance))]
+    pub(crate) fn with_math_renderer(
+        mut self,
+        renderer: Arc<dyn MathRenderer + Send + Sync>,
+    ) -> Self {
+        self.math_backend = Some(ConfiguredMathBackend::external(renderer));
         self
     }
 
     pub fn without_math_renderer(mut self) -> Self {
-        self.math_renderer = None;
+        self.math_backend = None;
         self
     }
 
@@ -1636,25 +1838,113 @@ impl RenderEnvironment {
         self
     }
 
+    /// Retains the font catalog mode authorized for layout evidence and native export.
+    ///
+    /// Theme compilation supplies exact retained assets for custom catalogs. The unchanged default
+    /// path uses [`FontCatalog::system_fonts`], which does not enumerate or freeze host fonts.
+    pub fn with_font_catalog(mut self, catalog: FontCatalog) -> Self {
+        self.font_catalog = catalog;
+        self
+    }
+
+    pub const fn font_catalog(&self) -> &FontCatalog {
+        &self.font_catalog
+    }
+
+    pub fn with_font_source_policy(mut self, policy: FontSourcePolicy) -> Self {
+        self.font_source_policy = policy;
+        self
+    }
+
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_source_policy
+    }
+
+    pub fn with_theme_admission_policy(mut self, policy: ThemeAdmissionPolicy) -> Self {
+        self.theme_admission_policy = policy;
+        self
+    }
+
+    pub const fn theme_admission_policy(&self) -> &ThemeAdmissionPolicy {
+        &self.theme_admission_policy
+    }
+
+    /// Sets the host-owned ceiling for compiled theme resources admitted by every new session.
+    ///
+    /// A compiled theme contributes only a prior restriction. Session creation takes the
+    /// pointwise minimum, so a theme can never widen this host authority.
+    pub fn with_theme_resource_ceiling(mut self, ceiling: ThemeResourcePolicy) -> Self {
+        self.theme_resource_ceiling = Arc::new(ceiling);
+        self
+    }
+
+    pub fn theme_resource_ceiling(&self) -> &ThemeResourcePolicy {
+        &self.theme_resource_ceiling
+    }
+
+    pub fn with_theme_measurement_fallbacks(
+        mut self,
+        policy: HostMeasurementFallbackPolicy,
+    ) -> Self {
+        self.theme_measurement_fallbacks = policy;
+        self
+    }
+
+    pub const fn theme_measurement_fallbacks(&self) -> &HostMeasurementFallbackPolicy {
+        &self.theme_measurement_fallbacks
+    }
+
+    pub const fn with_theme_portability_requirement(
+        mut self,
+        requirement: ThemePortabilityRequirement,
+    ) -> Self {
+        self.theme_portability = requirement;
+        self
+    }
+
+    pub const fn theme_portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.theme_portability
+    }
+
     /// Captures time, timezone rules, random seed, and provenance exactly once.
-    pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
+    pub fn begin_session(&self) -> Result<RenderSession, RenderEnvironmentError> {
         self.begin_session_with_control(OperationControl::new())
     }
 
-    /// Captures one render session using caller-owned cancellation/deadline state.
-    ///
-    /// The control is cloned into the operation work meter so layout adapters, SVG emission, and
-    /// postprocessing observe the same operation scope. This method does not create another
-    /// control or expose a second cancellation state.
+    /// Captures one unthemed render session using caller-owned cancellation/deadline state.
     pub fn begin_session_with_control(
         &self,
         control: OperationControl,
-    ) -> Result<RenderSession, RuntimePolicyError> {
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
         let operation_context = self.runtime_policy.begin_operation()?;
-        Ok(self.begin_session_in_context(operation_context, control))
+        let resolved_resources = self.resolve_environment_session_resources()?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
+            operation_context,
+            control,
+        )
     }
 
-    /// Begins one render session from caller-captured operation state.
+    /// Captures one operation while atomically binding the selected compiled theme.
+    ///
+    /// The environment owns the runtime ceiling. Theme-declared requirements and compiler-time
+    /// restrictions are intersected with it before the session captures any backend evidence.
+    pub fn begin_session_with_theme(
+        &self,
+        theme: &DiagramTheme,
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        let control = OperationControl::new();
+        let resolved_resources = self.resolve_themed_session_resources(theme)?;
+        let operation_context = self.runtime_policy.begin_operation()?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
+            operation_context,
+            control,
+        )
+    }
+
+    /// Begins one unthemed render session from caller-captured operation state.
     ///
     /// This entry point deliberately does not call [`RuntimePolicy::begin_operation`]. Facades
     /// that already own the source-to-output operation use it to keep parsing and rendering on
@@ -1663,12 +1953,105 @@ impl RenderEnvironment {
         &self,
         operation_context: OperationContext,
         control: OperationControl,
-    ) -> RenderSession {
-        RenderSession {
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let resolved_resources = self.resolve_environment_session_resources()?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
+            operation_context,
+            control,
+        )
+    }
+
+    /// Begins one themed render session from caller-captured operation state.
+    ///
+    /// The caller remains the sole owner of runtime context and cancellation while the
+    /// environment atomically resolves theme admission and resources for that same operation.
+    pub fn begin_session_with_theme_in_context(
+        &self,
+        theme: &DiagramTheme,
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let resolved_resources = self.resolve_themed_session_resources(theme)?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
+            operation_context,
+            control,
+        )
+    }
+
+    fn resolve_environment_session_resources(
+        &self,
+    ) -> Result<ResolvedSessionThemeResources, RenderEnvironmentError> {
+        self.font_catalog
+            .validate_retained_resources(&self.theme_resource_ceiling)?;
+        Ok(ResolvedSessionThemeResources::new(
+            SessionThemeResources::Environment {
+                font_catalog: self.font_catalog.clone(),
+                font_source_policy: self.font_source_policy.clone(),
+            },
+            Arc::clone(&self.theme_resource_ceiling),
+        ))
+    }
+
+    fn resolve_themed_session_resources(
+        &self,
+        theme: &DiagramTheme,
+    ) -> Result<ResolvedSessionThemeResources, RenderEnvironmentError> {
+        let admission = theme.resolve_runtime_admission(
+            &self.theme_admission_policy,
+            &self.font_source_policy,
+            &self.theme_measurement_fallbacks,
+            self.theme_portability,
+        )?;
+        let effective_theme_resource_policy =
+            if self.theme_resource_ceiling.as_ref() == theme.resource_restriction() {
+                Arc::clone(&self.theme_resource_ceiling)
+            } else {
+                Arc::new(
+                    self.theme_resource_ceiling
+                        .meet(theme.resource_restriction()),
+                )
+            };
+        theme.validate_retained_resources(&effective_theme_resource_policy)?;
+        Ok(ResolvedSessionThemeResources::new(
+            SessionThemeResources::Theme {
+                theme: theme.clone(),
+                admission,
+            },
+            effective_theme_resource_policy,
+        ))
+    }
+
+    fn begin_session_with_resolved_theme_resources_in_context(
+        &self,
+        resolved_resources: ResolvedSessionThemeResources,
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let theme_compatibility_recipe = resolved_resources
+            .theme()
+            .map(|theme| theme.parse_compatibility().recipe().clone());
+        let portability_requirement = resolved_resources
+            .portability_requirement()
+            .unwrap_or(self.theme_portability);
+        let (prepared_text_layout, text_layout_error) =
+            self.prepare_text_layout(&resolved_resources, portability_requirement);
+        let trusted_theme_lanes = resolved_resources
+            .admission()
+            .map(ResolvedThemeAdmission::trusted_lanes)
+            .unwrap_or_else(|| self.theme_admission_policy.trusted_lanes())
+            .clone();
+        Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
+            prepared_text_layout,
+            text_layout_error,
             measurement_recorder: Box::default(),
             capability_policy: self.capability_policy,
-            math_renderer: self.math_renderer.clone(),
+            math_backend: self.math_backend.clone(),
             icon_registry: self.icon_registry.clone(),
             operation_context,
             resource_policy: self.resource_policy,
@@ -1676,6 +2059,89 @@ impl RenderEnvironment {
                 self.resource_policy,
                 control,
             )),
+            trusted_theme_lanes,
+            trusted_theme_lane_usage: AtomicU64::new(0),
+            theme_compatibility_recipe,
+            portability_requirement,
+            resolved_theme_resources: resolved_resources,
+        })
+    }
+
+    fn prepare_text_layout(
+        &self,
+        resolved_resources: &ResolvedSessionThemeResources,
+        portability: ThemePortabilityRequirement,
+    ) -> (Option<PreparedTextLayout>, Option<TextLayoutError>) {
+        let catalog = resolved_resources.font_catalog();
+        if !catalog.requires_prepared_text_layout() {
+            return (None, None);
+        }
+
+        let Some(backend) = &self.text_layout_backend else {
+            return (None, Some(TextLayoutError::BackendRejected));
+        };
+        let request = PrepareCatalogRequest::new(
+            catalog.clone(),
+            resolved_resources.font_source_policy().clone(),
+        );
+        let fallback_policy = resolved_resources
+            .measurement_fallback_policy()
+            .unwrap_or(&self.theme_measurement_fallbacks);
+        let mut builder = PreparedTextLayoutBuilder::new(request.clone());
+        let mut deferred_host_response = None;
+        let mut terminal_error = None;
+
+        match backend.prepare_catalog(&request) {
+            Ok(response) => {
+                let deferred = response.clone();
+                let mut probe = PreparedTextLayoutBuilder::new(request.clone());
+                match probe.admit_host_dependent_response(
+                    backend.identity(),
+                    backend.capabilities(),
+                    response,
+                    ThemePortabilityRequirement::BestEffort,
+                ) {
+                    Ok(()) => deferred_host_response = Some(deferred),
+                    Err(error) => {
+                        builder.record_catalog_failure();
+                        terminal_error = Some(error);
+                    }
+                }
+            }
+            Err(error) => {
+                builder.record_catalog_failure();
+                terminal_error = Some(error);
+            }
+        }
+
+        for fallback in fallback_policy.priority() {
+            match fallback {
+                HostMeasurementFallback::AcceptHostDependent => {
+                    let Some(response) = deferred_host_response.take() else {
+                        continue;
+                    };
+                    if let Err(error) = builder.admit_host_dependent_response(
+                        backend.identity(),
+                        backend.capabilities(),
+                        response,
+                        portability,
+                    ) {
+                        builder.record_catalog_failure();
+                        terminal_error = Some(error);
+                    }
+                }
+            }
+        }
+
+        if builder.is_empty() {
+            return (
+                None,
+                Some(terminal_error.unwrap_or(TextLayoutError::NoUsableFace)),
+            );
+        }
+        match builder.build() {
+            Ok(layout) => (Some(layout), None),
+            Err(error) => (None, Some(error)),
         }
     }
 }
@@ -1686,17 +2152,139 @@ impl Default for RenderEnvironment {
     }
 }
 
+enum SessionThemeResources {
+    Environment {
+        font_catalog: FontCatalog,
+        font_source_policy: FontSourcePolicy,
+    },
+    Theme {
+        theme: DiagramTheme,
+        admission: ResolvedThemeAdmission,
+    },
+}
+
+impl SessionThemeResources {
+    fn theme(&self) -> Option<&DiagramTheme> {
+        match self {
+            Self::Environment { .. } => None,
+            Self::Theme { theme, .. } => Some(theme),
+        }
+    }
+
+    fn font_catalog(&self) -> &FontCatalog {
+        match self {
+            Self::Environment { font_catalog, .. } => font_catalog,
+            Self::Theme { theme, .. } => theme.font_catalog(),
+        }
+    }
+
+    fn font_source_policy(&self) -> &FontSourcePolicy {
+        match self {
+            Self::Environment {
+                font_source_policy, ..
+            } => font_source_policy,
+            Self::Theme { admission, .. } => admission.font_source_policy(),
+        }
+    }
+
+    fn admission(&self) -> Option<&ResolvedThemeAdmission> {
+        match self {
+            Self::Environment { .. } => None,
+            Self::Theme { admission, .. } => Some(admission),
+        }
+    }
+
+    fn measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
+        self.admission()
+            .map(ResolvedThemeAdmission::measurement_fallback_policy)
+    }
+
+    fn portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
+        self.admission()
+            .map(ResolvedThemeAdmission::portability_requirement)
+    }
+
+    fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
+        self.theme().map(DiagramTheme::report)
+    }
+
+    fn theme_host_admission_report(&self) -> Option<ThemeHostAdmissionReport> {
+        self.admission().map(ResolvedThemeAdmission::report)
+    }
+}
+
+/// Session-owned theme resources and the exact policy that admitted them.
+///
+/// Keeping these values together prevents a retained catalog or compiled theme from being paired
+/// with a different host/theme policy intersection after admission.
+struct ResolvedSessionThemeResources {
+    resources: SessionThemeResources,
+    effective_policy: Arc<ThemeResourcePolicy>,
+}
+
+impl ResolvedSessionThemeResources {
+    fn new(resources: SessionThemeResources, effective_policy: Arc<ThemeResourcePolicy>) -> Self {
+        Self {
+            resources,
+            effective_policy,
+        }
+    }
+
+    fn effective_policy(&self) -> &Arc<ThemeResourcePolicy> {
+        &self.effective_policy
+    }
+
+    fn theme(&self) -> Option<&DiagramTheme> {
+        self.resources.theme()
+    }
+
+    fn font_catalog(&self) -> &FontCatalog {
+        self.resources.font_catalog()
+    }
+
+    fn font_source_policy(&self) -> &FontSourcePolicy {
+        self.resources.font_source_policy()
+    }
+
+    fn admission(&self) -> Option<&ResolvedThemeAdmission> {
+        self.resources.admission()
+    }
+
+    fn measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
+        self.resources.measurement_fallback_policy()
+    }
+
+    fn portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
+        self.resources.portability_requirement()
+    }
+
+    fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
+        self.resources.theme_recipe_report()
+    }
+
+    fn theme_host_admission_report(&self) -> Option<ThemeHostAdmissionReport> {
+        self.resources.theme_host_admission_report()
+    }
+}
+
 /// Opaque operation session. Family code receives only the narrow projection it needs.
 pub struct RenderSession {
     text_measurement: TextMeasurementPolicy,
+    prepared_text_layout: Option<PreparedTextLayout>,
+    text_layout_error: Option<TextLayoutError>,
     // Keep movable family artifacts compact for bounded worker stacks.
     measurement_recorder: Box<TextMeasurementRecorder>,
     capability_policy: RenderCapabilityPolicy,
-    math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
+    math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
+    trusted_theme_lanes: TrustedThemeLanes,
+    trusted_theme_lane_usage: AtomicU64,
+    theme_compatibility_recipe: Option<ThemeCompatibilityRecipe>,
+    portability_requirement: ThemePortabilityRequirement,
+    resolved_theme_resources: ResolvedSessionThemeResources,
 }
 
 impl RenderSession {
@@ -1724,6 +2312,16 @@ impl RenderSession {
             work_meter: self.work_meter.as_ref(),
             controlled_operation_phase,
         }
+    }
+
+    /// Returns the immutable layout session prepared against this operation's retained catalog.
+    pub(crate) fn prepared_text_layout(&self) -> Option<&PreparedTextLayout> {
+        self.prepared_text_layout.as_ref()
+    }
+
+    /// Returns a bounded preparation failure, if a custom catalog could not be attested.
+    pub(crate) fn text_layout_error(&self) -> Option<&TextLayoutError> {
+        self.text_layout_error.as_ref()
     }
 
     pub fn text_measurement_route(&self, phase: TextMeasurementPhase) -> TextMeasurementRoute {
@@ -1762,6 +2360,78 @@ impl RenderSession {
         self.resource_policy
     }
 
+    /// Returns the immutable host/theme resource intersection captured for this operation.
+    pub(crate) fn effective_theme_resource_policy(&self) -> Arc<ThemeResourcePolicy> {
+        Arc::clone(self.resolved_theme_resources.effective_policy())
+    }
+
+    pub fn theme(&self) -> Option<&DiagramTheme> {
+        self.resolved_theme_resources.theme()
+    }
+
+    pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
+        self.theme().map(DiagramTheme::recipe_fingerprint)
+    }
+
+    pub(crate) fn theme_compatibility_recipe(&self) -> Option<&ThemeCompatibilityRecipe> {
+        self.theme_compatibility_recipe.as_ref()
+    }
+
+    pub fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
+        self.resolved_theme_resources.theme_recipe_report()
+    }
+
+    pub fn theme_host_admission_report(&self) -> Option<ThemeHostAdmissionReport> {
+        self.resolved_theme_resources.theme_host_admission_report()
+    }
+
+    pub fn font_catalog(&self) -> &FontCatalog {
+        self.resolved_theme_resources.font_catalog()
+    }
+
+    pub fn font_source_policy(&self) -> &FontSourcePolicy {
+        self.resolved_theme_resources.font_source_policy()
+    }
+
+    pub fn theme_measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
+        self.resolved_theme_resources.measurement_fallback_policy()
+    }
+
+    pub fn theme_portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
+        self.resolved_theme_resources.portability_requirement()
+    }
+
+    /// Returns the effective host/theme portability requirement frozen for this operation.
+    pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.portability_requirement
+    }
+
+    pub fn trusted_theme_lanes(&self) -> &TrustedThemeLanes {
+        &self.trusted_theme_lanes
+    }
+
+    pub(crate) fn use_trusted_theme_lane(
+        &self,
+        lane: TrustedThemeLane,
+    ) -> Result<(), ThemeAdmissionError> {
+        if !self.trusted_theme_lanes.contains(lane) {
+            return Err(ThemeAdmissionError::TrustedThemeLaneDenied(lane));
+        }
+        self.trusted_theme_lane_usage
+            .fetch_or(lane.usage_mask(), Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn used_trusted_theme_lanes(&self) -> TrustedThemeLanes {
+        let usage = self.trusted_theme_lane_usage.load(Ordering::Relaxed);
+        TrustedThemeLanes::from_allowed(
+            TrustedThemeLane::ALL
+                .iter()
+                .copied()
+                .filter(|lane| usage & lane.usage_mask() != 0),
+        )
+    }
+
     /// Reports effective operation availability after policy and backend/service resolution.
     pub(crate) fn supports_capability(&self, capability: RenderCapability) -> bool {
         if !self.capability_policy.allows(capability) {
@@ -1770,7 +2440,10 @@ impl RenderSession {
         match capability {
             RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
             RenderCapability::LayoutElk => crate::layout_elk_available(),
-            RenderCapability::Math => self.math_renderer.is_some(),
+            RenderCapability::Math => self
+                .math_backend
+                .as_ref()
+                .is_some_and(|backend| backend.supports_resource_policy(self.resource_policy)),
         }
     }
 
@@ -1783,12 +2456,15 @@ impl RenderSession {
         self.work_meter().checkpoint(phase).map_err(Into::into)
     }
 
-    pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
-        if self.supports_capability(RenderCapability::Math) {
-            self.math_renderer.as_deref()
-        } else {
-            None
-        }
+    pub(crate) fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
+        self.math_backend().map(ConfiguredMathBackend::renderer)
+    }
+
+    /// Returns the operation-selected math backend, retaining whether it is native-capable.
+    pub(crate) fn math_backend(&self) -> Option<&ConfiguredMathBackend> {
+        self.supports_capability(RenderCapability::Math)
+            .then_some(())
+            .and(self.math_backend.as_ref())
     }
 
     pub fn icon_registry(&self) -> Option<&IconRegistry> {
@@ -1807,7 +2483,23 @@ impl RenderSession {
                 .provenance()
                 .clone(),
             resource_policy: self.resource_policy,
+            effective_theme_resource_policy: Arc::clone(
+                self.resolved_theme_resources.effective_policy(),
+            ),
             layout_work_units: self.work_meter.used(),
+            prepared_text_retained_bytes_peak: self.work_meter.prepared_text_retained_bytes_peak(),
+            theme_recipe_report: self.theme_recipe_report().cloned(),
+            theme_host_admission_report: self.theme_host_admission_report(),
+            portability_requirement: self.portability_requirement,
+            font_catalog_fingerprint: self.font_catalog().fingerprint(),
+            font_source_policy: self.font_source_policy().clone(),
+            prepared_text_layout: self
+                .prepared_text_layout
+                .as_ref()
+                .map(PreparedTextLayout::report),
+            text_layout_failure: self.text_layout_error.as_ref().map(TextLayoutFailure::from),
+            trusted_theme_lanes: self.trusted_theme_lanes.clone(),
+            used_trusted_theme_lanes: self.used_trusted_theme_lanes(),
         }
     }
 }
@@ -1820,7 +2512,18 @@ pub struct RenderSessionReport {
     operation_context: OperationContext,
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
+    effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
     layout_work_units: usize,
+    prepared_text_retained_bytes_peak: usize,
+    theme_recipe_report: Option<ThemeRecipeReport>,
+    theme_host_admission_report: Option<ThemeHostAdmissionReport>,
+    portability_requirement: ThemePortabilityRequirement,
+    font_catalog_fingerprint: FontCatalogFingerprint,
+    font_source_policy: FontSourcePolicy,
+    prepared_text_layout: Option<PreparedTextLayoutReport>,
+    text_layout_failure: Option<TextLayoutFailure>,
+    trusted_theme_lanes: TrustedThemeLanes,
+    used_trusted_theme_lanes: TrustedThemeLanes,
 }
 
 impl RenderSessionReport {
@@ -1856,6 +2559,53 @@ impl RenderSessionReport {
         self.resource_policy
     }
 
+    pub(crate) fn effective_theme_resource_policy(&self) -> &ThemeResourcePolicy {
+        &self.effective_theme_resource_policy
+    }
+
+    pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
+        self.theme_recipe_report
+            .as_ref()
+            .map(ThemeRecipeReport::theme_recipe_fingerprint)
+    }
+
+    pub const fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
+        self.theme_recipe_report.as_ref()
+    }
+
+    pub const fn theme_host_admission_report(&self) -> Option<&ThemeHostAdmissionReport> {
+        self.theme_host_admission_report.as_ref()
+    }
+
+    /// Returns the effective host/theme portability requirement frozen for this operation.
+    pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.portability_requirement
+    }
+
+    pub const fn font_catalog_fingerprint(&self) -> FontCatalogFingerprint {
+        self.font_catalog_fingerprint
+    }
+
+    pub fn prepared_text_layout(&self) -> Option<&PreparedTextLayoutReport> {
+        self.prepared_text_layout.as_ref()
+    }
+
+    pub const fn text_layout_failure(&self) -> Option<TextLayoutFailure> {
+        self.text_layout_failure
+    }
+
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_source_policy
+    }
+
+    pub const fn trusted_theme_lanes(&self) -> &TrustedThemeLanes {
+        &self.trusted_theme_lanes
+    }
+
+    pub const fn used_trusted_theme_lanes(&self) -> &TrustedThemeLanes {
+        &self.used_trusted_theme_lanes
+    }
+
     /// Returns the deterministic owner-accounted layout and geometry work consumed so far.
     ///
     /// This value is useful for resource-policy calibration. It is not elapsed time, an
@@ -1863,11 +2613,17 @@ impl RenderSessionReport {
     pub const fn layout_work_units(&self) -> usize {
         self.layout_work_units
     }
+
+    /// Returns the peak owner-accounted prepared-text bytes retained by the operation.
+    pub const fn prepared_text_retained_bytes_peak(&self) -> usize {
+        self.prepared_text_retained_bytes_peak
+    }
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
+    use crate::resources::ResourceLimitId;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1961,7 +2717,8 @@ mod tests {
             .expect("caller operation context");
         let control = OperationControl::new();
         let session = RenderEnvironment::deterministic()
-            .begin_session_in_context(operation_context.clone(), control.clone());
+            .begin_session_in_context(operation_context.clone(), control.clone())
+            .expect("caller-captured render session");
 
         assert_eq!(session.operation_context(), &operation_context);
 
@@ -2652,6 +3409,136 @@ mod tests {
     }
 
     #[test]
+    fn builtin_inline_literal_lt_combining_work_is_linear_and_cached() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for combining_scalars in [1_024, 2_048, 4_096] {
+            let text = format!("<{}", "\u{0301}".repeat(combining_scalars));
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                0,
+                "appending input must not rescan a growing pending grapheme"
+            );
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                text.len() * 2,
+                "the owning checkpoint admits two linear input-byte charges"
+            );
+
+            let input_byte_charge = streamed.grapheme_input_byte_charge();
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert_eq!(
+                streamed.grapheme_input_byte_charge(),
+                input_byte_charge,
+                "a repeated checkpoint without new input must use the cached width"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_inline_repeated_literal_lt_speculation_is_linear() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for scalar_count in [1_024, 2_048, 4_096] {
+            let text = "<".repeat(scalar_count);
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert!(
+                streamed.speculative_clone_bytes() <= text.len(),
+                "each input byte may enter at most one retained-grapheme branch clone"
+            );
+            assert!(
+                streamed.grapheme_input_byte_charge() <= text.len() * 4,
+                "branch compaction and the final checkpoint must remain linear"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_inline_speculative_clone_work_survives_checkpoint_rollback() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+        let mut streamed = carrier
+            .begin_inline_html_width(&style)
+            .expect("built-in carrier starts a streaming width");
+
+        streamed.push_text("A");
+        let checkpoint = streamed.clone();
+        let mut candidate = checkpoint.clone();
+        candidate.push_text("<not-a-break");
+
+        assert!(candidate.speculative_clone_bytes() > 0);
+        assert_eq!(
+            streamed.speculative_clone_bytes(),
+            candidate.speculative_clone_bytes(),
+            "discarded checkpoint branches still count the clone work they performed"
+        );
+
+        streamed = checkpoint;
+        assert_eq!(
+            streamed.speculative_clone_bytes(),
+            candidate.speculative_clone_bytes(),
+            "restoring a checkpoint must not roll back operation-owned work accounting"
+        );
+    }
+
+    #[test]
+    fn builtin_inline_incomplete_br_whitespace_keeps_a_bounded_frontier() {
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let carrier =
+            InlineHtmlMeasurementCarrier::builtin(BuiltinTextMeasurementProfile::Deterministic);
+
+        for whitespace_repetitions in [256, 512, 1_024] {
+            let text = format!("<br{}", " \t\r\n".repeat(whitespace_repetitions));
+            let expected = DeterministicTextMeasurer::default()
+                .measure_wrapped(&text, &style, None, WrapMode::HtmlLike)
+                .width;
+            let mut streamed = carrier
+                .begin_inline_html_width(&style)
+                .expect("built-in carrier starts a streaming width");
+
+            streamed.push_text(&text);
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert!(streamed.retained_grapheme_bytes() <= 1);
+            assert_eq!(streamed.speculative_clone_bytes(), 0);
+            assert!(streamed.grapheme_input_byte_charge() <= text.len() * 4);
+        }
+    }
+
+    #[test]
     fn builtin_svg_computed_length_stream_is_sequence_aware_and_reversible() {
         let backend = DeterministicTextMeasurer::default();
         let style = TextStyle {
@@ -3208,7 +4095,224 @@ mod tests {
         assert_eq!(session.resource_policy(), limits);
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
+        assert!(session.prepared_text_layout().is_none());
+        assert!(session.text_layout_error().is_none());
         assert_eq!(session.report().operation_context().seed(), 0);
+    }
+
+    #[test]
+    fn session_report_keeps_prepared_text_retained_peak_separate_from_layout_work() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 16)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(limits)
+            .begin_session()
+            .unwrap();
+
+        let mut reservation = session
+            .work_meter()
+            .reserve_prepared_text_retained_bytes(12)
+            .unwrap();
+        reservation.reconcile_downward(7);
+        let live_report = session.report();
+        assert_eq!(live_report.prepared_text_retained_bytes_peak(), 12);
+        assert_eq!(live_report.layout_work_units(), 0);
+
+        drop(reservation);
+        let released_report = session.report();
+        assert_eq!(released_report.prepared_text_retained_bytes_peak(), 12);
+        assert_eq!(released_report.layout_work_units(), 0);
+    }
+
+    #[test]
+    fn deterministic_session_rejects_unauthorized_trusted_theme_lane() {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic session should start");
+        let error = session
+            .use_trusted_theme_lane(crate::diagram_theme::TrustedThemeLane::RawThemeCss)
+            .expect_err("low-level deterministic sessions must deny raw CSS by default");
+        assert_eq!(
+            error,
+            crate::diagram_theme::ThemeAdmissionError::TrustedThemeLaneDenied(
+                crate::diagram_theme::TrustedThemeLane::RawThemeCss
+            )
+        );
+    }
+
+    #[test]
+    fn themed_session_revalidates_requirements_against_environment_admission() {
+        let fill = crate::diagram_theme::CanvasPaint::solid("#111827").expect("valid fill");
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new().with_styles(
+                crate::diagram_theme::ThemeRuleSet::default().with_rule(
+                    crate::diagram_theme::ThemeRule::new(
+                        crate::diagram_theme::ThemeTarget::Node,
+                        crate::diagram_theme::ThemeStylePatch::default().with_fill(fill),
+                    ),
+                ),
+            ))
+            .expect("compile theme with the permissive compiler policy");
+        let environment = RenderEnvironment::deterministic().with_theme_admission_policy(
+            ThemeAdmissionPolicy::permissive()
+                .with_allowed_capabilities([crate::diagram_theme::ThemeCapability::SemanticTokens]),
+        );
+
+        let error = match environment.begin_session_with_theme(&theme) {
+            Ok(_) => panic!("the environment must revalidate inferred theme requirements"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            RenderEnvironmentError::ThemeAdmission(
+                crate::diagram_theme::ThemeAdmissionError::ThemeCapabilityDenied(
+                    crate::diagram_theme::ThemeCapability::SemanticRules,
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn runtime_policy_changes_host_evidence_without_changing_recipe_identity() {
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new())
+            .expect("compile empty recipe");
+        let best_effort = RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort themed session")
+            .report();
+        let portable = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin portable themed session")
+            .report();
+
+        assert_eq!(
+            best_effort.theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
+        );
+        assert_eq!(
+            best_effort.theme_recipe_report(),
+            portable.theme_recipe_report()
+        );
+        assert_ne!(
+            best_effort.theme_host_admission_report(),
+            portable.theme_host_admission_report()
+        );
+        assert_eq!(
+            portable
+                .theme_host_admission_report()
+                .expect("portable host report")
+                .portability_requirement(),
+            ThemePortabilityRequirement::RequirePortable
+        );
+    }
+
+    #[test]
+    fn unthemed_report_freezes_the_host_portability_requirement() {
+        let report = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session()
+            .expect("begin unthemed portable session")
+            .report();
+
+        assert_eq!(
+            report.portability_requirement(),
+            ThemePortabilityRequirement::RequirePortable
+        );
+        assert!(report.theme_host_admission_report().is_none());
+    }
+
+    #[test]
+    fn host_admission_report_matches_the_recipe_requirements_it_allowed() {
+        let fill = crate::diagram_theme::CanvasPaint::solid("#111827").expect("valid fill");
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new().with_styles(
+                crate::diagram_theme::ThemeRuleSet::default().with_rule(
+                    crate::diagram_theme::ThemeRule::new(
+                        crate::diagram_theme::ThemeTarget::Node,
+                        crate::diagram_theme::ThemeStylePatch::default().with_fill(fill),
+                    ),
+                ),
+            ))
+            .expect("compile semantic recipe");
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("default host allows semantic recipe");
+        let recipe = session.theme_recipe_report().expect("recipe report");
+        let host = session
+            .theme_host_admission_report()
+            .expect("host admission report");
+
+        assert_eq!(
+            recipe.required_capabilities().collect::<Vec<_>>(),
+            host.host_allowed_capabilities().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            recipe.required_text_capabilities().collect::<Vec<_>>(),
+            host.host_allowed_text_capabilities().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn session_theme_resources_meet_the_host_ceiling_and_compiled_restriction() {
+        let limit = crate::diagram_theme::ThemeResourceLimitId::MaxEffectFilterRegionMagnitude;
+        let policy_with_limit = |value| {
+            crate::diagram_theme::ThemeResourcePolicy::interactive()
+                .with_limit(limit, value)
+                .expect("valid effect filter-region limit")
+        };
+        let compile_theme = |restriction| {
+            crate::diagram_theme::DiagramThemeCompiler::new()
+                .with_resource_policy(restriction)
+                .compile(crate::diagram_theme::DiagramThemeSpec::new())
+                .expect("compile empty theme with resource restriction")
+        };
+
+        let host_stricter = policy_with_limit(8);
+        let theme = compile_theme(policy_with_limit(12));
+        let environment =
+            RenderEnvironment::deterministic().with_theme_resource_ceiling(host_stricter.clone());
+        let session = environment
+            .begin_session_with_theme(&theme)
+            .expect("host-stricter themed session");
+        assert_eq!(
+            session.effective_theme_resource_policy().value(limit),
+            Some(8),
+            "a compiled theme must not widen the host-owned ceiling"
+        );
+        assert_eq!(
+            environment
+                .begin_session()
+                .expect("unthemed host session")
+                .effective_theme_resource_policy()
+                .as_ref(),
+            &host_stricter,
+            "an unthemed session must freeze the host ceiling unchanged"
+        );
+
+        let theme_stricter = policy_with_limit(8);
+        let theme = compile_theme(theme_stricter.clone());
+        let session = RenderEnvironment::deterministic()
+            .with_theme_resource_ceiling(policy_with_limit(12))
+            .begin_session_with_theme(&theme)
+            .expect("theme-stricter session");
+        assert_eq!(
+            session.effective_theme_resource_policy().as_ref(),
+            &theme_stricter,
+            "the compiler-time prior restriction must survive a looser host ceiling"
+        );
+
+        assert_eq!(
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("default session")
+                .effective_theme_resource_policy()
+                .as_ref(),
+            &crate::diagram_theme::ThemeResourcePolicy::interactive(),
+            "the default host theme-resource ceiling must remain interactive"
+        );
     }
 
     #[cfg(feature = "math")]
@@ -3244,5 +4348,32 @@ mod tests {
             .expect("begin render session");
         assert!(session.supports_capability(RenderCapability::Math));
         assert!(session.math_renderer().is_some());
+    }
+
+    #[test]
+    fn constrained_resource_profile_masks_monolithic_math_backends() {
+        let constrained = RenderEnvironment::deterministic()
+            .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+            .with_resource_policy(RenderResourcePolicy::constrained())
+            .begin_session()
+            .expect("begin constrained render session");
+        assert!(!constrained.supports_capability(RenderCapability::Math));
+        assert!(constrained.math_renderer().is_none());
+        assert!(constrained.math_backend().is_none());
+
+        for policy in [
+            RenderResourcePolicy::interactive(),
+            RenderResourcePolicy::trusted_native(),
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ] {
+            let trusted = RenderEnvironment::deterministic()
+                .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+                .with_resource_policy(policy)
+                .begin_session()
+                .expect("begin trusted render session");
+            assert!(trusted.supports_capability(RenderCapability::Math));
+            assert!(trusted.math_renderer().is_some());
+            assert!(trusted.math_backend().is_some());
+        }
     }
 }

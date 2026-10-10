@@ -1,6 +1,12 @@
 use super::*;
 use serde_json::json;
 
+const PROTECTED_RESOURCE_RULE_IDS: [&str; 3] = [
+    RESOURCE_LIMIT_RULE_ID,
+    DOCUMENT_DIAGRAM_LIMIT_RULE_ID,
+    THEME_EVALUATION_LIMIT_RULE_ID,
+];
+
 fn warning_fact(rule_id: &str, message: &str) -> DiagramWarningFact {
     DiagramWarningFact::new(rule_id, message)
 }
@@ -315,7 +321,7 @@ fn rule_config_rejects_internal_resource_and_unknown_rule_mutations() {
     let internal = rule_descriptor(PANIC_RULE_ID).unwrap();
     let mut config = AnalysisRuleConfig::default();
 
-    for rule_id in [RESOURCE_LIMIT_RULE_ID, DOCUMENT_DIAGRAM_LIMIT_RULE_ID] {
+    for rule_id in PROTECTED_RESOURCE_RULE_IDS {
         let resource = rule_descriptor(rule_id).unwrap();
         let resource_error = config.disable_rule(rule_id).unwrap_err();
         assert_eq!(resource_error.rule_id(), rule_id);
@@ -338,13 +344,11 @@ fn rule_config_rejects_internal_resource_and_unknown_rule_mutations() {
 
     let unknown_error = config.disable_rule("example.unknown").unwrap_err();
     assert_eq!(unknown_error.rule_id(), "example.unknown");
-    assert!(
-        [RESOURCE_LIMIT_RULE_ID, DOCUMENT_DIAGRAM_LIMIT_RULE_ID,]
-            .into_iter()
-            .all(|rule_id| AnalysisRuleConfig::default()
-                .with_rule_disabled(rule_id)
-                .is_err())
-    );
+    assert!(PROTECTED_RESOURCE_RULE_IDS.into_iter().all(|rule_id| {
+        AnalysisRuleConfig::default()
+            .with_rule_disabled(rule_id)
+            .is_err()
+    }));
 }
 
 #[test]
@@ -370,6 +374,7 @@ fn rule_config_deserialization_enforces_the_same_rule_boundary() {
         json!({ "enabled_rules": [PANIC_RULE_ID] }),
         json!({ "disabled_rules": [RESOURCE_LIMIT_RULE_ID] }),
         json!({ "disabled_rules": [DOCUMENT_DIAGRAM_LIMIT_RULE_ID] }),
+        json!({ "disabled_rules": [THEME_EVALUATION_LIMIT_RULE_ID] }),
         json!({ "severity_overrides": { "example.unknown": "warning" } }),
     ] {
         let error = serde_json::from_value::<AnalysisRuleConfig>(value).unwrap_err();
@@ -950,7 +955,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 24);
+    assert_eq!(descriptors.len(), 26);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1047,6 +1052,36 @@ fn rule_descriptors_expose_stable_rule_metadata() {
             .iter()
             .any(|descriptor| descriptor.id == DOCUMENT_DIAGRAM_LIMIT_RULE_ID)
     );
+    let theme_evaluation_limit = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == THEME_EVALUATION_LIMIT_RULE_ID)
+        .expect("theme evaluation limit descriptor");
+    assert_eq!(
+        theme_evaluation_limit.origin,
+        RuleOrigin::MermanResourcePolicy
+    );
+    assert_eq!(
+        theme_evaluation_limit.category,
+        DiagnosticCategory::Resource
+    );
+    assert_eq!(
+        theme_evaluation_limit.default_severity,
+        DiagnosticSeverity::Error
+    );
+    assert!(theme_evaluation_limit.default_enabled);
+    assert_eq!(
+        theme_evaluation_limit.default_profile,
+        AnalysisRuleProfile::Core
+    );
+    assert!(!theme_evaluation_limit.fixable);
+    assert!(
+        theme_evaluation_limit
+            .evidence
+            .contains(&"docs/adr/0070-diagnostics-first-analysis-contract.md")
+    );
+    assert!(theme_evaluation_limit.evidence.contains(
+        &"docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md"
+    ));
     assert!(
         descriptors
             .iter()
@@ -1107,6 +1142,16 @@ fn rule_descriptors_expose_stable_rule_metadata() {
     );
     assert_eq!(parser_contract_violation.origin, RuleOrigin::MermanInternal);
     assert!(!parser_contract_violation.fixable);
+    let internal_failure = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == INTERNAL_FAILURE_RULE_ID)
+        .expect("internal failure descriptor");
+    assert_eq!(internal_failure.default_severity, DiagnosticSeverity::Error);
+    assert_eq!(internal_failure.category, DiagnosticCategory::Internal);
+    assert!(internal_failure.default_enabled);
+    assert_eq!(internal_failure.default_profile, AnalysisRuleProfile::Core);
+    assert_eq!(internal_failure.origin, RuleOrigin::MermanInternal);
+    assert!(!internal_failure.fixable);
     assert!(
         descriptors
             .iter()
@@ -1401,12 +1446,22 @@ fn configurable_rule_descriptors_exclude_internal_and_resource_rules() {
     assert!(
         descriptors
             .iter()
+            .all(|descriptor| descriptor.id != INTERNAL_FAILURE_RULE_ID)
+    );
+    assert!(
+        descriptors
+            .iter()
             .all(|descriptor| descriptor.id != RESOURCE_LIMIT_RULE_ID)
     );
     assert!(
         descriptors
             .iter()
             .all(|descriptor| descriptor.id != DOCUMENT_DIAGRAM_LIMIT_RULE_ID)
+    );
+    assert!(
+        descriptors
+            .iter()
+            .all(|descriptor| descriptor.id != THEME_EVALUATION_LIMIT_RULE_ID)
     );
     assert!(
         descriptors
@@ -1488,7 +1543,7 @@ fn rule_catalog_serializes_public_rule_metadata() {
         deprecated_html_labels.tags,
         &[AnalysisDiagnosticTag::Deprecated]
     );
-    for rule_id in [RESOURCE_LIMIT_RULE_ID, DOCUMENT_DIAGRAM_LIMIT_RULE_ID] {
+    for rule_id in PROTECTED_RESOURCE_RULE_IDS {
         let resource_limit = catalog
             .iter()
             .find(|entry| entry.id == rule_id)
@@ -1568,5 +1623,10 @@ fn configurable_rule_catalog_excludes_internal_and_resource_rules() {
         catalog
             .iter()
             .all(|entry| entry.id != DOCUMENT_DIAGRAM_LIMIT_RULE_ID)
+    );
+    assert!(
+        catalog
+            .iter()
+            .all(|entry| entry.id != THEME_EVALUATION_LIMIT_RULE_ID)
     );
 }

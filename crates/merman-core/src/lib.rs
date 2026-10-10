@@ -13,11 +13,6 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
-#[cfg(any(
-    feature = "diagram-mindmap",
-    feature = "diagram-state",
-    feature = "diagram-usecase"
-))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;
@@ -45,6 +40,7 @@ pub mod preprocess;
 pub mod resources;
 pub mod runtime;
 pub mod sanitize;
+pub mod style;
 pub mod svg_security;
 #[doc(hidden)]
 pub mod terminal_text;
@@ -55,6 +51,9 @@ pub mod utils;
 mod yaml_config;
 
 pub use config::MermaidConfig;
+use config::PostDetectionConfigOverlay;
+#[cfg(test)]
+use config::{ConfigOverlayProvenance, ThemeParseBinding};
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
@@ -71,7 +70,10 @@ pub use editor::{
     EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
-pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
+pub use error::{
+    Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind, Result,
+    ThemeEvaluationLimitExceeded,
+};
 pub use family::{
     BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
     DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
@@ -85,13 +87,363 @@ pub use operation::{
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
+pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
+
+/// Workspace-internal compiled theme binding and Mermaid ownership evidence.
+///
+/// This module is intentionally outside Merman's supported API. Its opaque plans and evidence
+/// keep normalized recipe identity and parse binding private to `merman-core`.
+#[doc(hidden)]
+pub mod __private {
+    use std::collections::BTreeMap;
+    use std::fmt;
+    use std::sync::Arc;
+
+    use crate::config::{
+        FrozenThemeCompatibilityField, ThemeCompatibilityFieldKind as ConfigFieldKind,
+        ThemeParseBinding, ThemeParseBindingError,
+    };
+    use crate::{Engine, MermaidConfig, ParseMetadata};
+
+    /// Opaque normalized identity for one compiled theme's parse compatibility contract.
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityRecipe(ThemeParseBinding);
+
+    impl fmt::Debug for ThemeCompatibilityRecipe {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ThemeCompatibilityRecipe")
+                .field("recipe_identity", &self.0.recipe_identity())
+                .finish_non_exhaustive()
+        }
+    }
+
+    /// Invalid bounded Mermaid compatibility input for an internal compiled theme.
+    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+    #[error(transparent)]
+    pub struct ThemeCompatibilityPlanError(#[from] ThemeParseBindingError);
+
+    /// Opaque parse/install plan owned by one compiled diagram theme.
+    #[derive(Clone)]
+    pub struct ThemeCompatibilityPlan {
+        recipe: ThemeCompatibilityRecipe,
+    }
+
+    impl fmt::Debug for ThemeCompatibilityPlan {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ThemeCompatibilityPlan")
+                .field("recipe", &self.recipe)
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl ThemeCompatibilityPlan {
+        /// Builds a bounded parse recipe from compiled Mermaid compatibility input.
+        pub fn try_without_family_overlays(
+            recipe_identity: [u8; 32],
+            compatibility_config: MermaidConfig,
+        ) -> Result<Self, ThemeCompatibilityPlanError> {
+            Ok(Self {
+                recipe: ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
+                    recipe_identity,
+                    compatibility_config,
+                )?),
+            })
+        }
+
+        pub fn recipe(&self) -> &ThemeCompatibilityRecipe {
+            &self.recipe
+        }
+    }
+
+    pub use crate::config::{ErPaintInput, ErPaintInputs, GitGraphPaintInput, GitGraphPaintInputs};
+
+    /// Returns frozen raw Mermaid paint authority for the selected GitGraph family.
+    pub fn gitgraph_paint_inputs(config: &MermaidConfig) -> Option<GitGraphPaintInputs> {
+        config.gitgraph_paint_inputs()
+    }
+
+    /// Returns frozen raw Mermaid paint authority for the selected ER family.
+    pub fn er_paint_inputs(config: &MermaidConfig) -> Option<ErPaintInputs> {
+        config.er_paint_inputs()
+    }
+
+    /// Installs one compiled theme's complete parse compatibility plan on an engine.
+    pub fn install_theme_compatibility(
+        mut engine: Engine,
+        plan: &ThemeCompatibilityPlan,
+    ) -> Engine {
+        engine.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(
+            plan.recipe.0.clone(),
+        ));
+        engine.rebuild_site_config();
+        #[cfg(test)]
+        {
+            engine.fallback_post_detection_config_overlay = None;
+        }
+        engine
+    }
+
+    /// Conceptual Mermaid compatibility field retained after config precedence is finalized.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ThemeCompatibilityFieldKind {
+        Theme,
+        DarkMode,
+        Variable,
+    }
+
+    impl ThemeCompatibilityFieldKind {
+        fn from_config(kind: ConfigFieldKind) -> Self {
+            match kind {
+                ConfigFieldKind::Theme => Self::Theme,
+                ConfigFieldKind::DarkMode => Self::DarkMode,
+                ConfigFieldKind::Variable => Self::Variable,
+            }
+        }
+    }
+
+    /// Frozen identity and surviving physical paths for one conceptual compatibility field.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityFieldEvidence {
+        opaque_id: Arc<str>,
+        kind: ThemeCompatibilityFieldKind,
+        surviving_assignment_paths: Arc<[Arc<str>]>,
+    }
+
+    impl ThemeCompatibilityFieldEvidence {
+        fn from_frozen(field: &FrozenThemeCompatibilityField) -> Self {
+            Self {
+                opaque_id: Arc::from(field.opaque_id()),
+                kind: ThemeCompatibilityFieldKind::from_config(field.kind()),
+                surviving_assignment_paths: field.surviving_paths().to_vec().into(),
+            }
+        }
+
+        pub fn opaque_id(&self) -> &str {
+            &self.opaque_id
+        }
+
+        pub const fn kind(&self) -> ThemeCompatibilityFieldKind {
+            self.kind
+        }
+
+        pub fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
+            self.surviving_assignment_paths
+                .iter()
+                .map(|path| path.as_ref())
+        }
+
+        /// Records one actual physical path accounted by a family terminal consumer.
+        pub fn consume_assignment_path(
+            &self,
+            assignment_path: &str,
+            disposition: ThemeCompatibilityConsumptionDisposition,
+        ) -> Option<ThemeCompatibilityFieldConsumption> {
+            self.surviving_assignment_paths
+                .iter()
+                .find(|path| path.as_ref() == assignment_path)
+                .map(|path| ThemeCompatibilityFieldConsumption {
+                    field_opaque_id: Arc::clone(&self.opaque_id),
+                    assignment_path: Arc::clone(path),
+                    disposition,
+                })
+        }
+
+        /// Records all surviving physical paths for one conceptual field.
+        pub fn consume_all(
+            &self,
+            disposition: ThemeCompatibilityConsumptionDisposition,
+        ) -> impl ExactSizeIterator<Item = ThemeCompatibilityFieldConsumption> + '_ {
+            self.surviving_assignment_paths.iter().map(move |path| {
+                ThemeCompatibilityFieldConsumption {
+                    field_opaque_id: Arc::clone(&self.opaque_id),
+                    assignment_path: Arc::clone(path),
+                    disposition,
+                }
+            })
+        }
+    }
+
+    /// Why a terminal family adapter can retire one compatibility assignment path.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ThemeCompatibilityConsumptionDisposition {
+        ReplacedByTypedSurface,
+        NotReadByFamily,
+    }
+
+    /// One path-level compatibility consumption event tied to a conceptual field identity.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityFieldConsumption {
+        field_opaque_id: Arc<str>,
+        assignment_path: Arc<str>,
+        disposition: ThemeCompatibilityConsumptionDisposition,
+    }
+
+    /// Result of reconciling terminal consumption against frozen conceptual fields.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ThemeCompatibilityReconciliation {
+        remaining_field_count: usize,
+        consumed_field_count: usize,
+    }
+
+    impl ThemeCompatibilityReconciliation {
+        pub const fn remaining_field_count(self) -> usize {
+            self.remaining_field_count
+        }
+
+        pub const fn consumed_field_count(self) -> usize {
+            self.consumed_field_count
+        }
+    }
+
+    /// Opaque parse evidence consumed by the render session admission boundary.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeParseEvidence {
+        recipe: Option<ThemeCompatibilityRecipe>,
+        mermaid_fields: Arc<[ThemeCompatibilityFieldEvidence]>,
+    }
+
+    impl ThemeParseEvidence {
+        pub fn matches_recipe(&self, recipe: Option<&ThemeCompatibilityRecipe>) -> bool {
+            self.recipe.as_ref() == recipe
+        }
+
+        pub fn mermaid_residual_count(&self) -> usize {
+            self.mermaid_fields.len()
+        }
+
+        pub fn mermaid_residual_path_survives(&self, dotted_path: &str) -> bool {
+            self.mermaid_fields.iter().any(|field| {
+                field
+                    .surviving_assignment_paths()
+                    .any(|path| path == dotted_path)
+            })
+        }
+
+        pub fn mermaid_theme_field_survives(&self) -> bool {
+            self.mermaid_fields
+                .iter()
+                .any(|field| field.kind() == ThemeCompatibilityFieldKind::Theme)
+        }
+
+        pub fn mermaid_dark_mode_field_survives(&self) -> bool {
+            self.mermaid_fields
+                .iter()
+                .any(|field| field.kind() == ThemeCompatibilityFieldKind::DarkMode)
+        }
+
+        pub fn mermaid_fields(
+            &self,
+        ) -> impl ExactSizeIterator<Item = &ThemeCompatibilityFieldEvidence> {
+            self.mermaid_fields.iter()
+        }
+
+        /// Reconciles path-level terminal events without double-counting conceptual fields.
+        ///
+        /// Duplicate identical events are idempotent. Conflicting dispositions fail closed, and
+        /// a conceptual field is consumed only when every surviving physical path is covered.
+        pub fn reconcile_mermaid_consumptions<'a>(
+            &self,
+            consumptions: impl IntoIterator<Item = &'a ThemeCompatibilityFieldConsumption>,
+        ) -> ThemeCompatibilityReconciliation {
+            let mut coverage = BTreeMap::<
+                (Arc<str>, Arc<str>),
+                Option<ThemeCompatibilityConsumptionDisposition>,
+            >::new();
+            for consumption in consumptions {
+                let key = (
+                    Arc::clone(&consumption.field_opaque_id),
+                    Arc::clone(&consumption.assignment_path),
+                );
+                match coverage.entry(key) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert(Some(consumption.disposition));
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut entry)
+                        if entry.get() != &Some(consumption.disposition) =>
+                    {
+                        entry.insert(None);
+                    }
+                    std::collections::btree_map::Entry::Occupied(_) => {}
+                }
+            }
+
+            let consumed_field_count = self
+                .mermaid_fields
+                .iter()
+                .filter(|field| {
+                    field.surviving_assignment_paths.iter().all(|path| {
+                        coverage
+                            .get(&(Arc::clone(&field.opaque_id), Arc::clone(path)))
+                            .is_some_and(|disposition| disposition.is_some())
+                    })
+                })
+                .count();
+            ThemeCompatibilityReconciliation {
+                remaining_field_count: self
+                    .mermaid_fields
+                    .len()
+                    .saturating_sub(consumed_field_count),
+                consumed_field_count,
+            }
+        }
+    }
+
+    /// Freezes the compatibility identity and surviving residual evidence of a parsed artifact.
+    pub fn theme_parse_evidence(metadata: &ParseMetadata) -> ThemeParseEvidence {
+        let mermaid_fields = metadata
+            .effective_config
+            .mermaid_compatibility_fields()
+            .map(|fields| {
+                fields
+                    .iter()
+                    .map(ThemeCompatibilityFieldEvidence::from_frozen)
+                    .collect::<Vec<_>>()
+                    .into()
+            })
+            .unwrap_or_else(|| Arc::from(Vec::<ThemeCompatibilityFieldEvidence>::new()));
+        ThemeParseEvidence {
+            recipe: metadata
+                .effective_config
+                .theme_parse_binding()
+                .cloned()
+                .map(ThemeCompatibilityRecipe),
+            mermaid_fields,
+        }
+    }
+
+    /// Reports whether surviving Mermaid input outranks a typed theme default at this path.
+    pub fn config_path_overrides_typed_default(config: &MermaidConfig, dotted_path: &str) -> bool {
+        config.config_path_overrides_typed_default(dotted_path)
+    }
+
+    /// Reports whether site or source configuration explicitly owns this path.
+    pub fn explicit_config_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
+        config.explicit_config_owns_path(dotted_path)
+    }
+
+    /// Resolves Mermaid's bounded `THEME_COLOR_LIMIT` loop count using the same coercion and
+    /// ceiling as theme materialization. A missing value is represented by `None`; callers that
+    /// model an unmaterialized config may apply the Mermaid default before calling this helper.
+    pub fn theme_color_iterations(
+        raw: Option<&serde_json::Value>,
+    ) -> Result<usize, crate::ThemeEvaluationLimitExceeded> {
+        crate::theme::theme_color_iterations(raw)
+    }
+}
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
 
 /// Returns Mermaid theme names supported by the pinned baseline.
 pub fn supported_themes() -> &'static [&'static str] {
-    theme::SUPPORTED_THEME_NAMES
+    MermaidThemeId::NAMES
+}
+
+/// Returns the typed Mermaid theme catalog for the pinned baseline.
+pub fn supported_theme_ids() -> &'static [MermaidThemeId] {
+    MermaidThemeId::ALL
 }
 
 /// Returns metadata names backed by semantic parsers compiled into this build.
@@ -136,7 +488,7 @@ pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 
 fn build_default_effective_config(
     site_config: &MermaidConfig,
-) -> std::result::Result<MermaidConfig, theme_color::ColorError> {
+) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
     let mut effective_config = site_config.clone();
     theme::apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
@@ -150,7 +502,7 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
         !value.is_null()
             && !value
                 .as_str()
-                .is_some_and(|name| name == "null" || theme::SUPPORTED_THEME_NAMES.contains(&name))
+                .is_some_and(|name| name == "null" || MermaidThemeId::NAMES.contains(&name))
     }) && let Some(theme) = generated::upstream_default_config().as_value().get("theme")
     {
         site_config.set_value("theme", theme.clone());
@@ -160,20 +512,28 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
         .get("secure")
         .filter(|value| value.is_array())
         .map(config::clone_value_nonrecursive);
-    target.deep_merge(site_config.as_value());
+    target.deep_merge_explicit(site_config.as_value());
 
     // Merman adds host-level hardening beyond Mermaid's upstream defaults. An explicit site
     // policy is host authority, so it replaces that added list after the source-compatible array
     // merge instead of making the hardening impossible to opt out of.
     if let Some(secure) = explicit_secure_policy {
-        target.set_value("secure", secure);
+        target.set_value_explicit("secure", secure);
     }
 }
 
+fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config: MermaidConfig) {
+    config::mirror_legacy_font_family_into_theme_variables(&mut theme_config);
+    let before = target.clone();
+    target.deep_merge(theme_config.as_value());
+    theme_config.retain_theme_compatibility_paths_applied_after(target, &before);
+    target.adopt_tracking_theme_compatibility_from(&mut theme_config);
+}
+
 fn generated_default_effective_config()
--> std::result::Result<MermaidConfig, theme_color::ColorError> {
+-> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
     static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
-        std::result::Result<MermaidConfig, theme_color::ColorError>,
+        std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     > = std::sync::OnceLock::new();
     DEFAULT_EFFECTIVE_CONFIG
         .get_or_init(|| build_default_effective_config(&generated::default_site_config()))
@@ -217,6 +577,27 @@ pub struct ParseMetadata {
     pub title: Option<String>,
 }
 
+impl ParseMetadata {
+    /// Returns the post-detection compatibility contributions that survived higher-priority config
+    /// layers for this parse operation.
+    #[cfg(test)]
+    pub(crate) fn config_overlay_provenance(&self) -> &ConfigOverlayProvenance {
+        self.effective_config.overlay_provenance()
+    }
+
+    /// Returns the compiled theme recipe bound to this parsed artifact, when present.
+    #[cfg(test)]
+    pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
+        self.effective_config.theme_parse_binding()
+    }
+
+    /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
+    #[cfg(test)]
+    pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
+        self.effective_config.mermaid_compatibility_residual_count()
+    }
+}
+
 /// Headless Mermaid parser engine.
 ///
 /// An engine owns detector/parser registries and a site-level Mermaid configuration. It is cheap
@@ -227,8 +608,15 @@ pub struct Engine {
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
-    site_config_delta: MermaidConfig,
-    default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
+    site_config_overrides: MermaidConfig,
+    theme_compatibility_config: Option<MermaidConfig>,
+    fallback_overlay_explicit_config: MermaidConfig,
+    // Keep the overlay graph finite by giving each owner exactly one bounded lane. The host lane
+    // is evaluated first; the theme compatibility lane can only fill paths the host did not own.
+    post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
+    #[cfg(test)]
+    fallback_post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
+    default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     runtime_policy: runtime::RuntimePolicy,
 }
 
@@ -242,7 +630,12 @@ impl Default for Engine {
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
-            site_config_delta: MermaidConfig::empty_object(),
+            site_config_overrides: MermaidConfig::empty_object(),
+            theme_compatibility_config: None,
+            fallback_overlay_explicit_config: MermaidConfig::empty_object(),
+            post_detection_config_overlay: None,
+            #[cfg(test)]
+            fallback_post_detection_config_overlay: None,
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -322,14 +715,45 @@ impl Engine {
 
     /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
-        if site_config.is_empty_object() {
+        if site_config.is_empty_object() && !site_config.has_tracking_theme_compatibility() {
             return self;
         }
-        // Keep the user's layer separate: an explicit schema-default appearance still
-        // outranks a diagram-specific default.
-        merge_site_config_override(&mut self.site_config_delta, site_config.clone());
-        merge_site_config_override(&mut self.site_config, site_config);
-        self.default_effective_config = build_default_effective_config(&self.site_config);
+        merge_site_config_override(&mut self.site_config_overrides, site_config);
+        self.rebuild_site_config();
+        self
+    }
+
+    /// Installs the lower-priority Mermaid compatibility layer for one compiled theme.
+    ///
+    /// Existing and future host site config remains authoritative over this layer. The metadata
+    /// binding is frozen into parsed artifacts so render sessions cannot consume a parse created
+    /// by another theme recipe.
+    #[cfg(test)]
+    pub(crate) fn with_theme_compatibility(mut self, binding: ThemeParseBinding) -> Self {
+        self.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(binding));
+        self.rebuild_site_config();
+        self
+    }
+
+    /// Replaces the high-priority host-owned overlay lane applied after diagram detection.
+    #[cfg(test)]
+    pub(crate) fn with_post_detection_config_overlay(
+        mut self,
+        overlay: PostDetectionConfigOverlay,
+    ) -> Self {
+        self.post_detection_config_overlay =
+            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
+        self
+    }
+
+    /// Replaces the fallback overlay lane without changing the host-owned lane.
+    #[cfg(test)]
+    pub(crate) fn with_fallback_post_detection_config_overlay(
+        mut self,
+        overlay: PostDetectionConfigOverlay,
+    ) -> Self {
+        self.fallback_post_detection_config_overlay =
+            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
         self
     }
 
@@ -338,14 +762,26 @@ impl Engine {
     /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
     /// defaults without inheriting values from the engine's previous site config.
     pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
-        self.site_config = generated::default_site_config();
-        self.site_config_delta = MermaidConfig::empty_object();
+        self.site_config_overrides = MermaidConfig::empty_object();
         if let Some(site_config) = site_config {
-            merge_site_config_override(&mut self.site_config_delta, site_config.clone());
-            merge_site_config_override(&mut self.site_config, site_config);
+            merge_site_config_override(&mut self.site_config_overrides, site_config);
         }
-        self.default_effective_config = build_default_effective_config(&self.site_config);
+        self.rebuild_site_config();
         self
+    }
+
+    fn rebuild_site_config(&mut self) {
+        let mut site_config = generated::default_site_config();
+        let mut fallback_overlay_explicit_config = MermaidConfig::empty_object();
+        if let Some(theme_config) = self.theme_compatibility_config.clone() {
+            fallback_overlay_explicit_config.deep_merge(theme_config.as_value());
+            merge_theme_compatibility_config(&mut site_config, theme_config);
+        }
+        fallback_overlay_explicit_config.deep_merge(self.site_config_overrides.as_value());
+        merge_site_config_override(&mut site_config, self.site_config_overrides.clone());
+        self.default_effective_config = build_default_effective_config(&site_config);
+        self.site_config = site_config;
+        self.fallback_overlay_explicit_config = fallback_overlay_explicit_config;
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

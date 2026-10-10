@@ -745,6 +745,7 @@ def main() -> int:
 
         step("Flutter Native Assets smoke")
         run([dart, "run", "example/main.dart"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "tool/theme_authoring_smoke.dart"], cwd=FLUTTER_ROOT)
 
         print()
         print("Platform binding verification completed.")

@@ -1,14 +1,16 @@
 //! Compare all diagram SVGs under fixtures.
 
 use crate::XtaskError;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::diagrams::compare_diagram_request;
 use super::{
-    AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    RootDeltaReportLimit, UpstreamDomDriftPolicy, diagram_has_browser_text_layout_residuals,
-    diagram_supports_root_delta_report, dom_mode_label, parse_root_delta_report_limit,
+    AcceptedResidualPolicy, BrowserTextLayoutReceiptKey, CompareEvidence, CompareRequest,
+    CompareRunResult, RootDeltaReportLimit, UpstreamDomDriftPolicy,
+    diagram_has_browser_text_layout_residuals, diagram_supports_root_delta_report, dom_mode_label,
+    parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -29,7 +31,9 @@ fn compare_selected_diagram_svgs(
     let diagrams = diagram_selection.diagrams;
 
     let invocation_options = options.invocation_options();
-    let mut failures = CompareAllFailures::new(&options);
+    let expected_browser_text_layout_receipt_keys =
+        options.expected_browser_text_layout_receipt_keys()?;
+    let mut failures = CompareAllFailures::new(&options, expected_browser_text_layout_receipt_keys);
 
     for diagram in diagrams {
         println!("\n== compare {diagram} ==");
@@ -148,6 +152,37 @@ impl CompareAllOptions {
             root_report_limit: self.root_report_limit,
         }
     }
+
+    fn expected_browser_text_layout_receipt_keys(
+        &self,
+    ) -> Result<Option<BTreeSet<BrowserTextLayoutReceiptKey>>, XtaskError> {
+        if !self.check_dom
+            || self.upstream_dom_drift_policy
+                != UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+            || self.filter.is_some()
+            || !self.only_diagrams.is_empty()
+            || !self.skip_diagrams.is_empty()
+        {
+            return Ok(None);
+        }
+
+        let modes = if !self.dom_modes.is_empty() {
+            self.dom_modes.clone()
+        } else if let Some(mode) = self.dom_mode.as_deref() {
+            vec![
+                mode.parse::<crate::svgdom::DomMode>()
+                    .map_err(|_| XtaskError::Usage)?,
+            ]
+        } else {
+            // Per-family default modes differ, so only explicit full-matrix mode selections can
+            // prove that every selected catalog comparison was exercised.
+            return Ok(None);
+        };
+
+        super::expected_browser_text_layout_receipt_keys(&modes)
+            .map(Some)
+            .map_err(XtaskError::SvgCompareFailed)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,16 +224,21 @@ impl CompareAllDiagramSelection {
 struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
     check_dom: bool,
+    expected_browser_text_layout_receipt_keys: Option<BTreeSet<BrowserTextLayoutReceiptKey>>,
     evidence: CompareEvidence,
     failures: Vec<String>,
 }
 
 impl CompareAllFailures {
-    fn new(options: &CompareAllOptions) -> Self {
+    fn new(
+        options: &CompareAllOptions,
+        expected_browser_text_layout_receipt_keys: Option<BTreeSet<BrowserTextLayoutReceiptKey>>,
+    ) -> Self {
         Self {
             skip_unmatched_filter_messages: options.filter.is_some()
                 && options.only_diagrams.is_empty(),
             check_dom: options.check_dom,
+            expected_browser_text_layout_receipt_keys,
             evidence: CompareEvidence::default(),
             failures: Vec::new(),
         }
@@ -231,6 +271,9 @@ impl CompareAllFailures {
             self.evidence
                 .gate_failures("compare-all selected families", self.check_dom),
         );
+        if let Some(failure) = self.browser_text_layout_receipt_coverage_failure() {
+            self.failures.push(failure);
+        }
 
         if self.failures.is_empty() {
             Ok(())
@@ -251,6 +294,32 @@ impl CompareAllFailures {
 
     fn should_skip_unmatched_filter(&self, msg: &str) -> bool {
         self.skip_unmatched_filter_messages && msg.contains("no .mmd fixtures matched under ")
+    }
+
+    fn browser_text_layout_receipt_coverage_failure(&self) -> Option<String> {
+        let expected = self.expected_browser_text_layout_receipt_keys.as_ref()?;
+        let encountered = self.evidence.encountered_browser_text_layout_receipt_keys();
+        let missing = expected.difference(encountered).collect::<Vec<_>>();
+        if missing.is_empty() {
+            return None;
+        }
+
+        let preview = missing
+            .iter()
+            .take(20)
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let remainder = missing.len().saturating_sub(20);
+        let suffix = (remainder > 0)
+            .then(|| format!(", and {remainder} more"))
+            .unwrap_or_default();
+        Some(format!(
+            "browser text layout receipt coverage mismatch for the unfiltered compare-all run: expected={} encountered={} missing={} [{preview}{suffix}]; remove receipts for comparisons no longer in the matrix or restore the missing fixture/mode execution",
+            expected.len(),
+            encountered.len(),
+            missing.len(),
+        ))
     }
 }
 
@@ -603,13 +672,93 @@ mod tests {
     }
 
     #[test]
+    fn full_explicit_dom_suite_requires_every_browser_text_receipt_comparison() {
+        let options = CompareAllOptions {
+            check_dom: true,
+            dom_modes: vec![
+                crate::svgdom::DomMode::Structure,
+                crate::svgdom::DomMode::Parity,
+                crate::svgdom::DomMode::ParityRoot,
+            ],
+            upstream_dom_drift_policy: UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+            ..Default::default()
+        };
+
+        let expected = options
+            .expected_browser_text_layout_receipt_keys()
+            .expect("receipt catalog should load")
+            .expect("full explicit suite should require receipt coverage");
+        let expected_count = expected.len();
+
+        let failures = CompareAllFailures::new(&options, Some(expected));
+        let failure = failures
+            .browser_text_layout_receipt_coverage_failure()
+            .expect("missing receipt comparisons must fail");
+        let expected_failure = format!(
+            "expected={} encountered=0 missing={}",
+            expected_count, expected_count
+        );
+        assert!(failure.contains(&expected_failure), "{failure}");
+    }
+
+    #[test]
+    fn receipt_coverage_compares_exact_fixture_mode_identities() {
+        let options = CompareAllOptions::default();
+        let first =
+            BrowserTextLayoutReceiptKey::new("sequence", "first", crate::svgdom::DomMode::Parity);
+        let second =
+            BrowserTextLayoutReceiptKey::new("sequence", "second", crate::svgdom::DomMode::Parity);
+        let mut failures = CompareAllFailures::new(
+            &options,
+            Some(BTreeSet::from([first.clone(), second.clone()])),
+        );
+        failures
+            .evidence
+            .record_encountered_browser_text_layout_receipt_key(first.clone());
+
+        let failure = failures
+            .browser_text_layout_receipt_coverage_failure()
+            .expect("one missing identity must fail");
+        assert!(failure.contains("expected=2 encountered=1 missing=1"));
+        assert!(!failure.contains(&first.to_string()), "{failure}");
+        assert!(failure.contains(&second.to_string()), "{failure}");
+    }
+
+    #[test]
+    fn filtered_or_family_scoped_runs_do_not_require_global_receipt_consumption() {
+        for options in [
+            CompareAllOptions {
+                check_dom: true,
+                dom_mode: Some("parity".to_string()),
+                filter: Some("smoke".to_string()),
+                upstream_dom_drift_policy: UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                ..Default::default()
+            },
+            CompareAllOptions {
+                check_dom: true,
+                dom_mode: Some("parity".to_string()),
+                only_diagrams: vec!["sequence".to_string()],
+                upstream_dom_drift_policy: UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts,
+                ..Default::default()
+            },
+        ] {
+            assert_eq!(
+                options
+                    .expected_browser_text_layout_receipt_keys()
+                    .expect("scoped run should not read the catalog"),
+                None
+            );
+        }
+    }
+
+    #[test]
     fn compare_all_failures_skip_unmatched_filter_only_for_global_filtered_runs() {
         let msg = "no .mmd fixtures matched under fixtures";
         let global_options = CompareAllOptions {
             filter: Some("missing".to_string()),
             ..Default::default()
         };
-        let global = CompareAllFailures::new(&global_options);
+        let global = CompareAllFailures::new(&global_options, None);
         assert!(global.should_skip_unmatched_filter(msg));
 
         let targeted_options = CompareAllOptions {
@@ -617,14 +766,14 @@ mod tests {
             only_diagrams: vec!["info".to_string()],
             ..Default::default()
         };
-        let targeted = CompareAllFailures::new(&targeted_options);
+        let targeted = CompareAllFailures::new(&targeted_options, None);
         assert!(!targeted.should_skip_unmatched_filter(msg));
     }
 
     #[test]
     fn compare_all_failures_records_plain_svg_compare_failures() {
         let options = CompareAllOptions::default();
-        let mut failures = CompareAllFailures::new(&options);
+        let mut failures = CompareAllFailures::new(&options, None);
 
         failures.record(
             "info",
@@ -639,7 +788,7 @@ mod tests {
             ["info: svg compare failed:\ndom mismatch"]
         );
 
-        let mut failures = CompareAllFailures::new(&options);
+        let mut failures = CompareAllFailures::new(&options, None);
         failures.record(
             "info",
             Err(CompareRunFailure::without_evidence(
@@ -678,7 +827,7 @@ mod tests {
                     dom_mode: Some(mode.to_string()),
                     ..Default::default()
                 };
-                let mut failures = CompareAllFailures::new(&options);
+                let mut failures = CompareAllFailures::new(&options, None);
                 failures.record(
                     "sequence",
                     Err(CompareRunFailure::without_evidence(

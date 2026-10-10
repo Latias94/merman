@@ -16,6 +16,7 @@ import {
   assertLegalProjection,
   assertPackageManifest,
 } from "./prepack-check.mjs";
+import { npmPackRecord } from "../../../scripts/npm-command.mjs";
 import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import {
   WASM_RUNTIME_TOP_LEVEL_FILES,
@@ -37,6 +38,14 @@ test("complete SVG renderer is admitted by capability boundary instead of slim-s
         [...checked, { descriptor: { id: "editor" }, packageBytes: 95 }],
       ),
     /at least 15%/,
+  );
+});
+
+test("Web package verification accepts npm 11 pack metadata", () => {
+  const record = { name: "@mermanjs/web", filename: "mermanjs-web.tgz", files: [] };
+  assert.deepEqual(
+    npmPackRecord(JSON.stringify([record]), record.name, { allowNpm11: true }),
+    record,
   );
 });
 

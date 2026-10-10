@@ -61,6 +61,14 @@ Published alpha sections below remain historical records. Their intermediate fea
 - Kept both network icons and the Rustdoc authoring command in default CLI builds and official archives after reviewing their costs. Narrow builds can select different capabilities; the [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) separates executable size, installed footprint, and cold-process startup evidence.
 - Diagram-local colors and fonts pass through a common CSS-value boundary. Safe `themeVariables` and fonts work from directives/frontmatter, while host security policy still controls `themeCSS` and locked fields. Presentation profiles, Mermaid themes, host site config, and SVG pipelines have separate owners. #28 #138
 
+### Theme integration
+
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
+- Advanced binding Options JSON to schema `3`, UniFFI to API `7`, and the Typst theme operation surface to ABI `3`; native C, Android, Web/WASM, and Node transport boundaries remain unchanged.
+- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
+- Added theme resource budgets, including `max_prepared_text_retained_bytes`, and preserved the exact artifact/family/output qualification scope for alpha presets.
+
 ### Fixed
 
 - Made unsupported-parser diagnostics suggest the owning `diagram-*` or `all-diagrams` feature for known built-ins, while preserving structured codes and unknown/custom failures.
@@ -96,6 +104,10 @@ Published alpha sections below remain historical records. Their intermediate fea
 
 Thanks to @betyourluck, @can1357, @colindean, @daikisuyama, @Ginger-Beard, @ixmoyren, @llimllib, @lovasoa, @lucaschoeneberg, @makenowjust, @manixate, @mrueg, and @vlasky for contributions across the 0.8 release line, and to @aurabindo for the Flowchart browser-clipping report. Published alpha entries retain the contribution-specific history.
 
+- Accept Mermaid Unicode node IDs in Flowchart, including Japanese and accented names, and preserve UTF-8 boundaries when recovering from invalid characters.
+
+- Removed per-container Markdown prefix copies and repeated negative include-line scans, avoiding quadratic memory and suffix-scanning work on deeply nested or heavily formatted prose without diagrams.
+- Preserved conditional `cfg_attr` documentation in its original order during delayed rustdoc macro expansion, including nested conditions.
 ## [0.8.0-alpha.7] - 2026-09-30
 
 Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the compatibility baseline to Mermaid 12.0.0, adds Agentflow and Usecase, and makes diagram-family selection explicit for custom Rust builds. This is a breaking prerelease; see the [alpha.6 to alpha.7 upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating source dependencies, generated bindings, or snapshots. Package channels publish independently.

@@ -7,9 +7,11 @@ import {
   createWorkspaceShareUrl,
   decodeShareHash,
   encodeShareHash,
-  migrateLegacyHostTheme,
   SHARE_LIMITS,
+  SHARE_THEME_RECIPE_BYTES,
+  SHARE_V3_LIMITS,
   WORKSPACE_V2_DEFAULTS,
+  WORKSPACE_V3_DEFAULTS,
   type ShareCommandEnvironment,
 } from "./share.ts";
 import {
@@ -23,8 +25,8 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   mermaidConfig: '{"look":"neo"}',
   diagramTheme: "forest",
   diagramFont: "arial",
-  presentationProfileId: "future-profile",
-  presentationThemePresetId: "future-theme",
+  themePresetId: "future-theme",
+  themeRecipeJson: null,
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -34,6 +36,119 @@ test("round-trips one complete workspace snapshot through the s2 envelope", () =
   assert.match(hash, /^#s2:[A-Za-z0-9_-]+$/u);
   assert.deepEqual(decodeShareHash(hash), COMPLETE_SNAPSHOT);
   assert.equal(Object.hasOwn(decodeS2Payload(hash), "renderViewportMode"), false);
+});
+
+const CUSTOM_THEME_RECIPE = JSON.stringify({
+  schema_version: 1,
+  kind: "definition",
+  definition: { tokens: { primaryColor: "#ff66aa" } },
+});
+
+test("round-trips a custom recipe through s3 without changing s2 links", () => {
+  const snapshot = {
+    ...COMPLETE_SNAPSHOT,
+    themePresetId: null,
+    themeRecipeJson: CUSTOM_THEME_RECIPE,
+  };
+  const hash = encodeShareHash(snapshot);
+  assert.match(hash, /^#s3:[A-Za-z0-9_-]+$/u);
+  assert.deepEqual(decodeShareHash(hash), snapshot);
+  assert.equal(decodeShareHash(s2Payload({}))?.themeRecipeJson, null);
+  assert.match(encodeShareHash(COMPLETE_SNAPSHOT), /^#s2:/u);
+  assert.equal(
+    decodeShareHash(s2Payload({ themeRecipeJson: CUSTOM_THEME_RECIPE })),
+    null,
+  );
+});
+
+test("s3 defaults do not inherit later application or caller theme choices", () => {
+  assert.equal(Object.isFrozen(WORKSPACE_V3_DEFAULTS), true);
+  assert.notEqual(WORKSPACE_V3_DEFAULTS, WORKSPACE_V2_DEFAULTS);
+  const callerDefaults = {
+    ...COMPLETE_SNAPSHOT,
+    themePresetId: null,
+    themeRecipeJson: CUSTOM_THEME_RECIPE,
+  };
+  assert.deepEqual(
+    decodeShareHash(s3Payload({}), callerDefaults),
+    WORKSPACE_V3_DEFAULTS,
+  );
+  assert.equal(
+    decodeShareHash(encodedPayload({
+      code: "flowchart LR\nA --> B",
+      theme: "default",
+    }), callerDefaults)?.themeRecipeJson,
+    null,
+  );
+});
+
+test("rejects mixed preset and custom recipe selections on encode and decode", () => {
+  assert.throws(
+    () =>
+      encodeShareHash({
+        ...COMPLETE_SNAPSHOT,
+        themeRecipeJson: CUSTOM_THEME_RECIPE,
+      }),
+    /share URL contract/u,
+  );
+  assert.equal(
+    decodeShareHash(s3Payload({
+      themePresetId: "brutalist",
+      themeRecipeJson: CUSTOM_THEME_RECIPE,
+    })),
+    null,
+  );
+});
+
+test("bounds custom recipes by UTF-8 bytes and checks only their envelope", () => {
+  const recipeLimit = SHARE_THEME_RECIPE_BYTES;
+  assert.equal(recipeLimit, 256 * 1024);
+  const base = JSON.stringify({
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: {},
+  });
+  const maximumRecipe = base + " ".repeat(recipeLimit - base.length);
+  const snapshot = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    themeRecipeJson: maximumRecipe,
+  };
+  assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
+  for (const themeRecipeJson of [
+    maximumRecipe + " ",
+    base + "中".repeat(Math.ceil(recipeLimit / 3)),
+    "null",
+    "[]",
+    "not-json",
+    JSON.stringify({ schema_version: 2, kind: "definition" }),
+    JSON.stringify({ schema_version: 1, kind: "unknown" }),
+  ]) {
+    assert.throws(
+      () => encodeShareHash({ ...snapshot, themeRecipeJson }),
+      /share URL contract/u,
+    );
+    assert.equal(decodeShareHash(s3Payload({ themeRecipeJson })), null);
+  }
+});
+
+test("grants the additional decompression budget only to s3", () => {
+  const payload = {
+    code: "a".repeat(SHARE_LIMITS.sourceBytes),
+    config: "b".repeat(SHARE_LIMITS.configBytes),
+    themeRecipeJson: CUSTOM_THEME_RECIPE + " ".repeat(128 * 1024),
+  };
+  assert.notEqual(decodeShareHash(s3Payload(payload)), null);
+  assert.equal(decodeShareHash(s2Payload(payload)), null);
+  assert.equal(
+    decodeShareHash(`#s3:${"A".repeat(SHARE_V3_LIMITS.encodedBytes + 1)}`),
+    null,
+  );
+  assert.equal(
+    decodeShareHash(s3Payload({
+      ignored: "x".repeat(SHARE_V3_LIMITS.jsonBytes),
+    })),
+    null,
+  );
 });
 
 test("keeps the complete v2 defaults immutable and independent from caller defaults", () => {
@@ -69,65 +184,48 @@ test("round-trips Unicode without changing byte-oriented validation", () => {
   assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
 });
 
-test("migrates legacy host theme values into a complete defaulted snapshot", () => {
-  const cases = [
-    ["editor-light", "editor-light", null, "resvg-safe"],
-    ["merman-modern", null, "merman-modern", "parity"],
-    ["none", null, null, "parity"],
-    ["mermaid", null, null, "parity"],
-    ["future-theme", "future-theme", null, "parity"],
-  ] as const;
-
-  for (const [legacy, themePreset, profile, pipeline] of cases) {
-    assert.deepEqual(decodeShareHash(legacyHash(legacy)), {
-      ...DEFAULT_WORKSPACE_SNAPSHOT,
-      code: "flowchart TD\nA",
-      presentationProfileId: profile,
-      presentationThemePresetId: themePreset,
-      svgPipeline: pipeline,
-    });
-  }
-});
-
-test("keeps the legacy presentation migration callable as a pure contract", () => {
-  assert.deepEqual(migrateLegacyHostTheme("editor-light"), {
-    presentationProfileId: null,
-    presentationThemePresetId: "editor-light",
-    svgPipeline: "resvg-safe",
-  });
-});
-
-test("prefers present current fields and defaults omitted optional fields", () => {
-  assert.deepEqual(
+test("rejects the removed alpha host-theme share field", () => {
+  assert.equal(
     decodeShareHash(
       encodedPayload({
         code: "flowchart TD\nA",
         theme: "default",
         hostThemePreset: "editor-light",
-        presentationProfileId: "future-profile",
-      })
+      }),
+    ),
+    null,
+  );
+});
+
+test("uses present current fields and defaults omitted optional fields", () => {
+  assert.deepEqual(
+    decodeShareHash(
+      encodedPayload({
+        code: "flowchart TD\nA",
+        theme: "default",
+        themePresetId: "future-theme",
+      }),
     ),
     {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: "flowchart TD\nA",
-      presentationProfileId: "future-profile",
-    }
+      themePresetId: "future-theme",
+    },
   );
 });
 
-test("inherits caller defaults when every optional presentation field is absent", () => {
+test("inherits caller defaults when every optional render field is absent", () => {
   const defaults: WorkspaceSnapshot = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
-    presentationProfileId: "default-profile",
-    presentationThemePresetId: "default-theme",
+    themePresetId: "default-theme",
     svgPipeline: "readable",
   };
   assert.deepEqual(
     decodeShareHash(
       encodedPayload({ code: "flowchart TD\nA", theme: "forest" }),
-      defaults
+      defaults,
     ),
-    { ...defaults, code: "flowchart TD\nA", diagramTheme: "forest" }
+    { ...defaults, code: "flowchart TD\nA", diagramTheme: "forest" },
   );
 });
 
@@ -171,8 +269,7 @@ test("rejects an invalid required or present optional field as one payload", () 
     { ...valid, textMeasurementMode: "approximate" },
     { ...valid, diagramFont: "comic-sans" },
     { ...valid, renderViewportMode: "fluid" },
-    { ...valid, presentationProfileId: "" },
-    { ...valid, presentationThemePresetId: false },
+    { ...valid, themePresetId: false },
     { ...valid, hostThemePreset: "" },
   ];
 
@@ -187,9 +284,9 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
       encodedPayload({
         code: "x".repeat(SHARE_LIMITS.sourceBytes + 1),
         theme: "default",
-      })
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     decodeShareHash(
@@ -197,9 +294,9 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
         code: "flowchart TD\nA",
         config: "x".repeat(SHARE_LIMITS.configBytes + 1),
         theme: "default",
-      })
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     decodeShareHash(
@@ -208,25 +305,24 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
         config: "{}",
         theme: "default",
         ignored: "x".repeat(SHARE_LIMITS.jsonBytes),
-      })
+      }),
     ),
-    null
+    null,
   );
 });
 
-test("rejects oversized current and legacy presentation IDs", () => {
+test("rejects an oversized current theme preset ID", () => {
   const oversizedId = "x".repeat(SHARE_LIMITS.idBytes + 1);
   assert.equal(
     decodeShareHash(
       encodedPayload({
         code: "flowchart TD\nA",
         theme: "default",
-        presentationProfileId: oversizedId,
-      })
+        themePresetId: oversizedId,
+      }),
     ),
-    null
+    null,
   );
-  assert.equal(decodeShareHash(legacyHash(oversizedId)), null);
 });
 
 test("refuses to serialize a workspace that cannot be decoded", () => {
@@ -236,7 +332,7 @@ test("refuses to serialize a workspace that cannot be decoded", () => {
         ...COMPLETE_SNAPSHOT,
         code: "x".repeat(SHARE_LIMITS.sourceBytes + 1),
       }),
-    /share URL contract/u
+    /share URL contract/u,
   );
 });
 
@@ -318,7 +414,7 @@ test("propagates clipboard permission failures without another side effect", asy
         throw new Error("denied");
       },
     }),
-    /denied/u
+    /denied/u,
   );
 });
 
@@ -338,18 +434,6 @@ test("malformed Base64, URI encoding, and JSON fail closed", () => {
   assert.equal(decodeShareHash(btoa(encodeURIComponent("not-json"))), null);
 });
 
-function legacyHash(
-  hostThemePreset: string,
-  extra: Record<string, unknown> = {}
-): string {
-  return encodedPayload({
-    code: "flowchart TD\nA",
-    theme: "default",
-    hostThemePreset,
-    ...extra,
-  });
-}
-
 function encodedPayload(payload: Record<string, unknown>): string {
   return btoa(encodeURIComponent(JSON.stringify(payload)));
 }
@@ -359,8 +443,7 @@ function legacySnapshotHash(snapshot: WorkspaceSnapshot): string {
     code: snapshot.code,
     theme: snapshot.diagramTheme,
     config: snapshot.mermaidConfig,
-    presentationThemePresetId: snapshot.presentationThemePresetId,
-    presentationProfileId: snapshot.presentationProfileId,
+    themePresetId: snapshot.themePresetId,
     renderViewportMode: "host",
     svgPipeline: snapshot.svgPipeline,
     textMeasurementMode: snapshot.textMeasurementMode,
@@ -401,4 +484,8 @@ function deterministicNoise(length: number): string {
     characters[index] = String.fromCharCode(32 + (state % 95));
   }
   return characters.join("");
+}
+
+function s3Payload(payload: Record<string, unknown>): string {
+  return s2Payload(payload).replace("#s2:", "#s3:");
 }

@@ -1,0 +1,127 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "Service"
+    ],
+    "actors": {
+      "Service": {
+        "name": "Service",
+        "description": "Service",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "User": {
+        "name": "User",
+        "description": "User",
+        "type": "actor",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "Service",
+        "type": 0,
+        "message": "Submit request",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Service",
+        "to": null,
+        "type": 17,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "User",
+        "to": "Service",
+        "type": 2,
+        "message": "Request accepted",
+        "wrap": false,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "type": 10,
+        "message": "Poll status",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Service",
+        "to": "User",
+        "type": 1,
+        "message": "Processing",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "type": 11,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Service",
+        "to": "User",
+        "type": 1,
+        "message": "Complete",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Service",
+        "to": null,
+        "type": 18,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "User",
+          "Service"
+        ],
+        "message": "Request accepted",
+        "placement": 2,
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

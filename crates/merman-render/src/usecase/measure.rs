@@ -17,7 +17,7 @@ pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
         .unwrap_or(fallback)
 }
 
-pub(crate) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
+pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
     let Some(actor) = actor else {
         return TextStyle {
             font_family: config
@@ -57,7 +57,7 @@ pub(crate) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
     }
 }
 
-pub(crate) fn styles(
+fn styles(
     model: &UsecaseDiagramRenderModel,
     classes: &[String],
     inline: &[String],
@@ -82,6 +82,19 @@ pub(crate) fn styles(
         }
     }
     values
+}
+
+fn shape_style(styles: &indexmap::IndexMap<String, String>) -> String {
+    styles
+        .iter()
+        .filter(|(key, _)| !crate::mermaid_style::is_label_style_key(key))
+        .map(|(key, value)| {
+            format!(
+                "{key}:{} !important;",
+                value.trim_end_matches("!important").trim()
+            )
+        })
+        .collect()
 }
 
 fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> TextStyle {
@@ -307,6 +320,7 @@ fn escaped_markdown(text: &str) -> String {
 pub(super) fn measure(
     model: &UsecaseDiagramRenderModel,
     config: &Value,
+    css_binding: &UsecaseCssBinding,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
@@ -324,7 +338,12 @@ pub(super) fn measure(
         {
             work.charge_adapter(1)?;
             let css = styles(model, &node.classes, &node.styles);
-            let style = styled(text_style(config, Some(actor)), &css);
+            let base = if actor {
+                &css_binding.actor_font
+            } else {
+                &css_binding.usecase_font
+            };
+            let style = styled(base.clone(), &css);
             let label_context = LabelContext {
                 config: &sanitize_config,
                 measurer,
@@ -405,6 +424,7 @@ pub(super) fn measure(
             };
             nodes.push(UsecaseNodePlan {
                 id: node.id.clone(),
+                source_style: shape_style(&css),
                 parent: node.parent_id.clone(),
                 source_label,
                 label: main,
@@ -420,7 +440,7 @@ pub(super) fn measure(
             });
         }
     }
-    let generic = text_style(config, None);
+    let generic = &css_binding.generic_font;
     for note in &model.notes {
         work.charge_adapter(1)?;
         let css = styles(model, &[], &[]);
@@ -441,6 +461,7 @@ pub(super) fn measure(
         );
         nodes.push(UsecaseNodePlan {
             id: note.id.clone(),
+            source_style: shape_style(&css),
             parent: None,
             width: main.metrics.width + 20.0,
             height: main.metrics.height + 20.0,
@@ -515,6 +536,7 @@ pub(super) fn measure(
             .unwrap_or(1.0);
         nodes.push(UsecaseNodePlan {
             id: node.id.clone(),
+            source_style: shape_style(&css),
             parent: None,
             source_label: main.text.clone(),
             label: main,
@@ -555,6 +577,7 @@ pub(super) fn measure(
         );
         nodes.push(UsecaseNodePlan {
             id: boundary.id.clone(),
+            source_style: shape_style(&css),
             parent: None,
             width: main.metrics.width + 20.0,
             height: main.metrics.height + if boundary.package { 50.0 } else { 40.0 },
@@ -618,6 +641,7 @@ pub(super) fn measure(
             }
         };
         edges.push(UsecaseEdgePlan {
+            source_style: shape_style(&css),
             original_id: None,
             self_loop_node: None,
             dagre_recursive: false,
@@ -644,6 +668,7 @@ pub(super) fn measure(
     for note in &model.notes {
         work.charge_adapter(1)?;
         edges.push(UsecaseEdgePlan {
+            source_style: String::new(),
             original_id: None,
             self_loop_node: None,
             dagre_recursive: false,
@@ -694,7 +719,10 @@ mod tests {
     use super::*;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
-    use merman_core::diagrams::usecase::{UsecaseActorType, UsecaseNode};
+    use merman_core::diagrams::usecase::{
+        UsecaseActorType, UsecaseBoundary, UsecaseClassDef, UsecaseNode, UsecaseNote,
+        UsecaseRelationship,
+    };
     use serde_json::json;
     use std::collections::BTreeMap;
 
@@ -717,6 +745,179 @@ mod tests {
         OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::default(),
         )))
+    }
+
+    fn styled_model() -> UsecaseDiagramRenderModel {
+        let mut model = model();
+        model.class_defs = vec![
+            UsecaseClassDef {
+                id: "default".into(),
+                styles: vec![
+                    "fill:#111111".into(),
+                    "stroke:#222222".into(),
+                    "color:#123456 !important".into(),
+                    "font-size:20px".into(),
+                ],
+            },
+            UsecaseClassDef {
+                id: "accent".into(),
+                styles: vec!["stroke:#333333".into(), "stroke-width:2px".into()],
+            },
+        ];
+        for id in ["A", "B"] {
+            model.nodes.push(UsecaseNode {
+                id: id.into(),
+                label: id.into(),
+                label_type: UsecaseLabelType::Text,
+                kind: UsecaseNodeKind::UseCaseEllipse,
+                actor_type: UsecaseActorType::Normal,
+                icon: None,
+                parent_id: None,
+                business: false,
+                stereotype: None,
+                classes: vec!["accent".into()],
+                styles: vec![
+                    "fill:var(--panel) !important".into(),
+                    "stroke-width:7px".into(),
+                    "fill: red; stroke: blue".into(),
+                ],
+            });
+        }
+        model.relationships.push(UsecaseRelationship {
+            id: "edge".into(),
+            explicit_id: true,
+            source: "A".into(),
+            target: "B".into(),
+            relationship_type: UsecaseRelationshipType::Association,
+            arrow_type: UsecaseArrowType::Point,
+            label: None,
+            label_type: None,
+            dotted: false,
+            minlen: 1,
+            classes: vec!["accent".into()],
+            styles: vec!["stroke-width:7px !important".into()],
+            animate: false,
+            animation: None,
+        });
+        model
+    }
+
+    #[test]
+    fn source_styles_are_prepared_for_shapes_boundaries_and_unlabelled_edges() {
+        let mut model = styled_model();
+        model.nodes[0].parent_id = Some("boundary".into());
+        model.boundaries.push(UsecaseBoundary {
+            id: "boundary".into(),
+            label: "Boundary".into(),
+            label_type: UsecaseLabelType::Text,
+            members: vec!["A".into()],
+            package: true,
+            classes: vec!["accent".into()],
+            styles: vec!["fill:#444444".into()],
+        });
+        model.notes.push(UsecaseNote {
+            id: "note".into(),
+            target: "A".into(),
+            label: "Note".into(),
+            label_type: UsecaseLabelType::Text,
+        });
+        model.json_nodes.push(UsecaseJsonNode {
+            id: "json".into(),
+            value: json!({"key": 1}),
+            property_order: BTreeMap::new(),
+            string_encoding: None,
+            non_finite_numbers: BTreeMap::new(),
+            classes: vec!["accent".into()],
+            styles: Vec::new(),
+        });
+        for html in [false, true] {
+            let config = json!({"htmlLabels": html});
+            let (nodes, edges) = measure(
+                &model,
+                &config,
+                &UsecaseCssBinding::new(&config),
+                &DeterministicTextMeasurer::default(),
+                None,
+                &mut work(),
+            )
+            .unwrap();
+            let node = nodes.iter().find(|node| node.id == "A").unwrap();
+            assert_eq!(
+                node.source_style,
+                "fill:var(--panel) !important;stroke:#333333 !important;stroke-width:7px !important;"
+            );
+            assert_eq!(node.label.styles["color"], "#123456 !important");
+            assert_eq!(node.label.style.font_size, 20.0);
+            assert!(!node.source_style.contains("color:"));
+            assert!(!node.source_style.contains("font-size:"));
+            let boundary = nodes.iter().find(|node| node.is_boundary).unwrap();
+            assert_eq!(
+                boundary.source_style,
+                "fill:#444444 !important;stroke:#333333 !important;stroke-width:2px !important;"
+            );
+            assert_eq!(
+                nodes
+                    .iter()
+                    .find(|node| node.id == "note")
+                    .unwrap()
+                    .source_style,
+                "fill:#111111 !important;stroke:#222222 !important;"
+            );
+            assert_eq!(
+                nodes
+                    .iter()
+                    .find(|node| node.id == "json")
+                    .unwrap()
+                    .source_style,
+                "fill:#111111 !important;stroke:#333333 !important;stroke-width:2px !important;"
+            );
+            assert!(edges[0].label.is_none());
+            assert_eq!(
+                edges[0].source_style,
+                "fill:#111111 !important;stroke:#333333 !important;stroke-width:7px !important;"
+            );
+            let note_edge = edges.iter().find(|edge| edge.internal).unwrap();
+            assert!(note_edge.source_style.is_empty());
+            assert!(note_edge.dotted);
+        }
+    }
+
+    #[test]
+    fn self_loop_projection_keeps_original_prepared_style_on_all_segments() {
+        let mut model = styled_model();
+        model.relationships[0].target = "A".into();
+        let config = json!({});
+        let css_binding = UsecaseCssBinding::new(&config);
+        let mut work = work();
+        let (mut nodes, mut edges) = measure(
+            &model,
+            &config,
+            &css_binding,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &mut work,
+        )
+        .unwrap();
+        let style = edges[0].source_style.clone();
+        super::super::dagre::expand_self_loops(
+            &mut nodes,
+            &mut edges,
+            &css_binding.generic_font,
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(edges.len(), 3);
+        for edge in &edges {
+            assert_eq!(edge.original_id.as_deref(), Some("edge"));
+            assert_eq!(edge.self_loop_node.as_deref(), Some("A"));
+            assert_eq!(edge.source_style, style);
+        }
+        let helpers = nodes
+            .iter()
+            .filter(|node| node.dagre_helper)
+            .collect::<Vec<_>>();
+        assert_eq!(helpers.len(), 2);
+        assert!(helpers.iter().all(|node| node.source_style.is_empty()));
     }
 
     #[test]
@@ -764,6 +965,7 @@ mod tests {
         let (small, _) = measure(
             &model,
             &json!({"usecase": {"minNodeWidth": 900}}),
+            &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
             &measurer,
             None,
             &mut work(),
@@ -772,6 +974,7 @@ mod tests {
         let (large, _) = measure(
             &model,
             &json!({"usecase": {"actorFontSize": 40}}),
+            &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
             &measurer,
             None,
             &mut work(),
@@ -799,6 +1002,7 @@ mod tests {
         let (nodes, _) = measure(
             &model,
             &json!({}),
+            &UsecaseCssBinding::new(&json!({})),
             &DeterministicTextMeasurer::default(),
             None,
             &mut work(),

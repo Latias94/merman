@@ -152,10 +152,11 @@ export function normalizeBindingOptions(value = {}) {
     }
     if (
       normalized.environment.text_measurement !== undefined &&
+      normalized.environment.text_measurement !== null &&
       normalized.environment.text_measurement !== "deterministic"
     ) {
       throw new RangeError(
-        "bindingOptions.environment.text_measurement must be `deterministic`.",
+        "bindingOptions.environment.text_measurement must be `deterministic` or null.",
       );
     }
   }
@@ -281,6 +282,7 @@ export class MermanEngine {
         return decodeWireResponse(responseJson, encoded.expectation, {
           allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
           requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+          availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
         });
       },
       { signal },
@@ -299,6 +301,7 @@ export class MermanEngine {
     return decodeWireResponse(responseJson, encoded.expectation, {
       allowedCancellationReasons: invocationCancellationReasons(undefined, timeoutMs),
       requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+      availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
     });
   }
 

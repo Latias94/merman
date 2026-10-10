@@ -1,18 +1,14 @@
 use super::super::roughjs_common::RoughRectSpec;
+use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
+const REQUIREMENT_ROUGH_GEOMETRY_COLOR: &str = "#000000";
+
 fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
-}
-
-fn requirement_theme_color_limit(effective_config: &serde_json::Value) -> usize {
-    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .filter(|value| value.is_finite())
-        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
-        .unwrap_or(12)
 }
 
 fn requirement_color_indices(
@@ -39,9 +35,10 @@ fn requirement_color_css<I>(
     theme_color_limit: usize,
 ) -> String
 where
-    I: Copy + std::fmt::Display,
+    I: SvgDiagramIdValue,
 {
     let mut out = String::new();
+    let diagram_id = crate::svg::escape_css_identifier(diagram_id.semantic_value());
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
             continue;
@@ -53,12 +50,12 @@ where
         let _ = write!(
             &mut out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            diagram_id,
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
             fill,
-            diagram_id,
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
@@ -76,7 +73,7 @@ where
         return;
     }
 
-    let escaped_id = diagram_id.semantic_value();
+    let escaped_id = crate::svg::escape_css_identifier(diagram_id.semantic_value());
     let family_rule = format!("#{escaped_id} marker");
     let root_rule = format!("#{escaped_id} :root");
     let insertion_point = css
@@ -89,6 +86,7 @@ where
 pub(crate) fn render_requirement_diagram_svg_model(
     prepared: &crate::requirement::RequirementPreparedArtifact,
     model: &RequirementDiagramRenderModel,
+    paint_theme: &crate::requirement::RequirementPaintThemePlan,
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -96,15 +94,20 @@ pub(crate) fn render_requirement_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
-    let label_measurements = prepared.label_measurements_for_render(effective_config, measurer);
+    let label_measurements =
+        prepared.label_measurements_for_render_with_typography(measurer, paint_theme.css());
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
+        let sanitized = requirement_label_source(raw, sanitize_config);
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
+    }
+
+    fn requirement_label_source(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
         let decoded = raw
             .replace("ﬂ°°", "&#")
             .replace("ﬂ°", "&")
             .replace("¶ß", ";");
-        let sanitized = merman_core::sanitize::sanitize_text(&decoded, sanitize_config);
-        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
+        merman_core::sanitize::sanitize_text(&decoded, sanitize_config)
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -120,7 +123,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         text_align: &'static str,
     }
 
-    fn mk_label_foreign_object(out: &mut String, spec: LabelForeignObject<'_>) {
+    fn mk_label_foreign_object(out: &mut impl SvgOutput, spec: LabelForeignObject<'_>) {
         let LabelForeignObject {
             html,
             width,
@@ -208,126 +211,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
         out
     }
 
-    fn parse_node_style_overrides(
-        css_styles: &[String],
-    ) -> (
-        String, // labelStyles (span/g)
-        String, // labelStyles as a `<div style="...">` prefix
-        String, // nodeStyles
-        Option<String>,
-        Option<String>,
-        Option<f64>,
-    ) {
-        // Mirror Mermaid `styles2String(node)` output:
-        // - De-duplicate by key (`Map` semantics) while preserving first insertion order.
-        // - Split into label vs node styles via Mermaid `isLabelStyle`.
-        // - Append ` !important` when emitting style strings.
-        fn is_label_style(key: &str) -> bool {
-            matches!(
-                key,
-                "color"
-                    | "font-size"
-                    | "font-family"
-                    | "font-weight"
-                    | "font-style"
-                    | "text-decoration"
-                    | "text-align"
-                    | "text-transform"
-                    | "line-height"
-                    | "letter-spacing"
-                    | "word-spacing"
-                    | "text-shadow"
-                    | "text-overflow"
-                    | "white-space"
-                    | "word-wrap"
-                    | "word-break"
-                    | "overflow-wrap"
-                    | "hyphens"
-            )
-        }
-
-        let mut styles: IndexMap<String, String> = IndexMap::new();
-        for raw in css_styles {
-            let s = raw.trim().trim_end_matches(';');
-            let Some((k, v)) = s.split_once(':') else {
-                continue;
-            };
-            let k = k.trim().to_string();
-            let mut v = v.trim().to_string();
-            if k.is_empty() || v.is_empty() {
-                continue;
-            }
-            if let Some((vv, _)) = v.split_once("!important") {
-                v = vv.trim().to_string();
-            }
-
-            // JS `Map#set` overwrites the value without changing the key order.
-            if let Some(existing) = styles.get_mut(&k) {
-                *existing = v;
-            } else {
-                styles.insert(k, v);
-            }
-        }
-
-        let mut label_kv: Vec<(&str, &str)> = Vec::new();
-        let mut node_kv: Vec<(&str, &str)> = Vec::new();
-        for (k, v) in &styles {
-            if is_label_style(k.trim().to_ascii_lowercase().as_str()) {
-                label_kv.push((k.as_str(), v.as_str()));
-            } else {
-                node_kv.push((k.as_str(), v.as_str()));
-            }
-        }
-
-        let label_styles = label_kv
-            .iter()
-            .map(|(k, v)| format!("{k}:{v} !important"))
-            .collect::<Vec<_>>()
-            .join(";");
-        let label_div_style_prefix = label_kv
-            .iter()
-            .map(|(k, v)| format!("{k}: {v} !important; "))
-            .collect::<Vec<_>>()
-            .join("");
-        let node_styles = node_kv
-            .iter()
-            .map(|(k, v)| format!("{k}:{v} !important"))
-            .collect::<Vec<_>>()
-            .join(";");
-
-        let fill = styles.get("fill").cloned();
-        let stroke = styles.get("stroke").cloned();
-        let stroke_width = styles
-            .get("stroke-width")
-            .and_then(|v| v.trim_end_matches("px").trim().parse::<f64>().ok());
-
-        (
-            label_styles,
-            label_div_style_prefix,
-            node_styles,
-            fill,
-            stroke,
-            stroke_width,
-        )
-    }
-
     let diagram_id = options.diagram_id_or("requirement");
-    let render_settings =
-        crate::requirement::RequirementConfigView::new(effective_config).render_settings();
-    let node_html_labels = render_settings.html_labels;
-    let edge_html_labels = render_settings.edge_html_labels;
-    // requirementBox.ts applies start alignment only for the registered ELK entry point.
-    let left_align_body = effective_config
-        .get("layout")
-        .and_then(serde_json::Value::as_str)
-        == Some("elk");
+    let render_settings = crate::requirement::RequirementConfigView::new(effective_config)
+        .render_settings_with_binding(paint_theme.css());
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
-    let theme = SvgTheme::new(effective_config);
-    let border_colors = theme.string_array("borderColorArray");
-    let background_colors = theme.string_array("bkgColorArray");
-    let theme_color_limit = requirement_theme_color_limit(effective_config);
+    let binding = paint_theme.css();
+    let border_colors = &binding.border_colors;
+    let background_colors = &binding.background_colors;
+    let theme_color_limit = binding.theme_color_limit;
     let color_indices = requirement_color_indices(model);
     let has_diagram_id = !diagram_id.semantic_str().is_empty();
 
@@ -342,10 +235,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(|n| (n.name.as_str(), n))
         .collect();
 
-    let font_family = Some(render_settings.font_family);
+    let font_family = Some(render_settings.font_family.clone());
     let font_size = render_settings.font_size;
-    let default_fill_color = theme.color("mainBkg", "#ECECFF");
-    let default_stroke_color = theme.color("nodeBorder", "#9370DB");
     let hand_drawn_seed = options.rough_randomness(
         render_settings.hand_drawn_seed,
         "render.requirement.roughjs",
@@ -520,7 +411,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let vb_y = content_bounds.min_y - viewport_padding;
     let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
     let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
@@ -562,37 +453,78 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Requirement,
-        diagram_id,
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-            render_settings.use_max_width,
-        )
-        .with_max_width(root_svg::RootMaxWidth::Precision {
-            value: vb_w,
-            significant_digits: 6,
-        }),
-        root_chrome,
-    )?;
-    options.checkpoint_emit()?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(
+                    root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+                    render_settings.use_max_width,
+                )
+                .with_max_width(root_svg::RootMaxWidth::Precision {
+                    value: vb_w,
+                    significant_digits: 6,
+                }),
+                root_chrome,
+            )?;
 
     out.push_str(&a11y_nodes);
 
-    let mut css = requirement_css(diagram_id, effective_config);
+    let relation_paint = paint_theme.relation_paint();
+    let mut relation_receipt =
+        relation_paint.and_then(|plan| plan.begin_terminal_receipt(layout.edges.len()));
+    let mut expected_text_terminals = Vec::new();
+    if paint_theme.text_paint().requested() {
+        for edge in &layout.edges {
+            options.work_meter().charge(1)?;
+            if let Some(label) = prepared_edges
+                .get(&edge_identity(edge))
+                .filter(|label| label.has_label)
+            {
+                expected_text_terminals.push(crate::requirement::RequirementTextTerminalId::edge(
+                    &label.rendered_id,
+                ));
+            }
+        }
+        for node in &layout.nodes {
+            options.work_meter().charge(1)?;
+            if let Some(crate::requirement::RequirementNodeRenderPlan::Semantic(labels)) =
+                prepared_nodes.get(&node.id)
+            {
+                for line in &labels.lines {
+                    expected_text_terminals.push(
+                        crate::requirement::RequirementTextTerminalId::node(
+                            &node.id,
+                            line.source_index,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+    let mut text_paint_receipt = paint_theme
+        .text_paint()
+        .begin_terminal_receipt(expected_text_terminals, options.work_meter())?;
+    let mut css_emission =
+        super::css::write_requirement_css(diagram_id, binding, text_paint_receipt.as_mut());
     let color_css = requirement_color_css(
         diagram_id,
         look,
-        &border_colors,
-        &background_colors,
+        border_colors,
+        background_colors,
         theme_color_limit,
     );
-    insert_requirement_color_css(&mut css, diagram_id, &color_css);
-    let _ = write!(&mut out, r#"<style>{css}</style>"#);
+    insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_css(css_emission.typed_relation_color());
+    }
 
+    let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
+    if let Some(receipt) = paint_theme_receipt.as_mut() {
+        receipt.record_typography(css_emission.font_family(), css_emission.font_size());
+    }
     out.push_str("<g>");
 
     // Mermaid 12 selects the Neo variants in requirementRenderer.ts.
@@ -602,16 +534,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
         ""
     };
     let marker_stroke = if look == "neo" {
-        let width = effective_config
-            .pointer("/themeVariables/strokeWidth")
-            .map(|value| {
-                value
-                    .as_str()
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| value.to_string())
-            })
-            .unwrap_or_else(|| "undefined".to_owned());
-        format!(r#" stroke-width="{}""#, escape_xml(&width))
+        let width = &binding.marker_stroke_width;
+        format!(r#" stroke-width="{}""#, escape_xml(width))
     } else {
         String::new()
     };
@@ -629,10 +553,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}><g><circle cx="10" cy="10" r="9" fill="none"{marker_stroke}/><line x1="1" x2="19" y1="10" y2="10"{marker_stroke}/><line y1="1" y2="19" x1="10" x2="10"{marker_stroke}/></g></marker></defs>"#,
     );
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_marker(0);
+    }
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}{marker_stroke}{arrow_view_box}><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"{arrow_join}/></marker></defs>"#,
     );
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_marker(1);
+    }
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
@@ -643,7 +575,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     } else {
         r#"<g class="edgePaths">"#
     });
-    for e in &layout.edges {
+    for (edge_index, e) in layout.edges.iter().enumerate() {
         let identity = edge_identity(e);
         let prepared_label = prepared_edges
             .get(&identity)
@@ -726,6 +658,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
         );
+        if let Some(receipt) = relation_receipt.as_mut() {
+            out.checkpoint()?;
+            receipt.record_path(edge_index);
+        }
     }
     out.push_str("</g>");
 
@@ -759,10 +695,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .as_ref()
             .map(|label| (label.width, label.height))
             .unwrap_or((0.0, 0.0));
-        let svg_bbox_y = if edge_html_labels {
-            0.0
-        } else {
+        let svg_text_height = (h - 4.0).max(0.0);
+        let svg_text_y = if !render_settings.edge_html_labels && prepared_label.has_label {
             measurer.measure_svg_create_text_bbox_y_offset_px(label_text, &html_style_regular)
+        } else {
+            0.0
         };
         if prepared_label.has_label {
             let label_position = rendered_edge_label_positions
@@ -774,11 +711,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_position.x),
                 y = fmt(label_position.y),
                 id = escape_xml(&prepared_label.rendered_id),
-                lx = fmt(if edge_html_labels { -w / 2.0 } else { 0.0 }),
-                ly = fmt(if edge_html_labels {
+                lx = fmt(if render_settings.edge_html_labels {
+                    -w / 2.0
+                } else {
+                    0.0
+                }),
+                ly = fmt(if render_settings.edge_html_labels {
                     -h / 2.0
                 } else {
-                    -svg_bbox_y - (h - 4.0).max(0.0) / 2.0
+                    -svg_text_y - svg_text_height / 2.0
                 }),
             );
         } else {
@@ -788,8 +729,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 id = escape_xml(&prepared_label.rendered_id),
             );
         }
-        if edge_html_labels {
+        let mut text_facts = None;
+        if render_settings.edge_html_labels {
             let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
+            if text_paint_receipt.is_some() && prepared_label.has_label {
+                options.work_meter().charge(label_html.len())?;
+                text_facts = Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
+                    &label_html,
+                ));
+            }
             mk_label_foreign_object(
                 &mut out,
                 LabelForeignObject {
@@ -805,14 +753,25 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 },
             );
         } else {
-            let _ = write!(
-                &mut out,
-                r#"<g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
-                fmt(-w / 2.0),
-                fmt(svg_bbox_y - 2.0),
-                fmt(w),
-                fmt(h)
-            );
+            if text_paint_receipt.is_some() && prepared_label.has_label {
+                options.work_meter().charge(label_text.len())?;
+                text_facts = Some(
+                    crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(label_text),
+                );
+            }
+            out.push_str("<g>");
+            if prepared_label.has_label {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    fmt(-w / 2.0),
+                    fmt(svg_text_y - 2.0),
+                    fmt(w),
+                    fmt(h)
+                );
+            } else {
+                out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+            }
             super::super::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
                 &mut out,
                 label_text,
@@ -824,6 +783,23 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
         out.push_str("</g></g>");
+        if prepared_label.has_label
+            && let Some(receipt) = paint_theme_receipt.as_mut()
+        {
+            receipt.record_edge_text(label_text);
+        }
+        if let Some(receipt) = text_paint_receipt.as_mut()
+            && let Some(facts) = text_facts
+        {
+            out.checkpoint()?;
+            receipt.record_label(
+                crate::requirement::RequirementTextTerminalId::edge(&prepared_label.rendered_id),
+                !render_settings.edge_html_labels,
+                &facts,
+                crate::requirement::RequirementTextColorOwner::Inherited,
+                options.work_meter(),
+            )?;
+        }
     }
     out.push_str("</g>");
 
@@ -847,7 +823,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 cx = fmt(cx),
                 cy = fmt(cy),
             );
-            if node_html_labels {
+            if render_settings.html_labels {
                 mk_label_foreign_object(
                     &mut out,
                     LabelForeignObject {
@@ -863,9 +839,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     },
                 );
             } else {
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
                 super::super::label::write_svg_text_markdown_from_create_text_source(
                     &mut out, "", true,
                 );
+                out.push_str("</g>");
             }
             out.push_str("</g></g>");
             continue;
@@ -881,14 +859,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
             })?;
 
         let mut node_classes: Vec<&str> = Vec::new();
-        let mut css_styles: &[String] = &[];
         if let Some(req) = req_by_id.get(n.id.as_str()) {
             node_classes = req.classes.iter().map(String::as_str).collect();
-            css_styles = &req.css_styles;
         } else if let Some(el) = el_by_id.get(n.id.as_str()) {
             node_classes = el.classes.iter().map(String::as_str).collect();
-            css_styles = &el.css_styles;
         }
+        let paint_theme_index = paint_theme_receipt
+            .as_ref()
+            .map(|_| {
+                paint_theme
+                    .index_for_node_id(&n.id)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!(
+                            "Requirement paint theme plan is missing semantic node {}",
+                            n.id
+                        ),
+                    })
+            })
+            .transpose()?;
 
         if !node_classes.contains(&"default") {
             node_classes.insert(0, "default");
@@ -906,7 +894,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         options.checkpoint_emit()?;
         let color_id_attr = color_indices
             .get(n.id.as_str())
-            .and_then(|index| requirement_color_id(&border_colors, *index))
+            .and_then(|index| requirement_color_id(border_colors, *index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
             .unwrap_or_default();
 
@@ -921,30 +909,35 @@ pub(crate) fn render_requirement_diagram_svg_model(
             cy = fmt(cy),
         );
 
-        let (
-            label_styles,
-            label_div_style_prefix,
-            node_styles,
-            fill_override,
-            stroke_override,
-            stroke_width_override,
-        ) = parse_node_style_overrides(css_styles);
-        let path_style = if look != "handDrawn"
-            && !node_styles.is_empty()
-            && (!border_colors.is_empty()
-                || config_string(
-                    effective_config,
-                    &["themeVariables", "requirementEdgeLabelBackground"],
-                )
-                .is_some_and(|value| !value.is_empty()))
-        {
-            format!(r#" style="{}""#, escape_xml(&node_styles))
-        } else {
-            String::new()
-        };
-        let fill_color = fill_override.as_deref().unwrap_or(&default_fill_color);
-        let stroke_color = stroke_override.as_deref().unwrap_or(&default_stroke_color);
-        let stroke_width = stroke_width_override.unwrap_or(1.3);
+        let visual = paint_theme
+            .node_visual(&n.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("Requirement final node visual is missing {}", n.id),
+            })?;
+        let label_styles = &visual.label_styles;
+        let label_div_style_prefix = &visual.label_div_style_prefix;
+        let svg_text_styles = &visual.svg_text_styles;
+        let node_styles = &visual.node_styles;
+        let source_text_color = &visual.source_text_color;
+        let typed_fill = visual
+            .typed_fill
+            .as_ref()
+            .map(|(rule, css)| (*rule, css.as_str()));
+        let typed_stroke = visual
+            .typed_stroke
+            .as_ref()
+            .map(|(rule, css)| (*rule, css.as_str()));
+        let fill_color = visual.fill.as_str();
+        let stroke_color = visual.stroke.as_str();
+        let stroke_width = visual.stroke_width;
+        let fill_style_attr = &visual.fill_style_attr;
+        let stroke_style_declaration = &visual.stroke_style_declaration;
+        let stroke_style_attr = &visual.stroke_style_attr;
+
+        // RoughJS path geometry does not depend on RGB values. Keep paint-only values such as
+        // `transparent` from selecting a different geometry fallback than an opaque color.
+        let geometry_stroke_color = roughjs_parse_hex_color_to_srgba(stroke_color)
+            .map_or(REQUIREMENT_ROUGH_GEOMETRY_COLOR, |_| stroke_color);
 
         let x = -n.width / 2.0;
         let y = -n.height / 2.0;
@@ -973,20 +966,22 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<g class="basic label-container outer-path" style="{style}">"#,
-            style = escape_xml(&node_styles)
+            style = escape_xml(node_styles)
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"{path_style}/>"##,
+            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"{style_attr}/>"##,
             d = escape_xml(&fill_path),
             fill = escape_xml(fill_color),
+            style_attr = fill_style_attr,
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{path_style}/>"##,
+            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/>"##,
             d = escape_xml(&stroke_path),
             stroke = escape_xml(stroke_color),
             stroke_width = fmt(stroke_width),
+            style_attr = stroke_style_attr,
         );
         out.push_str("</g>");
 
@@ -1003,7 +998,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let style = if line.bold {
                 format!("{label_styles}; font-weight: bold;")
             } else {
-                label_styles.clone()
+                label_styles.to_owned()
             };
             let span_style = if style.trim().is_empty() {
                 None
@@ -1013,7 +1008,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             let div_style_prefix = {
                 let mut p = String::new();
                 if !label_div_style_prefix.is_empty() {
-                    p.push_str(&label_div_style_prefix);
+                    p.push_str(label_div_style_prefix);
                 }
                 if line.bold {
                     p.push_str("font-weight: bold; ");
@@ -1028,8 +1023,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_x),
                 y = fmt(label_y),
             );
-            if node_html_labels {
+            let mut text_facts = None;
+            if render_settings.html_labels {
                 let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
+                if text_paint_receipt.is_some() {
+                    options.work_meter().charge(display_html.len())?;
+                    text_facts = Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
+                        &display_html,
+                    ));
+                }
                 mk_label_foreign_object(
                     &mut out,
                     LabelForeignObject {
@@ -1041,7 +1043,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                         div_class: None,
                         div_style_prefix,
                         max_width_px: metrics.max_width_px,
-                        text_align: if left_align_body && !line.keep_centered {
+                        text_align: if render_settings.body_text_start && !line.keep_centered {
                             "left"
                         } else {
                             "center"
@@ -1049,30 +1051,68 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     },
                 );
             } else {
-                let text_style = TextStyle {
-                    font_weight: line.measurement_bold.then(|| "bold".to_string()),
+                let source = requirement_label_source(&line.display_text, sanitize_config);
+                if text_paint_receipt.is_some() {
+                    options.work_meter().charge(source.len())?;
+                    text_facts = Some(
+                        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(&source),
+                    );
+                }
+                let svg_style = if line.bold {
+                    format!("{svg_text_styles}; font-weight: bold;")
+                } else {
+                    svg_text_styles.to_owned()
+                };
+                let base_style = TextStyle {
+                    font_weight: line.measurement_bold.then(|| "bold".to_owned()),
                     ..html_style_regular.clone()
                 };
-                let svg_style = style.replace("color:", "fill:");
+                let text_style = rendered_node.typography.resolve_text_style(&base_style);
+                let node_measurer = rendered_node
+                    .typography
+                    .node_measurer(measurer, crate::text::WrapMode::SvgLike);
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                super::super::label::write_svg_text_markdown_wrapped_with_style(
+                super::super::label::write_svg_text_markdown_wrapped_with_row_style(
                     &mut out,
-                    &line.display_text,
+                    &source,
                     &svg_style,
-                    measurer,
+                    super::super::label::SvgTextRowStyle {
+                        style: &style,
+                        first_row_start: render_settings.body_text_start && !line.keep_centered,
+                    },
+                    node_measurer.as_measurer(),
                     &text_style,
                     Some(metrics.max_width_px as f64),
                 );
                 out.push_str("</g>");
             }
             out.push_str("</g>");
+            if let Some(receipt) = text_paint_receipt.as_mut()
+                && let Some(facts) = text_facts
+            {
+                out.checkpoint()?;
+                let facts = if rendered_node.typography.has_zero_font_size() {
+                    crate::text::VisibleTextStyleFacts::plain_text("")
+                } else {
+                    facts
+                };
+                receipt.record_label(
+                    crate::requirement::RequirementTextTerminalId::node(&n.id, line.source_index),
+                    false,
+                    &facts,
+                    crate::requirement::RequirementTextColorOwner::from_source_color(
+                        source_text_color.as_deref(),
+                    ),
+                    options.work_meter(),
+                )?;
+            }
         }
 
+        let divider_expected = rendered_node.divider_y_offset.is_some();
+        let mut divider_emissions = Vec::new();
         if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
             if look == "neo" {
-                // requirementBox.ts uses a closed polygon of height 0.001 so its
-                // gradient stroke has a nonzero bounding box, with a separate solid fill.
                 let (fill_d, stroke_d) = roughjs_paths_for_rect(RoughRectSpec {
                     x,
                     y: divider_y,
@@ -1092,53 +1132,94 @@ pub(crate) fn render_requirement_diagram_svg_model(
                             fmt(x + n.width),
                             fmt(divider_y + 0.001),
                             fmt(x),
-                            fmt(divider_y + 0.001)
+                            fmt(divider_y + 0.001),
                         ),
                         rough_rect_stroke_path_d(x, divider_y, n.width, 0.001),
                     )
                 });
-                let _ = write!(
+                write!(
                     &mut out,
-                    r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{path_style}/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{path_style}/></g>"#,
-                    escape_xml(&fill_d),
-                    escape_xml(fill_color),
-                    escape_xml(&stroke_d),
-                    escape_xml(stroke_color),
-                    fmt(stroke_width)
-                );
+                    r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{fill_style_attr}/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{stroke_style_attr}/></g>"#,
+                    escape_xml(&fill_d), escape_xml(fill_color), escape_xml(&stroke_d),
+                    escape_xml(stroke_color), fmt(stroke_width),
+                )
+                .map_err(|_| Error::InvalidModel {
+                    message: "Requirement divider terminal emission failed".to_string(),
+                })?;
             } else {
-                let divider_d = if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                    .randomness(hand_drawn_seed.clone())
-                    .roughness(0.0)
-                    .fill_style(roughr::core::FillStyle::Solid)
-                    .stroke_width(stroke_width as f32)
-                    .stroke_line_dash(vec![0.0, 0.0])
-                    .stroke_line_dash_offset(0.0)
-                    .fill_line_dash(vec![0.0, 0.0])
-                    .fill_line_dash_offset(0.0)
-                    .disable_multi_stroke(false)
-                    .disable_multi_stroke_fill(false)
-                    .build()
-                {
-                    roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-                        x,
-                        divider_y,
-                        x + n.width,
-                        divider_y,
-                        &mut opts,
-                    ))
-                } else {
-                    rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-                };
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
-                    style = escape_xml(&node_styles),
-                    d = escape_xml(&divider_d),
-                    stroke = escape_xml(stroke_color),
-                    stroke_width = fmt(stroke_width),
+                let divider_d =
+                    if let Some(stroke) = roughjs_parse_hex_color_to_srgba(geometry_stroke_color) {
+                        if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                            .randomness(hand_drawn_seed.clone())
+                            .roughness(0.0)
+                            .fill_style(roughr::core::FillStyle::Solid)
+                            .stroke(stroke)
+                            .stroke_width(stroke_width as f32)
+                            .stroke_line_dash(vec![0.0, 0.0])
+                            .stroke_line_dash_offset(0.0)
+                            .fill_line_dash(vec![0.0, 0.0])
+                            .fill_line_dash_offset(0.0)
+                            .disable_multi_stroke(false)
+                            .disable_multi_stroke_fill(false)
+                            .build()
+                        {
+                            roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+                                x,
+                                divider_y,
+                                x + n.width,
+                                divider_y,
+                                &mut opts,
+                            ))
+                        } else {
+                            rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                        }
+                    } else {
+                        rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                    };
+                write!(
+                &mut out,
+                r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{style_attr}/></g>"##,
+                style = escape_xml(node_styles),
+                d = escape_xml(&divider_d),
+                stroke = escape_xml(stroke_color),
+                stroke_width = fmt(stroke_width),
+                style_attr = stroke_style_attr,
+            )
+            .map_err(|_| Error::InvalidModel {
+                message: "Requirement divider terminal emission failed".to_string(),
+            })?;
+            }
+            out.checkpoint()?;
+            if let Some(index) = paint_theme_index {
+                divider_emissions.push(
+                    crate::requirement::RequirementDividerEmission::from_successful_write(
+                        index,
+                        stroke_color,
+                        stroke_style_declaration.as_deref().unwrap_or_default(),
+                    ),
                 );
             }
+        }
+
+        if let Some(receipt) = paint_theme_receipt.as_mut() {
+            receipt.record_checkpointed_node(
+                paint_theme_index.expect("themed node index validated before emission"),
+                rendered_node
+                    .lines
+                    .iter()
+                    .any(|line| !line.display_text.trim().is_empty()),
+                &rendered_node.typography,
+                label_styles,
+                visual.source_owns_fill,
+                typed_fill,
+                fill_color,
+                visual.source_owns_stroke,
+                typed_stroke,
+                stroke_color,
+                stroke_style_declaration.as_deref().unwrap_or_default(),
+                divider_expected,
+                &divider_emissions,
+            );
         }
 
         out.push_str("</g>");
@@ -1155,26 +1236,42 @@ pub(crate) fn render_requirement_diagram_svg_model(
             y = fmt(title_y),
             txt = escape_xml(title),
         );
+        if let Some(receipt) = paint_theme_receipt.as_mut() {
+            receipt.record_title_text("requirementDiagramTitleText", title);
+        }
     }
 
-    push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
+    push_requirement_shadow_defs(
+        &mut out,
+        diagram_id.semantic_str(),
+        binding.shadow_flood_color,
+    );
 
     out.push_str("</svg>\n");
-    options.checkpoint_emit()?;
-    root_document.complete(out)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = relation_receipt
+        && !relation_paint
+            .expect("relation receipt requires a plan")
+            .record_terminal(receipt)
+    {
+        return Err(Error::InvalidModel {
+            message: "incomplete Requirement relation paint terminal receipt".to_owned(),
+        });
+    }
+    if !paint_theme.text_paint().record_terminal(text_paint_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Requirement text paint terminal evidence could not be sealed".to_string(),
+        });
+    }
+    if !paint_theme.record_terminal(paint_theme_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Requirement paint theme terminal evidence could not be sealed".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
-fn push_requirement_shadow_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config: &serde_json::Value,
-) {
-    let flood_color = effective_config
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
+fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, flood_color: &str) {
     let _ = write!(
         out,
         r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
@@ -1185,8 +1282,12 @@ fn push_requirement_shadow_defs(
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use crate::DiagramFamilyId;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
     use merman_core::diagrams::requirement::{
         RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
@@ -1369,14 +1470,28 @@ mod tests {
                 "THEME_COLOR_LIMIT": 3
             }
         });
-        assert_eq!(super::requirement_theme_color_limit(&config), 3);
+        let core_config = merman_core::MermaidConfig::from_value(config.clone());
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
+            None,
+            &core_config,
+            &model,
+            None,
+            &meter,
+        )
+        .unwrap();
+        let binding = plan.css();
+        assert_eq!(binding.theme_color_limit, 3);
 
-        let mut merged = super::requirement_css("requirement-colors", &config);
+        let mut merged =
+            super::super::css::write_requirement_css("requirement-colors", binding, None).css;
         let generated = super::requirement_color_css(
             "requirement-colors",
             "classic",
-            &super::SvgTheme::new(&config).string_array("borderColorArray"),
-            &super::SvgTheme::new(&config).string_array("bkgColorArray"),
+            &binding.border_colors,
+            &binding.background_colors,
             3,
         );
         super::insert_requirement_color_css(&mut merged, "requirement-colors", &generated);
@@ -1454,17 +1569,104 @@ mod tests {
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
-        with_test_svg_execution(request, |options| {
+        with_test_svg_execution(DiagramFamilyId::REQUIREMENT, request, |options| {
+            let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
+                None,
+                effective_config,
+                model,
+                diagram_title,
+                options.work_meter(),
+            )?;
             render_requirement_diagram_svg_model(
                 prepared,
                 model,
+                &paint_theme,
                 effective_config,
                 diagram_title,
                 measurer,
                 options,
             )
         })
-        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Requirement))
+        .and_then(|svg| svg.into_string_for(DiagramFamilyId::REQUIREMENT))
+    }
+
+    fn render_requirement_with_policy(policy: RenderResourcePolicy) -> crate::Result<String> {
+        let model = prepared_requirement_model();
+        let effective_config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let measurer = DeterministicTextMeasurer::default();
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            effective_config.as_value(),
+            &measurer,
+            policy,
+        )?;
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let request = SvgRenderOptions {
+            diagram_id: Some("requirement-bounded".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            DiagramFamilyId::REQUIREMENT,
+        )
+        .expect("SVG execution");
+        let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
+            None,
+            &effective_config,
+            &model,
+            None,
+            execution.work_meter(),
+        )?;
+
+        render_requirement_diagram_svg_model(
+            &prepared,
+            &model,
+            &paint_theme,
+            &effective_config,
+            None,
+            &measurer,
+            &execution,
+        )?
+        .into_string_for(DiagramFamilyId::REQUIREMENT)
+    }
+
+    #[test]
+    fn requirement_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let baseline =
+            render_requirement_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+                .expect("render unbounded Requirement SVG");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_requirement_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact Requirement SVG ceiling"),
+        )
+        .expect("exact Requirement SVG ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_requirement_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact Requirement SVG ceiling"),
+        )
+        .expect_err("one byte below the Requirement SVG size must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Requirement MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
     }
 
     #[test]
@@ -1619,32 +1821,47 @@ mod tests {
             "<script>alert(3)</script>"
         )
         .to_string();
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-            "securityLevel": "strict"
-        }));
         let measurer = DeterministicTextMeasurer::default();
-        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
-            &model,
-            config.as_value(),
-            &measurer,
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
-        .unwrap();
+        for html_labels in [true, false] {
+            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict", "htmlLabels": html_labels
+            }));
+            let prepared =
+                crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+                    &model,
+                    config.as_value(),
+                    &measurer,
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                )
+                .unwrap();
 
-        let svg = render_prepared_requirement_for_test(
-            &prepared,
-            &model,
-            &config,
-            None,
-            &measurer,
-            &SvgRenderOptions::default(),
-        )
-        .unwrap();
+            let svg = render_prepared_requirement_for_test(
+                &prepared,
+                &model,
+                &config,
+                None,
+                &measurer,
+                &SvgRenderOptions::default(),
+            )
+            .unwrap();
 
-        assert!(svg.contains("<strong>safe</strong>"), "{svg}");
-        assert!(!svg.contains("<script"), "{svg}");
-        assert!(!svg.contains("onclick="), "{svg}");
-        assert!(!svg.contains("<a href="), "{svg}");
+            if html_labels {
+                assert!(svg.contains("<strong>safe</strong>"), "{svg}");
+            } else {
+                let document = roxmltree::Document::parse(&svg).expect("valid SVG labels");
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject"))
+                );
+                assert!(document.descendants().any(|node| node.has_tag_name("tspan")
+                    && node.attribute("font-weight") == Some("bold")
+                    && node.text().is_some_and(|text| text.trim() == "safe")));
+            }
+            assert!(!svg.contains("<script"), "{svg}");
+            assert!(!svg.contains("onclick="), "{svg}");
+            assert!(!svg.contains("<a href="), "{svg}");
+        }
     }
 
     #[test]
@@ -1796,6 +2013,48 @@ mod tests {
                 .all(|style| style.contains("max-width: 200px;")),
             "Requirement edge labels keep Mermaid's fixed 200px wrap cap: {svg}"
         );
+    }
+
+    #[test]
+    fn requirement_prepared_source_paints_reach_actual_paths_in_both_label_modes() {
+        let mut node = requirement_node("source-node");
+        node.css_styles = vec![
+            "fill:#112233 !important".to_owned(),
+            "stroke:#445566 !important".to_owned(),
+            "stroke-width:2px".to_owned(),
+            "color:#778899".to_owned(),
+        ];
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![node],
+            ..empty_requirement_model()
+        };
+        for html in [false, true] {
+            let svg = render_requirement_for_test(
+                &model,
+                &serde_json::json!({"htmlLabels": html, "layout": "dagre"}),
+                None,
+                &crate::text::DeterministicTextMeasurer::default(),
+                &SvgRenderOptions::default(),
+            )
+            .expect("render prepared source paints");
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            assert!(
+                document
+                    .descendants()
+                    .any(|element| element.has_tag_name("path")
+                        && element.attribute("fill") == Some("#112233")),
+                "{svg}"
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|element| element.has_tag_name("path")
+                        && element.attribute("stroke") == Some("#445566")
+                        && element.attribute("stroke-width") == Some("2")),
+                "{svg}"
+            );
+            assert!(!svg.contains("!important !important"), "{svg}");
+        }
     }
 
     #[test]

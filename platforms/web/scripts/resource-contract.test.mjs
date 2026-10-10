@@ -11,13 +11,14 @@ const generatedSource = path.join(webRoot, "src", "generated", "resource-contrac
 
 test("interactive resource tightening accepts the generated Rust layout-work ceiling", async () => {
   const contract = await loadGeneratedContract();
+  const interactiveLayoutWorkCeiling = 14_100_000;
 
   assert.doesNotThrow(() =>
     contract.tightenResourceOptions(
       { profile: "interactive" },
       {
         profile: "interactive",
-        limits: { max_layout_work_units: 800_000 },
+        limits: { max_layout_work_units: interactiveLayoutWorkCeiling },
       },
     ),
   );
@@ -27,10 +28,38 @@ test("interactive resource tightening accepts the generated Rust layout-work cei
         { profile: "interactive" },
         {
           profile: "interactive",
-          limits: { max_layout_work_units: 800_001 },
+          limits: { max_layout_work_units: interactiveLayoutWorkCeiling + 1 },
         },
       ),
-    /maximum 800000/,
+    /maximum 14100000/,
+  );
+});
+
+test("resource tightening preserves an explicitly stricter profile", async () => {
+  const contract = await loadGeneratedContract();
+
+  assert.deepEqual(
+    contract.tightenResourceOptions(
+      { profile: "interactive" },
+      { profile: "constrained" },
+    ),
+    { profile: "constrained" },
+  );
+});
+
+test("resource tightening rejects a looser profile hidden by generic overrides", async () => {
+  const contract = await loadGeneratedContract();
+  const smallestGenericLimits = Object.fromEntries(
+    contract.RESOURCE_OVERRIDE_IDS.map((id) => [id, 1]),
+  );
+
+  assert.throws(
+    () =>
+      contract.tightenResourceOptions(
+        { profile: "constrained" },
+        { profile: "interactive", limits: smallestGenericLimits },
+      ),
+    /ceiling profile: requested interactive, ceiling constrained/,
   );
 });
 

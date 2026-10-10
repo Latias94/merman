@@ -1,43 +1,13 @@
 //! Flowchart v2 browser shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
-use super::super::roughjs::roughjs_paths_for_svg_path;
-
-fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
-    let r = r.min(w / 2.0).min(h / 2.0).max(0.0);
-    format!(
-        "M {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} Z",
-        fmt(x + r),
-        fmt(y),
-        fmt(x + w - r),
-        fmt(r),
-        fmt(r),
-        fmt(x + w),
-        fmt(y + r),
-        fmt(y + h - r),
-        fmt(r),
-        fmt(r),
-        fmt(x + w - r),
-        fmt(y + h),
-        fmt(x + r),
-        fmt(r),
-        fmt(r),
-        fmt(x),
-        fmt(y + h - r),
-        fmt(y + r),
-        fmt(r),
-        fmt(r),
-        fmt(x + r),
-        fmt(y),
-    )
-}
+use super::super::geom::{path_from_points, rounded_rect_points};
+use super::super::roughjs::roughjs_paths_for_hand_drawn_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -45,6 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
 ) {
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -59,32 +30,41 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
         .max(90.0);
     let h = (metrics.height + 2.0 * p + bar_height).max(common.layout_node.height.max(0.0));
     let top = -h / 2.0;
-    let body_path = rounded_rect_path_d(-w / 2.0, top, w, h, radius);
-    let accent = common.stroke_color;
+    let body_path = path_from_points(&rounded_rect_points(-w / 2.0, top, w, h, radius));
+    // Mermaid's browser chrome is theme-owned decoration. A node-local stroke only
+    // paints the outer body and must not recolor the toolbar or address bar.
+    let accent = ctx.node_border_color.as_str();
 
-    out.push_str(r#"<g class="basic label-container">"#);
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container" style="{}">"#,
+            escape_attr(common.rough_group_style)
+        );
+    } else {
+        out.push_str(r#"<g class="basic label-container">"#);
+    }
     if common.look_is_hand_drawn() {
         if let Some((fill_d, stroke_d)) =
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_paths_for_svg_path(
+                roughjs_paths_for_hand_drawn_svg_path(
                     &body_path,
                     common.stroke_width,
                     common.stroke_dasharray,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })
         {
             let _ = write!(
                 out,
-                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
                 escape_attr(&fill_d),
                 escape_attr(common.fill_color),
-                escape_attr(common.style),
                 escape_attr(&stroke_d),
                 escape_attr(common.stroke_color),
                 fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
-                escape_attr(common.style),
             );
         } else {
             let _ = write!(

@@ -30,11 +30,10 @@ use std::time::Duration;
 /// respective descriptors.
 pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 7 therefore
-// replaces the API 6 version-probe symbol before adding automatic-layout selection metadata,
-// so stale generated bindings fail before decoding the changed ASCII output-plan record.
+// UniFFI method checksums do not protect every nested record layout. API 7 replaces the API 6
+// probe to combine ASCII selection metadata with the expanded theme-authoring error envelope.
 #[cfg(test)]
-const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
+const UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS: [u16; 1] = [60_120];
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -118,6 +117,8 @@ pub enum MermanError {
         diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         cancellation: Option<MermanCancelledDetails>,
+        /// Complete core-owned details object, including versioned theme-authoring diagnostics.
+        details_json: Option<String>,
         message: String,
     },
 }
@@ -165,6 +166,17 @@ impl MermanError {
                 reason: details.reason.to_string(),
                 phase: details.phase.to_string(),
             });
+        let details_json = match merman_bindings_core::binding_error_js_details_json(&error)
+            .and_then(|details| {
+                details
+                    .map(|details| serde_json::to_string(&details))
+                    .transpose()
+            }) {
+            Ok(details_json) => details_json,
+            Err(error) => {
+                return Self::internal(format!("failed to encode binding error details: {error}"));
+            }
+        };
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -174,6 +186,7 @@ impl MermanError {
             diagnostic,
             icon_registry,
             cancellation,
+            details_json,
             message: error.message().to_string(),
         }
     }
@@ -189,6 +202,7 @@ impl MermanError {
             diagnostic: None,
             icon_registry: None,
             cancellation: None,
+            details_json: None,
             message: message.into(),
         }
     }
@@ -380,9 +394,8 @@ pub struct MermanOperationResult {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanDiagramFamilyCapability {
     pub diagram_type: String,
-    pub logical_family_kind: String,
+    pub family_id: String,
     pub metadata_id: Option<String>,
-    pub render_model_kind: Option<String>,
     pub has_detector: bool,
     pub has_semantic_parser: bool,
     pub has_editor_parser: bool,
@@ -735,9 +748,9 @@ impl Merman {
         string_output(native_artifact_contract().metadata_json(&id))
     }
 
-    /// Returns the presentation catalog projected to this native artifact.
-    pub fn presentation_catalog_json(&self) -> Result<String, MermanError> {
-        string_output(native_artifact_contract().metadata_json("presentation-catalog"))
+    /// Returns the versioned theme catalog JSON projected to this native artifact.
+    pub fn theme_catalog_json(&self) -> Result<String, MermanError> {
+        string_output(native_artifact_contract().metadata_json("theme-catalog"))
     }
 
     /// Executes a descriptor-owned output operation with a fresh engine configuration.
@@ -1031,9 +1044,8 @@ impl Merman {
             .into_iter()
             .map(|capability| MermanDiagramFamilyCapability {
                 diagram_type: capability.diagram_type.to_string(),
-                logical_family_kind: capability.logical_family_kind.to_string(),
+                family_id: capability.family_id.to_string(),
                 metadata_id: capability.metadata_id.map(str::to_string),
-                render_model_kind: capability.render_model_kind.map(str::to_string),
                 has_detector: capability.has_detector,
                 has_semantic_parser: capability.has_semantic_parser,
                 has_editor_parser: capability.has_editor_parser,
@@ -1193,6 +1205,15 @@ impl MermanEngine {
                 options_bytes(request.options_json.as_deref()),
             )
         })
+    }
+
+    /// Returns metadata projected through this reusable engine's resource policy.
+    pub fn metadata_json(&self, id: String) -> Result<String, MermanError> {
+        self.with_reusable_operation(|engine| string_output(engine.metadata_json(&id)))
+    }
+
+    pub fn theme_catalog_json(&self) -> Result<String, MermanError> {
+        self.metadata_json("theme-catalog".to_string())
     }
 
     pub fn render_ascii(
@@ -1689,6 +1710,88 @@ mod tests {
 
     fn engine() -> Arc<Merman> {
         Merman::new()
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_operation_preserves_authoring_error_envelope() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
+        ))
+        .unwrap();
+        let api = engine();
+        let reusable = reusable_engine(None);
+        for vector in vectors.as_array().unwrap() {
+            let request = || MermanOperationRequestV4 {
+                operation_id: "materialize-theme-json".to_owned(),
+                source: vector["source"].as_str().unwrap().to_owned(),
+                uri: None,
+                options_json: vector["options_json"].as_str().map(str::to_owned),
+                control: None,
+            };
+            for error in [
+                api.execute(request()).expect_err("invalid definition"),
+                reusable.execute(request()).expect_err("invalid definition"),
+            ] {
+                let MermanError::Binding {
+                    code,
+                    code_name,
+                    details_json,
+                    ..
+                } = error;
+                let expected_status = match vector["code_name"].as_str().unwrap() {
+                    "MERMAN_INVALID_ARGUMENT" => BindingStatus::InvalidArgument,
+                    "MERMAN_RESOURCE_LIMIT_EXCEEDED" => BindingStatus::ResourceLimitExceeded,
+                    other => panic!("unknown golden status: {other}"),
+                };
+                assert_eq!(code, expected_status.code());
+                assert_eq!(code_name, vector["code_name"].as_str().unwrap());
+                let details: Value =
+                    serde_json::from_str(&details_json.expect("complete error details")).unwrap();
+                let payload = serde_json::json!({"details": details});
+                assert_eq!(payload["details"]["resource"], vector["resource"]);
+                let mut authoring = payload["details"]["theme_authoring"].clone();
+                for diagnostic in authoring["diagnostics"]
+                    .as_array_mut()
+                    .expect("diagnostics array")
+                {
+                    let message = diagnostic
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("message")
+                        .expect("diagnostic message");
+                    assert!(!message.as_str().expect("string message").trim().is_empty());
+                }
+                assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
+            }
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_support_matches_shared_golden() {
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+        ))
+        .unwrap();
+        let api = engine();
+        let reusable = reusable_engine(None);
+        for vector in vectors.as_array().unwrap() {
+            let request = || MermanOperationRequestV4 {
+                operation_id: "describe-theme-support-json".to_owned(),
+                source: vector["query"].to_string(),
+                uri: None,
+                options_json: None,
+                control: None,
+            };
+            for response in [api.execute(request()), reusable.execute(request())] {
+                let response = response.expect("support query succeeds even when unverified");
+                assert_eq!(response.operation_id, "describe-theme-support-json");
+                assert_eq!(response.media_type, "application/json");
+                let actual: Value = serde_json::from_slice(&response.data).unwrap();
+                assert_eq!(actual, vector["expected"], "{}", vector["id"]);
+            }
+        }
     }
 
     #[test]
@@ -2691,11 +2794,13 @@ mod tests {
     }
 
     #[test]
-    fn api_v6_generated_bindings_are_rejected_before_record_decoding() {
-        assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
-            UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
-        );
+    fn api_v6_bindings_are_rejected_before_record_decoding() {
+        for checksum in UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS {
+            assert_ne!(
+                uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+                checksum
+            );
+        }
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../platforms/apple/Sources/Merman/Generated/MermanFFI.h"
@@ -2708,16 +2813,20 @@ mod tests {
             generated_header
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
         );
-        assert!(
-            !generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
-            "API 6 probe symbol must stay absent so stale bindings fail before record decoding"
-        );
-        assert!(
-            !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
-            "API 6 checksum symbol must stay absent from generated bindings"
-        );
+        for version in [6] {
+            assert!(
+                !generated_header.contains(&format!(
+                    "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v{version}"
+                )),
+                "old probe must be absent before record decoding"
+            );
+            assert!(
+                !generated_header.contains(&format!(
+                    "uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v{version}"
+                )),
+                "old checksum must be absent before record decoding"
+            );
+        }
     }
 
     #[cfg(feature = "svg")]
@@ -2911,7 +3020,7 @@ mod tests {
             .render_ascii_result(
                 "flowchart LR\nA[Hello] -- yes --> B[World]".to_string(),
                 Some(
-                    r##"{"ascii":{"color_mode":"ansi16","theme":{"foreground":"#010101","background":"#ffffff","line":"#020202","accent":"#030303","border":"#040404"}}}"##
+                    r##"{"ascii":{"layout_profile":"auto","max_width":80,"overflow":"error","color_mode":"ansi16","theme":{"foreground":"#010101","background":"#ffffff","line":"#020202","accent":"#030303","border":"#040404"}}}"##
                         .to_string(),
                 ),
             )
@@ -2926,6 +3035,13 @@ mod tests {
         assert_eq!(ascii.encoding, "ansi16");
         let raw: Value = serde_json::from_str(&plan.raw_json).expect("raw output plan JSON");
         assert_eq!(raw["encoding"], "ansi16");
+        assert_eq!(ascii.requested_layout_profile, "auto");
+        assert_eq!(
+            raw["requested_layout_profile"],
+            ascii.requested_layout_profile
+        );
+        assert_eq!(raw["compact_attempted"], ascii.compact_attempted);
+        assert_eq!(raw["layout_profile"], ascii.layout_profile);
     }
 
     #[cfg(feature = "ascii")]
@@ -3238,7 +3354,7 @@ mod tests {
             assert_eq!(class.support_level, "partial");
             assert!(class.structured_text_fallback);
 
-            assert_eq!(ascii_capabilities.len(), 31);
+            assert_eq!(ascii_capabilities.len(), 34);
             let zenuml = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "zenuml")
@@ -3254,27 +3370,28 @@ mod tests {
             assert!(ascii_capabilities.is_empty());
         }
         assert!(engine.supported_themes().contains(&"default".to_string()));
-        let presentation_catalog: serde_json::Value =
-            serde_json::from_str(&engine.presentation_catalog_json().unwrap()).unwrap();
-        assert_eq!(presentation_catalog["schema_version"], 1);
+        let theme_catalog: serde_json::Value =
+            serde_json::from_str(&engine.theme_catalog_json().unwrap()).unwrap();
+        assert_eq!(theme_catalog["schema_version"], 1);
         if has_svg {
+            assert_eq!(theme_catalog["structured_spec_available"], true);
+            let presets: serde_json::Value = serde_json::from_str(include_str!(
+                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+            ))
+            .unwrap();
+            assert_eq!(theme_catalog["presets"], presets);
             assert!(
-                presentation_catalog["theme_presets"]
+                theme_catalog["known_semantic_target_ids"]
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|preset| preset["id"] == "one-dark")
+                    .any(|target| target == "state-label")
             );
-            assert_eq!(presentation_catalog["profiles"][0]["id"], "merman-modern");
         } else {
+            assert_eq!(theme_catalog["structured_spec_available"], false);
+            assert!(theme_catalog["presets"].as_array().unwrap().is_empty());
             assert!(
-                presentation_catalog["theme_presets"]
-                    .as_array()
-                    .unwrap()
-                    .is_empty()
-            );
-            assert!(
-                presentation_catalog["profiles"]
+                theme_catalog["known_semantic_target_ids"]
                     .as_array()
                     .unwrap()
                     .is_empty()
@@ -3283,9 +3400,8 @@ mod tests {
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
-                && capability.logical_family_kind == "flowchart"
+                && capability.family_id == "flowchart"
                 && capability.metadata_id.as_deref() == Some("flowchart")
-                && capability.render_model_kind.as_deref() == Some("flowchart")
                 && !capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser
@@ -3432,12 +3548,15 @@ mod tests {
         )
         .unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(value["version"], 2);
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+        );
         assert_eq!(value["resources"]["profile"], "constrained");
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
 
         let inherited = resource_options_json(None, Vec::new()).unwrap();
-        assert_eq!(inherited, r#"{"version":2}"#);
+        assert_eq!(inherited, r#"{"version":3}"#);
     }
 
     #[test]
@@ -3465,6 +3584,7 @@ mod tests {
             MermanResourceOverrideId::MaxAsciiOutputBytes,
             MermanResourceOverrideId::MaxAsciiGraphemeBytes,
             MermanResourceOverrideId::MaxAsciiNestingDepth,
+            MermanResourceOverrideId::MaxPreparedTextRetainedBytes,
         ];
 
         for (ordinal, variant) in variants.into_iter().enumerate() {
@@ -3577,7 +3697,7 @@ mod tests {
     #[test]
     fn reusable_engine_returns_document_analysis_json() {
         let reusable = reusable_engine(Some(
-            r#"{ "version": 2, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
+            r#"{ "version": 3, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
         ));
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let json: Value = serde_json::from_str(

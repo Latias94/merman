@@ -1,4 +1,5 @@
 import { encodeOptions, getMerman } from "./runtime-core.js";
+import { encodeJsonInput } from "./json-input.js";
 import {
   assertNavigableSvgForDom,
   prepareNavigableSvgForDomMount,
@@ -9,12 +10,38 @@ import type {
   HostTextMeasureResult,
   HostTextMetricsResult,
   HostTextMeasurer,
+  HostTextMeasurerSvgBindingOptions,
+  MaterializedThemeWireV1,
+  ThemeRecipeV1,
   SvgBindingOptions,
+  ThemeAuthoringOptions,
   SvgPlanResult,
+  SvgRenderResult,
+  ThemeCapabilityDescriptor,
+  ThemeCapabilityDescriptorV1,
+  ThemeDefinitionV1,
+  ThemeSupportQueryV1,
 } from "./public-types.js";
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
+}
+
+/** Render once and inspect the theme/target outcome without discarding execution metadata. */
+export function renderSvgResult(source: string, options?: SvgBindingOptions | string): SvgRenderResult {
+  return getMerman().renderSvgResult(source, encodeOptions(options));
+}
+
+export function renderSvgResultWithTextMeasurer(
+  source: string,
+  measurer: HostTextMeasurer,
+  options?: HostTextMeasurerSvgBindingOptions | string
+): SvgRenderResult {
+  const render = getMerman().renderSvgResultWithTextMeasurer;
+  if (!render) {
+    throw new Error("Merman WASM does not expose renderSvgResultWithTextMeasurer(). Rebuild @mermanjs/web.");
+  }
+  return render(source, encodeOptions(options), measurer);
 }
 
 export function svgPlanJson(
@@ -22,6 +49,44 @@ export function svgPlanJson(
   options?: SvgBindingOptions | string
 ): SvgPlanResult {
   return getMerman().svgPlanJson(source, encodeOptions(options));
+}
+
+export function materializeTheme(
+  definition: ThemeDefinitionV1 | string,
+  options?: ThemeAuthoringOptions | string
+): MaterializedThemeWireV1 {
+  return getMerman().materializeTheme(
+    encodeThemeAuthoringInput(definition, "theme definition"),
+    encodeOptions(options)
+  );
+}
+
+export function describeThemeSupport(
+  query: ThemeSupportQueryV1 | string,
+  options?: ThemeAuthoringOptions | string
+): ThemeCapabilityDescriptor;
+export function describeThemeSupport(
+  query: ThemeSupportQueryV1 | string,
+  options?: ThemeAuthoringOptions | string
+): ThemeCapabilityDescriptor {
+  return getMerman().describeThemeSupport(
+    encodeThemeAuthoringInput(query, "theme support query"),
+    encodeOptions(options)
+  );
+}
+
+export function exportThemePreset(
+  presetId: string,
+  options?: ThemeAuthoringOptions | string
+): ThemeRecipeV1 {
+  return getMerman().exportThemePreset(presetId, encodeOptions(options));
+}
+
+function encodeThemeAuthoringInput(
+  value: ThemeDefinitionV1 | ThemeSupportQueryV1 | string,
+  label: string
+): string {
+  return typeof value === "string" ? value : encodeJsonInput(value, label);
 }
 
 export function edgeGeometryJson(source: string, options?: SvgBindingOptions | string): string {
@@ -52,7 +117,7 @@ export function edgeGeometryJsonWithTextMeasurer(
 export function renderSvgWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,
-  options?: SvgBindingOptions | string
+  options?: HostTextMeasurerSvgBindingOptions | string
 ): string {
   const renderWithMeasurer = getMerman().renderSvgWithTextMeasurer;
   if (!renderWithMeasurer) {
@@ -66,7 +131,7 @@ export function renderSvgWithTextMeasurer(
 export function layoutJsonWithTextMeasurer(
   source: string,
   measurer: HostTextMeasurer,
-  options?: SvgBindingOptions | string
+  options?: HostTextMeasurerSvgBindingOptions | string
 ): string {
   const layoutWithMeasurer = getMerman().layoutJsonWithTextMeasurer;
   if (!layoutWithMeasurer) {

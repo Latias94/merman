@@ -138,6 +138,9 @@ class PlannerTests(unittest.TestCase):
 
     def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
         fixtures = {
+            "scripts/run_theme_acceptance.py": True,
+            "scripts/test_run_theme_acceptance.py": True,
+            "scripts/verify_theme_acceptance_boundary.py": True,
             "crates/dugong/src/lib.rs": True,
             "crates/merman/Cargo.toml": True,
             "crates/merman/src/operation.rs": True,

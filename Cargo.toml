@@ -5,6 +5,10 @@ members = [
     "crates/merman-analysis",
     "crates/merman-editor-core",
     "crates/merman-fixture-render-context",
+    "crates/merman-theme-authoring-fixtures",
+    "crates/merman-theme-contract",
+    "crates/merman-theme-fixtures",
+    "crates/merman-theme-acceptance",
     "crates/merman-core",
     "crates/merman-doc",
     "crates/merman-ascii",
@@ -53,6 +57,7 @@ data-url = "0.3.2"
 brotli = "9.0.0"
 clap_mangen = "0.3.3"
 ctrlc = "=3.5.2"
+data-encoding = "2.11.1"
 euclid = "0.22.14"
 flate2 = "1.1.10"
 fs2 = "0.4.3"
@@ -84,6 +89,7 @@ rustix = { version = "1.1.5", default-features = false, features = ["fs", "std"]
 sha2 = "0.11.0"
 similar = { version = "3.2.0", default-features = false, features = ["std", "text"] }
 tokio = { version = "1.53.1", default-features = false }
+serde_json_canonicalizer = "0.3.2"
 granit-parser = { version = "=1.0.0", default-features = false, features = ["error_messages"] }
 serde-saphyr = { version = "=1.0.0", default-features = false }
 toml = "1.1.6"
@@ -96,12 +102,14 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt"] }
 uniffi = { version = "0.32.2", default-features = false }
 futures = { version = "0.3.34", default-features = false }
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "variable-fonts"] }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.3", default-features = false, features = ["tokio", "system-config"] }
 lol_html = "3.0"
 url = "2.5.8"
 cssparser = "0.38.0"
 jiff = { version = "0.2.37", default-features = false }
+lopdf = { version = "0.44.0", default-features = false }
 clap = { version = "4.6", features = ["derive"] }
 clap_complete = "4.6"
 console_error_panic_hook = "0.1"
@@ -155,6 +163,7 @@ merman-cli = { path = "crates/merman-cli", version = "0.8.0" }
 dugong = { path = "crates/dugong", version = "0.8.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.8.0" }
 manatee = { path = "crates/manatee", version = "0.8.0" }
+merman-theme-contract = { path = "crates/merman-theme-contract", version = "0.8.0" }
 
 # The profile that 'dist' will build with
 [profile.dist]

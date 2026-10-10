@@ -48,8 +48,8 @@ impl WasmEngine {
 
     #[wasm_bindgen(js_name = "metadataJson")]
     pub fn metadata_json(&self, id: String) -> Result<String, JsValue> {
-        self.engine()?;
-        wire::metadata_wire(&id).map_err(|error| JsValue::from_str(&wire::error_envelope(&error)))
+        wire::metadata_wire_for_engine(self.engine()?, &id)
+            .map_err(|error| JsValue::from_str(&wire::error_envelope(&error)))
     }
 
     #[wasm_bindgen(js_name = "executeSync")]

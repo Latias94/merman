@@ -6,11 +6,11 @@ import type {
   EditorWorkerQuery,
   EditorWorkerQueryResult,
 } from "../editor/protocol.ts";
+import { MERMAN_WEB_TRANSPORT_API_VERSION } from "../editor/protocol.ts";
 import type {
   EditorLanguageIdentity,
   MermanLanguageWorkerClient,
 } from "../editor/worker-client.ts";
-import { MERMAN_WEB_TRANSPORT_API_VERSION } from "../editor/protocol.ts";
 import type {
   MermaidSyntaxWorkerClient,
 } from "../editor/syntax-worker-client.ts";

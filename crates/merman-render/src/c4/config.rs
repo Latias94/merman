@@ -1,4 +1,7 @@
-use crate::config::{config_bool, config_css_number_or_string, config_f64, config_string};
+use crate::config::{
+    DiagramLook, config_bool, config_css_number_or_string, config_diagram_look, config_f64,
+    config_string,
+};
 use crate::text::TextStyle;
 use serde_json::Value;
 
@@ -27,6 +30,7 @@ pub(crate) const C4_ELEMENT_TYPES: &[&str] = &[
     "component_queue",
     "external_component_queue",
 ];
+
 const DEFAULT_DIAGRAM_MARGIN_X: f64 = 50.0;
 const DEFAULT_DIAGRAM_MARGIN_Y: f64 = 10.0;
 const DEFAULT_C4_SHAPE_MARGIN: f64 = 50.0;
@@ -39,19 +43,76 @@ const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_BOUNDARY_FONT_SIZE: f64 = 14.0;
 const DEFAULT_MESSAGE_FONT_SIZE: f64 = 12.0;
 
+/// The C4 renderer supports the same global look vocabulary as Mermaid, while keeping the
+/// implementation-owned behavior explicit at the family boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum C4Look {
+    Classic,
+    Neo,
+    HandDrawn,
+}
+
+impl C4Look {
+    fn from_diagram_look(look: DiagramLook<'_>) -> Self {
+        match look.as_str() {
+            "neo" => Self::Neo,
+            "handDrawn" => Self::HandDrawn,
+            _ => Self::Classic,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Classic => "classic",
+            Self::Neo => "neo",
+            Self::HandDrawn => "handDrawn",
+        }
+    }
+
+    pub(crate) const fn is_neo(self) -> bool {
+        matches!(self, Self::Neo)
+    }
+
+    pub(crate) const fn is_hand_drawn(self) -> bool {
+        matches!(self, Self::HandDrawn)
+    }
+}
+
 pub(crate) struct C4ConfigView<'a> {
+    effective_config: &'a Value,
     c4_config: &'a Value,
 }
 
 impl<'a> C4ConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
+            effective_config,
             c4_config: effective_config.get("c4").unwrap_or(&Value::Null),
         }
     }
 
+    pub(crate) fn look(&self) -> C4Look {
+        C4Look::from_diagram_look(config_diagram_look(self.effective_config))
+    }
+
+    #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> C4LayoutSettings {
+        self.layout_settings_with_prepared_fonts(&self.boundary_font(), &self.message_font())
+    }
+
+    pub(crate) fn shape_padding(&self) -> f64 {
+        self.c4_f64("c4ShapePadding")
+            .unwrap_or(DEFAULT_C4_SHAPE_PADDING)
+            .max(0.0)
+    }
+
+    pub(crate) fn layout_settings_with_prepared_fonts(
+        &self,
+        boundary: &TextStyle,
+        message: &TextStyle,
+    ) -> C4LayoutSettings {
         C4LayoutSettings {
+            look: self.look(),
             diagram_margin_x: self
                 .c4_f64("diagramMarginX")
                 .unwrap_or(DEFAULT_DIAGRAM_MARGIN_X)
@@ -74,16 +135,12 @@ impl<'a> C4ConfigView<'a> {
             next_line_padding_x: self
                 .c4_f64("nextLinePaddingX")
                 .unwrap_or(DEFAULT_NEXT_LINE_PADDING_X),
-            boundary_font_family: Some(self.font_family("boundaryFontFamily")),
-            boundary_font_size: self
-                .c4_f64("boundaryFontSize")
-                .unwrap_or(DEFAULT_BOUNDARY_FONT_SIZE),
-            boundary_font_weight: self.font_weight("boundaryFontWeight"),
-            message_font_family: Some(self.font_family("messageFontFamily")),
-            message_font_size: self
-                .c4_f64("messageFontSize")
-                .unwrap_or(DEFAULT_MESSAGE_FONT_SIZE),
-            message_font_weight: self.font_weight("messageFontWeight"),
+            boundary_font_family: boundary.font_family.clone(),
+            boundary_font_size: boundary.font_size,
+            boundary_font_weight: boundary.font_weight.clone(),
+            message_font_family: message.font_family.clone(),
+            message_font_size: message.font_size,
+            message_font_weight: message.font_weight.clone(),
             use_max_width: self.use_max_width(),
         }
     }
@@ -166,6 +223,7 @@ impl<'a> C4ConfigView<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct C4LayoutSettings {
+    pub(crate) look: C4Look,
     pub(crate) diagram_margin_x: f64,
     pub(crate) diagram_margin_y: f64,
     pub(crate) c4_shape_margin: f64,
@@ -219,6 +277,7 @@ mod tests {
 
         assert_eq!(settings.diagram_margin_x, DEFAULT_DIAGRAM_MARGIN_X);
         assert_eq!(settings.diagram_margin_y, DEFAULT_DIAGRAM_MARGIN_Y);
+        assert_eq!(settings.look, C4Look::Classic);
         assert_eq!(settings.c4_shape_margin, DEFAULT_C4_SHAPE_MARGIN);
         assert_eq!(settings.c4_shape_padding, DEFAULT_C4_SHAPE_PADDING);
         assert_eq!(settings.width, DEFAULT_WIDTH);
@@ -256,8 +315,9 @@ mod tests {
                 "messageFontFamily": "Georgia, serif",
                 "messageFontSize": 15,
                 "messageFontWeight": 600,
-                "useMaxWidth": false
-            }
+                "useMaxWidth": false,
+            },
+            "look": "neo"
         });
         let settings = C4ConfigView::new(&cfg).layout_settings();
 
@@ -265,6 +325,7 @@ mod tests {
         assert_eq!(settings.diagram_margin_y, 22.0);
         assert_eq!(settings.c4_shape_margin, 60.0);
         assert_eq!(settings.c4_shape_padding, 24.0);
+        assert_eq!(settings.look, C4Look::Neo);
         assert_eq!(settings.width, 260.0);
         assert_eq!(settings.height, 72.0);
         assert!(!settings.wrap);
@@ -299,5 +360,17 @@ mod tests {
         assert_eq!(font.font_family.as_deref(), Some("Inter, sans-serif"));
         assert_eq!(font.font_size, 18.0);
         assert_eq!(font.font_weight.as_deref(), Some("700"));
+    }
+
+    #[test]
+    fn c4_look_reads_the_global_allow_listed_value() {
+        let neo = C4ConfigView::new(&json!({ "look": "neo" })).layout_settings();
+        assert_eq!(neo.look, C4Look::Neo);
+
+        let hand_drawn = C4ConfigView::new(&json!({ "look": "handDrawn" })).layout_settings();
+        assert_eq!(hand_drawn.look, C4Look::HandDrawn);
+
+        let invalid = C4ConfigView::new(&json!({ "look": "not-a-look" })).layout_settings();
+        assert_eq!(invalid.look, C4Look::Classic);
     }
 }

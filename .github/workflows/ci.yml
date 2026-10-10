@@ -173,6 +173,9 @@ jobs:
       - name: Verify release version projections
         run: python3 scripts/release-version.py
 
+      - name: Verify ADR identities
+        run: python3 scripts/adr_identity.py
+
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
 
@@ -299,8 +302,6 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
           - os: macos-15
             target: aarch64-apple-darwin
           - os: macos-15-intel
@@ -435,16 +436,12 @@ jobs:
         if: matrix.parity
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: "24.21.0"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             platforms/node/package-lock.json
             playground/tests/package-lock.json
             tools/mermaid-cli/package-lock.json
-
-      - name: Install pinned npm
-        if: matrix.parity
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install pinned Mermaid runtime
         if: matrix.parity
@@ -470,6 +467,15 @@ jobs:
           cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
           cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
 
+      - name: Install native export test fonts (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
+
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: cargo nextest run --locked --no-fail-fast --cargo-quiet
@@ -477,6 +483,21 @@ jobs:
       - name: Compile workspace on pull-request host runners
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         run: cargo check --workspace --all-targets --locked
+
+      - name: Test theme authoring and font resource boundaries
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --features svg,diagram-flowchart --test c_consumer_smoke
+          cargo nextest run --locked -p merman-render --no-default-features \
+            --features diagram-flowchart,diagram-swimlane \
+            --test theme_font_capability --test flowchart_node_effects --cargo-quiet
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features svg,diagram-flowchart --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
+          cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart \
+            --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
+          cargo nextest run --locked -p merman-export --no-default-features \
+            --features png,jpeg,pdf --lib --cargo-quiet
 
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -504,6 +525,42 @@ jobs:
           cargo test -p merman-render --doc --features all-diagrams
           cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
+      - name: Test preset qualification and family terminal behavior
+        if: matrix.parity
+        run: |
+          python3 scripts/run_theme_acceptance.py nextest run --locked \
+            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
+            --lib --cargo-quiet
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
+            --no-default-features --features png,all-diagrams \
+              --test preset_qualification \
+            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
+            --cargo-quiet
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
+            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
+
+      - name: Test optimized theme evidence and qualification rejection
+        if: matrix.parity
+        run: |
+          cargo test --release --locked -p merman-render --no-default-features \
+            --lib family::evidence_support::tests
+          python3 scripts/run_theme_acceptance.py test --release --locked \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
+            --lib preset_qualification::
+
+      - name: Verify published theme acceptance boundary
+        if: matrix.parity
+        run: python3 scripts/verify_theme_acceptance_boundary.py
+
+      - name: Test theme authoring and Flowchart paint across SVG and PNG
+        if: matrix.parity
+        run: |
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
+            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape --test theme_authoring \
+            --test theme_flowchart_markers --test theme_flowchart_geometry \
+            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
+            --test render_operation --test theme_composed_effects --cargo-quiet
+
       - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
         if: matrix.parity
         run: |
@@ -516,7 +573,7 @@ jobs:
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
-          cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
+          cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
       - name: Test representative Cargo feature unification contract
         if: matrix.parity
@@ -547,7 +604,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
+            --build-arg NODE_IMAGE=node:24-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
@@ -724,7 +781,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
+            --build-arg NODE_IMAGE=node:24-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
@@ -739,6 +796,18 @@ jobs:
               git config --global --add safe.directory /work
               npm ci --prefix platforms/node
               node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+              package_root="$(mktemp -d)/packages"
+              artifact_dir="$(mktemp -d)"
+              smoke_root="$(mktemp -d)"
+              version="$(node -e "const fs=require(\"fs\"); console.log(JSON.parse(fs.readFileSync(\"platforms/node/package-surfaces.json\", \"utf8\")).version)")"
+              node platforms/node/scripts/assemble-packages.mjs --target linux-x64-gnu --output-root "$package_root"
+              node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+              npm pack "$package_root/node" --json --pack-destination "$artifact_dir" >/dev/null
+              npm pack "$package_root/linux-x64-gnu" --json --pack-destination "$artifact_dir" >/dev/null
+              cd "$smoke_root"
+              npm init -y >/dev/null
+              npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$version" --target linux-x64-gnu
             '
 
   typst-package:
@@ -792,11 +861,16 @@ jobs:
           install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
           "${typst_root}/typst" --version
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.87.22
+        with:
+          tool: nextest
+
       - name: Test Typst plugin crate
         run: |
-          cargo test --locked -p merman-typst-plugin --no-default-features
-          cargo test --locked -p merman-typst-plugin --no-default-features \
-            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/native-runtime
+          cargo nextest run --locked -p merman-typst-plugin --no-default-features
+          cargo nextest run --locked -p merman-typst-plugin --no-default-features \
+            --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
 
       - name: Check exact Typst WASM size budget
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
@@ -986,7 +1060,7 @@ jobs:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@v6.0.1
+        uses: actions/setup-java@v6.0.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}

@@ -117,6 +117,12 @@ fn rect_from_label(l: &merman_render::model::LayoutLabel) -> (f64, f64, f64, f64
     (l.x - hw, l.y - hh, l.x + hw, l.y + hh)
 }
 
+fn rect_from_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
+    let hw = n.width / 2.0;
+    let hh = n.height / 2.0;
+    (n.x - hw, n.y - hh, n.x + hw, n.y + hh)
+}
+
 fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: f64) -> bool {
     let (omin_x, omin_y, omax_x, omax_y) = outer;
     let (imin_x, imin_y, imax_x, imax_y) = inner;
@@ -2687,6 +2693,46 @@ fn dagre_duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
     assert!(cluster_ids.contains("A"));
     assert!(!cluster_ids.contains("X"));
     assert!(node_ids.contains("X"));
+}
+
+#[test]
+fn duplicate_subgraph_id_uses_first_definition_for_layout_presentation() {
+    for (source, member_ids) in [
+        (
+            "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+            &["A", "B"][..],
+        ),
+        (
+            "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+            &["A"][..],
+        ),
+        (
+            "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+            &["A"][..],
+        ),
+    ] {
+        let layout = layout_flowchart(source);
+        let clusters = layout
+            .clusters
+            .iter()
+            .filter(|cluster| cluster.id == "X")
+            .collect::<Vec<_>>();
+
+        assert_eq!(clusters.len(), 1, "{source}");
+        assert_eq!(clusters[0].title, "First title", "{source}");
+        let cluster_rect = rect_from_cluster(clusters[0]);
+        for member_id in member_ids {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|node| node.id == *member_id)
+                .unwrap_or_else(|| panic!("missing member {member_id}: {layout:?}"));
+            assert!(
+                rect_contains(cluster_rect, rect_from_node(node), 1.0e-6),
+                "member {member_id} must remain inside the canonical duplicate cluster: {layout:?}"
+            );
+        }
+    }
 }
 
 #[test]

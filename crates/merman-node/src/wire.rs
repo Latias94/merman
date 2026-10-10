@@ -5,13 +5,11 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingCancellationErrorDetails,
-    BindingDiagnosticErrorDetails, BindingEngine, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationKind,
-    BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
-    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationControl, OperationKey, OperationPhase,
-    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract,
+    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingError,
+    BindingErrorKind, BindingOperationKind, BindingOperationRequest, BindingPayloadSchemaKey,
+    BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey,
+    OperationControl, OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -28,7 +26,13 @@ const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
 };
 const NODE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
+    OperationKey::DescribeThemeSupportJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePresetJson,
+    #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
+    #[cfg(feature = "svg")]
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -382,20 +386,8 @@ struct ErrorPayload<'a> {
     kind: &'a str,
     capability_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<ErrorDetails<'a>>,
+    details: Option<serde_json::Value>,
     message: Cow<'a, str>,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorDetails<'a> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resource: Option<BindingJsSafeResourceErrorDetails>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    diagnostic: Option<&'a BindingDiagnosticErrorDetails>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cancellation: Option<BindingCancellationErrorDetails>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
 
 pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, BindingError> {
@@ -482,6 +474,13 @@ pub(crate) fn metadata_wire(id: &str) -> Result<String, BindingError> {
     binding_boundary(|| metadata_wire_inner(id))
 }
 
+pub(crate) fn metadata_wire_for_engine(
+    engine: &BindingEngine,
+    id: &str,
+) -> Result<String, BindingError> {
+    binding_boundary(|| metadata_wire_inner_for_engine(engine, id))
+}
+
 fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
     let contract = node_wire_contract();
     if id.is_empty() {
@@ -492,6 +491,26 @@ fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
     ensure_field(id, "metadata id", contract.fields.metadata_id_utf8_bytes)
         .map_err(caller_argument_error)?;
     let bytes = node_artifact_contract().metadata_json(id)?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))?;
+    deserialize_bounded_json::<Value>(&text, "metadata", contract.documents.metadata)
+        .map_err(producer_error)?;
+    Ok(text)
+}
+
+fn metadata_wire_inner_for_engine(
+    engine: &BindingEngine,
+    id: &str,
+) -> Result<String, BindingError> {
+    let contract = node_wire_contract();
+    if id.is_empty() {
+        return Err(BindingError::invalid_argument(
+            "Node metadata id must be non-empty",
+        ));
+    }
+    ensure_field(id, "metadata id", contract.fields.metadata_id_utf8_bytes)
+        .map_err(caller_argument_error)?;
+    let bytes = engine.metadata_json(id)?;
     let text = String::from_utf8(bytes)
         .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))?;
     deserialize_bounded_json::<Value>(&text, "metadata", contract.documents.metadata)
@@ -782,11 +801,7 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
             fields.capability_id_utf8_bytes,
         )?;
     }
-    let resource = error
-        .resource_details()
-        .map(|details| details.js_safe_json());
     let diagnostic = error.diagnostic_details();
-    let cancellation = error.cancellation_details();
     if diagnostic
         .and_then(|details| details.span)
         .is_some_and(|span| {
@@ -797,16 +812,8 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
         return Err("error diagnostic span exceeds the JSON-safe integer range".to_owned());
     }
     let message = bounded_text(error.message(), fields.error_message_utf8_bytes);
-    let details = (resource.is_some()
-        || diagnostic.is_some()
-        || cancellation.is_some()
-        || error.icon_registry_details().is_some())
-    .then_some(ErrorDetails {
-        resource,
-        diagnostic,
-        cancellation,
-        icon_registry: error.icon_registry_details(),
-    });
+    let details = merman_bindings_core::binding_error_js_details_json(error)
+        .map_err(|error| format!("failed to encode binding error details: {error}"))?;
     let envelope = ErrorEnvelope {
         version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
@@ -1688,6 +1695,105 @@ mod tests {
         assert_eq!(
             payload["error"]["details"]["resource"]["profile"],
             "interactive"
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_wire_preserves_authoring_error_envelope() {
+        let engine = create_engine("").unwrap();
+        let request = serde_json::json!({
+            "operation_id": "materialize-theme-json",
+            "source": r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#,
+            "uri": null,
+        });
+        let payload: serde_json::Value =
+            serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
+        let authoring = &payload["error"]["details"]["theme_authoring"];
+        assert_eq!(authoring["schema_version"], 1);
+        assert_eq!(
+            authoring["diagnostics"][0]["code"],
+            "theme-authoring.invalid-token-value"
+        );
+        assert_eq!(
+            authoring["diagnostics"][0]["path"],
+            "/styles/0/style/typography/font_stack"
+        );
+        assert_eq!(
+            authoring["diagnostics"][0]["details"],
+            serde_json::json!({"expected_domain_id": "font-stack"})
+        );
+        assert!(
+            !authoring["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_wire_preserves_nested_version_diagnostics() {
+        let engine = create_engine("").unwrap();
+        let request = serde_json::json!({
+            "operation_id": "materialize-theme-json",
+            "source": r#"{"authoring_schema_version":2,"expansion_version":1,"tokens":{}}"#,
+            "uri": null,
+        });
+        let payload: serde_json::Value =
+            serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
+        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
+        let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
+        assert_eq!(
+            diagnostic["code"],
+            "theme-authoring.unsupported-version-tuple"
+        );
+        assert_eq!(diagnostic["path"], "");
+        assert_eq!(
+            diagnostic["details"],
+            serde_json::json!({
+                "actual": {"authoring_schema_version": 2, "expansion_version": 1},
+                "supported": [{"authoring_schema_version": 1, "expansion_version": 1}],
+            })
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_wire_preserves_maximally_escaped_target_diagnostics() {
+        let engine = create_engine("").unwrap();
+        let target = "\u{0001}".repeat(64 * 1024);
+        let palette = serde_json::json!({
+            "kind": "ordinal-palette", "target": target, "colors": ["#123456"],
+        });
+        let definition = serde_json::json!({
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {},
+            "styles": [palette.clone(), palette],
+        });
+        let request = serde_json::json!({
+            "operation_id": "materialize-theme-json",
+            "source": definition.to_string(),
+            "uri": null,
+        });
+        let wire = execute_wire(&engine, &request.to_string());
+        let payload: serde_json::Value = serde_json::from_str(&wire).unwrap();
+        assert_eq!(payload["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
+        let diagnostic = &payload["error"]["details"]["theme_authoring"]["diagnostics"][0];
+        assert_eq!(
+            diagnostic["code"],
+            "theme-authoring.duplicate-palette-target"
+        );
+        assert_eq!(diagnostic["path"], "/styles/1/target");
+        assert_eq!(diagnostic["details"]["target_id"], target);
+        assert_eq!(diagnostic["details"]["first_authored_index"], 0);
+        assert_eq!(diagnostic["details"]["duplicate_authored_index"], 1);
+        assert!(
+            wire.len() > 256 * 1024,
+            "fixture must exercise escaped JSON bytes"
         );
     }
 

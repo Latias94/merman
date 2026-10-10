@@ -145,7 +145,7 @@ pub fn visit_blocks<E>(
         | Options::ENABLE_TASKLISTS;
     let mut parents = Vec::new();
     let mut code: Option<CodeBlock> = None;
-    let mut last_include_line = None;
+    let mut last_candidate_line = None;
     let parser_source = normalize_bare_cr(source);
     for (event, span) in Parser::new_ext(&parser_source, options).into_offset_iter() {
         checkpoint()?;
@@ -156,7 +156,11 @@ pub fn visit_blocks<E>(
                 code = Some(CodeBlock {
                     mermaid,
                     body_end: None,
-                    embedding: embedding(source, &lines, &parents, span.start),
+                    embedding: if mermaid {
+                        embedding(source, &lines, &parents, span.start)
+                    } else {
+                        Embedding::default()
+                    },
                     span,
                     body: String::new(),
                 });
@@ -190,24 +194,24 @@ pub fn visit_blocks<E>(
                 // because inline Markdown processing may split or unescape it.
                 for offset in lines.intersecting_starts(span.clone()) {
                     let line_start = lines.start(offset);
-                    if last_include_line == Some(line_start) {
+                    if last_candidate_line == Some(line_start) {
                         continue;
                     }
                     let line_end = lines.end(source, offset);
-                    let nested = parents
-                        .iter()
-                        .any(|parent| parent.container_prefix.is_some());
+                    let nested = parents.iter().any(|parent| parent.marker_end.is_some());
                     let candidate_start = if nested { offset } else { line_start };
                     let line = &source[candidate_start..line_end];
-                    let trimmed = line.trim();
-                    let directive_start = candidate_start + line.len() - line.trim_start().len();
+                    let candidate = line.trim_start();
+                    let directive_start = candidate_start + line.len() - candidate.len();
                     if directive_start < span.start || directive_start >= span.end {
                         continue;
                     }
-                    let Some(kind) = parse_include(trimmed) else {
+                    // A line is a directive candidate only once, including negative matches.
+                    // Check its prefix before scanning potentially long trailing whitespace.
+                    last_candidate_line = Some(line_start);
+                    let Some(kind) = parse_include(candidate) else {
                         continue;
                     };
-                    last_include_line = Some(line_start);
                     let mut embedding = embedding(source, &lines, &parents, directive_start);
                     embedding.at_document_end = line_end >= content_end;
                     let prefix =
@@ -236,19 +240,10 @@ pub fn visit_blocks<E>(
             Event::Start(tag) => {
                 let end = tag.to_end();
                 let marker_end = container_marker_end(source, span.start, end);
-                let container_prefix = marker_end.map(|marker_end| {
-                    continuation_prefix(
-                        source,
-                        &lines,
-                        &parents,
-                        marker_end,
-                        Some((span.start, end)),
-                    )
-                });
                 parents.push(Parent {
                     end,
                     start: span.start,
-                    container_prefix,
+                    marker_end,
                     task_marker: None,
                 });
             }
@@ -305,7 +300,7 @@ fn allows_include(parents: &[Parent]) -> bool {
 struct Parent {
     end: TagEnd,
     start: usize,
-    container_prefix: Option<String>,
+    marker_end: Option<usize>,
     task_marker: Option<usize>,
 }
 
@@ -371,13 +366,22 @@ fn continuation_prefix(
 }
 
 fn embedding(source: &str, lines: &SourceLines, parents: &[Parent], start: usize) -> Embedding {
-    let Some(continuation) = parents
+    let Some((index, parent)) = parents
         .iter()
+        .enumerate()
         .rev()
-        .find_map(|parent| parent.container_prefix.as_ref())
+        .find(|(_, parent)| parent.marker_end.is_some())
     else {
         return Embedding::default();
     };
+    // Reconstruct only the innermost container prefix when a replacement needs it.
+    let continuation = continuation_prefix(
+        source,
+        lines,
+        &parents[..index],
+        parent.marker_end.expect("container marker"),
+        Some((parent.start, parent.end)),
+    );
     let first_prefix = source[lines.start(start)..start].to_owned();
     let normalized = continuation_prefix(source, lines, parents, start, None);
     let task_marker = parents.iter().any(|parent| {
@@ -386,13 +390,13 @@ fn embedding(source: &str, lines: &SourceLines, parents: &[Parent], start: usize
             .is_some_and(|end| end <= start && lines.start(end) == lines.start(start))
     });
     let explicit = prefix_shape(&normalized)
-        .strip_prefix(&prefix_shape(continuation))
+        .strip_prefix(&prefix_shape(&continuation))
         .is_some_and(|rest| {
             rest.trim().is_empty() || task_marker && matches!(rest.trim(), "[ ]" | "[x]" | "[X]")
         });
     Embedding {
         first_prefix,
-        continuation_prefix: continuation.clone(),
+        continuation_prefix: continuation,
         explicit,
         opens_container: parents.iter().any(|parent| {
             parent.start >= lines.start(start)

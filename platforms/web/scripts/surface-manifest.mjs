@@ -29,7 +29,7 @@ const analysisWasmExportNames = [
 
 const metadataRuntimeExportNames = [
   "runtimeCatalog",
-  "presentationCatalog",
+  "themeCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
@@ -37,9 +37,11 @@ const metadataRuntimeExportNames = [
   "packageVersion",
 ];
 
+const metadataValueExportNames = ["WEB_TRANSPORT_API_VERSION"];
+
 const metadataWasmExportNames = [
   "runtimeCatalog",
-  "presentationCatalog",
+  "themeCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
@@ -51,7 +53,12 @@ const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
+  "materializeTheme",
+  "describeThemeSupport",
+  "exportThemePreset",
   "renderSvg",
+  "renderSvgResult",
+  "renderSvgResultWithTextMeasurer",
   "svgPlanJson",
   "edgeGeometryJson",
   "edgeGeometryJsonWithTextMeasurer",
@@ -67,7 +74,12 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "materializeTheme",
+  "describeThemeSupport",
+  "exportThemePreset",
   "renderSvg",
+  "renderSvgResult",
+  "renderSvgResultWithTextMeasurer",
   "svgPlanJson",
   "edgeGeometryJson",
   "edgeGeometryJsonWithTextMeasurer",
@@ -138,7 +150,6 @@ export const resourceContractValueExportNames = [
 export const packageStableValueExportNames = [
   "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION",
   "UNAVAILABLE_DIAGRAM_DETECTION",
-  "BUNDLED_THEME_PRESETS",
   "SUPPORTED_THEMES",
   "SUPPORTED_DIAGRAMS",
   "SUPPORTED_ASCII_DIAGRAMS",
@@ -148,10 +159,9 @@ export const packageStableValueExportNames = [
   "isDiagramType",
   "isAsciiDiagramType",
   "isBindingStatusCodeName",
-  "isBundledThemePresetName",
   "isBindingErrorPayload",
   "normalizeThemeName",
-  "normalizeBundledThemePresetName",
+  "tryAsKnownDiagramType",
   "encodeOptions",
   ...resourceContractValueExportNames,
 ];
@@ -173,7 +183,11 @@ export const surfaceModules = defineSurfaceModules([
       ...lifecycleRuntimeExportNames,
       ...metadataRuntimeExportNames,
     ],
-    valueExportNames: ["UNAVAILABLE_DIAGRAM_DETECTION", "encodeOptions"],
+    valueExportNames: [
+      "UNAVAILABLE_DIAGRAM_DETECTION",
+      "WEB_TRANSPORT_API_VERSION",
+      "encodeOptions",
+    ],
     internalValueExportNames: ["currentRuntimeState", "withResourceOptions"],
     exactValueExports: true,
   },
@@ -247,6 +261,12 @@ export const surfaceModules = defineSurfaceModules([
     internalValueExportNames: ["assertBrowserRuntime", "bindSurfaceRuntime"],
     exactValueExports: true,
   },
+  {
+    specifier: "../json-input.js",
+    owner: "shared",
+    internalValueExportNames: ["encodeJsonInput"],
+    exactValueExports: true,
+  },
   { specifier: "../generated/binding-contract.js", owner: "shared" },
   { specifier: "../generated/capability-surface.js", owner: "shared" },
   { specifier: "../generated/diagram-catalog.js", owner: "shared" },
@@ -280,7 +300,10 @@ const analysisProfile = {
     ...metadataRuntimeExportNames,
     ...analysisMetadataRuntimeExportNames,
   ],
-  valueExportNames: packageStableValueExportNames,
+  valueExportNames: [
+    ...packageStableValueExportNames,
+    ...metadataValueExportNames,
+  ],
   wasmExportNames: [
     ...lifecycleWasmExportNames,
     ...analysisWasmExportNames,
@@ -297,6 +320,7 @@ const renderProfile = {
   ],
   valueExportNames: [
     ...packageStableValueExportNames,
+    ...metadataValueExportNames,
     ...packageRenderValueExportNames,
   ],
   wasmExportNames: [
@@ -315,7 +339,10 @@ const runtimeProfiles = Object.freeze({
       ...metadataRuntimeExportNames,
       ...asciiRuntimeExportNames,
     ],
-    valueExportNames: packageStableValueExportNames,
+    valueExportNames: [
+      ...packageStableValueExportNames,
+      ...metadataValueExportNames,
+    ],
     wasmExportNames: [
       ...lifecycleWasmExportNames,
       ...metadataWasmExportNames,
@@ -327,7 +354,10 @@ const runtimeProfiles = Object.freeze({
       ...analysisProfile.runtimeExportNames,
       ...editorRuntimeExportNames,
     ],
-    valueExportNames: packageStableValueExportNames,
+    valueExportNames: [
+      ...packageStableValueExportNames,
+      ...metadataValueExportNames,
+    ],
     wasmExportNames: [
       ...analysisProfile.wasmExportNames,
       ...editorWasmExportNames,
@@ -342,6 +372,7 @@ const runtimeProfiles = Object.freeze({
     ],
     valueExportNames: [
       ...packageStableValueExportNames,
+      ...metadataValueExportNames,
       ...packageRenderValueExportNames,
     ],
     wasmExportNames: [

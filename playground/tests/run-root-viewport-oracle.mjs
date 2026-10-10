@@ -12,6 +12,7 @@ import {
   exactRootViewportResidualEvidenceIsEligible,
   ROOT_VIEWPORT_MAX_CAPTURE_AREA_CSS_PX,
   ROOT_VIEWPORT_MAX_CAPTURE_DIMENSION_CSS_PX,
+  ROOT_VIEWPORT_ORACLE_REVISION,
   ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
   ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
 } from "./root-viewport-oracle.ts";
@@ -20,6 +21,8 @@ import {
   matchingRootViewportResidual,
   parseRootViewportResidualCatalog,
   ROOT_VIEWPORT_RESIDUAL_COMPARISON_REVISION,
+  rootViewportResidualAuditEvidenceSha256,
+  unusedRootViewportResidualFixtures,
 } from "./root-viewport-residuals.ts";
 
 const options = parseArguments(process.argv.slice(2));
@@ -74,19 +77,24 @@ try {
     const fixture = relativePath.replaceAll(path.sep, "/").replace(/\.svg$/u, "");
     const localSha256 = sha256(localSvg);
     const upstreamSha256 = upstreamSvg === null ? null : sha256(upstreamSvg);
+    const auditEvidenceSha256 = rootViewportResidualAuditEvidenceSha256(
+      local,
+      upstream,
+      baseContainmentClassification,
+    );
     const localReport = reportAudit(local);
     const upstreamReport = upstream === null ? null : reportAudit(upstream);
     let residual = null;
     if (baseContainmentClassification === "blocking") {
       if (exactRootViewportResidualEvidenceIsEligible(local, upstream)) {
         residual = matchingRootViewportResidual(
-          residualCatalog, fixture, localSha256, upstreamSha256,
+          residualCatalog, fixture, localSha256, upstreamSha256, auditEvidenceSha256,
         );
       } else {
         const auditSha256 = filteredTitleFontAuditSha256(environment, localReport, upstreamReport);
         if (auditSha256 !== null) {
           residual = matchingRootViewportResidual(
-            residualCatalog, fixture, localSha256, upstreamSha256, auditSha256,
+            residualCatalog, fixture, localSha256, upstreamSha256, auditEvidenceSha256, auditSha256,
           );
         }
       }
@@ -98,6 +106,7 @@ try {
       fixture,
       localSha256,
       upstreamSha256,
+      auditEvidenceSha256,
       baseContainmentClassification,
       containmentClassification,
       residualReason: residual?.reason ?? null,
@@ -109,13 +118,14 @@ try {
   await browser.close();
 }
 
-const unusedResidualFixtures = residualCatalog.entries
-  .map((entry) => entry.fixture)
-  .filter((fixture) => !usedResidualFixtures.has(fixture));
+const unusedResidualFixtures = unusedRootViewportResidualFixtures(
+  residualCatalog,
+  usedResidualFixtures,
+);
 
 const report = {
-  schemaVersion: 10,
-  contractRevision: "browser-root-paint-containment-v10",
+  schemaVersion: 11,
+  contractRevision: ROOT_VIEWPORT_ORACLE_REVISION,
   residualComparisonRevision: ROOT_VIEWPORT_RESIDUAL_COMPARISON_REVISION,
   quantizationEpsilonCssPx: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
   paintGuardCssPx: ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,

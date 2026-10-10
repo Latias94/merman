@@ -1,6 +1,6 @@
 // Flowchart minimal grammar (phase 1).
 
-grammar;
+grammar(edge_budget: &std::cell::Cell<usize>);
 
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
@@ -100,13 +100,36 @@ Statement: Stmt = {
 };
 
 Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
-  <start:NodeGroup> <segs:EdgeSeg+> => {
+  <start:NodeGroup> <segs:EdgeSeg+> =>? {
     let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
     let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
     let mut prev_group = start;
     for (eid, link, label, next_group) in segs {
-      let mut segment_edges: Vec<Edge> = Vec::new();
+      let expansion_span = prev_group
+        .first()
+        .and_then(|node| node.id_span)
+        .or_else(|| next_group.first().and_then(|node| node.id_span));
+      let requested_edges = prev_group.len().checked_mul(next_group.len()).ok_or_else(|| {
+        crate::diagrams::flowchart::flowchart_edge_limit_error(
+          "Flowchart edge limit exceeded: edge-group expansion exceeds the maxEdges budget",
+          expansion_span,
+        )
+      })?;
+      let remaining_edges = edge_budget.get();
+      if requested_edges > remaining_edges {
+        return Err(lalrpop_util::ParseError::User {
+          error: crate::diagrams::flowchart::flowchart_edge_limit_error(
+            format!(
+              "Flowchart edge limit exceeded: this edge group would create {requested_edges} edges, but only {remaining_edges} of the maxEdges budget remain",
+            ),
+            expansion_span,
+          ),
+        });
+      }
+      edge_budget.set(remaining_edges - requested_edges);
+
+      let mut segment_edges: Vec<Edge> = Vec::with_capacity(requested_edges);
       for from in &prev_group {
         for to in &next_group {
           let is_last_start = from.id == prev_group[prev_group.len() - 1].id;
@@ -143,7 +166,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
       prev_group = next_group;
     }
 
-    (node_groups, edge_groups)
+    Ok((node_groups, edge_groups))
   }
 };
 

@@ -12,7 +12,7 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 
 At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The published Android AAR carries the default native prebuilt SKU: SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
-This guide targets the unpublished `0.8.0` candidate with Mermaid 12.1 and schema-3 ASCII output; the latest published release is `0.8.0-alpha.7`. The alpha.6 AAR retains the previous contract; see the [changelog](CHANGELOG.md) and keep each AAR intact.
+This guide describes the current source interface with Mermaid 12.1 and schema-3 ASCII output. The alpha.6 AAR retains the previous contract; keep Kotlin classes and native libraries from the same AAR. Android archive publication is independent of the workspace release; consult the [dated publication snapshot](../../docs/release/PUBLISH_ORDER.md) and [changelog](CHANGELOG.md) for recorded artifact boundaries.
 
 ## Add A Release AAR
 
@@ -111,11 +111,11 @@ val svg = Merman.renderSvg(
 )
 ```
 
-`MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
+`MermanResourceOptionsBuilder` emits Options JSON schema `3`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
 
 The default AAR is deterministic and does not bundle native clock, time-zone, or random adapters. A source build may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`; requesting native policy from the default AAR fails with a typed unsupported-operation error. Runtime discovery reports concrete adapter IDs only when the loaded artifact contains them.
 
-Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
+Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.themeCatalogJson()` for open-ended compiled-theme presets, capabilities, font containers, semantic targets, and variants instead of maintaining Kotlin enums. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts use their independently defined schema `2` and contain generic parser/editor facts only. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 

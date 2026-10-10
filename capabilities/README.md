@@ -70,11 +70,21 @@ complete host reference build for ABI verification rather than a downloadable de
 See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for the product decision.
 
 Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
-Typst publishes SVG plus canonical analysis and both layout backends. The private Node candidates
+Typst publishes SVG, canonical analysis, theme authoring, and both layout backends. The private Node candidates
 compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
 profiles because npm package identity is its capability-selection mechanism.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
+
+## Theme Typography
+
+Themes retain font-family names, sizes, weights, spacing, canvas layers and effects. Font bytes
+and native theme shaping are outside the current product. No artifact or Cargo feature enables
+embedded theme font processing; resource-bearing recipes fail explicitly instead of silently
+substituting system fonts. Native PNG/PDF backends retain their existing system-font handling.
+
+The former implementation is preserved on the local `preserve/embedded-fonts-theme` branch at
+`dfe54f279`. Its portable-font qualifications are historical and do not describe current artifacts.
 
 ## Admitting A Public Leaf
 

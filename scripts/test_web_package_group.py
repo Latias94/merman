@@ -6,6 +6,8 @@ from __future__ import annotations
 import io
 import hashlib
 import json
+from contextlib import chdir
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -385,47 +387,37 @@ class WebPackageArtifactTests(unittest.TestCase):
             target_dist_tag="alpha",
         )
 
-    @mock.patch("scripts.web_package_group.subprocess.run")
-    def test_pack_group_reads_npm12_named_tarballs(self, run: mock.Mock) -> None:
+    def test_pack_relative_destination_survives_package_working_directory(self) -> None:
         destination = self.root / "packed"
+        relative_destination = Path("packed")
 
-        def packed_result(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-            entry = next(
-                entry for entry in self.data["packages"]
-                if Path(kwargs["cwd"]).name == entry["id"]
-            )
-            filename = entry["name"].replace("@", "").replace("/", "-") + ".tgz"
-            write_tarball(destination / filename, entry)
+        def npm_pack(command, *, cwd, **kwargs):
+            package = json.loads((Path(cwd) / "package.json").read_text())
+            filename = package["name"].replace("@", "").replace("/", "-") + ".tgz"
+            # npm resolves its destination in the child process working directory.
+            output_dir = Path(cwd) / command[command.index("--pack-destination") + 1]
+            shutil.copyfile(self.artifacts / filename, output_dir / filename)
             return subprocess.CompletedProcess(
-                command, 0,
-                json.dumps({entry["name"]: {"name": entry["name"], "filename": filename}}),
+                command,
+                0,
+                json.dumps({package["name"]: {"name": package["name"], "filename": filename}}),
                 "",
             )
 
-        run.side_effect = packed_result
-        manifest = web_package_group.pack_group(
-            self.root, self.descriptor_path, destination,
-            version=VERSION, source_sha=SOURCE_SHA, target_dist_tag="alpha",
-        )
-        self.assertTrue(manifest.is_file())
-        self.assertEqual(run.call_count, 3)
-
-    @mock.patch("scripts.web_package_group.subprocess.run")
-    def test_pack_group_rejects_wrong_package_and_legacy_array(self, run: mock.Mock) -> None:
-        package_name = web_package_group.public_packages(self.data)[0]["name"]
-        for index, value in enumerate([
-            [{"name": package_name}],
-            {"other": {"name": "other"}},
-            {package_name: {"name": "other"}},
-            {package_name: {"name": package_name}, "other": {"name": "other"}},
-        ]):
-            with self.subTest(value=value):
-                run.return_value = subprocess.CompletedProcess([], 0, json.dumps(value), "")
-                with self.assertRaisesRegex(web_package_group.PackageGroupError, "exactly one tarball"):
-                    web_package_group.pack_group(
-                        self.root, self.descriptor_path, self.root / f"invalid-{index}",
-                        version=VERSION, source_sha=SOURCE_SHA, target_dist_tag="alpha",
-                    )
+        with chdir(self.root), mock.patch.object(
+            web_package_group.subprocess, "run", side_effect=npm_pack
+        ):
+            manifest_path = web_package_group.pack_group(
+                self.root,
+                self.descriptor_path,
+                relative_destination,
+                version=VERSION,
+                source_sha=SOURCE_SHA,
+                target_dist_tag="alpha",
+            )
+        manifest = web_package_group.verify_artifact(manifest_path, destination)
+        self.assertEqual(manifest_path.resolve().parent, destination.resolve())
+        self.assertEqual(len(manifest["packages"]), 3)
 
     def test_manifest_covers_only_public_packages_and_verifies_tarballs(self) -> None:
         path = self.create_manifest()

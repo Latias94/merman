@@ -1,9 +1,10 @@
 #import "context.typ": typst-layout
 #import "errors.typ": validate-error-mode
 #import "image.typ": result-image, svg-bytes-or-panic
-#import "options.typ": config-with-context-width, context-host-theme, options-bytes, render-config
+#import "options.typ": config-with-context-width, config-with-theme-spec, context-text-style, options-bytes, render-config
 #import "plugin.typ": merman-plugin
 #import "source.typ": source-text-value
+#import "theme.typ": materialize-theme
 #import "units.typ": context-width-css-px
 
 #let render-svg-result-with-config(source, config) = {
@@ -73,6 +74,21 @@
   result-image(result, width, height, fit, alt, scale, error-mode)
 }
 
+#let with-document-render-config(
+  operation,
+  ..args,
+) = context {
+  let inferred-text-style = context-text-style(text.font, text.size)
+  let base-config = render-config(context-text-style: inferred-text-style, ..args)
+  if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none or base-config.profile_layout_container_width != none {
+    operation(base-config)
+  } else {
+    typst-layout(size => {
+      operation(config-with-context-width(base-config, context-width-css-px(size.width)))
+    })
+  }
+}
+
 #let render-image-with-document-context(
   source,
   width: auto,
@@ -82,21 +98,14 @@
   alt: none,
   error-mode: "panic",
   ..args,
-) = context {
-  let inferred-host-theme = context-host-theme(text.font, text.size)
-  let base-config = render-config(context-host-theme: inferred-host-theme, ..args)
-  if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none or base-config.profile_layout_container_width != none {
-    let result = render-svg-result-with-config(source, base-config)
-    result-image(result, width, height, fit, alt, scale, error-mode)
-  } else {
-    typst-layout(size => {
-      let result = render-svg-result-with-config(
-        source,
-        config-with-context-width(base-config, context-width-css-px(size.width)),
-      )
+) = {
+  with-document-render-config(
+    config => {
+      let result = render-svg-result-with-config(source, config)
       result-image(result, width, height, fit, alt, scale, error-mode)
-    })
-  }
+    },
+    ..args,
+  )
 }
 
 #let mermaid(
@@ -134,4 +143,56 @@
       ..args,
     )
   }
+}
+
+#let with-theme-definition-render-config(
+  definition,
+  on-config,
+  on-error,
+  document-context: false,
+  ..args,
+) = {
+  let materialize-and-continue = config => {
+    let materialized = materialize-theme(definition, options: config.binding_options)
+    if "spec" in materialized {
+      on-config(config-with-theme-spec(config, materialized.spec))
+    } else {
+      on-error(materialized)
+    }
+  }
+  if document-context {
+    with-document-render-config(materialize-and-continue, ..args)
+  } else {
+    materialize-and-continue(render-config(..args))
+  }
+}
+
+#let mermaid-theme-definition(
+  source,
+  definition,
+  document-context: false,
+  width: auto,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "panic",
+  ..args,
+) = {
+  let error-mode = validate-error-mode(error-mode)
+  with-theme-definition-render-config(
+    definition,
+    config => result-image(
+      render-svg-result-with-config(source, config),
+      width,
+      height,
+      fit,
+      alt,
+      scale,
+      error-mode,
+    ),
+    result => result-image(result, width, height, fit, alt, scale, error-mode),
+    document-context: document-context,
+    ..args,
+  )
 }

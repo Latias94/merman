@@ -1,0 +1,56 @@
+{
+  "snapshotVersion": 1,
+  "sourceId": "source-excalidraw",
+  "revision": "e4ab626739f5f163c5eca56190f615643218b61c",
+  "evidenceFiles": [
+    {
+      "path": "packages/common/src/constants.ts",
+      "sha256": "5d2baf2211dd409f7bd7451d50ec2ee3b9c75545df3fe2b3c59cfd495d332e13"
+    },
+    {
+      "path": "packages/common/src/font-metadata.ts",
+      "sha256": "8a7c8fe4a611042e4e7acd3db814f131632e3d3337d4b2672b85549632070f7e"
+    },
+    {
+      "path": "packages/excalidraw/fonts/ExcalidrawFontFace.ts",
+      "sha256": "ae795b3485ca46361f56e26fc84411a94a45d1c4c9909905c155af16a998eb58"
+    },
+    {
+      "path": "packages/excalidraw/fonts/Excalifont/index.ts",
+      "sha256": "57793f1c8aa1116de20fb0add878c6c143a29d505913699114008e8907372e8a"
+    },
+    {
+      "path": "packages/excalidraw/fonts/Fonts.ts",
+      "sha256": "955896c50b2067430e8c91ce84115f3841e63364b0a29c5818c9e53e0a102589"
+    },
+    {
+      "path": "packages/excalidraw/fonts/Xiaolai/index.ts",
+      "sha256": "92882c3762cd155663341f19f63b28dc9fe868d796a97176dabb84c0016223d6"
+    }
+  ],
+  "fonts": [
+    {
+      "assetId": "font-excalifont-latin",
+      "sourcePath": "packages/excalidraw/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+      "sha256": "e4423b318e11432aff2e6e865e300b7ca270f92321a3f56632268fede01c1b48",
+      "family": "Excalifont",
+      "runtimeFamily": "Excalifont",
+      "unicodeRange": "U+20-7e,U+a0-a3,U+a5-a6,U+a8-ab,U+ad-b1,U+b4,U+b6-b8,U+ba-ff,U+131,U+152-153,U+2bc,U+2c6,U+2da,U+2dc,U+304,U+308,U+2013-2014,U+2018-201a,U+201c-201e,U+2020,U+2022,U+2024-2026,U+2030,U+2039-203a,U+20ac,U+2122,U+2212",
+      "license": "OFL-1.1"
+    },
+    {
+      "assetId": "font-xiaolai-cjk-test",
+      "sourcePath": "packages/excalidraw/fonts/Xiaolai/Xiaolai-Regular-79d494361ae093b69e74ee9dbe65bfd4.woff2",
+      "sha256": "6f78f52b32b85a686bae2602b6f4bd9197e508140a87c23eb38ced0fa501808e",
+      "family": "Xiaolai SC",
+      "runtimeFamily": "Xiaolai",
+      "unicodeRange": "U+4e03,U+4e30,U+4e34,U+4e45,U+4e60,U+4e70,U+4e88,U+4e91-4e92,U+4ea9,U+4eb2,U+4ec0,U+4ecb,U+4ecd,U+4ee4,U+4fee,U+5019,U+5047,U+50cf,U+5145,U+516d,U+5170,U+5175,U+5199,U+51cf,U+51fb,U+521a,U+5224,U+5267,U+52aa,U+5347-5348,U+534a,U+5356,U+5361,U+536b,U+5370,U+538b,U+53e4,U+53e6,U+5403,U+5426,U+5428,U+542c,U+5438,U+5668,U+56ed,U+56f4,U+56fe,U+57df,U+592a,U+5957,U+5b69,U+5b81,U+5b8f,U+5b98,U+5b9d,U+5ba1,U+5ba4,U+5bb3,U+5bc6,U+5bdf,U+5c3d,U+5c5e,U+5c81,U+5ddd,U+5de8,U+5dee,U+5e0c,U+5e86,U+5e8f,U+5e93,U+5e95,U+5e97,U+5ea7,U+5ead,U+5eb7,U+5f55,U+5f81,U+5f85,U+5ff5,U+6001,U+613f,U+6258,U+6267,U+6269,U+626c,U+627e,U+62db,U+62ec,U+6325,U+635f,U+6362,U+6388,U+6392,U+63a2,U+63a7,U+63aa,U+641e,U+6545,U+6597,U+65e2,U+65e9,U+661f,U+665a,U+666e-666f,U+66fe,U+6728,U+67d0,U+6811,U+6838,U+6865,U+697c,U+6b22,U+6b27,U+6b4c,U+6b62,U+6b66,U+6b7b,U+6bdb,U+6c47,U+6c49,U+6c7d,U+6c99,U+6cfd,U+6d0b,U+6d25,U+6d32,U+6d3e,U+6d4b,U+6e29,U+6e56,U+6e7e,U+6f14,U+6fc0,U+706b,U+70c8,U+7247,U+72af,U+72b6,U+72ec,U+732e,U+73ed,U+7403,U+7533,U+753b,U+7559,U+7565,U+7597,U+767b,U+773c,U+7763,U+77ed,U+77ff,U+7968,U+798f,U+79bb,U+79c0-79c1,U+7ad9,U+7ae0,U+7b51,U+7b7e,U+7cae,U+7d22,U+7ea2,U+7eb3,U+7eb7,U+7ec3,U+7ec8,U+7ecd,U+7edd,U+7efc,U+7f16,U+7f3a,U+7f51,U+7f57,U+7f6e,U+80dc,U+822a,U+8239,U+826f,U+82cf,U+82e6,U+8349,U+8363,U+83dc,U+8457,U+85cf,U+878d,U+8865,U+8a00,U+8b66,U+8ba2,U+8ba8,U+8bad,U+8bb2,U+8bc9,U+8bd5,U+8bfb,U+8d2b,U+8d35,U+8d37,U+8f7b,U+8f93,U+8fce,U+8fdd,U+9000-9002,U+9010,U+9047,U+9093,U+9152,U+9488,U+94a2,U+9633,U+9636,U+963f,U+9646,U+9648,U+964d,U+9664,U+9669,U+9760,U+97f3,U+987a,U+987e,U+9884,U+98de,U+9986,U+9ed1",
+      "license": "OFL-1.1",
+      "fixtureCodepoints": [
+        "U+6D4B",
+        "U+8BD5"
+      ]
+    }
+  ],
+  "license": "MIT"
+}

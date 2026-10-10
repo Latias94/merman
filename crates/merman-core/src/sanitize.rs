@@ -260,6 +260,10 @@ fn is_dompurify_data_attr_name(name: &str) -> bool {
     !rest.is_empty() && rest.chars().all(is_dompurify_data_attr_suffix_char)
 }
 
+fn is_renderer_reserved_math_data_attr_name(name: &str) -> bool {
+    name.starts_with("data-merman-math-") || name.starts_with("data-merman-prepared-math-")
+}
+
 fn is_dompurify_data_attr_suffix_char(ch: char) -> bool {
     // Source: DOMPurify 3.4.12 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
     matches!(
@@ -599,6 +603,12 @@ fn dompurify_is_valid_attribute(
     // DOMPurify applies FORBID_ATTR before its data-* and aria-* convenience paths.
     // Keeping that priority here makes every accepted attribute route obey one policy.
     if cfg.forbid_attr.contains(lc_name) {
+        return false;
+    }
+
+    // Renderer evidence markers are injected only after user-authored HTML has been sanitized.
+    // Letting source markup retain these names would let it impersonate native math evidence.
+    if is_renderer_reserved_math_data_attr_name(lc_name) {
         return false;
     }
 
@@ -1622,6 +1632,28 @@ mod tests {
             ),
             "<b>ok</b>"
         );
+    }
+
+    #[test]
+    fn sanitize_text_strips_renderer_reserved_math_data_attributes() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text(
+            concat!(
+                r#"<span class="merman-prepared-math" data-user-value="kept" "#,
+                r#"data-merman-math-native="unavailable" "#,
+                r#"data-merman-prepared-math-native="v1" "#,
+                r#"data-merman-prepared-math-occurrence="flowchart/node-label/0" "#,
+                r#"data-merman-prepared-math-width="10">x</span>"#,
+            ),
+            &cfg,
+        );
+
+        assert!(out.contains(r#"data-user-value="kept""#), "{out}");
+        assert!(!out.contains("data-merman-math-"), "{out}");
+        assert!(!out.contains("data-merman-prepared-math-"), "{out}");
     }
 
     #[test]

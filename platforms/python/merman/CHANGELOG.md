@@ -30,6 +30,14 @@ This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. 
 
 - Use the [package guide](README.md), [stable upgrade guide](../../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels), and [root changelog](../../../CHANGELOG.md). Native Rust benchmark observations do not establish Python transport performance.
 
+### Breaking changes
+
+- Regenerate the direct UniFFI bindings and native library together for the typed-theme authoring and diagnostic changes. Published alpha.7 already exposed API `7` through `binding_api_version_v7()`; that historical number does not establish compatibility with this development interface. Schema-3 ASCII plans retain requested/effective layouts and Compact-attempt information.
+
+- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
+
+- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
 ## [0.8.0a7] - 2026-09-30
 
 ### Added

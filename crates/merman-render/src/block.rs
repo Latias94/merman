@@ -1,20 +1,39 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod edge_paint;
+mod marker_paint;
+mod node_binding;
+pub(crate) use edge_paint::BlockEdgePaintPlan;
+pub(crate) use marker_paint::BlockMarkerPaintPlan;
+mod source;
+mod theme;
 
+pub(crate) use source::resolve_block_node_sources;
+
+#[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
+pub(crate) use theme::{
+    BlockCssThemeBinding, BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan,
+    BlockNodePaintThemePlan, BlockTypographyThemePlan,
+};
 
 mod geometry;
 
+pub(crate) use geometry::BlockNodeShellKind;
 pub use geometry::{
     BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
 };
 
 pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
+
+// Mermaid createFormattedText pads the SVG edge label's background on all four sides.
+pub(crate) const SVG_EDGE_LABEL_BACKGROUND_PADDING: f64 = 2.0;
 
 #[derive(Debug, Clone)]
 struct SizedBlock {
@@ -46,9 +65,15 @@ fn block_html_label_metrics_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    html_labels: bool,
 ) -> (f64, f64) {
-    let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
+    let metrics = measurer.measure_wrapped(text, style, None, wrap_mode);
+    (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -502,6 +527,7 @@ fn to_sized_block_shallow(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    html_labels: bool,
     children: Vec<SizedBlock>,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
@@ -520,7 +546,7 @@ fn to_sized_block_shallow(
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
     } else {
-        block_html_label_metrics_px(&label_decoded, measurer, text_style)
+        block_html_label_metrics_px(&label_decoded, measurer, text_style, html_labels)
     };
     let shape_label_height = label_height;
 
@@ -556,6 +582,7 @@ fn to_sized_block(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    html_labels: bool,
 ) -> SizedBlock {
     let mut stack: Vec<(&BlockNode, bool)> = vec![(node, false)];
     let mut completed: HashMap<*const BlockNode, SizedBlock> = HashMap::new();
@@ -569,7 +596,7 @@ fn to_sized_block(
                 .collect();
             completed.insert(
                 block as *const BlockNode,
-                to_sized_block_shallow(block, padding, measurer, text_style, children),
+                to_sized_block_shallow(block, padding, measurer, text_style, html_labels, children),
             );
         } else {
             stack.push((block, true));
@@ -581,7 +608,9 @@ fn to_sized_block(
 
     completed
         .remove(&(node as *const BlockNode))
-        .unwrap_or_else(|| to_sized_block_shallow(node, padding, measurer, text_style, Vec::new()))
+        .unwrap_or_else(|| {
+            to_sized_block_shallow(node, padding, measurer, text_style, html_labels, Vec::new())
+        })
 }
 
 fn get_max_child_size(block: &SizedBlock) -> (f64, f64) {
@@ -932,38 +961,7 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
     }
 }
 
-#[derive(Debug, Clone)]
-struct BlockShapeSource {
-    block_type: String,
-    directions: Vec<String>,
-    width_in_columns: i64,
-}
-
-fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
-    let mut stack = vec![root];
-    while let Some(block) = stack.pop() {
-        let source = out
-            .entry(block.id.clone())
-            .or_insert_with(|| BlockShapeSource {
-                block_type: block.block_type.clone(),
-                directions: block.directions.clone(),
-                width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
-            });
-        if !block.block_type.is_empty() && block.block_type != "na" {
-            source.block_type = block.block_type.clone();
-        }
-        if !block.directions.is_empty() {
-            source.directions = block.directions.clone();
-        }
-        if let Some(width_in_columns) = block.width_in_columns {
-            source.width_in_columns = width_in_columns.max(1);
-        }
-        for child in block.children.iter().rev() {
-            stack.push(child);
-        }
-    }
-}
-
+#[cfg(test)]
 pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &Value,
@@ -973,7 +971,17 @@ pub(crate) fn layout_block_diagram_typed(
         padding,
         text_style,
     } = BlockConfigView::new(effective_config).layout_settings();
+    let html_labels = crate::config::config_effective_html_labels(effective_config);
+    layout_block_diagram_typed_with_text_style(model, padding, html_labels, text_style, measurer)
+}
 
+pub(crate) fn layout_block_diagram_typed_with_text_style(
+    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    padding: f64,
+    html_labels: bool,
+    text_style: TextStyle,
+    measurer: &dyn TextMeasurer,
+) -> Result<BlockDiagramLayout> {
     let root = model
         .blocks_flat
         .iter()
@@ -984,28 +992,25 @@ pub(crate) fn layout_block_diagram_typed(
 
     validate_block_columns(root)?;
 
-    let mut root = to_sized_block(root, padding, measurer, &text_style);
+    let mut root = to_sized_block(root, padding, measurer, &text_style, html_labels);
     set_block_sizes(&mut root, padding);
     layout_blocks(&mut root, padding)?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     collect_nodes(&root, &mut nodes);
 
-    let mut shape_sources = HashMap::new();
-    for block in &model.blocks_flat {
-        collect_shape_sources(block, &mut shape_sources);
-    }
+    let shape_sources = resolve_block_node_sources(model);
     let mut shape_geometries = Vec::with_capacity(nodes.len());
     for node in &nodes {
         let source = shape_sources
-            .get(&node.id)
+            .get(node.id.as_str())
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing Block shape source for node `{}`", node.id),
             })?;
         let geometry = BlockShapeGeometry::from_layout_node(
             node,
-            &source.block_type,
-            &source.directions,
+            source.block_type,
+            source.directions,
             padding,
             source.width_in_columns,
         )
@@ -1051,12 +1056,17 @@ pub(crate) fn layout_block_diagram_typed(
         } else {
             let edge_label = decode_block_label_html(&e.label);
             let (label_width, label_height) =
-                block_html_label_metrics_px(&edge_label, measurer, &text_style);
+                block_html_label_metrics_px(&edge_label, measurer, &text_style, html_labels);
+            let background_padding = if html_labels {
+                0.0
+            } else {
+                2.0 * SVG_EDGE_LABEL_BACKGROUND_PADDING
+            };
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
-                width: label_width.max(1.0),
-                height: label_height.max(1.0),
+                width: label_width.max(1.0) + background_padding,
+                height: label_height.max(1.0) + background_padding,
             })
         };
 
@@ -1188,6 +1198,7 @@ mod tests {
             "Font size precedence should widen this block",
             &SelectedMeasurer,
             &style,
+            true,
         );
 
         assert_eq!(width, 321.25);

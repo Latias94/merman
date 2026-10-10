@@ -68,6 +68,20 @@ impl ResourceProfile {
             .find(|descriptor| descriptor.id == id)
             .map(|descriptor| descriptor.profile)
     }
+
+    /// Returns whether this profile is no looser than a host-owned ceiling.
+    ///
+    /// Numeric overrides cover only the resource IDs exposed by a concrete artifact. This
+    /// relation also protects resource owners that are not part of that generic vocabulary, such
+    /// as theme compilation.
+    pub const fn is_no_looser_than(self, ceiling: Self) -> bool {
+        match ceiling {
+            Self::Constrained => matches!(self, Self::Constrained),
+            Self::Interactive => matches!(self, Self::Constrained | Self::Interactive),
+            Self::TrustedNative => !matches!(self, Self::UnboundedForTrustedInput),
+            Self::UnboundedForTrustedInput => true,
+        }
+    }
 }
 
 impl std::fmt::Display for ResourceProfile {
@@ -320,6 +334,59 @@ impl InputResourcePolicy {
         Ok(self)
     }
 
+    /// Returns the pointwise minimum of two policies while preserving this policy's host profile.
+    pub fn meet(&self, restriction: &Self) -> Self {
+        let mut effective_values = [None; INPUT_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < INPUT_RESOURCE_LIMIT_COUNT {
+            effective_values[index] = minimum_ceiling(
+                self.effective_values[index],
+                restriction.effective_values[index],
+            );
+            index += 1;
+        }
+        self.with_effective_values(effective_values)
+    }
+
+    /// Applies a request policy only when every requested ceiling is at least as strict.
+    pub fn restrict_with(
+        &self,
+        restriction: &Self,
+    ) -> Result<Self, InputResourcePolicyRestrictionError> {
+        for id in InputResourceLimitId::ALL {
+            let ceiling = self.value(id);
+            let requested = restriction.value(id);
+            if loosens_ceiling(ceiling, requested) {
+                return Err(InputResourcePolicyRestrictionError {
+                    id,
+                    requested,
+                    ceiling,
+                });
+            }
+        }
+        Ok(self.meet(restriction))
+    }
+
+    fn with_effective_values(
+        &self,
+        effective_values: [Option<usize>; INPUT_RESOURCE_LIMIT_COUNT],
+    ) -> Self {
+        let mut explicit_overrides = [None; INPUT_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < INPUT_RESOURCE_LIMIT_COUNT {
+            if effective_values[index] != self.base_values[index] {
+                explicit_overrides[index] = effective_values[index];
+            }
+            index += 1;
+        }
+        Self {
+            profile: self.profile,
+            base_values: self.base_values,
+            effective_values,
+            explicit_overrides,
+        }
+    }
+
     fn check_limit(
         &self,
         phase: InputResourceLimitPhase,
@@ -457,6 +524,35 @@ pub enum InputResourceLimitOverrideError {
     UnknownLimit(String),
     #[error("resource limit `{0}` must be a positive integer")]
     NonPositive(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "resource policy would loosen `{}`: requested {:?}, ceiling {:?}",
+    .id.as_str(),
+    .requested,
+    .ceiling
+)]
+pub struct InputResourcePolicyRestrictionError {
+    pub id: InputResourceLimitId,
+    pub requested: Option<usize>,
+    pub ceiling: Option<usize>,
+}
+
+const fn minimum_ceiling(left: Option<usize>, right: Option<usize>) -> Option<usize> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(if left < right { left } else { right }),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
+    }
+}
+
+const fn loosens_ceiling(ceiling: Option<usize>, requested: Option<usize>) -> bool {
+    match (ceiling, requested) {
+        (Some(_), None) => true,
+        (Some(ceiling), Some(requested)) => requested > ceiling,
+        (None, _) => false,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -2108,6 +2204,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resource_profile_restriction_order_covers_every_profile_pair() {
+        let expected = [
+            [true, true, false, false],
+            [false, true, false, false],
+            [true, true, true, false],
+            [true, true, true, true],
+        ];
+
+        for (ceiling_index, ceiling) in ResourceProfile::ALL.into_iter().enumerate() {
+            for (requested_index, requested) in ResourceProfile::ALL.into_iter().enumerate() {
+                assert_eq!(
+                    requested.is_no_looser_than(ceiling),
+                    expected[ceiling_index][requested_index],
+                    "requested {requested} under {ceiling}",
+                );
+            }
+        }
+    }
+
+    #[test]
     fn profile_values_are_single_source_for_input_limits() {
         assert_eq!(
             RESOURCE_PROFILE_DESCRIPTORS.len(),
@@ -2132,6 +2248,41 @@ mod tests {
         ] {
             assert_eq!(interactive.value(limit), expected, "{limit:?}");
         }
+    }
+
+    #[test]
+    fn input_policy_meet_and_restriction_are_pointwise_monotonic() {
+        let host = InputResourcePolicy::for_profile(ResourceProfile::Interactive)
+            .with_limit(InputResourceLimitId::MaxSourceBytes, 100)
+            .unwrap();
+        let tighter = host
+            .with_limit(InputResourceLimitId::MaxSourceBytes, 80)
+            .unwrap()
+            .with_limit(InputResourceLimitId::MaxModelItems, 10)
+            .unwrap();
+
+        let resolved = host.restrict_with(&tighter).unwrap();
+        assert_eq!(
+            resolved.value(InputResourceLimitId::MaxSourceBytes),
+            Some(80)
+        );
+        assert_eq!(
+            resolved.value(InputResourceLimitId::MaxModelItems),
+            Some(10)
+        );
+        assert_eq!(resolved.profile(), ResourceProfile::Interactive);
+
+        let looser = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let error = host.restrict_with(&looser).unwrap_err();
+        assert_eq!(error.id, InputResourceLimitId::MaxSourceBytes);
+        assert_eq!(error.requested, None);
+        assert_eq!(error.ceiling, Some(100));
+
+        assert_eq!(
+            host.meet(&looser)
+                .value(InputResourceLimitId::MaxSourceBytes),
+            Some(100)
+        );
     }
 
     #[test]

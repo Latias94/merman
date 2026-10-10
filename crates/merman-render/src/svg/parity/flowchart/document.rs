@@ -1,16 +1,17 @@
-use std::fmt::Write as _;
-
 use super::super::SvgDiagramId;
 use super::super::root_svg;
 use super::super::util::escape_xml_into;
+use super::document_ids::FlowchartDocumentIds;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
-    pub family_kind: crate::family::RenderFamilyKind,
+    pub family_id: crate::DiagramFamilyId,
     pub diagram_id: SvgDiagramId<'a>,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
+    pub document_ids: &'a FlowchartDocumentIds<'a>,
     pub use_max_width: bool,
     pub diagram_padding: f64,
+    pub source_paint_bounds: Option<crate::model::Bounds>,
     pub bbox_min_x: f64,
     pub bbox_min_y: f64,
     pub bbox_max_x: f64,
@@ -23,25 +24,33 @@ pub(super) struct FlowchartSvgDocument<'a> {
     use_max_width: bool,
     root_viewport: root_svg::RootViewportContext<'a>,
     root_spec: root_svg::RootViewportSpec,
+    document_ids: &'a FlowchartDocumentIds<'a>,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
-    aria_labelledby: Option<String>,
-    aria_describedby: Option<String>,
 }
 
 pub(super) fn prepare_flowchart_svg_document(
     request: FlowchartSvgDocumentRequest<'_>,
 ) -> FlowchartSvgDocument<'_> {
-    let root_bounds = flowchart_root_bounds(
+    let mut root_bounds = flowchart_root_bounds(
         request.bbox_min_x,
         request.bbox_min_y,
         request.bbox_max_x,
         request.bbox_max_y,
         request.diagram_padding,
     );
+    if let Some(paint) = request.source_paint_bounds {
+        root_bounds = root_svg::DiagramBounds::from_extents(
+            root_bounds.min_x.min(paint.min_x),
+            root_bounds.min_y.min(paint.min_y),
+            (root_bounds.min_x + root_bounds.width).max(paint.max_x),
+            (root_bounds.min_y + root_bounds.height).max(paint.max_y),
+            0.0,
+        );
+    }
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
-    let root_viewport = root_svg::RootViewportContext::new(request.family_kind, request.diagram_id);
+    let root_viewport = root_svg::RootViewportContext::new(request.family_id, request.diagram_id);
 
     let acc_title = request
         .model
@@ -55,19 +64,15 @@ pub(super) fn prepare_flowchart_svg_document(
         .as_deref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{}", request.diagram_id));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{}", request.diagram_id));
-
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
         diagram_type: request.diagram_type,
         use_max_width: request.use_max_width,
         root_viewport,
         root_spec,
+        document_ids: request.document_ids,
         acc_title,
         acc_descr,
-        aria_labelledby,
-        aria_describedby,
     }
 }
 
@@ -82,15 +87,26 @@ fn flowchart_root_bounds(
 }
 
 impl FlowchartSvgDocument<'_> {
-    pub(super) fn push_root_open(&self, out: &mut String) -> crate::Result<root_svg::RootDocument> {
+    pub(super) fn push_root_open(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+    ) -> crate::Result<root_svg::RootDocument> {
+        // RootChrome currently borrows complete attribute values. Materialize at most these two
+        // document-level ids after the bounded sink exists; per-owner ids stay streaming views.
+        let aria_labelledby = self
+            .acc_title
+            .map(|_| self.document_ids.accessibility_title().to_string());
+        let aria_describedby = self
+            .acc_descr
+            .map(|_| self.document_ids.accessibility_description().to_string());
         let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
         root_chrome.class = Some(if self.diagram_type == "agentflow" {
             "agentflow"
         } else {
             "flowchart"
         });
-        root_chrome.aria_labelledby = self.aria_labelledby.as_deref();
-        root_chrome.aria_describedby = self.aria_describedby.as_deref();
+        root_chrome.aria_labelledby = aria_labelledby.as_deref();
+        root_chrome.aria_describedby = aria_describedby.as_deref();
         root_chrome.dom.trailing_newline = false;
         if !self.use_max_width {
             root_chrome.dom.style_viewbox_order =
@@ -104,14 +120,22 @@ impl FlowchartSvgDocument<'_> {
             .write_open(out, self.root_spec, root_chrome)
     }
 
-    pub(super) fn push_accessibility_metadata(&self, out: &mut String) {
+    pub(super) fn push_accessibility_metadata(&self, out: &mut impl crate::svg::parity::SvgOutput) {
         if let Some(title) = self.acc_title {
-            let _ = write!(out, r#"<title id="chart-title-{}">"#, self.diagram_id);
+            let _ = write!(
+                out,
+                r#"<title id="{}">"#,
+                self.document_ids.accessibility_title()
+            );
             escape_xml_into(out, title);
             out.push_str("</title>");
         }
         if let Some(descr) = self.acc_descr {
-            let _ = write!(out, r#"<desc id="chart-desc-{}">"#, self.diagram_id);
+            let _ = write!(
+                out,
+                r#"<desc id="{}">"#,
+                self.document_ids.accessibility_description()
+            );
             escape_xml_into(out, descr);
             out.push_str("</desc>");
         }

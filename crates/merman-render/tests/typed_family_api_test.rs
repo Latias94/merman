@@ -1,8 +1,19 @@
+// Parser/editor-only fields remain in the shared core characterization cases.
+#[allow(dead_code)]
+#[path = "../../merman-core/src/tests/registry_cases.rs"]
+mod catalog_cases;
+
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+#[cfg(not(feature = "layout-cytoscape"))]
+use merman_render::diagram_theme::{
+    DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+};
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
     Engine::new()
@@ -90,18 +101,47 @@ fn architecture_reports_the_missing_cytoscape_layout_capability() {
 #[cfg(not(feature = "layout-cytoscape"))]
 #[test]
 fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
-    let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
-        "mindmap",
-        "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
-        ParseOptions::strict(),
-    ) {
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+    let theme =
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+            ))
+            .expect("compile default-feature Mindmap palette");
+    let parsed = match merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_with_type_sync(
+            "mindmap",
+            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
+            ParseOptions::strict(),
+        ) {
         Ok(Some(parsed)) => parsed,
         Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
         result => panic!("unexpected Mindmap parse result: {result:?}"),
     };
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin default-feature Mindmap theme session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("tidy-tree Mindmap must not require layout-cytoscape");
-    assert_eq!(artifact.family_kind().as_str(), "mindmap");
+    assert_eq!(artifact.family_id().as_str(), "mindmap");
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("typed-mindmap-tidy-tree".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render strict default-feature Mindmap palette");
+
+    assert!(rendered.svg().contains(r#"data-mindmap-section="0""#));
+    assert!(rendered.svg().contains("fill:#123456"));
+    let completion = rendered.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).applied_count(),
+        1
+    );
 }
 
 #[test]
@@ -124,4 +164,165 @@ fn state_prepared_artifact_renders_the_typed_family() {
         "{}",
         svg.svg()
     );
+}
+
+#[cfg(merman_internal_theme_acceptance)]
+#[test]
+fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
+    use merman_render::DiagramFamilyId;
+    use merman_render::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeColorValue, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+    use merman_render::svg::{StandaloneSvgArtifact, SvgPipeline};
+    use sha2::{Digest as _, Sha256};
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Solid(
+                            ThemeColorValue::parse("#125abc").unwrap(),
+                        )),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .unwrap();
+    let render = |source: &str| {
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .finalize_resvg(&SvgPipeline::resvg_safe())
+            .unwrap()
+            .into_completion()
+    };
+    let first = render("block-beta\n  a[\"First\"]\n");
+    let second = render("block-beta\n  b[\"Second\"]\n");
+    let receipts = first.theme_route_cutover_receipts();
+    assert!(
+        !receipts.is_empty(),
+        "the typed Node.fill route must be witnessed"
+    );
+    let (first_svg, _) = first.into_output_and_report();
+    let first_svg = StandaloneSvgArtifact::from(first_svg);
+    let second_svg = StandaloneSvgArtifact::from(second.into_output_and_report().0);
+    let public_digest = Sha256::digest(first_svg.as_str().as_bytes()).into();
+    let native_digest = Sha256::digest(first_svg.native_export_svg().as_bytes()).into();
+    let other_public = Sha256::digest(second_svg.as_str().as_bytes()).into();
+    let other_native = Sha256::digest(second_svg.native_export_svg().as_bytes()).into();
+    assert_ne!(public_digest, other_public);
+    assert_ne!(native_digest, other_native);
+    for receipt in receipts {
+        assert!(receipt.proves_artifacts(public_digest, native_digest));
+        assert!(!receipt.proves_artifacts(other_public, native_digest));
+        assert!(!receipt.proves_artifacts(public_digest, other_native));
+    }
+}
+
+#[test]
+fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capability() {
+    use merman_core::{DiagramFamilyId, diagram_family_capabilities, diagram_type_family_id};
+    use merman_render::{Error, RenderCapability};
+    use std::collections::BTreeSet;
+
+    let catalog = diagram_family_capabilities();
+    let cases = catalog_cases::FAMILY_CHARACTERIZATION_MATRIX;
+    assert_eq!(
+        cases
+            .iter()
+            .map(|case| case.variant_id)
+            .collect::<BTreeSet<_>>(),
+        catalog
+            .iter()
+            .map(|fact| fact.diagram_type)
+            .collect::<BTreeSet<_>>()
+    );
+    let engine = Engine::new();
+    let mut prepared_families = BTreeSet::new();
+    let mut missing_families = BTreeSet::new();
+    for case in cases {
+        let expected = DiagramFamilyId::from_id(case.logical_family).unwrap();
+        assert_eq!(diagram_type_family_id(case.variant_id), Some(expected));
+        let parsed = engine
+            .parse_diagram_for_render_model_with_type_sync(
+                case.variant_id,
+                case.representative_source,
+                ParseOptions::strict(),
+            )
+            .unwrap_or_else(|error| panic!("{}: {error}", case.variant_id))
+            .unwrap();
+        assert_eq!(
+            parsed.family_id(),
+            Some(expected),
+            "{} parsed family",
+            case.variant_id
+        );
+        let expected_missing = match case.variant_id {
+            "flowchart-elk" if !cfg!(feature = "layout-elk") => Some(RenderCapability::LayoutElk),
+            "architecture" | "mindmap" if !cfg!(feature = "layout-cytoscape") => {
+                Some(RenderCapability::LayoutCytoscape)
+            }
+            _ => None,
+        };
+        match (
+            family::prepare(
+                parsed,
+                &LayoutOptions::headless_svg_defaults(),
+                render_session(),
+            ),
+            expected_missing,
+        ) {
+            (Err(Error::MissingCapability { capability, .. }), Some(expected_capability)) => {
+                assert_eq!(
+                    capability, expected_capability,
+                    "{} capability",
+                    case.variant_id
+                );
+                missing_families.insert(expected);
+            }
+            (Ok(artifact), None) => {
+                assert_eq!(
+                    artifact.family_id(),
+                    expected,
+                    "{} artifact family",
+                    case.variant_id
+                );
+                let svg = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap_or_else(|error| panic!("{} writer: {error}", case.variant_id));
+                assert!(
+                    svg.svg().contains("<svg"),
+                    "{} writer returned no SVG",
+                    case.variant_id
+                );
+                prepared_families.insert(expected);
+            }
+            (Err(error), _) => panic!("{} preparation: {error}", case.variant_id),
+            (Ok(_), Some(capability)) => {
+                panic!("{} unexpectedly has {capability:?}", case.variant_id)
+            }
+        }
+    }
+    assert_eq!(
+        prepared_families
+            .union(&missing_families)
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        DiagramFamilyId::all().iter().copied().collect()
+    );
+    if cfg!(all(feature = "layout-elk", feature = "layout-cytoscape")) {
+        assert!(missing_families.is_empty());
+    }
 }

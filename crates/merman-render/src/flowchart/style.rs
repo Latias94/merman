@@ -1,8 +1,10 @@
-use crate::text::{TextMetrics, TextStyle};
+use crate::text::{PreparedTextCssTypographyOverrides, TextMetrics, TextStyle};
 use indexmap::IndexMap;
+use std::borrow::Cow;
 
-fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
-    crate::mermaid_style::parse_safe_style_decl(s)
+fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
+    let parsed = crate::mermaid_style::parse_style_declaration(s)?;
+    Some((parsed.property_source(), parsed.value(), parsed.important()))
 }
 
 fn normalize_css_font_family(font_family: &str) -> String {
@@ -47,16 +49,50 @@ pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item
     parts.into_iter()
 }
 
-fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str, value: &str) {
-    match key.trim().to_ascii_lowercase().as_str() {
+pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
+    matches!(
+        key.trim(),
+        "color"
+            | "font-size"
+            | "font-family"
+            | "font-weight"
+            | "font-style"
+            | "text-decoration"
+            | "text-align"
+            | "text-transform"
+            | "line-height"
+            | "letter-spacing"
+            | "word-spacing"
+            | "text-shadow"
+            | "text-overflow"
+            | "white-space"
+            | "word-wrap"
+            | "word-break"
+            | "overflow-wrap"
+            | "hyphens"
+    )
+}
+
+pub(crate) fn flowchart_apply_text_style_decl(
+    style: &mut std::borrow::Cow<'_, TextStyle>,
+    key: &str,
+    value: &str,
+) {
+    match key.trim() {
         "font-size" => {
             let inherited_px = style.as_ref().font_size;
-            if let Some(px) = crate::mermaid_style::parse_css_font_size_px(value, inherited_px) {
+            if let Some(px) = crate::mermaid_style::resolve_mermaid_font_size_px(
+                value,
+                crate::mermaid_style::CssFontSizeContext::uniform(inherited_px),
+            ) {
                 style.to_mut().font_size = px;
             }
         }
         "font-family" => {
-            style.to_mut().font_family = Some(normalize_css_font_family(value));
+            let font_family = normalize_css_font_family(value);
+            if !font_family.is_empty() {
+                style.to_mut().font_family = Some(font_family);
+            }
         }
         "font-weight" => {
             style.to_mut().font_weight = Some(value.trim().to_string());
@@ -68,13 +104,171 @@ fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str,
     }
 }
 
-fn flowchart_effective_text_style_for_class_names<'a>(
+#[derive(Debug)]
+pub(crate) struct FlowchartTextStyleResolution<'a> {
+    pub(crate) style: Cow<'a, TextStyle>,
+    /// Source-owned typography declarations whose final values must be admitted together for
+    /// prepared measurement and SVG emission.
+    pub(crate) prepared_text_overrides: PreparedTextCssTypographyOverrides,
+    pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
+}
+
+#[derive(Debug, Default)]
+struct FlowchartTypographyCascade {
+    importance_by_property: IndexMap<String, bool>,
+}
+
+impl FlowchartTypographyCascade {
+    fn admit(&mut self, property: &str, important: bool) -> bool {
+        let property = property.trim();
+        if self
+            .importance_by_property
+            .get(property)
+            .is_some_and(|current| *current && !important)
+        {
+            return false;
+        }
+        self.importance_by_property
+            .insert(property.to_string(), important);
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FlowchartTerminalForegroundProvenance {
+    ThemeNode,
+    ThemeTitle,
+    AssignedClass,
+    InlineStyle,
+    #[cfg(test)]
+    EdgeLabelStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FlowchartTerminalForeground {
+    value: String,
+    provenance: FlowchartTerminalForegroundProvenance,
+    important: bool,
+}
+
+impl FlowchartTerminalForeground {
+    pub(crate) fn new(value: &str, provenance: FlowchartTerminalForegroundProvenance) -> Self {
+        Self {
+            value: value.trim().to_string(),
+            provenance,
+            important: false,
+        }
+    }
+
+    fn observe(
+        target: &mut Option<Self>,
+        value: &str,
+        provenance: FlowchartTerminalForegroundProvenance,
+        important: bool,
+    ) {
+        if target
+            .as_ref()
+            .is_some_and(|current| current.important && !important)
+        {
+            return;
+        }
+        *target = Some(Self {
+            value: value.trim().to_string(),
+            provenance,
+            important,
+        });
+    }
+
+    pub(crate) fn value(&self) -> &str {
+        &self.value
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn provenance(&self) -> FlowchartTerminalForegroundProvenance {
+        self.provenance
+    }
+}
+
+impl AsRef<TextStyle> for FlowchartTextStyleResolution<'_> {
+    fn as_ref(&self) -> &TextStyle {
+        self.style.as_ref()
+    }
+}
+
+impl<'a> FlowchartTextStyleResolution<'a> {
+    pub(crate) fn borrowed(style: &'a TextStyle) -> Self {
+        Self {
+            style: Cow::Borrowed(style),
+            prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
+        }
+    }
+
+    pub(crate) fn terminal_foreground(&self) -> Option<&FlowchartTerminalForeground> {
+        self.terminal_foreground.as_ref()
+    }
+}
+
+impl std::ops::Deref for FlowchartTextStyleResolution<'_> {
+    type Target = TextStyle;
+
+    fn deref(&self) -> &Self::Target {
+        self.style.as_ref()
+    }
+}
+
+struct FlowchartTextStyleResolver<'a> {
+    resolution: FlowchartTextStyleResolution<'a>,
+    typography_cascade: FlowchartTypographyCascade,
+}
+
+impl<'a> FlowchartTextStyleResolver<'a> {
+    fn new(base: &'a TextStyle) -> Self {
+        Self {
+            resolution: FlowchartTextStyleResolution::borrowed(base),
+            typography_cascade: FlowchartTypographyCascade::default(),
+        }
+    }
+
+    fn observe(
+        &mut self,
+        key: &str,
+        value: &str,
+        provenance: FlowchartTerminalForegroundProvenance,
+        important: bool,
+    ) {
+        if !flowchart_is_source_spelled_label_style_key(key) {
+            return;
+        }
+        if !self.typography_cascade.admit(key, important) {
+            return;
+        }
+        flowchart_apply_text_style_decl(&mut self.resolution.style, key, value);
+        self.resolution
+            .prepared_text_overrides
+            .observe_declaration(key, value);
+        if key.trim() == "color" {
+            FlowchartTerminalForeground::observe(
+                &mut self.resolution.terminal_foreground,
+                value,
+                provenance,
+                important,
+            );
+        }
+    }
+
+    fn finish(self) -> FlowchartTextStyleResolution<'a> {
+        self.resolution
+    }
+}
+
+fn flowchart_text_style_resolver_for_class_names<'a, 'b>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
-    class_names: impl IntoIterator<Item = &'a str>,
+    class_names: impl IntoIterator<Item = &'b str>,
     inline_styles: &[String],
-) -> std::borrow::Cow<'a, TextStyle> {
-    let mut style = std::borrow::Cow::Borrowed(base);
+) -> FlowchartTextStyleResolver<'a> {
+    let mut resolver = FlowchartTextStyleResolver::new(base);
 
     for class in class_names {
         let Some(decls) = class_defs.get(class) else {
@@ -82,24 +276,34 @@ fn flowchart_effective_text_style_for_class_names<'a>(
         };
         for d in decls {
             for d in flowchart_split_mermaid_style_decls(d) {
-                let Some((k, v)) = parse_style_decl(d) else {
+                let Some((k, v, important)) = parse_style_decl(d) else {
                     continue;
                 };
-                apply_text_style_decl(&mut style, k, v);
+                resolver.observe(
+                    k,
+                    v,
+                    FlowchartTerminalForegroundProvenance::AssignedClass,
+                    important,
+                );
             }
         }
     }
 
     for d in inline_styles {
         for d in flowchart_split_mermaid_style_decls(d) {
-            let Some((k, v)) = parse_style_decl(d) else {
+            let Some((k, v, important)) = parse_style_decl(d) else {
                 continue;
             };
-            apply_text_style_decl(&mut style, k, v);
+            resolver.observe(
+                k,
+                v,
+                FlowchartTerminalForegroundProvenance::InlineStyle,
+                important,
+            );
         }
     }
 
-    style
+    resolver
 }
 
 pub(crate) fn flowchart_effective_node_class_names<'a>(
@@ -123,16 +327,32 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     classes: &'a [String],
     inline_styles: &[String],
 ) -> std::borrow::Cow<'a, TextStyle> {
+    flowchart_effective_text_style_for_node_classes_with_provenance(
+        base,
+        class_defs,
+        classes,
+        inline_styles,
+    )
+    .style
+}
+
+pub(crate) fn flowchart_effective_text_style_for_node_classes_with_provenance<'a>(
+    base: &'a TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> FlowchartTextStyleResolution<'a> {
     let effective_classes = flowchart_effective_node_class_names(class_defs, classes);
     if effective_classes.is_empty() && inline_styles.is_empty() {
-        return std::borrow::Cow::Borrowed(base);
+        return FlowchartTextStyleResolution::borrowed(base);
     }
-    flowchart_effective_text_style_for_class_names(
+    flowchart_text_style_resolver_for_class_names(
         base,
         class_defs,
         effective_classes,
         inline_styles,
     )
+    .finish()
 }
 
 pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
@@ -141,21 +361,38 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     classes: &'a [String],
     inline_styles: &[String],
 ) -> std::borrow::Cow<'a, TextStyle> {
+    flowchart_effective_text_style_for_classes_with_provenance(
+        base,
+        class_defs,
+        classes,
+        inline_styles,
+    )
+    .style
+}
+
+pub(crate) fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
+    base: &'a TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> FlowchartTextStyleResolution<'a> {
     if classes.is_empty() && inline_styles.is_empty() {
-        return std::borrow::Cow::Borrowed(base);
+        return FlowchartTextStyleResolution::borrowed(base);
     }
 
-    flowchart_effective_text_style_for_class_names(
+    flowchart_text_style_resolver_for_class_names(
         base,
         class_defs,
         classes.iter().map(|class| class.as_str()),
         inline_styles,
     )
+    .finish()
 }
 
 /// Mermaid first compiles edge classes and then applies the concatenated `linkStyle default`
 /// and per-edge declarations. The resulting style is applied after SVG line wrapping, but it owns
 /// the final text bbox used by the layout graph.
+#[cfg(test)]
 pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -163,11 +400,29 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     default_edge_styles: &[String],
     edge_styles: &[String],
 ) -> std::borrow::Cow<'a, TextStyle> {
+    flowchart_effective_edge_label_text_style_with_provenance(
+        base,
+        class_defs,
+        classes,
+        default_edge_styles,
+        edge_styles,
+    )
+    .style
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
+    base: &'a TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    default_edge_styles: &[String],
+    edge_styles: &[String],
+) -> FlowchartTextStyleResolution<'a> {
     if classes.is_empty() && default_edge_styles.is_empty() && edge_styles.is_empty() {
-        return std::borrow::Cow::Borrowed(base);
+        return FlowchartTextStyleResolution::borrowed(base);
     }
 
-    let mut style = flowchart_effective_text_style_for_class_names(
+    let mut resolver = flowchart_text_style_resolver_for_class_names(
         base,
         class_defs,
         classes.iter().map(|class| class.as_str()),
@@ -175,35 +430,56 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     );
     for declaration in default_edge_styles.iter().chain(edge_styles) {
         for declaration in flowchart_split_mermaid_style_decls(declaration) {
-            let Some((key, value)) = parse_style_decl(declaration) else {
+            let Some((key, value, important)) = parse_style_decl(declaration) else {
                 continue;
             };
-            apply_text_style_decl(&mut style, key, value);
+            resolver.observe(
+                key,
+                value,
+                FlowchartTerminalForegroundProvenance::EdgeLabelStyle,
+                important,
+            );
         }
     }
-    style
+    resolver.finish()
 }
 
 /// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
 /// the first entry from the already-concatenated default/edge `labelStyle` array. Classes and later
 /// style entries remain on the original edge and must not affect the label node's measurement.
+#[cfg(test)]
 pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],
     edge_styles: &[String],
 ) -> std::borrow::Cow<'a, TextStyle> {
+    flowchart_swimlane_label_rect_text_style_with_provenance(base, default_edge_styles, edge_styles)
+        .style
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
+    base: &'a TextStyle,
+    default_edge_styles: &[String],
+    edge_styles: &[String],
+) -> FlowchartTextStyleResolution<'a> {
     let Some(first_style) = default_edge_styles.first().or_else(|| edge_styles.first()) else {
-        return std::borrow::Cow::Borrowed(base);
+        return FlowchartTextStyleResolution::borrowed(base);
     };
 
-    let mut style = std::borrow::Cow::Borrowed(base);
+    let mut resolver = FlowchartTextStyleResolver::new(base);
     for declaration in flowchart_split_mermaid_style_decls(first_style) {
-        let Some((key, value)) = parse_style_decl(declaration) else {
+        let Some((key, value, important)) = parse_style_decl(declaration) else {
             continue;
         };
-        apply_text_style_decl(&mut style, key, value);
+        resolver.observe(
+            key,
+            value,
+            FlowchartTerminalForegroundProvenance::EdgeLabelStyle,
+            important,
+        );
     }
-    style
+    resolver.finish()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -547,7 +823,7 @@ fn flowchart_html_span_box_style(
         }
         for declaration in declarations {
             for declaration in flowchart_split_mermaid_style_decls(declaration) {
-                let Some((property, value)) = parse_style_decl(declaration) else {
+                let Some((property, value, _important)) = parse_style_decl(declaration) else {
                     continue;
                 };
                 apply_html_span_box_decl(&mut style, property, value, font_size);
@@ -661,5 +937,179 @@ mod tests {
         assert_eq!(style.font_size, 12.0);
         assert_eq!(style.font_weight.as_deref(), Some("bold"));
         assert_eq!(style.font_style.as_deref(), Some("normal"));
+    }
+
+    #[test]
+    fn terminal_foreground_tracks_class_inline_and_edge_label_winners() {
+        let base = TextStyle::default();
+        let class_defs =
+            IndexMap::from([("accent".to_string(), vec!["color:#0f172a".to_string()])]);
+        let classes = vec!["accent".to_string()];
+        let inline = vec!["color:#f43f5e".to_string()];
+        let node = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &inline,
+        );
+        let node_foreground = node.terminal_foreground().expect("node color winner");
+        assert_eq!(node_foreground.value(), "#f43f5e");
+        assert_eq!(
+            node_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::InlineStyle
+        );
+
+        let edge = flowchart_effective_edge_label_text_style_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &["color:#2563eb".to_string()],
+            &["color:#16a34a".to_string()],
+        );
+        let edge_foreground = edge.terminal_foreground().expect("edge color winner");
+        assert_eq!(edge_foreground.value(), "#16a34a");
+        assert_eq!(
+            edge_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::EdgeLabelStyle
+        );
+
+        let important_classes = IndexMap::from([(
+            "important".to_string(),
+            vec!["color:#7c3aed !important".to_string()],
+        )]);
+        let important = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &important_classes,
+            &["important".to_string()],
+            &["color:#f97316".to_string()],
+        );
+        let important_foreground = important
+            .terminal_foreground()
+            .expect("important class color winner");
+        assert_eq!(important_foreground.value(), "#7c3aed");
+        assert_eq!(
+            important_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::AssignedClass
+        );
+    }
+
+    #[test]
+    fn text_style_resolution_keeps_important_typography_ahead_of_later_normal_declarations() {
+        let base = TextStyle::default();
+        let class_defs = IndexMap::from([(
+            "strong".to_string(),
+            vec!["font-size:30px !important,font-family:Excalifont !important".to_string()],
+        )]);
+        let resolution = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &["strong".to_string()],
+            &["font-size:10px,font-family:Arial".to_string()],
+        );
+
+        assert_eq!(resolution.font_size, 30.0);
+        assert_eq!(resolution.font_family.as_deref(), Some("Excalifont"));
+        assert_eq!(resolution.prepared_text_overrides.font_size(), Some("30px"));
+        assert_eq!(
+            resolution.prepared_text_overrides.font_family(),
+            Some("Excalifont")
+        );
+    }
+
+    #[test]
+    fn text_style_resolution_preserves_same_value_source_font_provenance() {
+        let base = TextStyle {
+            font_family: Some("Excalifont".to_string()),
+            ..TextStyle::default()
+        };
+        let class_defs = IndexMap::from([(
+            "accent".to_string(),
+            vec!["font-family:Excalifont,font-size:18px".to_string()],
+        )]);
+        let classes = vec!["accent".to_string()];
+
+        let resolution = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &[],
+        );
+
+        assert_eq!(resolution.font_family.as_deref(), Some("Excalifont"));
+        assert_eq!(
+            resolution.prepared_text_overrides.font_family(),
+            Some("Excalifont")
+        );
+        assert_eq!(resolution.prepared_text_overrides.font_size(), Some("18px"));
+    }
+
+    #[test]
+    fn text_style_resolution_uses_source_spelled_label_property_identity() {
+        let base = TextStyle {
+            font_size: 26.0,
+            ..TextStyle::default()
+        };
+        let class_defs = IndexMap::from([(
+            "accent".to_string(),
+            vec!["FONT-SIZE:22px,Font-Family:Xiaolai SC".to_string()],
+        )]);
+        let classes = vec!["accent".to_string()];
+
+        let resolution = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &[],
+        );
+
+        assert_eq!(resolution.font_size, 26.0);
+        assert_eq!(resolution.font_family, None);
+        assert!(resolution.prepared_text_overrides.is_empty());
+    }
+
+    #[test]
+    fn text_style_resolution_carries_all_measurement_affecting_source_typography() {
+        let base = TextStyle::default();
+        let class_defs = IndexMap::from([(
+            "wide".to_string(),
+            vec![
+                "line-height:2,letter-spacing:3px,word-spacing:4px,text-transform:uppercase"
+                    .to_string(),
+            ],
+        )]);
+        let resolution =
+            flowchart_text_style_resolver_for_class_names(&base, &class_defs, ["wide"], &[])
+                .finish();
+
+        let mut expected = PreparedTextCssTypographyOverrides::default();
+        expected.observe_declaration("line-height", "2");
+        expected.observe_declaration("letter-spacing", "3px");
+        expected.observe_declaration("word-spacing", "4px");
+        expected.observe_declaration("text-transform", "uppercase");
+        assert_eq!(resolution.prepared_text_overrides, expected);
+    }
+
+    #[test]
+    fn text_style_resolution_uses_the_semantic_value_before_important() {
+        let base = TextStyle::default();
+        let class_defs = IndexMap::from([(
+            "accent".to_string(),
+            vec!["font-family:\"Xiaolai SC\" !important,font-weight:bolder !important".to_string()],
+        )]);
+        let classes = vec!["accent".to_string()];
+
+        let resolution = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &[],
+        );
+
+        assert_eq!(resolution.font_family.as_deref(), Some("\"Xiaolai SC\""));
+        assert_eq!(
+            resolution.prepared_text_overrides.font_family(),
+            Some("\"Xiaolai SC\"")
+        );
+        assert_eq!(resolution.font_weight.as_deref(), Some("bolder"));
     }
 }

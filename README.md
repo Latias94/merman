@@ -65,6 +65,21 @@ The selected `RenderOutput` variant contains `None` when the source has no Merma
 Cancellation, resource exhaustion, parse errors, and unavailable output capabilities remain
 separate structured errors.
 
+## Diagram themes
+
+The current source branch includes compiled visual presets such as Brutalist, Spotless, and
+Cyberpunk. Select a preset from the Playground's **Theme** menu, or run the Rust example:
+
+```sh
+cargo run --locked -p merman --features svg --example theme_preset > themed.svg
+```
+
+Use **Custom theme…** to import, edit, validate, and download a versioned theme recipe. Workspace
+share links preserve the applied custom recipe. The same JSON can be used through Rust, Web,
+Node, and native CLI APIs. The authoring format is alpha; see
+[Create, Customize, and Share Diagram Themes](docs/rendering/custom-diagram-themes.md) for examples,
+configuration precedence, and export limitations.
+
 ## One-shot and repeated rendering
 
 A `Renderer` stores defaults. Each `RenderRequest` describes one independent operation.
@@ -102,9 +117,10 @@ Choose one typed target for each request:
 | Parse a typed Mermaid model | `Engine` and `ParseOptions` | Required `diagram-*` selectors, or `all-diagrams` |
 | Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Required `diagram-*` selectors, or `all-diagrams` |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
+| Complete one document for several graphical targets | `RenderRequest::document()` | `svg` plus each output feature used |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
 | Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
-| Export PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
+| Export one-shot PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
 | Produce diagnostics or analyze Markdown and MDX fences | `merman::analysis::Analyzer` | `analysis` |
 | Build parser-backed editor snapshots | APIs under `merman::editor` | `editor` |
 
@@ -157,6 +173,9 @@ feature/API migration; see the [capability guide] for current-source recipes.
 | Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |
 | Flowchart + Gantt SVG only | `default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
+
+Themes select font-family names and typography values. Browsers and native export backends resolve
+host fonts. Caller-supplied font bytes in theme recipes are rejected; no fonts are bundled.
 
 The [capability guide] documents feature forwarding, artifact profiles, system adapters, and
 resource policy. Parser-only applications can depend on `merman-core` directly. Applications that

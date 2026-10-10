@@ -136,6 +136,17 @@ pub struct ErEntityRenderModel {
     pub css_styles: Vec<String>,
 }
 
+impl ErEntityRenderModel {
+    /// Returns the visible entity label source selected by Mermaid's ER renderer.
+    pub fn label_source_for_render(&self) -> &str {
+        if self.alias.is_empty() {
+            self.label.as_str()
+        } else {
+            self.alias.as_str()
+        }
+    }
+}
+
 pub(crate) type Attribute = ErAttributeRenderModel;
 pub(crate) type RelSpec = ErRelSpecRenderModel;
 type Relationship = ErRelationshipRenderModel;
@@ -2245,6 +2256,23 @@ mod tests {
         assert!(model["entities"].get("1.5").is_some());
         assert!(model["entities"].get("Sales.Order").is_some());
         assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn er_entity_render_label_uses_javascript_string_truthiness() {
+        let mut entity = ErEntityRenderModel {
+            label: "CUSTOMER".to_string(),
+            alias: "Buyer".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(entity.label_source_for_render(), "Buyer");
+
+        entity.alias = " \t ".to_string();
+        assert_eq!(entity.label_source_for_render(), " \t ");
+
+        entity.alias.clear();
+        assert_eq!(entity.label_source_for_render(), "CUSTOMER");
     }
 
     #[test]

@@ -1,32 +1,32 @@
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{
-    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextStyle,
-    WrapMode,
-};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
-use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
+use super::super::{SvgOutput, escape_attr_display, fmt};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
 use super::context::ClassEmitCheckpoint;
-use super::label::{class_math_html_label, class_note_html_div_style};
+use super::label::{
+    class_math_html_label, class_note_html_div_style, write_class_svg_text_markdown_with_style,
+};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
 };
 
 pub(super) struct ClassNoteRenderContext<'a> {
+    pub text_paint: Option<&'a crate::class::ClassTextPaint>,
+    pub css_binding: &'a crate::class::ClassCssThemeBinding,
     pub diagram_id: SvgDiagramId<'a>,
-    pub effective_config: &'a serde_json::Value,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: &'a merman_core::MermaidConfig,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -34,11 +34,9 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub emit: ClassEmitCheckpoint<'a>,
 }
 
-pub(super) struct ClassNoteRenderState<'a> {
-    pub out: &'a mut String,
+pub(super) struct ClassNoteRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
-    pub sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    pub borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -46,10 +44,11 @@ pub(super) struct ClassNoteRenderStats {
     pub notes_sanitize: Duration,
     pub path_bounds: Duration,
     pub path_bounds_calls: usize,
+    pub typography: crate::class::ClassTextTerminalFacts,
 }
 
-pub(super) fn render_class_note_node(
-    state: ClassNoteRenderState<'_>,
+pub(super) fn render_class_note_node<O: SvgOutput>(
+    state: ClassNoteRenderState<'_, O>,
     note: &ClassSvgNote,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
@@ -57,26 +56,26 @@ pub(super) fn render_class_note_node(
 ) -> crate::Result<ClassNoteRenderStats> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
-    let sanitize_config = &mut *state.sanitize_config;
-    let borrowed_sanitize_config = state.borrowed_sanitize_config;
     let mut stats = ClassNoteRenderStats::default();
 
+    let note_label_style = super::label::class_node_label_style(
+        "text-align:left !important;white-space:nowrap !important",
+        None,
+    );
+    let note_label_style = ctx.text_paint.map_or(note_label_style.clone(), |paint| {
+        format!("{note_label_style};{}", paint.style())
+    });
     let note_src = note.text.trim();
     let note_text = decode_entities_minimal_cow(note_src);
     let (label_w_raw, label_h_raw) = if ctx.use_html_labels {
         match (layout_node.label_width, layout_node.label_height) {
             (Some(w), Some(h)) => (w, h),
             _ => {
-                let note_html_config = class_note_sanitize_config(
-                    borrowed_sanitize_config,
-                    sanitize_config,
-                    ctx.effective_config,
-                );
                 let metrics = crate::class::class_html_measure_note_metrics(
                     ctx.measurer,
                     ctx.text_style,
                     note_src,
-                    note_html_config,
+                    ctx.mermaid_config,
                 );
                 (metrics.width, metrics.height)
             }
@@ -134,8 +133,8 @@ pub(super) fn render_class_note_node(
         label_h,
     );
     let path_bounds_start = ctx.timing.start();
-    let note_fill = theme_token(ctx.effective_config, "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_token(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let note_fill = ctx.css_binding.note_fill.as_str();
+    let note_stroke = ctx.css_binding.note_stroke.as_str();
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -143,8 +142,8 @@ pub(super) fn render_class_note_node(
             top,
             w,
             h,
-            &note_fill,
-            &note_stroke,
+            note_fill,
+            note_stroke,
             1.3,
             "0 0",
             &rough_seed,
@@ -176,7 +175,6 @@ pub(super) fn render_class_note_node(
     };
     let note_data_look_attr = format!(r#" data-look="{}""#, escape_attr_display(ctx.look));
     let note_label_class = "label noteLabel";
-    let note_span_class = "nodeLabel markdown-node-label";
     let mut note_shape = String::new();
     if hand_drawn {
         let _ = write!(
@@ -207,6 +205,7 @@ pub(super) fn render_class_note_node(
         );
     }
 
+    let emitted_style;
     if ctx.use_html_labels {
         let note_div_style =
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -215,7 +214,7 @@ pub(super) fn render_class_note_node(
         ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml">"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -227,26 +226,28 @@ pub(super) fn render_class_note_node(
             fmt(label_w),
             fmt(label_h),
             escape_attr_display(&note_div_style),
-            note_span_class,
         );
+        emitted_style = super::label::open_class_note_label(out, Some(&note_label_style));
         let sanitize_start = ctx.timing.start();
-        let note_html_config = class_note_sanitize_config(
-            borrowed_sanitize_config,
-            sanitize_config,
-            ctx.effective_config,
-        );
-        let note_html = class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
-            .unwrap_or_else(|| {
-                let html = crate::class::class_note_html_fragment(note_src, note_html_config);
-                format!("<p>{html}</p>")
-            });
+        let note_html = if let Some(math_html) =
+            class_math_html_label(note_src, Some(ctx.mermaid_config), ctx.math_renderer)
+        {
+            stats.typography = crate::class::ClassTextTerminalFacts::unverified_text(note_src);
+            math_html
+        } else {
+            let html = crate::class::class_note_html_fragment(note_src, ctx.mermaid_config);
+            let note_html = format!("<p>{html}</p>");
+            let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
+            stats.typography =
+                crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
+            note_html
+        };
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
         }
         out.push_str(&note_html);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
-        let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(out, r#"<g class="{}" id=""#, note_node_class);
         let _ = write!(out, "{}", ctx.diagram_id);
         ctx.emit.checkpoint()?;
@@ -259,84 +260,19 @@ pub(super) fn render_class_note_node(
             fmt(position.node_ty),
             note_shape,
             note_label_class,
-            escape_attr_display(note_label_style),
+            escape_attr_display(&note_label_style),
             fmt(label_x),
             fmt(label_y),
         );
-        write_class_svg_text_markdown_with_style(out, note_text.as_ref(), note_label_style);
+        emitted_style =
+            write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
         out.push_str("</g></g></g>");
+        let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
+        stats.typography = crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
     }
 
+    if let Some(paint) = ctx.text_paint {
+        stats.typography = paint.observe(stats.typography, emitted_style);
+    }
     Ok(stats)
-}
-
-fn class_note_sanitize_config<'a>(
-    borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
-    owned_sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    effective_config: &serde_json::Value,
-) -> &'a merman_core::MermaidConfig {
-    if let Some(config) = borrowed_sanitize_config {
-        return config;
-    }
-    owned_sanitize_config
-        .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
-}
-
-fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, style: &str) {
-    let markdown = markdown
-        .strip_prefix('`')
-        .and_then(|s| s.strip_suffix('`'))
-        .unwrap_or(markdown);
-    let _ = write!(
-        out,
-        r#"<text y="-10.1" style="{}">"#,
-        escape_attr_display(style)
-    );
-
-    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
-    if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
-        out.push_str("</text>");
-        return;
-    }
-
-    for (idx, words) in lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
-
-        for (word_idx, (word, ty)) in words.iter().enumerate() {
-            let is_strong = *ty == MermaidMarkdownWordType::Strong;
-            let is_em = *ty == MermaidMarkdownWordType::Em;
-            let font_style = if is_em { "italic" } else { "normal" };
-            let font_weight = if is_strong { "bold" } else { "normal" };
-            let _ = write!(
-                out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
-                font_style, font_weight
-            );
-            if word_idx == 0 {
-                escape_xml_into(out, word);
-            } else {
-                out.push(' ');
-                escape_xml_into(out, word);
-            }
-            out.push_str("</tspan>");
-        }
-
-        out.push_str("</tspan>");
-    }
-
-    out.push_str("</text>");
 }

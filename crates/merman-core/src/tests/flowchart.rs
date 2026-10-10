@@ -1455,6 +1455,49 @@ A1 e1@--> C1 & D1
 }
 
 #[test]
+fn parse_diagram_flowchart_auto_edge_id_preserves_mermaid_pair_count_collision() {
+    let engine = Engine::new();
+
+    let text = r#"flowchart TD
+A L_A_B_2@--> B
+A --> B
+A --> B
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = res.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 3);
+    assert_eq!(edges[0]["id"], json!("L_A_B_2"));
+    assert_eq!(edges[0]["isUserDefinedId"], json!(true));
+    assert_eq!(edges[1]["id"], json!("L_A_B_2"));
+    assert_eq!(edges[1]["isUserDefinedId"], json!(false));
+    assert_eq!(edges[2]["id"], json!("L_A_B_3"));
+    assert_eq!(edges[2]["isUserDefinedId"], json!(false));
+}
+
+#[test]
+fn parse_diagram_flowchart_auto_edge_id_ignores_explicit_collision_from_another_pair() {
+    let engine = Engine::new();
+
+    let text = r#"flowchart TD
+X L_A_B_0@--> Y
+A --> B
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = res.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0]["id"], json!("L_A_B_0"));
+    assert_eq!(edges[0]["isUserDefinedId"], json!(true));
+    assert_eq!(edges[1]["id"], json!("L_A_B_0"));
+    assert_eq!(edges[1]["isUserDefinedId"], json!(false));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_overrides_edge_animate() {
     let engine = Engine::new();
 
@@ -3885,6 +3928,50 @@ fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
 }
 
 #[test]
+fn flowchart_unicode_node_ids_preserve_labels_and_edge_references() {
+    let engine = Engine::new();
+    let text = "flowchart TD\n開始([スタート]) --> 注文[コーヒーを注文]\n注文 --> サイズ{サイズを選択}\nサイズ -->|S| 小\nサイズ -->|M| 中\nサイズ -->|L| 大\n小 --> 支払い[支払い]\n中 --> 支払い\n大 --> 支払い\n支払い --> 完了([完了])\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    let ids: Vec<_> = nodes
+        .iter()
+        .map(|node| node["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        ["開始", "注文", "サイズ", "小", "中", "大", "支払い", "完了"]
+    );
+    assert_eq!(nodes[0]["label"], "スタート");
+    assert_eq!(nodes[1]["label"], "コーヒーを注文");
+    let edges = parsed.model["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 9);
+    assert_eq!(edges[0]["from"], "開始");
+    assert_eq!(edges[0]["to"], "注文");
+    assert_eq!(edges[8]["to"], "完了");
+}
+
+#[test]
+fn flowchart_unicode_ids_keep_adjacent_edge_operators_separate() {
+    let engine = Engine::new();
+    let text = "flowchart LR\nAé中_1-.->Ω-β\nΩ-β.->한글.2\n한글.2==>終了\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 3);
+    for (edge, (from, to)) in
+        edges
+            .iter()
+            .zip([("Aé中_1", "Ω-β"), ("Ω-β", "한글.2"), ("한글.2", "終了")])
+    {
+        assert_eq!(edge["from"], from);
+        assert_eq!(edge["to"], to);
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
     // Mermaid's flowchart lexer accepts UNICODE_TEXT in ids (mermaid@11.17.2 parses all of these).
     let engine = Engine::new();
@@ -3941,6 +4028,18 @@ fn parse_diagram_flowchart_accepts_ecmascript_unicode_whitespace_in_header() {
             assert_eq!(res.model["direction"], json!("TB"), "{text:?}");
             assert_eq!(res.model["vertexCalls"], json!(["A", "B", "B", "C"]));
         }
+    }
+}
+
+#[test]
+fn flowchart_unicode_id_rejects_characters_outside_pinned_mermaid_ranges() {
+    let engine = Engine::new();
+    for id in ["😀", "e\u{0301}", "\u{9fcd}", "\u{10400}"] {
+        let text = format!("flowchart TD\n{id} --> A\n");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err(),
+            "{id:?}"
+        );
     }
 }
 

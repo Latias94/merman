@@ -150,6 +150,18 @@ fn panicking_flowchart_parser(
     panic!("fixture parser panic")
 }
 
+fn failing_flowchart_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Err(merman_core::InternalFailure::new(
+        "fixture parser subsystem failure",
+    )
+    .into()))
+}
+
 fn malformed_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
@@ -1544,6 +1556,11 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         .diagram_registry_mut()
         .insert("flowchart-v2", unknown_warning_flowchart_parser);
 
+    let mut internal_failure_engine = merman_core::Engine::new();
+    internal_failure_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", failing_flowchart_parser);
+
     let invalid_theme_analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
@@ -1602,10 +1619,22 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         },
         CorpusCase {
             name: "invalid theme color",
+            analyzer: invalid_theme_analyzer.clone(),
+            source: concat!(
+                "%%{ init: {",
+                "\"theme\":\"base\",",
+                "\"themeVariables\":{\"primaryColor\":\"not-a-color\"}",
+                "} }%%\n",
+                "flowchart TD\nA-->B\n",
+            ),
+        },
+        CorpusCase {
+            name: "theme evaluation limit",
             analyzer: invalid_theme_analyzer,
             source: concat!(
                 "%%{ init: {",
-                "\"themeVariables\":{\"primaryColor\":\"not-a-color\"}",
+                "\"theme\":\"dark\",",
+                "\"themeVariables\":{\"THEME_COLOR_LIMIT\":65}",
                 "} }%%\n",
                 "flowchart TD\nA-->B\n",
             ),
@@ -1618,6 +1647,11 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         CorpusCase {
             name: "parser contract violation",
             analyzer: Analyzer::with_engine(cancelling_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "internal subsystem failure",
+            analyzer: Analyzer::with_engine(internal_failure_engine, AnalysisOptions::default()),
             source: "flowchart TD\nA-->B\n",
         },
         CorpusCase {

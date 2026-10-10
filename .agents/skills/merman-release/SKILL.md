@@ -46,6 +46,12 @@ this check. If that same-line previous-facade lane fails, either restore the req
 or start a new release line; do not hide the failure behind a checked-in lockfile or a downstream
 exact dependency.
 
+For the maintainer-approved alpha.6-to-alpha.7 transition only, append
+`--accept-alpha6-transition` with both exact versions. Follow the bounded exception documented
+in `docs/release/RELEASING.md`: candidate compilation is required; the previous facade remains
+known incompatible and unverified. Keep the flag absent for all other version pairs. This is
+not a first prerelease and does not qualify for `--allow-missing-previous`.
+
 This gate is admission control for a new prerelease. For a backfill of a prerelease that was
 already published before the gate existed, keep the original immutable tag and record the known
 historical compatibility exception; use only the owner workflows for the missing artifacts. Do not

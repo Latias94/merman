@@ -1,10 +1,12 @@
 #[cfg(feature = "svg")]
+use std::borrow::Cow;
+#[cfg(feature = "svg")]
 use std::sync::Arc;
 use std::time::Duration;
 
 use merman::{
     OperationControl, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
-    Renderer, SemanticArtifact,
+    Renderer, SemanticArtifact, ThemeEvidenceStatus,
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
@@ -14,6 +16,9 @@ use merman::{
     OperationResourceOverride, OperationResourceProvenance, RenderTarget,
     ascii::{AsciiResourceLimitId, AsciiResourcePolicy},
 };
+
+#[cfg(feature = "svg")]
+use sha2::{Digest as _, Sha256};
 
 #[cfg(feature = "svg")]
 #[derive(Debug)]
@@ -34,25 +39,202 @@ impl merman::svg::HostTextMeasurer for CancellingTextMeasurer {
 
 #[cfg(feature = "svg")]
 #[derive(Debug)]
-struct EvidenceMathRenderer;
+struct FixedHostTextMeasurer;
 
 #[cfg(feature = "svg")]
-impl merman::svg::MathRenderer for EvidenceMathRenderer {
-    fn render_html_label(&self, _text: &str, _config: &merman::MermaidConfig) -> Option<String> {
-        Some("<span>rendered math</span>".to_string())
+#[derive(Debug)]
+struct MissingFragmentPostprocessor;
+
+#[cfg(feature = "svg")]
+impl merman::svg::SvgPostprocessor for MissingFragmentPostprocessor {
+    fn name(&self) -> &'static str {
+        "test-missing-fragment"
     }
 
-    fn measure_sequence_html_label(
+    fn process<'a>(
         &self,
-        _text: &str,
-        _config: &merman::MermaidConfig,
-    ) -> Option<merman::svg::TextMetrics> {
-        Some(merman::svg::TextMetrics {
-            width: 80.0,
-            height: 24.0,
-            line_count: 1,
-        })
+        svg: Cow<'a, str>,
+        _ctx: &merman::svg::SvgPostprocessContext<'_>,
+    ) -> merman::svg::RenderResult<Cow<'a, str>> {
+        let mut svg = svg.into_owned();
+        let root_end = svg
+            .rfind("</svg>")
+            .expect("renderer output should contain a closing SVG root");
+        svg.insert_str(
+            root_end,
+            r#"<path data-test-missing-fragment="true" fill="url(#missing-resource)" d="M0 0h1v1z"/>"#,
+        );
+        Ok(Cow::Owned(svg))
     }
+}
+
+#[cfg(feature = "svg")]
+impl merman::svg::HostTextMeasurer for FixedHostTextMeasurer {
+    fn measure(
+        &self,
+        request: merman::svg::HostTextMeasurementRequest<'_>,
+    ) -> merman::svg::HostMeasurementResult {
+        let raw_width = request.text.chars().count().max(1) as f64 * 8.0;
+        let max_width = request
+            .max_width
+            .filter(|width| width.is_finite() && *width > 0.0);
+        let line_count = max_width
+            .map(|width| (raw_width / width).ceil() as usize)
+            .unwrap_or(1)
+            .max(request.text.lines().count())
+            .max(1)
+            .min(request.text.len().saturating_add(1));
+        let metrics = merman::svg::TextMetrics {
+            width: max_width.map_or(raw_width, |width| raw_width.min(width)),
+            height: line_count as f64 * 20.0,
+            line_count,
+        };
+        let measurement = match request.operation.required_result_kind() {
+            merman::svg::TextMeasurementResultKind::Metrics => {
+                merman::svg::HostTextMeasurement::Metrics(metrics)
+            }
+            merman::svg::TextMeasurementResultKind::Length => {
+                let length = match request.operation {
+                    merman::svg::TextMeasurementOperation::RawBBoxHeight
+                    | merman::svg::TextMeasurementOperation::SimpleBBoxHeight
+                    | merman::svg::TextMeasurementOperation::TspanBBoxHeight => metrics.height,
+                    merman::svg::TextMeasurementOperation::CreateTextBBoxYOffset
+                    | merman::svg::TextMeasurementOperation::CreateTextMiddleBBoxYOffset => 0.0,
+                    _ => raw_width,
+                };
+                merman::svg::HostTextMeasurement::Length(length)
+            }
+            merman::svg::TextMeasurementResultKind::HorizontalExtents => {
+                merman::svg::HostTextMeasurement::HorizontalExtents {
+                    left: raw_width / 2.0,
+                    right: raw_width / 2.0,
+                }
+            }
+            merman::svg::TextMeasurementResultKind::WrappedWithRawWidth => {
+                merman::svg::HostTextMeasurement::WrappedWithRawWidth {
+                    metrics,
+                    raw_width: Some(raw_width),
+                }
+            }
+        };
+        Ok(Some(measurement))
+    }
+}
+
+#[cfg(feature = "svg")]
+fn portable_state_theme() -> merman::svg::DiagramTheme {
+    let palette = merman::svg::OrdinalPalette::new([
+        merman::svg::ThemeColorValue::parse("#0f172a").expect("valid first palette color"),
+        merman::svg::ThemeColorValue::parse("#22d3ee").expect("valid second palette color"),
+    ])
+    .expect("valid state palette");
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default()
+                    .with_ordinal_palette(merman::svg::ThemeTarget::State, palette),
+            ),
+        )
+        .expect("portable state theme should compile")
+}
+
+#[cfg(feature = "svg")]
+fn portable_pie_palette_theme() -> merman::svg::DiagramTheme {
+    let palette = merman::svg::OrdinalPalette::new([
+        merman::svg::ThemeColorValue::parse("#ef4444").expect("valid first palette color"),
+        merman::svg::ThemeColorValue::parse("#22c55e").expect("valid second palette color"),
+        merman::svg::ThemeColorValue::parse("#2563eb").expect("valid third palette color"),
+    ])
+    .expect("valid Pie palette");
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default()
+                    .with_ordinal_palette(merman::svg::ThemeTarget::PieSlice, palette),
+            ),
+        )
+        .expect("portable Pie theme should compile")
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+fn architecture_group_paint_theme() -> merman::svg::DiagramTheme {
+    let style = merman::svg::ThemeStylePatch::default()
+        .with_fill(
+            merman::svg::CanvasPaint::solid("#0f172a").expect("valid Architecture group fill"),
+        )
+        .with_stroke(
+            merman::svg::CanvasPaint::solid("#22d3ee").expect("valid Architecture group stroke"),
+        );
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default().with_rule(
+                    merman::svg::ThemeRule::new(merman::svg::ThemeTarget::Cluster, style)
+                        .for_family(merman::DiagramFamilyId::ARCHITECTURE),
+                ),
+            ),
+        )
+        .expect("Architecture group paint theme should compile")
+}
+
+#[cfg(feature = "svg")]
+fn flowchart_paint_theme() -> merman::svg::DiagramTheme {
+    let styles = merman::svg::ThemeRuleSet::default().with_rule(
+        merman::svg::ThemeRule::new(
+            merman::svg::ThemeTarget::Node,
+            merman::svg::ThemeStylePatch::default().with_fill(
+                merman::svg::CanvasPaint::solid("#1d4ed8").expect("fixture paint is valid"),
+            ),
+        )
+        .for_family(merman::DiagramFamilyId::FLOWCHART),
+    );
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
+        .expect("flowchart paint theme should compile")
+}
+
+#[cfg(feature = "svg")]
+fn render_host_measured_document(
+    portability: merman::svg::ThemePortabilityRequirement,
+) -> merman::RenderedDocument {
+    render_host_measured_document_with_profile(portability, "merman.test-fixed-display-host")
+}
+
+#[cfg(feature = "svg")]
+fn render_host_measured_document_with_profile(
+    portability: merman::svg::ThemePortabilityRequirement,
+    profile_id: &str,
+) -> merman::RenderedDocument {
+    let identity = merman::svg::TextMeasurementProfileIdentity::new(
+        merman::svg::MeasurementProfileId::new(profile_id).expect("test profile id"),
+        "render-operation-test@1",
+    )
+    .expect("test profile identity");
+    let measurement = merman::svg::TextMeasurementPolicy::host_display(
+        identity,
+        Arc::new(FixedHostTextMeasurer),
+        merman::svg::TextMeasurementPhase::ALL,
+    );
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .with_text_measurement_policy(measurement)
+            .with_theme_portability_requirement(portability),
+        ..merman::SvgRequest::default()
+    };
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(flowchart_paint_theme()),
+        )
+        .expect("host-measured document should complete before target admission");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a host-measured document");
+    };
+    document
 }
 
 #[test]
@@ -517,13 +699,1454 @@ fn typed_svg_targets_share_the_prepared_operation() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn svg_evidence_carries_preparation_owned_capability_requirements() {
+fn layout_json_rejects_require_portable_without_target_admission() {
     let request = merman::SvgRequest {
-        environment: merman::SvgEnvironment::deterministic()
-            .without_math_renderer()
-            .with_math_renderer(Arc::new(EvidenceMathRenderer)),
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let renderer = Renderer::new();
+
+    let error = renderer
+        .render(RenderRequest::layout_json(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+            request.clone(),
+        ))
+        .expect_err("layout JSON has no target portability admission");
+    assert_eq!(
+        error.to_string(),
+        "render target `layout-json` does not support RequirePortable because it has no target portability admission"
+    );
+    assert!(matches!(
+        &error,
+        RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json"
+        }
+    ));
+
+    let semantic = renderer
+        .prepare_semantic(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+        )
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    let error = semantic
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("prepared layout JSON must use the same portability guard");
+    assert!(matches!(
+        error,
+        RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json"
+        }
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn layout_json_cancellation_precedes_require_portable_rejection() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    control.cancel();
+
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let error = artifact
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("cancellation must win over target portability rejection");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == merman::CancelReason::Requested
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn layout_json_deadline_precedes_require_portable_rejection() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    assert!(control.set_deadline(Duration::ZERO));
+
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let error = artifact
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("deadline must win over target portability rejection");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == merman::CancelReason::DeadlineExceeded
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn completed_svg_evidence_freezes_family_and_theme_identity() {
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile_preset(merman::svg::ThemePreset::OneDark)
+        .expect("one-dark theme should compile");
+    let request = merman::SvgRequest::default();
+
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "sequenceDiagram\nAlice->>Bob: Hello",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme.clone()),
+        )
+        .expect("themed sequence SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed sequence SVG");
+    };
+
+    assert!(output.svg().starts_with("<svg"));
+    assert_eq!(
+        output.evidence().family_id(),
+        merman::DiagramFamilyId::SEQUENCE
+    );
+    assert_eq!(
+        output.evidence().theme_recipe_fingerprint(),
+        Some(theme.recipe_fingerprint())
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn unthemed_svg_reports_theme_evidence_as_not_applicable() {
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("unthemed SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected an SVG output");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::NotApplicable);
+    assert!(!summary.output_mutated());
+    assert!(!summary.is_verified());
+    assert!(summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn themed_state_svg_reports_verified_coarse_theme_evidence() {
+    let theme = portable_state_theme();
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("themed state SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed state SVG");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
+    assert!(!summary.output_mutated());
+    assert!(summary.is_verified());
+    assert!(summary.is_satisfied());
+
+    let admission = output.admission();
+    assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
+    assert_eq!(
+        admission.artifact_digest(),
+        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "pie\n  \"Alpha\" : 60\n  \"Hidden\" : 0.1\n  \"Gamma\" : 39.9\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(portable_pie_palette_theme()),
+        )
+        .expect("themed Pie SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Pie SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#ef4444", "#2563eb"]);
+    let legend_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
+                })
+        })
+        .map(|node| node.attribute("style").expect("Pie legend style"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgb(239, 68, 68); stroke: rgb(239, 68, 68);",
+            "fill: rgb(34, 197, 94); stroke: rgb(34, 197, 94);",
+            "fill: rgb(37, 99, 235); stroke: rgb(37, 99, 235);",
+        ]
+    );
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
+    assert!(summary.is_verified());
+    assert!(summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn pie_site_palette_slot_outranks_the_typed_default() {
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"pie1": "#111827"}
+        })),
+    ));
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                "pie\n  \"Site\" : 1\n  \"Typed\" : 1\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(portable_pie_palette_theme()),
+        )
+        .expect("source-owned Pie palette slot should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Pie SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#111827", "#22c55e"]);
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(architecture_group_paint_theme()),
+        )
+        .expect("themed Architecture SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Architecture SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
+    let group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-group-core"))
+        })
+        .expect("Architecture group rect");
+    let style = group.attribute("style").expect("typed inline group paint");
+    assert!(
+        style.contains("fill:#0f172a"),
+        "unexpected group style: {style}"
+    );
+    assert!(
+        style.contains("stroke:#22d3ee"),
+        "unexpected group style: {style}"
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"primaryBorderColor": "#f97316"}
+        })),
+    ));
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(architecture_group_paint_theme()),
+        )
+        .expect("source-owned Architecture group border should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Architecture SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
+    let group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-group-core"))
+        })
+        .expect("Architecture group rect");
+    assert_eq!(group.attribute("style"), Some("fill:#0f172a;"));
+    assert!(
+        output.svg().contains(".node-bkg{fill:none;stroke:#f97316;"),
+        "source-owned group border should remain in the Mermaid CSS"
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_group_ordinal_paint_remains_fail_closed() {
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default().with_rule(
+                    merman::svg::ThemeRule::new(
+                        merman::svg::ThemeTarget::Cluster,
+                        merman::svg::ThemeStylePatch::default().with_fill(
+                            merman::svg::CanvasPaint::solid("#7c3aed")
+                                .expect("valid Architecture ordinal fill"),
+                        ),
+                    )
+                    .for_family(merman::DiagramFamilyId::ARCHITECTURE)
+                    .with_ordinal(
+                        merman::svg::OrdinalSelector::exact(1)
+                            .expect("valid Architecture group ordinal"),
+                    ),
+                ),
+            ),
+        )
+        .expect("Architecture ordinal theme should compile");
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("unsupported Architecture ordinal paint should remain observable");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected an Architecture SVG");
+    };
+
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Residual
+    );
+    assert!(!output.svg().contains("fill:#7c3aed"));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn standalone_class_svg_separates_verified_relation_width_from_font_portability() {
+    let styles = merman::svg::ThemeRuleSet::default().with_rule(
+        merman::svg::ThemeRule::new(
+            merman::svg::ThemeTarget::Edge,
+            merman::svg::ThemeStylePatch::default()
+                .with_stroke_width(5.0)
+                .expect("valid Class relation width"),
+        )
+        .for_family(merman::DiagramFamilyId::CLASS),
+    );
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Class relation theme");
+    let request = merman::SvgRequest {
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..merman::SvgRequest::default()
+    };
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "classDiagram\nclass A\nclass B\nA --> B\n",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("best-effort standalone Class SVG should retain both evidence axes");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a standalone Class SVG output");
+    };
+
+    assert_eq!(
+        output.evidence().family_id(),
+        merman::DiagramFamilyId::CLASS
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+    assert!(output.svg().contains("stroke-width:5px !important"));
+    let admission = output.admission();
+    assert_eq!(
+        admission.status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(!admission.status().is_portable());
+    assert_ne!(admission.receipt_digest(), [0; 32]);
+    assert!(
+        admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgFontsNotSelfContained)
+    );
+    assert_eq!(
+        admission.artifact_digest(),
+        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
+    let theme = portable_state_theme();
+    let request = merman::SvgRequest {
+        pipeline: Some(
+            merman::svg::SvgPipeline::parity()
+                .with_postprocessor(merman::svg::RootBackgroundPostprocessor::new("#111827")),
+        ),
         ..Default::default()
     };
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("postprocessed themed SVG should render in best-effort mode");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a postprocessed SVG");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Residual);
+    assert!(summary.output_mutated());
+    assert!(!summary.is_verified());
+    assert!(!summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn rendered_document_retains_terminal_resource_identity() {
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile_preset(merman::svg::ThemePreset::OneDark)
+        .expect("one-dark theme should compile");
+
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "flowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme.clone()),
+        )
+        .expect("rendered document should complete");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    assert!(document.svg().starts_with("<svg"));
+    assert_ne!(document.resource_fingerprint().as_bytes(), &[0; 32]);
+    assert_eq!(
+        document.portability().family_id(),
+        document.evidence().family_id()
+    );
+    assert_eq!(
+        document.portability().resource_fingerprint(),
+        document.resource_fingerprint()
+    );
+    assert_eq!(
+        document.portability().font_catalog_fingerprint(),
+        document.evidence().font_catalog_fingerprint()
+    );
+    assert_eq!(
+        document.standalone_svg_admission().artifact_kind(),
+        merman::RenderArtifactKind::Svg
+    );
+    assert_eq!(
+        document.standalone_svg_admission().document_digest(),
+        document.document_digest()
+    );
+    assert_eq!(
+        document.standalone_svg_admission().resource_fingerprint(),
+        document.resource_fingerprint()
+    );
+    assert_eq!(
+        document
+            .standalone_svg_admission()
+            .font_catalog_fingerprint(),
+        document.evidence().font_catalog_fingerprint()
+    );
+    assert_eq!(
+        document.evidence().theme_recipe_fingerprint(),
+        Some(theme.recipe_fingerprint())
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "math"))]
+#[test]
+fn rendered_document_binds_prepared_math_terminal_proof() {
+    let output = Renderer::new()
+        .render(RenderRequest::document(
+            "flowchart TD\nA[$$x^2$$]",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("prepared-math document should render");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    assert!(document.portability().prepared_math_evidence_valid());
+    assert!(
+        document
+            .portability()
+            .prepared_math_terminal_proof_complete()
+    );
+    assert!(
+        !document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::PreparedMathEvidenceInvalid)
+    );
+    assert!(
+        !document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::PreparedMathTerminalProofIncomplete)
+    );
+    assert!(document.svg().contains("merman-prepared-math-native"));
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
+    let layer = merman::svg::CanvasLayer::new(
+        merman::svg::CanvasPaint::solid("#22d3ee").expect("valid root layer paint"),
+    )
+    .with_opacity(0.45)
+    .expect("valid root layer opacity")
+    .with_offset(3.0, 5.0)
+    .expect("valid root layer offset")
+    .with_blend_mode(merman::svg::BlendMode::Screen);
+    let canvas = merman::svg::CanvasSpec::solid("#0f172a")
+        .expect("valid root base paint")
+        .with_layer(layer)
+        .expect("valid root canvas layer");
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(merman::svg::DiagramThemeSpec::new().with_canvas(canvas))
+        .expect("root canvas theme should compile");
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "flowchart TD\nA[Root canvas]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("root canvas document should render");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    assert!(document.svg().contains("mix-blend-mode:screen"));
+    let png = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("qualified root canvas capabilities should export to PNG");
+    assert!(
+        !png.admission()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::NativeRootCapabilityUnsupported)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn rendered_document_digests_are_deterministic_for_one_operation_identity() {
+    fn render() -> merman::RenderedDocument {
+        let output = Renderer::new()
+            .render(RenderRequest::document(
+                "flowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            ))
+            .expect("rendered document should complete");
+        let RenderOutput::Document(Some(document)) = output else {
+            panic!("expected a rendered document");
+        };
+        document
+    }
+
+    let first = render();
+    let second = render();
+    assert_eq!(first.document_digest(), second.document_digest());
+    assert_eq!(
+        first.standalone_svg_admission().target_evidence_digest(),
+        second.standalone_svg_admission().target_evidence_digest()
+    );
+    assert_eq!(
+        first.standalone_svg_admission().receipt_digest(),
+        second.standalone_svg_admission().receipt_digest()
+    );
+    assert_eq!(
+        first.standalone_svg_admission().artifact_digest(),
+        second.standalone_svg_admission().artifact_digest()
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn rendered_document_digest_binds_actual_host_measurement_identity() {
+    let first = render_host_measured_document_with_profile(
+        merman::svg::ThemePortabilityRequirement::BestEffort,
+        "merman.test-display-host-a",
+    );
+    let second = render_host_measured_document_with_profile(
+        merman::svg::ThemePortabilityRequirement::BestEffort,
+        "merman.test-display-host-b",
+    );
+
+    assert_eq!(first.svg(), second.svg());
+    assert_ne!(first.document_digest(), second.document_digest());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn unthemed_document_digest_binds_the_effective_portability_requirement() {
+    fn render(portability: merman::svg::ThemePortabilityRequirement) -> merman::RenderedDocument {
+        let request = merman::SvgRequest {
+            environment: merman::SvgEnvironment::deterministic()
+                .with_theme_portability_requirement(portability),
+            ..merman::SvgRequest::default()
+        };
+        let output = Renderer::new()
+            .render(RenderRequest::document(
+                "info",
+                OperationControl::new(),
+                request,
+            ))
+            .expect("unthemed document should complete");
+        let RenderOutput::Document(Some(document)) = output else {
+            panic!("expected an unthemed rendered document");
+        };
+        document
+    }
+
+    let best_effort = render(merman::svg::ThemePortabilityRequirement::BestEffort);
+    let require_portable = render(merman::svg::ThemePortabilityRequirement::RequirePortable);
+    assert_eq!(best_effort.svg(), require_portable.svg());
+    assert_ne!(
+        best_effort.document_digest(),
+        require_portable.document_digest()
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn host_display_measurements_make_document_and_svg_target_host_dependent() {
+    let document =
+        render_host_measured_document(merman::svg::ThemePortabilityRequirement::BestEffort);
+
+    assert!(
+        document
+            .evidence()
+            .measurement()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.count() > 0
+                    && entry.provenance().source == merman::svg::TextMeasurementSource::Host
+            })
+    );
+    assert!(document.portability().is_host_dependent());
+    assert!(
+        document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+    assert_eq!(
+        document.standalone_svg_admission().status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        document
+            .standalone_svg_admission()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn require_portable_svg_target_rejects_actual_host_display_measurements() {
+    let identity = merman::svg::TextMeasurementProfileIdentity::new(
+        merman::svg::MeasurementProfileId::new("merman.test-strict-svg-host")
+            .expect("test profile id"),
+        "render-operation-test@1",
+    )
+    .expect("test profile identity");
+    let measurement = merman::svg::TextMeasurementPolicy::host_display(
+        identity,
+        Arc::new(FixedHostTextMeasurer),
+        merman::svg::TextMeasurementPhase::ALL,
+    );
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .with_text_measurement_policy(measurement)
+            .with_theme_portability_requirement(
+                merman::svg::ThemePortabilityRequirement::RequirePortable,
+            ),
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..merman::SvgRequest::default()
+    };
+
+    let error = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(flowchart_paint_theme()),
+        )
+        .expect_err("strict SVG admission must reject actual host measurement provenance");
+    let RenderError::TargetAdmission(error) = error else {
+        panic!("strict SVG rejection must retain target evidence: {error}");
+    };
+    assert_eq!(
+        error.receipt().artifact_kind(),
+        merman::RenderArtifactKind::Svg
+    );
+    assert_eq!(
+        error.receipt().status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        error
+            .receipt()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn ordinary_svg_leaves_native_admission_unverified() {
+    for pipeline in [None, Some(merman::svg::SvgPipeline::parity())] {
+        for theme in [None, Some(flowchart_paint_theme())] {
+            let mut request = RenderRequest::svg(
+                "flowchart TD\nA[Alpha] --> B[Beta]",
+                OperationControl::new(),
+                merman::SvgRequest {
+                    pipeline: pipeline.clone(),
+                    ..merman::SvgRequest::default()
+                },
+            );
+            if let Some(theme) = theme {
+                request = request.with_theme(theme);
+            }
+            let RenderOutput::Svg(Some(output)) = Renderer::new().render(request).unwrap() else {
+                panic!("expected standalone SVG output");
+            };
+            assert_eq!(output.admission().status().id(), "unverified");
+            assert!(!output.admission().status().is_portable());
+            let reasons: Vec<_> = output
+                .admission()
+                .reasons()
+                .iter()
+                .map(|reason| reason.id())
+                .collect();
+            assert!(reasons.contains(&"svg_terminal_unverified"));
+            assert!(!reasons.contains(&"svg_terminal_validation_failed"));
+            assert!(!reasons.contains(&"svg_fonts_not_self_contained"));
+            assert_eq!(
+                output.admission().artifact_digest(),
+                <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+            );
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn svg_admission_preserves_the_caller_selected_pipeline() {
+    const SOURCE: &str = "---\nconfig:\n  htmlLabels: true\n  flowchart:\n    htmlLabels: true\n---\nflowchart TD\nA[Alpha] --> B[Beta]";
+
+    fn render_best_effort(pipeline: merman::svg::SvgPipeline) -> merman::SvgOutput {
+        let request = merman::SvgRequest {
+            pipeline: Some(pipeline),
+            ..merman::SvgRequest::default()
+        };
+        let output = Renderer::new()
+            .render(
+                RenderRequest::svg(SOURCE, OperationControl::new(), request)
+                    .with_theme(flowchart_paint_theme()),
+            )
+            .expect("best-effort SVG should retain the selected pipeline output");
+        let RenderOutput::Svg(Some(output)) = output else {
+            panic!("expected standalone SVG output");
+        };
+        output
+    }
+
+    fn render_strict(pipeline: merman::svg::SvgPipeline) -> merman::TargetAdmissionError {
+        let request = merman::SvgRequest {
+            environment: merman::SvgEnvironment::deterministic()
+                .with_theme_portability_requirement(
+                    merman::svg::ThemePortabilityRequirement::RequirePortable,
+                ),
+            pipeline: Some(pipeline),
+            ..merman::SvgRequest::default()
+        };
+        let error = Renderer::new()
+            .render(
+                RenderRequest::svg(SOURCE, OperationControl::new(), request)
+                    .with_theme(flowchart_paint_theme()),
+            )
+            .expect_err("strict SVG should reject an incompatible selected pipeline artifact");
+        let RenderError::TargetAdmission(error) = error else {
+            panic!("strict SVG rejection should retain target evidence: {error}");
+        };
+        error
+    }
+
+    let parity = render_best_effort(merman::svg::SvgPipeline::parity());
+    assert!(parity.svg().contains("<foreignObject"), "{}", parity.svg());
+    assert!(
+        !parity
+            .svg()
+            .contains(r#"data-merman-foreignobject="fallback""#),
+        "{}",
+        parity.svg()
+    );
+    let parity_digest = <[u8; 32]>::from(Sha256::digest(parity.svg().as_bytes()));
+    let parity_receipt = parity.admission();
+    assert_eq!(parity_receipt.artifact_digest(), parity_digest);
+    assert_eq!(
+        parity_receipt.status(),
+        merman::TargetAdmissionStatus::Unverified
+    );
+    assert!(
+        parity_receipt
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgTerminalUnverified)
+    );
+    let parity_error = render_strict(merman::svg::SvgPipeline::parity());
+    assert_eq!(parity_error.receipt().artifact_digest(), parity_digest);
+    assert_eq!(
+        parity_error.receipt().status(),
+        merman::TargetAdmissionStatus::Rejected
+    );
+
+    let readable = render_best_effort(merman::svg::SvgPipeline::readable());
+    assert!(
+        readable.svg().contains("<foreignObject"),
+        "{}",
+        readable.svg()
+    );
+    assert!(
+        readable
+            .svg()
+            .contains(r#"data-merman-foreignobject="fallback""#),
+        "{}",
+        readable.svg()
+    );
+    let readable_digest = <[u8; 32]>::from(Sha256::digest(readable.svg().as_bytes()));
+    let readable_error = render_strict(merman::svg::SvgPipeline::readable());
+    assert_eq!(readable_error.receipt().artifact_digest(), readable_digest);
+
+    let resvg_safe = render_best_effort(merman::svg::SvgPipeline::resvg_safe());
+    assert!(
+        !resvg_safe.svg().contains("<foreignObject"),
+        "{}",
+        resvg_safe.svg()
+    );
+    assert_ne!(parity.svg(), readable.svg());
+    assert_ne!(readable.svg(), resvg_safe.svg());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
+    const SOURCE: &str = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Alpha] --> B[Beta]";
+
+    let render = |pipeline| {
+        let output = Renderer::new()
+            .render(
+                RenderRequest::svg(
+                    SOURCE,
+                    OperationControl::new(),
+                    merman::SvgRequest {
+                        pipeline: Some(pipeline),
+                        ..merman::SvgRequest::default()
+                    },
+                )
+                .with_theme(flowchart_paint_theme()),
+            )
+            .expect("best-effort SVG should return the selected artifact");
+        let RenderOutput::Svg(Some(output)) = output else {
+            panic!("expected standalone SVG output");
+        };
+        output
+    };
+
+    let baseline = render(merman::svg::SvgPipeline::parity());
+    let output =
+        render(merman::svg::SvgPipeline::parity().with_postprocessor(MissingFragmentPostprocessor));
+    assert!(output.svg().contains("data-test-missing-fragment"));
+    let admission = output.admission();
+    assert_eq!(
+        admission.artifact_digest(),
+        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+    assert_eq!(admission.status(), merman::TargetAdmissionStatus::Rejected);
+    assert!(
+        admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+    );
+    assert!(
+        admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgTerminalUnverified)
+    );
+    assert!(
+        !admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
+    );
+    assert_ne!(
+        admission.resource_fingerprint(),
+        baseline.admission().resource_fingerprint()
+    );
+    assert_ne!(
+        admission.document_digest(),
+        baseline.admission().document_digest()
+    );
+
+    let strict_error = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                SOURCE,
+                OperationControl::new(),
+                merman::SvgRequest {
+                    environment: merman::SvgEnvironment::deterministic()
+                        .with_theme_portability_requirement(
+                            merman::svg::ThemePortabilityRequirement::RequirePortable,
+                        ),
+                    pipeline: Some(
+                        merman::svg::SvgPipeline::parity()
+                            .with_postprocessor(MissingFragmentPostprocessor),
+                    ),
+                    ..merman::SvgRequest::default()
+                },
+            )
+            .with_theme(flowchart_paint_theme()),
+        )
+        .expect_err("strict SVG should reject the same exact invalid artifact");
+    let RenderError::TargetAdmission(strict_error) = strict_error else {
+        panic!("strict rejection should retain target evidence: {strict_error}");
+    };
+    assert_eq!(
+        strict_error.receipt().artifact_digest(),
+        admission.artifact_digest()
+    );
+    assert!(
+        strict_error
+            .receipt()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn standalone_svg_terminal_observation_propagates_resource_limits() {
+    for pipeline in [None, Some(merman::svg::SvgPipeline::parity())] {
+        let resources = merman::svg::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(merman::svg::ResourceLimitId::MaxSvgElements, 2)
+            .expect("valid SVG element limit");
+        let request = merman::SvgRequest {
+            environment: merman::SvgEnvironment::deterministic().with_resource_policy(resources),
+            pipeline,
+            ..merman::SvgRequest::default()
+        };
+        let error = Renderer::new()
+            .render(RenderRequest::svg(
+                "flowchart TD\nA --> B",
+                OperationControl::new(),
+                request,
+            ))
+            .expect_err("terminal SVG observation must not downgrade a resource limit");
+
+        assert!(matches!(
+            error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_svg_elements"
+                    && limit.phase == "svg_postprocess"
+                    && limit.maximum == 2
+        ));
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn host_display_measurements_make_png_target_host_dependent() {
+    let document =
+        render_host_measured_document(merman::svg::ThemePortabilityRequirement::BestEffort);
+
+    let output = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("best-effort PNG export should retain host-dependent evidence");
+    assert_eq!(
+        output.admission().status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        output
+            .admission()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn require_portable_rejects_actual_host_display_measurements() {
+    let document =
+        render_host_measured_document(merman::svg::ThemePortabilityRequirement::RequirePortable);
+
+    let error = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect_err("strict PNG admission must reject actual host measurement provenance");
+    let RenderError::TargetAdmission(error) = error else {
+        panic!("strict host measurement rejection must retain target evidence: {error}");
+    };
+    assert_eq!(
+        error.receipt().status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        error
+            .receipt()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn require_portable_without_a_theme_does_not_fall_back_to_best_effort() {
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        pipeline: Some(
+            merman::svg::SvgPipeline::resvg_safe()
+                .with_postprocessor(merman::svg::RootBackgroundPostprocessor::new("#111827")),
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let output = Renderer::new()
+        .render(RenderRequest::document(
+            "info",
+            OperationControl::new(),
+            request,
+        ))
+        .expect("target-neutral document completion should retain rejected evidence");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected an unthemed rendered document");
+    };
+    assert_eq!(document.evidence().theme_recipe_fingerprint(), None);
+    assert!(
+        document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+    );
+
+    let error = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect_err("the unthemed session must retain the host's strict portability requirement");
+    let RenderError::TargetAdmission(error) = error else {
+        panic!("strict unthemed rejection must retain target evidence: {error}");
+    };
+    assert_eq!(
+        error.receipt().artifact_kind(),
+        merman::RenderArtifactKind::Png
+    );
+    assert_eq!(
+        error.receipt().status(),
+        merman::TargetAdmissionStatus::Rejected
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn strict_document_completion_preserves_the_standalone_svg_receipt() {
+    let theme = portable_state_theme();
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..Default::default()
+    };
+
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("document completion must not be preempted by one target's admission");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a completed document");
+    };
+    assert_eq!(
+        document.standalone_svg_admission().artifact_kind(),
+        merman::RenderArtifactKind::Svg
+    );
+    assert_ne!(
+        document.standalone_svg_admission().status(),
+        merman::TargetAdmissionStatus::Portable
+    );
+    assert!(!document.standalone_svg_admission().reasons().is_empty());
+    assert_eq!(
+        document.standalone_svg_admission().document_digest(),
+        document.document_digest()
+    );
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn strict_document_png_projection_is_evaluated_by_the_png_target() {
+    let theme = portable_state_theme();
+    let svg = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..Default::default()
+    };
+
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                svg,
+            )
+            .with_theme(theme),
+        )
+        .expect("one target's admission must not preempt document completion");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a completed document");
+    };
+    let error = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect_err("strict PNG admission should reject host-dependent text");
+    let RenderError::TargetAdmission(error) = error else {
+        panic!("strict PNG rejection must preserve target-owned evidence: {error}");
+    };
+    assert_eq!(
+        error.receipt().artifact_kind(),
+        merman::RenderArtifactKind::Png,
+        "the standalone SVG receipt must not preempt target-local PNG admission"
+    );
+    assert_ne!(
+        error.receipt().status(),
+        merman::TargetAdmissionStatus::Portable
+    );
+}
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn one_rendered_document_projects_all_native_targets_with_atomic_receipts() {
+    let output = Renderer::new()
+        .render(RenderRequest::document(
+            "info",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("rendered document should complete");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    let png = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("PNG projection should succeed");
+    let jpeg = document
+        .export_jpeg(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("JPEG projection should succeed");
+    let pdf = document
+        .export_pdf(
+            &merman::svg::export::PdfOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("PDF projection should succeed");
+
+    assert!(png.bytes().starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(png.plan(), png.export_report().raster());
+    assert_eq!(jpeg.plan(), jpeg.export_report().raster());
+    assert_eq!(pdf.plan(), pdf.export_report().filters());
+
+    for (kind, bytes, receipt) in [
+        (
+            merman::RenderArtifactKind::Png,
+            png.bytes(),
+            png.admission(),
+        ),
+        (
+            merman::RenderArtifactKind::Jpeg,
+            jpeg.bytes(),
+            jpeg.admission(),
+        ),
+        (
+            merman::RenderArtifactKind::Pdf,
+            pdf.bytes(),
+            pdf.admission(),
+        ),
+    ] {
+        assert_eq!(receipt.artifact_kind(), kind);
+        assert_eq!(receipt.document_digest(), document.document_digest());
+        assert_eq!(
+            receipt.resource_fingerprint(),
+            document.resource_fingerprint()
+        );
+        assert_eq!(
+            receipt.font_catalog_fingerprint(),
+            document.evidence().font_catalog_fingerprint()
+        );
+        let expected_artifact_digest: [u8; 32] = Sha256::digest(bytes).into();
+        assert_eq!(receipt.artifact_digest(), expected_artifact_digest);
+        assert_ne!(
+            receipt.target_evidence_digest(),
+            receipt.artifact_digest(),
+            "target evidence and artifact bytes are independently bound"
+        );
+        assert_ne!(
+            receipt.status(),
+            merman::TargetAdmissionStatus::Rejected,
+            "a successfully projected built-in target must not silently reject its own artifact"
+        );
+    }
+
+    let receipts = [
+        document.standalone_svg_admission(),
+        png.admission(),
+        jpeg.admission(),
+        pdf.admission(),
+    ];
+    for receipt in &receipts {
+        assert_eq!(receipt.document_digest(), document.document_digest());
+        assert_ne!(receipt.receipt_digest(), [0; 32]);
+    }
+    for (index, receipt) in receipts.iter().enumerate() {
+        for other in &receipts[index + 1..] {
+            assert_ne!(
+                receipt.receipt_digest(),
+                other.receipt_digest(),
+                "one document's target receipts must retain distinct canonical identities"
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn rendered_document_prepares_each_native_target_before_encoding() {
+    let output = Renderer::new()
+        .render(RenderRequest::document(
+            "info",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("rendered document should complete");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    let png = document
+        .prepare_png_export(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("PNG should prepare");
+    assert_eq!(png.plan(), png.export_report().raster());
+    let png = png.encode().expect("prepared PNG should encode");
+
+    let jpeg = document
+        .prepare_jpeg_export(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("JPEG should prepare");
+    assert_eq!(jpeg.plan(), jpeg.export_report().raster());
+    let jpeg = jpeg.encode().expect("prepared JPEG should encode");
+
+    let pdf = document
+        .prepare_pdf_export(
+            &merman::svg::export::PdfOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("PDF should prepare");
+    assert_eq!(pdf.plan(), pdf.export_report().filters());
+    let pdf = pdf.encode().expect("prepared PDF should encode");
+
+    for receipt in [png.admission(), jpeg.admission(), pdf.admission()] {
+        assert_eq!(receipt.document_digest(), document.document_digest());
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn png_output_retains_the_same_coarse_render_evidence() {
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile_preset(merman::svg::ThemePreset::OneDark)
+        .expect("one-dark theme should compile");
+    let svg = merman::SvgRequest::default();
+
+    let output = Renderer::new()
+        .render(
+            RenderRequest::png(
+                "info",
+                OperationControl::new(),
+                merman::PngRequest {
+                    svg,
+                    options: merman::svg::export::RasterOptions::default(),
+                },
+            )
+            .with_theme(theme.clone()),
+        )
+        .expect("themed PNG should render");
+    let RenderOutput::Png(Some(output)) = output else {
+        panic!("expected a themed PNG");
+    };
+
+    assert!(output.bytes().starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(output.export_report().raster(), output.plan());
+    assert_eq!(
+        output.admission().artifact_kind(),
+        merman::RenderArtifactKind::Png
+    );
+    assert_eq!(output.evidence().family_id(), merman::DiagramFamilyId::INFO);
+    assert_eq!(
+        output.evidence().theme_recipe_fingerprint(),
+        Some(theme.recipe_fingerprint())
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "math"))]
+#[test]
+fn svg_evidence_carries_preparation_owned_capability_requirements() {
+    let request = merman::SvgRequest::default();
     let output = Renderer::new()
         .render(RenderRequest::svg(
             "sequenceDiagram\nA->>B: $$x$$",

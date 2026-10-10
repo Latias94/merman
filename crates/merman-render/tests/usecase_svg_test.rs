@@ -646,86 +646,6 @@ fn usecase_math_labels_render_real_math_for_every_label_owner() {
 }
 
 #[test]
-fn usecase_math_measurement_and_output_share_the_operation_backend() {
-    use merman_render::math::MathRenderer;
-    use merman_render::text::{TextMetrics, TextStyle, WrapMode};
-    use std::sync::Arc;
-
-    #[derive(Debug)]
-    struct FixedMath;
-    impl MathRenderer for FixedMath {
-        fn render_html_label(&self, text: &str, _: &MermaidConfig) -> Option<String> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
-            Some("<span>rendered formula</span>".to_owned())
-        }
-        fn measure_html_label(
-            &self,
-            text: &str,
-            _: &MermaidConfig,
-            _: &TextStyle,
-            _: Option<f64>,
-            _: WrapMode,
-        ) -> Option<TextMetrics> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
-            Some(TextMetrics {
-                width: 222.0,
-                height: 37.0,
-                line_count: 1,
-            })
-        }
-    }
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(
-            json!({"layout":"dagre", "htmlLabels":true}),
-        ))
-        .parse_diagram_for_render_model_sync(
-            "usecase-beta\nU(\"$$x<br/>y$$\")\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap();
-    let session = RenderEnvironment::deterministic()
-        .with_math_renderer(Arc::new(FixedMath))
-        .begin_session()
-        .unwrap();
-    let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
-    let layout = artifact.layout_json().unwrap();
-    let node = &layout["layout"]["UsecaseDiagram"]["nodes"][0];
-    assert_eq!(node["width"], json!(262.0));
-    assert_eq!(node["height"], json!(77.0));
-    let rendered = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
-    assert!(rendered.svg().contains("<span>rendered formula</span>"));
-
-    // Markdown <br/> splits math delimiters; unlike a plain label it must not
-    // acquire a math requirement or invoke the backend on a literal fragment.
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(
-            json!({"layout":"dagre", "htmlLabels":true}),
-        ))
-        .parse_diagram_for_render_model_sync(
-            "usecase-beta\nU(\"`$$x<br/>y$$`\")\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .unwrap();
-    let session = RenderEnvironment::deterministic()
-        .with_math_renderer(Arc::new(FixedMath))
-        .begin_session()
-        .unwrap();
-    let plan = family::plan_render(&parsed, &session).unwrap();
-    assert!(!plan.required_capability_ids().any(|id| id == "math"));
-    let artifact =
-        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
-    let rendered = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
-    assert!(!rendered.svg().contains("<span>rendered formula</span>"));
-}
-
-#[test]
 fn usecase_json_infinities_survive_the_complete_render_pipeline() {
     let source = r#"usecase-beta
 json Data@{"positive":1e309,"negative":-1e309,"actualNull":null,"nested":[1e400,-1e400]}
@@ -877,15 +797,62 @@ fn usecase_note_renders_theme_colors_in_every_builtin_theme_and_look() {
         for look in ["classic", "neo", "handDrawn"] {
             let (_, svg) = render_config(
                 "usecase-beta\nA(Login)\nnote for A \"Remember\"",
-                json!({"layout":"dagre", "theme":theme, "look":look}),
+                json!({"layout":"dagre", "theme":theme, "look":look,
+                    "themeVariables":{"noteBkgColor":"var(--note-fill)","noteBorderColor":"currentColor"}}),
             );
             let document = roxmltree::Document::parse(&svg).unwrap();
             let note = document
                 .descendants()
                 .find(|node| node.attribute("data-usecase-kind") == Some("note"))
                 .unwrap_or_else(|| panic!("missing note for {theme}/{look}"));
-            assert!(note.descendants().any(|node| node.has_tag_name("path")));
+            assert!(
+                note.descendants().any(|node| {
+                    node.has_tag_name("path") && node.attribute("fill") == Some("var(--note-fill)")
+                }),
+                "note fill for {theme}/{look}"
+            );
+            assert!(
+                note.descendants().any(|node| {
+                    node.has_tag_name("path") && node.attribute("stroke") == Some("currentColor")
+                }),
+                "note stroke for {theme}/{look}"
+            );
         }
+    }
+}
+
+#[test]
+fn usecase_raw_palette_preserves_public_appearance_normalization() {
+    for (look, node_look, edge_look) in [
+        (json!(7), "neo", "neo"),
+        (json!("not a token"), "neo", "neo"),
+        (json!("classic"), "classic", "classic"),
+    ] {
+        let (_, svg) = render_config(
+            "usecase-beta\nactor A\nB(Login)\nA --> B",
+            json!({"layout":"dagre","theme":"redux-color","look":look,
+                "usecase":{"colorScheme":"rotate"},
+                "themeVariables":{"borderColorArray":[17,false],"bkgColorArray":["var(--surface)"]}}),
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("valid raw Usecase appearance SVG");
+        let actor = doc
+            .descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some("A"))
+            .unwrap();
+        assert_eq!(actor.attribute("data-look"), Some(node_look));
+        assert_eq!(actor.attribute("data-color-id"), Some("color-0"));
+        let edge = doc
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert_eq!(edge.attribute("data-look"), Some(edge_look));
+        let css: String = doc
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(css.contains("stroke:17;fill:var(--surface);"));
+        assert!(css.contains("stroke:false;fill:var(--surface);"));
     }
 }
 

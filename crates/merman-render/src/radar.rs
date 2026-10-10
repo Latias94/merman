@@ -11,9 +11,35 @@ use crate::text::TextMeasurer;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
 
+mod axis_paint;
 mod config;
+mod css_binding;
+mod text_paint;
+mod theme;
 
+pub(crate) use axis_paint::{RadarAxisPaintPlan, RadarAxisPaintReceipt};
 pub(crate) use config::RadarConfigView;
+pub(crate) use css_binding::RadarCssBinding;
+pub(crate) use text_paint::{RadarTextPaintPlan, RadarTextPaintReceipt};
+pub(crate) use theme::{
+    RadarSeriesPaintPlan, RadarTitleThemePlan, RadarTypographyCssEmission, RadarTypographyThemePlan,
+};
+
+pub(crate) fn effective_title<'a>(
+    model: &'a RadarDiagramRenderModel,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RadarLayoutWork {

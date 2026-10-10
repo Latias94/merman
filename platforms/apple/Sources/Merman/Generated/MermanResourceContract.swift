@@ -39,7 +39,9 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxModelItems = MermanResourceLimitId("max_model_items")
     public static let maxModelTextBytes = MermanResourceLimitId("max_model_text_bytes")
     public static let maxModelNestingDepth = MermanResourceLimitId("max_model_nesting_depth")
+    public static let maxOptionsJsonBytes = MermanResourceLimitId("max_options_json_bytes")
     public static let maxLayoutWorkUnits = MermanResourceLimitId("max_layout_work_units")
+    public static let maxPreparedTextRetainedBytes = MermanResourceLimitId("max_prepared_text_retained_bytes")
     public static let maxSvgBytes = MermanResourceLimitId("max_svg_bytes")
     public static let maxSvgElements = MermanResourceLimitId("max_svg_elements")
     public static let svgBackendTreeNodes = MermanResourceLimitId("svg_backend_tree_nodes")
@@ -70,7 +72,9 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxModelItems,
         .maxModelTextBytes,
         .maxModelNestingDepth,
+        .maxOptionsJsonBytes,
         .maxLayoutWorkUnits,
+        .maxPreparedTextRetainedBytes,
         .maxSvgBytes,
         .maxSvgElements,
         .svgBackendTreeNodes,
@@ -105,7 +109,9 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_model_items": MermanResourceLimitMetadata(id: "max_model_items", phase: "layout_model", overridable: true, minimumValue: 1),
         "max_model_text_bytes": MermanResourceLimitMetadata(id: "max_model_text_bytes", phase: "layout_model", overridable: true, minimumValue: 1),
         "max_model_nesting_depth": MermanResourceLimitMetadata(id: "max_model_nesting_depth", phase: "layout_model", overridable: true, minimumValue: 1),
+        "max_options_json_bytes": MermanResourceLimitMetadata(id: "max_options_json_bytes", phase: "options-json-preflight", overridable: false, minimumValue: 1),
         "max_layout_work_units": MermanResourceLimitMetadata(id: "max_layout_work_units", phase: "layout_model", overridable: true, minimumValue: 1),
+        "max_prepared_text_retained_bytes": MermanResourceLimitMetadata(id: "max_prepared_text_retained_bytes", phase: "layout_model", overridable: true, minimumValue: 1),
         "max_svg_bytes": MermanResourceLimitMetadata(id: "max_svg_bytes", phase: "svg_output", overridable: true, minimumValue: 1),
         "max_svg_elements": MermanResourceLimitMetadata(id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1),
         "svg_backend_tree_nodes": MermanResourceLimitMetadata(id: "svg_backend_tree_nodes", phase: "svg_postprocess", overridable: false, minimumValue: 1),

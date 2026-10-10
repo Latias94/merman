@@ -13,9 +13,13 @@ internal val MERMAN_RUNTIME_CATALOG_IDENTIFIER_REGEX =
 internal val MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_REGEX =
     Regex(MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN)
 
-internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 2
+internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 3
 internal const val MERMAN_OPERATION_METADATA_SCHEMA_VERSION: Int = 1
 internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 1
+
+internal const val MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = "deterministic"
+internal const val MERMAN_HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID: String = "host-callback"
+internal val MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf("deterministic", "host-callback")
 
 internal data class MermanBindingCapabilitySpec(
     val id: String,
@@ -57,11 +61,13 @@ internal data class MermanBindingConstructorServiceSpec(
 
 internal data class MermanBindingOperationExpectation(
     val operationId: String,
+    val maturity: String,
     val outputId: String?,
     val mediaType: String,
     val metadataSchemaVersion: Int,
     val requiresUri: Boolean,
     val availabilityCapabilityId: String?,
+    val compiledPrerequisiteIds: Set<String>,
 )
 
 internal data class MermanBindingArtifactExpectation(
@@ -70,17 +76,21 @@ internal data class MermanBindingArtifactExpectation(
     val systemAdapterIds: List<String>,
     val operationIds: List<String>,
     val metadataIds: List<String>,
+    val textMeasurementProviderIds: List<String>,
 )
 
 internal object MermanBindingOperationId {
     internal const val ANALYSIS_FACTS_JSON: String = "analysis-facts-json"
     internal const val ANALYSIS_JSON: String = "analysis-json"
     internal const val ASCII: String = "ascii"
+    internal const val DESCRIBE_THEME_SUPPORT_JSON: String = "describe-theme-support-json"
     internal const val DOCUMENT_ANALYSIS_FACTS_JSON: String = "document-analysis-facts-json"
     internal const val DOCUMENT_ANALYSIS_JSON: String = "document-analysis-json"
     internal const val EDGE_GEOMETRY_JSON: String = "edge-geometry-json"
+    internal const val EXPORT_THEME_PRESET_JSON: String = "export-theme-preset-json"
     internal const val JPEG: String = "jpeg"
     internal const val LAYOUT_JSON: String = "layout-json"
+    internal const val MATERIALIZE_THEME_JSON: String = "materialize-theme-json"
     internal const val PDF: String = "pdf"
     internal const val PNG: String = "png"
     internal const val SEMANTIC_JSON: String = "semantic-json"
@@ -93,9 +103,9 @@ internal object MermanBindingMetadataId {
     internal const val ASCII_CAPABILITIES: String = "ascii-capabilities"
     internal const val DIAGRAM_FAMILY_CAPABILITIES: String = "diagram-family-capabilities"
     internal const val LINT_RULE_CATALOG: String = "lint-rule-catalog"
-    internal const val PRESENTATION_CATALOG: String = "presentation-catalog"
     internal const val SUPPORTED_DIAGRAMS: String = "supported-diagrams"
     internal const val SUPPORTED_THEMES: String = "supported-themes"
+    internal const val THEME_CATALOG: String = "theme-catalog"
 }
 
 internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilitySpec> = listOf(
@@ -125,9 +135,9 @@ internal val MERMAN_BINDING_METADATA_SPECS: Map<String, MermanBindingMetadataSpe
     MermanBindingMetadataSpec("ascii-capabilities", "ascii"),
     MermanBindingMetadataSpec("diagram-family-capabilities", null),
     MermanBindingMetadataSpec("lint-rule-catalog", "analysis"),
-    MermanBindingMetadataSpec("presentation-catalog", null),
     MermanBindingMetadataSpec("supported-diagrams", null),
     MermanBindingMetadataSpec("supported-themes", null),
+    MermanBindingMetadataSpec("theme-catalog", null),
 ).associateBy(MermanBindingMetadataSpec::id)
 
 internal val MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS: Map<String, Int> = mapOf(
@@ -145,12 +155,12 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
     MermanBindingOptionGroupSpec("lint", false, setOf("analysis"), false),
     MermanBindingOptionGroupSpec("parse", true, setOf(), false),
     MermanBindingOptionGroupSpec("pdf", false, setOf("pdf"), false),
-    MermanBindingOptionGroupSpec("presentation", false, setOf(), true),
     MermanBindingOptionGroupSpec("raster", false, setOf("jpeg", "png"), false),
     MermanBindingOptionGroupSpec("resources", true, setOf(), false),
     MermanBindingOptionGroupSpec("runtime_policy", true, setOf(), false),
     MermanBindingOptionGroupSpec("site_config", true, setOf(), false),
     MermanBindingOptionGroupSpec("svg", false, setOf(), true),
+    MermanBindingOptionGroupSpec("theme", false, setOf(), true),
     MermanBindingOptionGroupSpec("version", true, setOf(), false),
 ).associateBy(MermanBindingOptionGroupSpec::id)
 
@@ -170,28 +180,32 @@ internal val MERMAN_BINDING_CONSTRUCTOR_SERVICE_SPECS: Map<String, MermanBinding
 ).associateBy(MermanBindingConstructorServiceSpec::id)
 
 internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationExpectation> = listOf(
-    MermanBindingOperationExpectation("analysis-facts-json", null, "application/json", 1, false, "analysis"),
-    MermanBindingOperationExpectation("analysis-json", null, "application/json", 1, false, "analysis"),
-    MermanBindingOperationExpectation("ascii", "ascii", "text/plain; charset=utf-8", 1, false, "ascii"),
-    MermanBindingOperationExpectation("document-analysis-facts-json", null, "application/json", 1, true, "analysis"),
-    MermanBindingOperationExpectation("document-analysis-json", null, "application/json", 1, true, "analysis"),
-    MermanBindingOperationExpectation("edge-geometry-json", null, "application/json", 1, false, "svg"),
-    MermanBindingOperationExpectation("jpeg", "jpeg", "image/jpeg", 1, false, "jpeg"),
-    MermanBindingOperationExpectation("layout-json", null, "application/json", 1, false, "svg"),
-    MermanBindingOperationExpectation("pdf", "pdf", "application/pdf", 1, false, "pdf"),
-    MermanBindingOperationExpectation("png", "png", "image/png", 1, false, "png"),
-    MermanBindingOperationExpectation("semantic-json", null, "application/json", 1, false, null),
-    MermanBindingOperationExpectation("svg", "svg", "image/svg+xml", 1, false, "svg"),
-    MermanBindingOperationExpectation("svg-plan-json", null, "application/json", 1, false, "svg"),
-    MermanBindingOperationExpectation("validation-json", null, "application/json", 1, false, "analysis"),
+    MermanBindingOperationExpectation("analysis-facts-json", "stable", null, "application/json", 1, false, "analysis", setOf()),
+    MermanBindingOperationExpectation("analysis-json", "stable", null, "application/json", 1, false, "analysis", setOf()),
+    MermanBindingOperationExpectation("ascii", "stable", "ascii", "text/plain; charset=utf-8", 1, false, "ascii", setOf()),
+    MermanBindingOperationExpectation("describe-theme-support-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("document-analysis-facts-json", "stable", null, "application/json", 1, true, "analysis", setOf()),
+    MermanBindingOperationExpectation("document-analysis-json", "stable", null, "application/json", 1, true, "analysis", setOf()),
+    MermanBindingOperationExpectation("edge-geometry-json", "stable", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("export-theme-preset-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("jpeg", "stable", "jpeg", "image/jpeg", 1, false, "jpeg", setOf("svg")),
+    MermanBindingOperationExpectation("layout-json", "stable", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("materialize-theme-json", "alpha", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("pdf", "stable", "pdf", "application/pdf", 1, false, "pdf", setOf("svg")),
+    MermanBindingOperationExpectation("png", "stable", "png", "image/png", 1, false, "png", setOf("svg")),
+    MermanBindingOperationExpectation("semantic-json", "stable", null, "application/json", 1, false, null, setOf()),
+    MermanBindingOperationExpectation("svg", "stable", "svg", "image/svg+xml", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("svg-plan-json", "stable", null, "application/json", 1, false, "svg", setOf()),
+    MermanBindingOperationExpectation("validation-json", "stable", null, "application/json", 1, false, "analysis", setOf()),
 )
 
 internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(
     capabilityIds = listOf("analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"),
     outputIds = listOf("ascii", "svg"),
     systemAdapterIds = listOf(),
-    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "layout-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
-    metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "presentation-catalog", "supported-diagrams", "supported-themes"),
+    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "describe-theme-support-json", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "export-theme-preset-json", "layout-json", "materialize-theme-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
+    metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "supported-diagrams", "supported-themes", "theme-catalog"),
+    textMeasurementProviderIds = listOf("deterministic", "host-callback"),
 )
 
 internal val MERMAN_ANDROID_OUTPUT_CONTRACT_JSON_BY_ID: Map<String, String> = mapOf(

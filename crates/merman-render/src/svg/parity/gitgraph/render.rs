@@ -1,11 +1,37 @@
 use super::super::*;
+use crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT;
+use std::borrow::Cow;
 
 struct GitGraphCss {
     css: String,
     defs: String,
-    font_family: String,
-    commit_label_font_size_px: f64,
-    tag_label_font_size_px: f64,
+    font_family_css: String,
+    base_font_size_css: String,
+    base_typography_emitted: bool,
+    commit_label_background_fill: String,
+    branch_stroke: String,
+    text_colors: Option<[String; 5]>,
+    // These facts are set alongside the exact CSS declarations that mask root inheritance.
+    root_geometry: [[bool; 8]; 4],
+    root_cherry_pick: bool,
+    node_paint: Option<GitGraphNodePaintCss>,
+}
+
+use crate::gitgraph::GitGraphNodePaintCss;
+
+impl GitGraphCss {
+    fn typography_emission(&self) -> crate::gitgraph::GitGraphTypographyCssEmission<'_> {
+        crate::gitgraph::GitGraphTypographyCssEmission {
+            base_font_family_css: &self.font_family_css,
+            branch_label_font_family_css: &self.font_family_css,
+            base_font_size_css: &self.base_font_size_css,
+            base_css_emitted: self.base_typography_emitted,
+        }
+    }
+
+    fn commit_label_background_fill(&self) -> &str {
+        &self.commit_label_background_fill
+    }
 }
 
 enum GitGraphBranchLabelStyle<'a> {
@@ -30,204 +56,111 @@ impl std::fmt::Display for GitGraphBranchLabelStyle<'_> {
 
 const GITGRAPH_NAMED_COLOR_COUNT: usize = 8;
 
-fn gitgraph_theme_name(effective_config: &serde_json::Value) -> String {
-    config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
-}
-
-fn gitgraph_theme_is_color(theme: &str) -> bool {
-    matches!(theme, "redux-color" | "redux-dark-color")
-}
-
-fn gitgraph_theme_is_neo(theme: &str) -> bool {
-    matches!(theme, "neo" | "neo-dark")
-}
-
-fn gitgraph_theme_is_dark(theme: &str) -> bool {
-    matches!(
-        theme,
-        "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
-    )
-}
-
-fn gitgraph_theme_uses_color_gen(theme: &str) -> bool {
-    matches!(
-        theme,
-        "redux" | "redux-dark" | "redux-color" | "redux-dark-color" | "neo" | "neo-dark"
-    )
-}
-
-fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<String> {
-    effective_config
-        .get("themeVariables")
-        .and_then(|v| v.get(key))
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn gitgraph_defs<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+fn gitgraph_defs<I>(
+    diagram_id: I,
+    binding: &crate::gitgraph::GitGraphCssBinding,
+    gradient: Option<(&str, &str)>,
+) -> String
 where
     I: Copy + std::fmt::Display,
 {
     let mut out = String::new();
 
-    if config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
-            .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
-            .unwrap_or_else(|| "#9370DB".to_string());
-        let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
-            .or_else(|| {
-                config_string(
-                    effective_config,
-                    &["themeVariables", "secondaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| gradient_start.clone());
-
+    if let Some((gradient_start, gradient_stop)) = gradient {
         let _ = write!(
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
             diagram_id,
-            escape_xml(&gradient_start),
-            escape_xml(&gradient_stop)
+            escape_xml(gradient_start),
+            escape_xml(gradient_stop)
         );
     }
 
-    let theme_name = gitgraph_theme_name(effective_config);
-    if config_diagram_look(effective_config).is_neo()
-        && crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name)
-    {
-        let filter_color = theme_token(effective_config, "filterColor", "#000000");
+    if binding.look_is_neo && binding.use_redux_geometry {
+        let filter_color = &binding.filter_color;
         let _ = write!(
             &mut out,
             r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
             diagram_id,
-            escape_xml(&filter_color)
+            escape_xml(filter_color)
         );
     }
 
     out
 }
 
-fn gitgraph_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> GitGraphCss
-where
-    I: Copy + std::fmt::Display,
-{
-    let id = diagram_id;
-    let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
-    let font_family = parts.font_family.clone();
-    let theme_name = gitgraph_theme_name(effective_config);
-    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
-    let use_color_theme = gitgraph_theme_is_color(&theme_name);
-    let use_neo_theme = gitgraph_theme_is_neo(&theme_name);
-    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
-    let use_color_gen = gitgraph_theme_uses_color_gen(&theme_name);
+fn gitgraph_css(
+    diagram_id: &str,
+    binding: &crate::gitgraph::GitGraphCssBinding,
+    static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
+    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
+) -> GitGraphCss {
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
+    let terminal = static_paint.terminal_styles();
+    let css = super::super::css::InfoCssWriter::from_prepared(&binding.common)
+        .with_text_color(&terminal.text_color);
+    let css = match terminal.common_node_border_override.as_deref() {
+        Some(border) => css.with_node_border(border),
+        None => css,
+    };
+    let parts = css.into_parts(diagram_id);
+    let use_redux_geometry = binding.use_redux_geometry;
+    let use_color_theme = binding.sources.use_color_theme;
+    let use_neo_theme = binding.sources.use_neo_theme;
+    let use_dark_theme = binding.sources.use_dark_theme;
+    let use_color_gen = binding.sources.use_color_gen;
 
-    fn default_git_color(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 46.2745098039%)",
-            1 => "hsl(60, 100%, 43.5294117647%)",
-            2 => "hsl(80, 100%, 46.2745098039%)",
-            3 => "hsl(210, 100%, 46.2745098039%)",
-            4 => "hsl(180, 100%, 46.2745098039%)",
-            5 => "hsl(150, 100%, 46.2745098039%)",
-            6 => "hsl(300, 100%, 46.2745098039%)",
-            _ => "hsl(0, 100%, 46.2745098039%)",
-        }
-    }
-
-    fn default_git_branch_label(i: usize) -> &'static str {
-        match i {
-            0 | 3 => "#ffffff",
-            _ => "black",
-        }
-    }
-
-    fn default_git_inv(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(60, 100%, 3.7254901961%)",
-            1 => "rgb(0, 0, 160.5)",
-            2 => "rgb(48.8333333334, 0, 146.5000000001)",
-            3 => "rgb(146.5000000001, 73.2500000001, 0)",
-            4 => "rgb(146.5000000001, 0, 0)",
-            5 => "rgb(146.5000000001, 0, 73.2500000001)",
-            6 => "rgb(0, 146.5000000001, 0)",
-            _ => "rgb(0, 146.5000000001, 146.5000000001)",
-        }
-    }
-
-    let commit_label_font_size =
-        config_string(effective_config, &["themeVariables", "commitLabelFontSize"])
-            .unwrap_or_else(|| "10px".to_string());
-    let tag_label_font_size =
-        config_string(effective_config, &["themeVariables", "tagLabelFontSize"])
-            .unwrap_or_else(|| "10px".to_string());
-    let commit_label_font_size_px = parse_gitgraph_label_font_size_px(&commit_label_font_size);
-    let tag_label_font_size_px = parse_gitgraph_label_font_size_px(&tag_label_font_size);
-    let commit_label_color = theme_token(effective_config, "commitLabelColor", "#000021");
-    let commit_label_background = theme_token(effective_config, "commitLabelBackground", "#ffffde");
-    let tag_label_color = theme_token(effective_config, "tagLabelColor", "#131300");
-    let tag_label_background = theme_token(effective_config, "tagLabelBackground", "#ECECFF");
-    let tag_label_border = theme_token(
-        effective_config,
-        "tagLabelBorder",
-        "hsl(240, 60%, 86.2745098039%)",
-    );
-    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| {
-            let value = if value.is_nan() {
-                1.0
-            } else {
-                value.clamp(1.0, 64.0)
-            };
-            value as usize
-        })
-        .unwrap_or(12);
-    let stroke_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "strokeWidth"],
-    )
-    .unwrap_or_else(|| "1".to_string());
-    let commit_line_color = config_string(effective_config, &["themeVariables", "commitLineColor"])
-        .unwrap_or_else(|| parts.line_color.clone());
-    let primary_color = theme_token(effective_config, "primaryColor", "#ECECFF");
-    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = theme_token(effective_config, "mainBkg", "#ECECFF");
-    let note_font_weight = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "noteFontWeight"],
-    )
-    .unwrap_or_else(|| "normal".to_string());
+    let commit_label_font_size = typography_theme.commit_label_font_size_css();
+    let tag_label_font_size = typography_theme.tag_label_font_size_css();
+    let tag_label_color = terminal.tag_label_color.clone();
+    let theme_color_limit = binding.theme_color_limit;
+    let stroke_width = &binding.stroke_width;
+    let commit_line_color = terminal.commit_line_color.clone();
+    let node_border = terminal.node_border.clone();
+    let main_bkg = Cow::Borrowed(terminal.main_bkg.as_str());
+    let note_font_weight = &binding.note_font_weight;
     let note_font_weight_decl = if use_redux_geometry {
         format!("font-weight:{};", note_font_weight)
     } else {
         String::new()
     };
-    let drop_shadow = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "dropShadow"],
-    )
-    .unwrap_or_else(|| "none".to_string());
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-    let border_color_array = gitgraph_theme_array(effective_config, "borderColorArray");
+    let drop_shadow = &binding.drop_shadow;
+    let use_gradient = binding.sources.use_gradient;
     // gitGraph owns its draw path instead of using rendering-util/render.ts, so it must append the
     // configured root gradient itself for every theme. Several classic themes enable gradients.
-    let defs = gitgraph_defs(diagram_id, effective_config);
+    let defs = gitgraph_defs(
+        diagram_id,
+        binding,
+        terminal
+            .gradient
+            .as_ref()
+            .map(|gradient| (gradient.start.as_str(), gradient.stop.as_str())),
+    );
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .commit-id,#{} .commit-msg,#{} .branch-label{{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:var(--mermaid-font-family);}}"#,
-        id, id, id
+        r#"#{} .commit-id,#{} .commit-msg,#{} .branch-label{{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:{};}}"#,
+        id, id, id, parts.font_family
     );
+    let mut root_geometry = [[true; 8]; 4];
+    let mut root_cherry_pick = true;
+    let mut node_paint = static_paint
+        .node_paint()
+        .map(|_| GitGraphNodePaintCss::default());
     for i in 0..theme_color_limit {
+        if i < 8 {
+            root_geometry[3][i] = false;
+        }
         let ci = i % GITGRAPH_NAMED_COLOR_COUNT;
         if use_color_gen {
+            // .commit-bullets supplies the inherited fill even for slots beyond THEME_COLOR_LIMIT.
+            root_geometry[1] = [false; 8];
+            root_geometry[2] = [false; 8];
+            root_cherry_pick = false;
+            if i < 8 && (!use_neo_theme || use_gradient) {
+                root_geometry[0][i] = false;
+            }
             if use_neo_theme {
                 if i == 0 {
                     let _ = write!(
@@ -252,33 +185,53 @@ where
                         i,
                         node_border
                     );
+                    if let Some(facts) = node_paint.as_mut() {
+                        let border = facts.source(4, &node_border);
+                        facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                        facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                        facts.cherry = border;
+                        facts.branches[2][0] = border;
+                        facts.commits[1][0] = border;
+                        facts.outers[1][0] = border;
+                        facts.arrows[0] = border;
+                    }
                     if use_gradient {
+                        let primary_border = terminal
+                            .gradient
+                            .as_ref()
+                            .filter(|gradient| gradient.primary_border_source)
+                            .map(|gradient| gradient.start.as_str());
                         for label_i in 0..theme_color_limit {
                             let _ = write!(
                                 &mut out,
                                 r#"#{} .label{}{{fill:{};stroke:url(#{}-gradient);stroke-width:{};}}"#,
-                                id, label_i, main_bkg, id, stroke_width
+                                id, label_i, main_bkg, fragment_id, stroke_width
                             );
+                            if let Some(facts) = node_paint.as_mut()
+                                && label_i < GITGRAPH_PALETTE_SLOT_COUNT
+                            {
+                                facts.branches[0][label_i] = facts.source(1, &main_bkg);
+                                if let Some(primary_border) = primary_border {
+                                    facts.branches[1][label_i] = facts.source(3, primary_border);
+                                }
+                            }
                         }
                     }
                 } else {
-                    let git =
-                        theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
-                    let branch_label = theme_token(
-                        effective_config,
-                        &format!("gitBranchLabel{ci}"),
-                        default_git_branch_label(ci),
-                    );
-                    let git_inv = theme_token(
-                        effective_config,
-                        &format!("gitInv{ci}"),
-                        default_git_inv(ci),
-                    );
+                    let git = binding.named[ci].git.clone();
+                    let branch_label = binding.named[ci].branch_label.clone();
+                    let git_inv = binding.named[ci].inverse.clone();
                     let _ = write!(
                         &mut out,
                         r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
                         id, i, branch_label, id, i, git, git, id, i, git_inv, git_inv, id, i, git
                     );
+                    if let Some(facts) = node_paint.as_mut()
+                        && i < GITGRAPH_PALETTE_SLOT_COUNT
+                    {
+                        facts.commits[0][i] = 0;
+                        facts.outers[0][i] = 0;
+                    }
                 }
             } else if !use_color_theme {
                 let _ = write!(
@@ -310,6 +263,20 @@ where
                     i,
                     node_border
                 );
+                if let Some(facts) = node_paint.as_mut() {
+                    let border = facts.source(4, &node_border);
+                    facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.cherry = border;
+                    if i < GITGRAPH_PALETTE_SLOT_COUNT {
+                        facts.branches[0][i] = facts.source(1, &main_bkg);
+                        facts.branches[1][i] = border;
+                        facts.branches[2][i] = border;
+                        facts.commits[1][i] = border;
+                        facts.outers[1][i] = border;
+                        facts.arrows[i] = border;
+                    }
+                }
             } else if i == 0 {
                 let _ = write!(
                     &mut out,
@@ -337,15 +304,26 @@ where
                     id,
                     node_border
                 );
+                if let Some(facts) = node_paint.as_mut() {
+                    let border = facts.source(4, &node_border);
+                    let background = facts.source(1, &main_bkg);
+                    facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.cherry = border;
+                    facts.branches[0][0] = background;
+                    facts.branches[1][0] = border;
+                    facts.branches[2][0] = border;
+                    facts.outers[0][0] = background;
+                    facts.outers[1][0] = border;
+                    facts.commits[1][0] = border;
+                    facts.arrows[0] = border;
+                }
             } else {
-                let border_color = border_color_array
-                    .get(i % border_color_array.len().max(1))
-                    .cloned()
-                    .unwrap_or_else(|| node_border.clone());
+                let border_color = terminal.border_color(binding, i);
                 let label_fill = if use_dark_theme {
-                    main_bkg.as_str()
+                    main_bkg.as_ref()
                 } else {
-                    border_color.as_str()
+                    border_color
                 };
                 let _ = write!(
                     &mut out,
@@ -371,19 +349,38 @@ where
                     i,
                     border_color
                 );
+                if let Some(facts) = node_paint.as_mut()
+                    && i < GITGRAPH_PALETTE_SLOT_COUNT
+                {
+                    let border = facts.source(4, &node_border);
+                    let slot_border = if binding.border_color_array.is_empty() {
+                        border
+                    } else {
+                        0
+                    };
+                    facts.branches[0][i] = if use_dark_theme {
+                        facts.source(1, label_fill)
+                    } else {
+                        slot_border
+                    };
+                    facts.branches[1][i] = slot_border;
+                    facts.branches[2][i] = border;
+                    facts.commits[0][i] = slot_border;
+                    facts.commits[1][i] = slot_border;
+                    facts.outers[0][i] = slot_border;
+                    facts.outers[1][i] = slot_border;
+                    facts.arrows[i] = slot_border;
+                }
             }
         } else {
-            let git = theme_token(effective_config, &format!("git{ci}"), default_git_color(ci));
-            let branch_label = theme_token(
-                effective_config,
-                &format!("gitBranchLabel{ci}"),
-                default_git_branch_label(ci),
-            );
-            let git_inv = theme_token(
-                effective_config,
-                &format!("gitInv{ci}"),
-                default_git_inv(ci),
-            );
+            if i < 8 {
+                for surface in &mut root_geometry {
+                    surface[i] = false;
+                }
+            }
+            let git = binding.named[ci].git.clone();
+            let branch_label = binding.named[ci].branch_label.clone();
+            let git_inv = binding.named[ci].inverse.clone();
             let _ = write!(
                 &mut out,
                 r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
@@ -407,56 +404,28 @@ where
             );
         }
     }
-    let branch_dasharray = if use_color_gen { "4 2" } else { "2" };
-    let commit_label_fill = if use_color_gen {
-        node_border.as_str()
-    } else {
-        commit_label_color.as_str()
-    };
+    let branch_dasharray = terminal.branch_dasharray;
+    let commit_label_fill = terminal.commit_label_fill.as_str();
     let commit_label_weight = if use_color_gen {
         format!("font-weight:{};", note_font_weight)
     } else {
         String::new()
     };
-    let commit_label_bkg_fill = if use_color_gen {
-        "transparent"
-    } else {
-        commit_label_background.as_str()
-    };
-    let commit_label_bkg_opacity = if use_color_gen { "" } else { "opacity:0.5;" };
-    let tag_label_bkg_fill = if use_color_gen {
-        main_bkg.as_str()
-    } else {
-        tag_label_background.as_str()
-    };
-    let tag_label_bkg_stroke = if use_color_gen {
-        node_border.as_str()
-    } else {
-        tag_label_border.as_str()
-    };
+    let commit_label_bkg_fill = terminal.commit_label_background.as_str();
+    let commit_label_bkg_opacity = terminal.commit_background_opacity;
+    let tag_label_bkg_fill = terminal.tag_background.as_str();
+    let tag_label_bkg_stroke = terminal.tag_border.as_str();
     let tag_label_bkg_filter = if use_color_gen {
         format!("filter:{};", drop_shadow)
     } else {
         String::new()
     };
-    let state_fill = if use_color_gen {
-        main_bkg.as_str()
-    } else {
-        primary_color.as_str()
-    };
-    let reverse_stroke_width = if use_color_gen {
-        stroke_width.as_str()
-    } else {
-        "3"
-    };
-    let arrow_stroke_width = if use_redux_geometry {
-        stroke_width.as_str()
-    } else {
-        "8"
-    };
+    let state_fill = terminal.state_fill.as_str();
+    let reverse_stroke_width = terminal.reverse_stroke_width.as_str();
+    let arrow_stroke_width = terminal.arrow_stroke_width.as_str();
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:{};}}#{} .arrow{{stroke-width:{};stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};{}}}#{} .commit-label-bkg{{font-size:{};fill:{};{}}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};{}}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:{};}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:{};}}#{} .arrow{{stroke-width:{};stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};{}}}#{} .commit-label-bkg{{font-size:{};fill:{};{}}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};{}}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:{};}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:{}px;fill:{};}}"#,
         id,
         stroke_width,
         commit_line_color,
@@ -492,29 +461,75 @@ where
         state_fill,
         state_fill,
         id,
+        fmt(typography_theme.title_font_size_px()),
         parts.text_color
     );
     out.push_str(&parts.root_rule);
+    if let Some(facts) = node_paint.as_mut() {
+        facts.state = facts.source(usize::from(use_color_gen), state_fill);
+        facts.tag = facts.source(if use_color_gen { 1 } else { 2 }, tag_label_bkg_fill)
+            | facts.source(if use_color_gen { 4 } else { 5 }, tag_label_bkg_stroke);
+        if use_color_gen {
+            facts.commit_label = facts.source(4, commit_label_fill);
+        }
+        facts.complete = true;
+    }
     GitGraphCss {
         css: out,
         defs,
-        font_family,
-        commit_label_font_size_px,
-        tag_label_font_size_px,
+        font_family_css: parts.font_family,
+        base_font_size_css: parts.font_size_css,
+        base_typography_emitted: parts.base_typography_emitted,
+        commit_label_background_fill: commit_label_bkg_fill.to_string(),
+        branch_stroke: commit_line_color,
+        text_colors: terminal.text_colors_requested.then(|| {
+            [
+                parts.text_color.clone(),
+                parts.text_color.clone(),
+                parts.text_color,
+                tag_label_color,
+                commit_label_fill.to_string(),
+            ]
+        }),
+        root_geometry,
+        root_cherry_pick,
+        node_paint,
     }
 }
 
-fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
-    let raw = raw.trim().trim_end_matches(';').trim();
-    let raw = raw.trim_end_matches("!important").trim();
-    raw.strip_suffix("px")
-        .unwrap_or(raw)
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
-        .unwrap_or(10.0)
-        .max(1.0)
+fn gitgraph_node_palette_css(
+    diagram_id: &str,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+    receipt: &mut Option<crate::gitgraph::GitGraphNodePaletteReceipt>,
+) -> String {
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let mut css = String::new();
+    for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
+        for surface in crate::gitgraph::GitGraphPaletteSurface::ALL {
+            let fill = node_palette.prepared_fill_css(surface, slot);
+            let stroke = node_palette.prepared_stroke_css(surface, slot);
+            if fill.is_none() && stroke.is_none() {
+                continue;
+            }
+            let class_name = match surface {
+                crate::gitgraph::GitGraphPaletteSurface::Commit => "commit",
+                crate::gitgraph::GitGraphPaletteSurface::Arrow => "arrow",
+                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground => "label",
+            };
+            let _ = write!(&mut css, "#{id} .{class_name}{slot}{{");
+            if let Some(stroke) = stroke {
+                let _ = write!(&mut css, "stroke:{stroke};");
+            }
+            if let Some(fill) = fill {
+                let _ = write!(&mut css, "fill:{fill};");
+            }
+            css.push('}');
+            if let Some(receipt) = receipt.as_mut() {
+                receipt.record_stylesheet_rule(node_palette, surface, slot, fill, stroke);
+            }
+        }
+    }
+    css
 }
 
 fn gitgraph_commit_tag_label_width_px(
@@ -543,20 +558,22 @@ fn gitgraph_commit_tag_label_height_px(
     crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
     model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+    static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
+    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or(diagram_title);
+    let diagram_title = crate::gitgraph::resolve_gitgraph_title(model, diagram_title);
     let acc_title = model
         .acc_title
         .as_deref()
@@ -572,6 +589,9 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
         layout,
         acc_title,
         acc_descr,
+        node_palette,
+        static_paint,
+        typography_theme,
         effective_config,
         diagram_title,
         measurer,
@@ -579,21 +599,25 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 fn render_gitgraph_diagram_svg_with_accessibility(
     layout: &crate::model::GitGraphDiagramLayout,
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+    static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
+    typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
-    const TITLE_X_PLACEHOLDER: &str = "__MERMAID_GITGRAPH_TITLE_X__";
     const VIEWBOX_PADDING_PX: f64 = 8.0;
-    const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
     fn include_gitgraph_branch_line_bounds(
         bounds: &mut Bounds,
@@ -647,11 +671,11 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_title_id = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_desc_id = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_describedby = aria_desc_id.as_deref();
     let aria_labelledby = aria_title_id.as_deref();
     let root_context =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::GitGraph, diagram_id);
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::GIT_GRAPH, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -681,31 +705,124 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             escape_xml(d)
         );
     }
+    out.checkpoint()?;
 
-    let theme_name = gitgraph_theme_name(effective_config);
-    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
-    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
-    let look = config_diagram_look(effective_config);
-    let css = gitgraph_css(diagram_id, effective_config);
-    let title_style = crate::text::TextStyle {
-        font_family: Some(css.font_family.clone()),
-        font_size: TITLE_FONT_SIZE_PX,
-        font_weight: None,
-        font_style: None,
-    };
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
-    options.checkpoint_emit()?;
+    let binding = typography_theme.css_binding();
+    let use_redux_geometry = binding.use_redux_geometry;
+    let use_dark_theme = binding.sources.use_dark_theme;
+    let title = diagram_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let css = gitgraph_css(
+        diagram_id.semantic_str(),
+        binding,
+        static_paint,
+        typography_theme,
+    );
+    let node_palette_ownership = node_palette.terminal_ownership();
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
+    let mut branch_stroke_receipt: Option<crate::gitgraph::GitGraphBranchStrokeReceipt> =
+        node_palette.begin_branch_stroke_receipt();
+    let mut typography_receipt = typography_theme.begin_terminal_receipt(layout, title);
+    let mut static_paint_receipt = static_paint.begin_terminal_receipt();
+    let node_palette_css = gitgraph_node_palette_css(
+        diagram_id.semantic_str(),
+        node_palette,
+        &mut node_palette_receipt,
+    );
+    let _ = write!(
+        &mut out,
+        r#"<style>{}{}</style>"#,
+        css.css, node_palette_css
+    );
+    out.checkpoint()?;
+    if let Some(receipt) = branch_stroke_receipt.as_mut() {
+        receipt.record_css(&css.branch_stroke);
+    }
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css_emission(css.typography_emission());
+    }
+    static_paint.record_css_emission(
+        &mut static_paint_receipt,
+        Some(css.commit_label_background_fill()),
+    );
 
     out.push_str(r#"<g/>"#);
     out.push_str(&css.defs);
     out.push_str(r#"<g class="commit-bullets"/>"#);
     out.push_str(r#"<g class="commit-labels"/>"#);
+    out.checkpoint()?;
 
     let mut branch_idx: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
     for b in &layout.branches {
         branch_idx.insert(b.name.as_str(), b.index);
     }
 
+    let mut node_paint_receipt =
+        static_paint
+            .node_paint()
+            .zip(css.node_paint.as_ref())
+            .map(|(plan, facts)| {
+                let fill_masked = [
+                    crate::gitgraph::GitGraphPaletteSurface::Commit,
+                    crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+                ]
+                .map(|surface| {
+                    std::array::from_fn(|slot| {
+                        node_palette.prepared_fill_css(surface, slot).is_some()
+                    })
+                });
+                let stroke_masked = [
+                    crate::gitgraph::GitGraphPaletteSurface::Commit,
+                    crate::gitgraph::GitGraphPaletteSurface::Arrow,
+                ]
+                .map(|surface| {
+                    std::array::from_fn(|slot| {
+                        node_palette.prepared_stroke_css(surface, slot).is_some()
+                    })
+                });
+                plan.begin_terminal_receipt(layout, &branch_idx, fill_masked, stroke_masked, facts)
+            });
+
+    let text_paint = node_palette.text_paint();
+    let mut text_receipt = if text_paint.is_requested() {
+        let mut root_geometry = css.root_geometry;
+        let [branch_backgrounds, commits, ..] = &mut root_geometry;
+        for (slot, (branch_inherited, commit_inherited)) in branch_backgrounds
+            .iter_mut()
+            .zip(commits.iter_mut())
+            .enumerate()
+        {
+            if node_palette
+                .prepared_fill_css(
+                    crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+                    slot,
+                )
+                .is_some()
+            {
+                *branch_inherited = false;
+            }
+            if node_palette
+                .prepared_fill_css(crate::gitgraph::GitGraphPaletteSurface::Commit, slot)
+                .is_some()
+            {
+                // Highlight outer uses commit-highlightN, so a .commitN override does not own it.
+                *commit_inherited = false;
+            }
+        }
+        let mut receipt = text_paint.begin_terminal_receipt(
+            layout,
+            &branch_idx,
+            root_geometry,
+            css.root_cherry_pick,
+        );
+        if let (Some(receipt), Some(colors)) = (receipt.as_mut(), css.text_colors.as_ref()) {
+            receipt.record_css(std::array::from_fn(|i| colors[i].as_str()));
+        }
+        receipt
+    } else {
+        None
+    };
     let direction = layout.direction.as_str();
     let branch_border_radius = if use_redux_geometry { 0.0 } else { 4.0 };
     let branch_label_padding_x = if use_redux_geometry { 16.0 } else { 0.0 };
@@ -714,63 +831,72 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     } else {
         0.0
     };
-    let branch_label_style = if look.is_neo() {
+    let branch_label_style = if binding.look_is_neo {
         if use_redux_geometry {
             GitGraphBranchLabelStyle::ScopedDropShadow(diagram_id)
         } else {
-            GitGraphBranchLabelStyle::Configured(
-                crate::config::config_css_number_or_string(
-                    effective_config,
-                    &["themeVariables", "dropShadow"],
-                )
-                .unwrap_or_else(|| "none".to_string()),
-            )
+            GitGraphBranchLabelStyle::Configured(binding.drop_shadow.clone())
         }
     } else {
         GitGraphBranchLabelStyle::None
     };
-    let branch_data_look = if look.is_neo() {
+    let branch_data_look = if binding.look_is_neo {
         r#" data-look="neo""#
     } else {
         ""
     };
+    let branch_stroke_style = node_palette
+        .terminal_branch_stroke_css()
+        .map(|stroke| format!("stroke:{stroke};"));
+    let branch_stroke_attr = branch_stroke_style
+        .as_deref()
+        .map(|style| format!(r#" style="{}""#, escape_attr(style)))
+        .unwrap_or_default();
 
     if layout.show_branches {
         out.push_str("<g>");
-        for b in &layout.branches {
-            options.checkpoint_emit()?;
-            let idx = b.index % THEME_COLOR_LIMIT;
+        for (branch_index, b) in layout.branches.iter().enumerate() {
+            let idx = crate::gitgraph::palette_slot(b.index);
             let pos = b.pos;
+            let branch_class = format!("branch branch{idx}");
 
             if direction == "TB" {
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="{x1}" y1="30" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    r#"<line x1="{x1}" y1="30" x2="{x2}" y2="{y2}" class="{class}"{style}/>"#,
                     x1 = fmt(pos),
                     x2 = fmt(pos),
                     y2 = fmt(layout.max_pos),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             } else if direction == "BT" {
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="30" class="branch branch{idx}"/>"#,
+                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="30" class="{class}"{style}/>"#,
                     x1 = fmt(pos),
                     y1 = fmt(layout.max_pos),
                     x2 = fmt(pos),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             } else {
                 let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{style}/>"#,
                     y1 = fmt(spine_y),
                     x2 = fmt(layout.max_pos),
                     y2 = fmt(spine_y),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             }
+            node_palette.record_branch_line(
+                &mut branch_stroke_receipt,
+                &branch_class,
+                branch_stroke_style.as_deref(),
+            );
 
             let name = escape_xml(&b.name);
             let bbox_w = b.bbox_width.max(0.0);
@@ -886,46 +1012,66 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     name = name
                 );
             }
-            options.checkpoint_emit()?;
+            out.checkpoint()?;
+            if let Some(receipt) = node_palette_receipt.as_mut() {
+                receipt.record_branch_label(node_palette, idx);
+            }
+            if let Some(receipt) = node_paint_receipt.as_mut() {
+                receipt.record_branch(branch_index, idx);
+            }
+            if let Some(receipt) = typography_receipt.as_mut() {
+                receipt.record_branch_label(branch_index, &b.name);
+            }
+            if let Some(receipt) = text_receipt.as_mut() {
+                let root_inherited = css.root_geometry[0][idx]
+                    && node_palette
+                        .prepared_fill_css(
+                            crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+                            idx,
+                        )
+                        .is_none();
+                receipt.record_branch(
+                    branch_index,
+                    idx,
+                    &b.name,
+                    root_inherited,
+                    css.root_geometry[3][idx],
+                );
+            }
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str(r#"<g class="commit-arrows">"#);
-    for a in &layout.arrows {
+    for (arrow_index, a) in layout.arrows.iter().enumerate() {
+        let idx = crate::gitgraph::palette_slot(a.class_index);
         let _ = write!(
             &mut out,
             r#"<path d="{d}" class="arrow arrow{idx}"/>"#,
             d = escape_attr(&a.d),
-            idx = a.class_index % THEME_COLOR_LIMIT
+            idx = idx
         );
+        out.checkpoint()?;
+        if let Some(receipt) = node_palette_receipt.as_mut() {
+            receipt.record_arrow(node_palette, idx);
+        }
+        if let Some(receipt) = node_paint_receipt.as_mut() {
+            receipt.record_arrow(arrow_index, idx);
+        }
     }
     out.push_str("</g>");
 
-    fn commit_class_type(symbol_type: i64) -> &'static str {
-        match symbol_type {
-            0 => "commit-normal",
-            1 => "commit-reverse",
-            2 => "commit-highlight",
-            3 => "commit-merge",
-            4 => "commit-cherry-pick",
-            _ => "commit-normal",
-        }
-    }
-
-    fn commit_symbol_type(commit: &crate::model::GitGraphCommitLayout) -> i64 {
-        commit.custom_type.unwrap_or(commit.commit_type)
-    }
-
     out.push_str(r#"<g class="commit-bullets">"#);
-    for c in &layout.commits {
+    for (commit_index, c) in layout.commits.iter().enumerate() {
         let branch_i = branch_idx.get(c.branch.as_str()).copied().unwrap_or(0);
-        let symbol_type = commit_symbol_type(c);
-        let type_class = commit_class_type(symbol_type);
-        let idx = branch_i % THEME_COLOR_LIMIT;
+        let commit_kind = crate::gitgraph::GitGraphCommitKind::from_layout(c);
+        let type_class = commit_kind.class_name();
+        let palette_roles = commit_kind.palette_element_roles();
+        let idx = crate::gitgraph::palette_slot(branch_i);
         let id = escape_attr(&c.id);
 
-        if symbol_type == 2 {
+        if commit_kind == crate::gitgraph::GitGraphCommitKind::Highlight {
             let outer_half_size = if use_redux_geometry { 7.0 } else { 10.0 };
             let inner_half_size = if use_redux_geometry { 4.0 } else { 6.0 };
             let _ = write!(
@@ -938,6 +1084,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
+            if let Some(receipt) = node_paint_receipt.as_mut() {
+                receipt.record_state(commit_index, idx, true);
+            }
             let _ = write!(
                 &mut out,
                 r#"<rect x="{x}" y="{y}" width="{size}" height="{size}" class="commit {id} commit{idx} {type_class}-inner"/>"#,
@@ -948,7 +1097,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
-        } else if symbol_type == 4 {
+            if let Some(receipt) = node_paint_receipt.as_mut() {
+                receipt.record_state(commit_index, idx, false);
+            }
+            if let (Some(receipt), Some(role)) = (
+                node_palette_receipt.as_mut(),
+                palette_roles.first().copied(),
+            ) {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx, role);
+            }
+        } else if commit_kind == crate::gitgraph::GitGraphCommitKind::CherryPick {
             let outer_radius = if use_redux_geometry { 7.0 } else { 10.0 };
             let inner_radius = if use_redux_geometry { 2.5 } else { 2.75 };
             let cherry_pick_detail_color = if use_dark_theme { "#000000" } else { "#fff" };
@@ -1014,7 +1172,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 id = id,
                 idx = idx
             );
-            if symbol_type == 3 {
+            if let (Some(receipt), Some(role)) = (
+                node_palette_receipt.as_mut(),
+                palette_roles.first().copied(),
+            ) {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx, role);
+            }
+            if commit_kind == crate::gitgraph::GitGraphCommitKind::Merge {
                 let inner_radius = if use_redux_geometry { 5.0 } else { 6.0 };
                 let _ = write!(
                     &mut out,
@@ -1026,8 +1190,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
+                if let Some(receipt) = node_paint_receipt.as_mut() {
+                    receipt.record_state(commit_index, idx, false);
+                }
+                if let (Some(receipt), Some(role)) =
+                    (node_palette_receipt.as_mut(), palette_roles.get(1).copied())
+                {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx, role);
+                }
             }
-            if symbol_type == 1 {
+            if commit_kind == crate::gitgraph::GitGraphCommitKind::Reverse {
                 let cross_offset = if use_redux_geometry { 4.0 } else { 5.0 };
                 let d = format!(
                     "M {},{}L{},{}M {},{}L{},{}",
@@ -1048,35 +1220,41 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
+                if let Some(receipt) = node_paint_receipt.as_mut() {
+                    receipt.record_state(commit_index, idx, false);
+                }
+                if let (Some(receipt), Some(role)) =
+                    (node_palette_receipt.as_mut(), palette_roles.get(1).copied())
+                {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx, role);
+                }
             }
+        }
+        out.checkpoint()?;
+        if let Some(receipt) = node_paint_receipt.as_mut() {
+            receipt.record_commit(commit_index, idx);
+        }
+        if let Some(receipt) = text_receipt.as_mut() {
+            let root_inherited = match commit_kind {
+                crate::gitgraph::GitGraphCommitKind::CherryPick => css.root_cherry_pick,
+                crate::gitgraph::GitGraphCommitKind::Highlight => css.root_geometry[2][idx],
+                _ => {
+                    css.root_geometry[1][idx]
+                        && node_palette
+                            .prepared_fill_css(crate::gitgraph::GitGraphPaletteSurface::Commit, idx)
+                            .is_none()
+                }
+            };
+            receipt.record_commit(commit_index, idx, commit_kind, root_inherited);
         }
     }
     out.push_str("</g>");
 
-    let commit_font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
-    let commit_label_style = crate::text::TextStyle {
-        font_family: Some(commit_font_family),
-        font_size: css.commit_label_font_size_px,
-        font_weight: None,
-        font_style: None,
-    };
-    let tag_label_style = crate::text::TextStyle {
-        font_family: commit_label_style.font_family.clone(),
-        font_size: css.tag_label_font_size_px,
-        font_weight: None,
-        font_style: None,
-    };
-
     out.push_str(r#"<g class="commit-labels">"#);
-    for c in &layout.commits {
-        let show = (c.commit_type != 3 || c.custom_id.unwrap_or(false))
-            && c.commit_type != 4
-            && layout.show_commit_label;
-        if show {
+    let commit_label_style = typography_theme.commit_label_style();
+    let tag_label_style = typography_theme.tag_label_style();
+    for (commit_index, c) in layout.commits.iter().enumerate() {
+        if crate::gitgraph::gitgraph_commit_label_is_visible(layout, c) {
             let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
             let bbox_h = gitgraph_commit_tag_label_height_px(measurer, &c.id, &commit_label_style);
 
@@ -1135,6 +1313,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
             }
             out.push_str("/>");
+            static_paint.record_commit_label_background(&mut static_paint_receipt);
 
             out.push_str(r#"<text class="commit-label""#);
             let _ = write!(
@@ -1148,32 +1327,32 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             }
             let _ = write!(&mut out, ">{}</text>", escape_xml(&c.id));
             out.push_str("</g>");
+            out.checkpoint()?;
+            if let Some(receipt) = typography_receipt.as_mut() {
+                receipt.record_commit_label(commit_index, &c.id);
+            }
+            if let Some(receipt) = text_receipt.as_mut() {
+                receipt.record_commit_label(commit_index, &c.id);
+            }
+            if let Some(receipt) = node_paint_receipt.as_mut() {
+                receipt.record_commit_label(commit_index);
+            }
         }
 
         if !c.tags.is_empty() {
-            let mut y_offset = 0.0;
             let mut max_w: f64 = 0.0;
             let mut max_h: f64 = 0.0;
-            let mut tag_values = c.tags.clone();
-            tag_values.reverse();
-
-            struct TagGeom {
-                y_offset: f64,
-            }
-            let mut elems: Vec<TagGeom> = Vec::new();
-            for tag_value in &tag_values {
+            for tag_value in crate::gitgraph::gitgraph_tags_in_output_order(c) {
                 let bbox_w =
                     gitgraph_commit_tag_label_width_px(measurer, tag_value, &tag_label_style);
                 let bbox_h =
                     gitgraph_commit_tag_label_height_px(measurer, tag_value, &tag_label_style);
                 max_w = max_w.max(bbox_w.max(0.0));
                 max_h = max_h.max(bbox_h.max(0.0));
-                elems.push(TagGeom { y_offset });
-                y_offset += 20.0;
             }
 
-            for (i, tag_value) in tag_values.iter().enumerate() {
-                let y_off = elems.get(i).map(|e| e.y_offset).unwrap_or(0.0);
+            for (i, tag_value) in crate::gitgraph::gitgraph_tags_in_output_order(c).enumerate() {
+                let y_off = i as f64 * 20.0;
                 let h2 = max_h / 2.0;
                 let ly = c.y - 19.2 - y_off;
 
@@ -1257,34 +1436,34 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         txt = escape_xml(tag_value)
                     );
                 }
+                out.checkpoint()?;
+                if let Some(receipt) = typography_receipt.as_mut() {
+                    receipt.record_tag_label(commit_index, i, tag_value);
+                }
+                if let Some(receipt) = text_receipt.as_mut() {
+                    receipt.record_tag(commit_index, i, tag_value);
+                }
+                if let Some(receipt) = node_paint_receipt.as_mut() {
+                    receipt.record_tag(commit_index, i);
+                }
             }
         }
+        out.checkpoint()?;
     }
     out.push_str("</g>");
 
-    let title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
     let title_top_margin = config_f64(effective_config, &["gitGraph", "titleTopMargin"])
         .unwrap_or(25.0)
         .max(0.0);
     let title_y = -title_top_margin;
 
-    if let Some(title) = title {
-        let _ = write!(
-            &mut out,
-            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
-            x = TITLE_X_PLACEHOLDER,
-            y = fmt(title_y),
-            text = escape_xml(title),
-        );
-    }
-
     out.push_str("</svg>\n");
-    options.checkpoint_emit()?;
+    out.checkpoint()?;
 
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`
     // by computing a headless SVG bbox and patching the root viewBox/max-width.
-    let mut b = svg_emitted_bounds_from_svg_inner(&out, None).unwrap_or(Bounds {
+    let mut b = svg_emitted_bounds_from_svg_inner(out.as_str(), None).unwrap_or(Bounds {
         min_x: vb_min_x,
         min_y: vb_min_y,
         max_x: vb_min_x + vb_w,
@@ -1293,6 +1472,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     include_gitgraph_branch_line_bounds(&mut b, layout, use_redux_geometry);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
     if let Some(title) = title {
+        let title_style = typography_theme.title_style();
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
         let title_min_x = title_anchor_x - title_left;
@@ -1316,14 +1496,140 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width)),
     )?;
-    out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
-    root_document.complete(out)
+    if let Some(title) = title {
+        let mut title_element = String::new();
+        let _ = write!(
+            &mut title_element,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
+            x = fmt_string(title_anchor_x),
+            y = fmt(title_y),
+            text = escape_xml(title),
+        );
+        let close_start =
+            out.as_str()
+                .rfind("</svg>")
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: "gitGraph SVG is missing its closing root element".to_string(),
+                })?;
+        out.replace_range(close_start..close_start, &title_element)?;
+    }
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if let (Some(plan), Some(receipt)) = (static_paint.node_paint(), node_paint_receipt) {
+        // A complete empty receipt proves NotApplicable; missing proof remains a residual.
+        plan.record_terminal(receipt);
+    }
+    if let Some(receipt) = text_receipt.as_mut() {
+        receipt.record_title(title);
+    }
+    if text_receipt.is_some_and(|receipt| !text_paint.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph Text paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_title(title);
+    }
+    if typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph typography receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if node_palette_receipt.is_some_and(|receipt| !node_palette.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph Node palette receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if static_paint_receipt.is_some_and(|receipt| !static_paint.record_terminal_receipt(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph static paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if branch_stroke_receipt
+        .is_some_and(|receipt| !node_palette.record_branch_stroke_terminal(receipt))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph branch stroke receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gitgraph_css(
+        diagram_id: &str,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
+        typography: &crate::gitgraph::GitGraphTypographyThemePlan,
+        text_colors: Option<[Option<&str>; 3]>,
+        branch_stroke: Option<&str>,
+    ) -> GitGraphCss {
+        static_paint.bind_terminal_values_for_test(binding, text_colors, branch_stroke);
+        super::gitgraph_css(diagram_id, binding, static_paint, typography)
+    }
+
+    fn gitgraph_defs<I>(
+        diagram_id: I,
+        binding: &crate::gitgraph::GitGraphCssBinding,
+        primary_border: Option<&str>,
+    ) -> String
+    where
+        I: Copy + std::fmt::Display,
+    {
+        let start = binding.gradient_start(primary_border);
+        super::gitgraph_defs(
+            diagram_id,
+            binding,
+            binding
+                .sources
+                .use_gradient
+                .then(|| (start, binding.gradient_stop(start))),
+        )
+    }
+
+    fn static_paint_plan() -> crate::gitgraph::GitGraphStaticPaintPlan {
+        crate::gitgraph::GitGraphStaticPaintPlan::baseline()
+    }
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+    };
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use merman_core::MermaidConfig;
     use serde_json::json;
+    use std::cell::RefCell;
+
+    fn typography_plan(config: &serde_json::Value) -> crate::gitgraph::GitGraphTypographyThemePlan {
+        crate::gitgraph::GitGraphTypographyThemePlan::resolve(
+            None,
+            &MermaidConfig::from_value(config.clone()),
+        )
+    }
+
+    fn direct_typography_plan(
+        config: &serde_json::Value,
+    ) -> crate::gitgraph::GitGraphTypographyThemePlan {
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(
+                FontStack::single("GitGraphMeasure").expect("valid GitGraph font stack"),
+            )
+            .with_font_size_px(23.0)
+            .expect("valid GitGraph font size");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
+            ))
+            .expect("compile GitGraph typography")
+            .resolve(DiagramFamilyId::GIT_GRAPH);
+        crate::gitgraph::GitGraphTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(config.clone()),
+        )
+    }
 
     fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
         crate::model::GitGraphDiagramLayout {
@@ -1370,20 +1676,88 @@ mod tests {
         layout: &crate::model::GitGraphDiagramLayout,
         config: &serde_json::Value,
     ) -> String {
-        with_test_svg_execution(&SvgRenderOptions::default(), |options| {
-            render_gitgraph_diagram_svg_with_accessibility(
-                layout,
-                None,
-                None,
-                config,
-                None,
-                &crate::text::DeterministicTextMeasurer::default(),
-                options,
-            )
-        })
+        render_geometry_fixture_with_policy(
+            layout,
+            config,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
         .expect("render gitGraph SVG")
-        .into_string_for(crate::family::RenderFamilyKind::GitGraph)
+        .into_string_for(DiagramFamilyId::GIT_GRAPH)
         .expect("gitGraph root provenance")
+    }
+
+    fn render_geometry_fixture_with_policy(
+        layout: &crate::model::GitGraphDiagramLayout,
+        config: &serde_json::Value,
+        policy: RenderResourcePolicy,
+    ) -> crate::Result<root_svg::RootedSvg> {
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let execution =
+            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::GIT_GRAPH)
+                .expect("SVG execution");
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(layout);
+        let static_paint = static_paint_plan();
+        let typography_theme = typography_plan(config);
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
+        render_gitgraph_diagram_svg_with_accessibility(
+            layout,
+            None,
+            None,
+            &node_palette,
+            &static_paint,
+            &typography_theme,
+            config,
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &execution,
+        )
+    }
+
+    #[test]
+    fn gitgraph_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let layout = lr_merge_layout(-2.0);
+        let config = json!({});
+        let baseline = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("render unbounded gitGraph SVG");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact gitGraph SVG ceiling"),
+        )
+        .expect("exact gitGraph SVG ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact gitGraph SVG ceiling"),
+        )
+        .expect_err("one byte below the gitGraph SVG size must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected gitGraph MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
     }
 
     #[test]
@@ -1476,11 +1850,21 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
-        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let request = SvgRenderOptions::default();
+        let layout = lr_merge_layout(-2.0);
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(&layout);
+        let static_paint = crate::gitgraph::GitGraphStaticPaintPlan::baseline();
+        let config = json!({});
+        let typography_theme = typography_plan(&config);
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
+        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_model(
-                &lr_merge_layout(-2.0),
+                &layout,
                 &model,
-                &json!({}),
+                &node_palette,
+                &static_paint,
+                &typography_theme,
+                &config,
                 Some("Metadata Title"),
                 &crate::text::DeterministicTextMeasurer::default(),
                 options,
@@ -1495,9 +1879,110 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_css_includes_mermaid_11_15_branch_theme_rules() {
-        let css = gitgraph_css("git", &json!({})).css;
+    fn gitgraph_commit_tag_and_title_measurements_share_the_resolved_family_plan() {
+        #[derive(Default)]
+        struct RecordingMeasurer {
+            calls: RefCell<Vec<(String, crate::text::TextStyle)>>,
+        }
 
+        impl TextMeasurer for RecordingMeasurer {
+            fn measure(
+                &self,
+                text: &str,
+                style: &crate::text::TextStyle,
+            ) -> crate::text::TextMetrics {
+                self.calls
+                    .borrow_mut()
+                    .push((text.to_string(), style.clone()));
+                crate::text::TextMetrics {
+                    width: 40.0,
+                    height: 12.0,
+                    line_count: 1,
+                }
+            }
+        }
+
+        let mut layout = lr_merge_layout(-2.0);
+        layout.show_commit_label = true;
+        layout.commits[0].id = "1".to_string();
+        layout.commits[0].commit_type = 0;
+        layout.commits[0].tags = vec!["v1".to_string()];
+        let config = json!({
+            "themeVariables": {
+                "commitLabelFontSize": "inherit",
+                "tagLabelFontSize": "150%"
+            }
+        });
+        let typography_theme = direct_typography_plan(&config);
+        let static_paint = static_paint_plan();
+        let css = gitgraph_css(
+            "git-measure",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        )
+        .css;
+        assert!(css.contains(
+            "#git-measure .commit-id,#git-measure .commit-msg,#git-measure .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:GitGraphMeasure;}"
+        ));
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(&layout);
+        let measurer = RecordingMeasurer::default();
+        let request = SvgRenderOptions::default();
+
+        with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
+            render_gitgraph_diagram_svg_with_accessibility(
+                &layout,
+                None,
+                None,
+                &node_palette,
+                &static_paint,
+                &typography_theme,
+                &config,
+                Some("Graph title"),
+                &measurer,
+                options,
+            )
+        })
+        .expect("render GitGraph measurement fixture");
+
+        let calls = measurer.calls.borrow();
+        for (text, expected_size) in [("1", 23.0), ("v1", 34.5), ("Graph title", 18.0)] {
+            assert!(
+                calls.iter().any(|(measured, style)| {
+                    measured == text
+                        && style.font_family.as_deref() == Some("GitGraphMeasure")
+                        && style.font_size == expected_size
+                }),
+                "missing exact measurement style for {text}: {calls:?}"
+            );
+        }
+        assert!(calls.iter().all(|(_, style)| {
+            style.font_family.as_deref() == Some("GitGraphMeasure")
+                && matches!(style.font_size, 18.0 | 23.0 | 34.5)
+        }));
+    }
+
+    #[test]
+    fn gitgraph_css_includes_mermaid_11_15_branch_theme_rules() {
+        let config = json!({});
+        let typography_theme = typography_plan(&config);
+        let static_paint = static_paint_plan();
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
+        )
+        .css;
+
+        assert!(css.contains(
+            "#git .commit-id,#git .commit-msg,#git .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:\"trebuchet ms\",verdana,arial,sans-serif;}"
+        ));
+        assert!(!css.contains("font-family:var(--mermaid-font-family)"));
         assert!(css.contains("#git .branch-label0{fill:#ffffff;}"));
         assert!(css.contains(
             "#git .commit0{stroke:hsl(240, 100%, 46.2745098039%);fill:hsl(240, 100%, 46.2745098039%);}"
@@ -1510,18 +1995,25 @@ mod tests {
 
     #[test]
     fn gitgraph_css_uses_redux_geometry_theme_rules() {
+        let config = json!({
+            "theme": "redux",
+            "themeVariables": {
+                "nodeBorder": "#101010",
+                "mainBkg": "#ffffff",
+                "strokeWidth": 2,
+                "noteFontWeight": 600,
+                "commitLineColor": "#202020"
+            }
+        });
+        let typography_theme = typography_plan(&config);
+        let static_paint = static_paint_plan();
         let css = gitgraph_css(
             "git",
-            &json!({
-                "theme": "redux",
-                "themeVariables": {
-                    "nodeBorder": "#101010",
-                    "mainBkg": "#ffffff",
-                    "strokeWidth": 2,
-                    "noteFontWeight": 600,
-                    "commitLineColor": "#202020"
-                }
-            }),
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
         );
 
         assert!(css.defs.is_empty());
@@ -1562,19 +2054,137 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_css_uses_redux_color_theme_rules() {
+    fn prepared_palette_preserves_selector_range_and_filtered_array_order() {
+        let config = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 64.8,
+                "borderColorArray": [null, "red", 7, "blue"],
+                "nodeBorder": "black"
+            }
+        });
+        let typography = typography_plan(&config);
+        let paint = static_paint_plan();
         let css = gitgraph_css(
             "git",
-            &json!({
-                "theme": "redux-color",
-                "themeVariables": {
-                    "nodeBorder": "#101010",
-                    "mainBkg": "#ffffff",
-                    "strokeWidth": 2,
-                    "noteFontWeight": 600,
-                    "borderColorArray": ["#aa0000", "#00aa00"]
-                }
-            }),
+            typography.css_binding(),
+            &paint,
+            &typography,
+            None,
+            None,
+        );
+        assert!(css.css.contains("#git .commit1{stroke:blue;fill:blue;}"));
+        assert!(css.css.contains("#git .commit63{stroke:blue;fill:blue;}"));
+        assert!(!css.css.contains("#git .commit64{"));
+        assert_eq!(crate::gitgraph::palette_slot(-1), 7);
+        assert_eq!(crate::gitgraph::palette_slot(63), 7);
+
+        let config = json!({"themeVariables": {"THEME_COLOR_LIMIT": 8.9, "git0": "var(--slot0)"}});
+        let typography = typography_plan(&config);
+        let paint = static_paint_plan();
+        let css = gitgraph_css(
+            "git",
+            typography.css_binding(),
+            &paint,
+            &typography,
+            None,
+            None,
+        );
+        assert!(
+            css.css
+                .contains("#git .commit0{stroke:var(--slot0);fill:var(--slot0);}")
+        );
+        assert!(css.css.contains("#git .commit7{"));
+        assert!(!css.css.contains("#git .commit8{"));
+    }
+
+    #[test]
+    fn prepared_gradient_preserves_missing_and_authored_empty_start() {
+        let config = json!({
+            "look": "neo", "theme": "redux",
+            "themeVariables": {"useGradient": true, "filterColor": "var(--shadow)"}
+        });
+        let typography = typography_plan(&config);
+        let defs = gitgraph_defs("git", typography.css_binding(), Some("var(--typed-border)"));
+        assert!(defs.contains("stop-color=\"var(--typed-border)\""));
+        assert!(defs.contains("flood-color=\"var(--shadow)\""));
+
+        let config = json!({
+            "theme": "neo",
+            "themeVariables": {"useGradient": true, "gradientStart": "", "gradientStop": "currentColor"}
+        });
+        let typography = typography_plan(&config);
+        let defs = gitgraph_defs("git", typography.css_binding(), Some("var(--typed-border)"));
+        assert!(defs.contains("stop-color=\"\""));
+        assert!(defs.contains("stop-color=\"currentColor\""));
+        assert!(!defs.contains("var(--typed-border)"));
+        assert!(!defs.contains("<filter"));
+    }
+
+    #[test]
+    fn prepared_gradient_preserves_coerced_boolean_defs_and_css() {
+        for (value, enabled) in [
+            (json!(true), true),
+            (json!("true"), true),
+            (json!(" YES "), true),
+            (json!("on"), true),
+            (json!("1"), true),
+            (json!(2), true),
+            (json!(-1), true),
+            (json!(false), false),
+            (json!("false"), false),
+            (json!(" OFF "), false),
+            (json!("no"), false),
+            (json!("0"), false),
+            (json!(0), false),
+            (json!("unknown"), false),
+            (json!(1.5), false),
+            (json!(null), false),
+        ] {
+            let config = json!({
+                "theme": "neo",
+                "themeVariables": {"useGradient": value, "mainBkg": "var(--background)"}
+            });
+            let typography = typography_plan(&config);
+            let paint = static_paint_plan();
+            let css = gitgraph_css(
+                "git",
+                typography.css_binding(),
+                &paint,
+                &typography,
+                None,
+                None,
+            );
+            assert_eq!(css.defs.contains("<linearGradient"), enabled, "{value}");
+            assert_eq!(
+                css.css.contains("#git .label11{fill:var(--background);stroke:url(#git-gradient);stroke-width:1;}"),
+                enabled,
+                "{value}",
+            );
+        }
+    }
+
+    #[test]
+    fn gitgraph_css_uses_redux_color_theme_rules() {
+        let config = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "nodeBorder": "#101010",
+                "mainBkg": "#ffffff",
+                "strokeWidth": 2,
+                "noteFontWeight": 600,
+                "borderColorArray": ["#aa0000", "#00aa00"]
+            }
+        });
+        let typography_theme = typography_plan(&config);
+        let static_paint = static_paint_plan();
+        let css = gitgraph_css(
+            "git",
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
         )
         .css;
 
@@ -1592,22 +2202,29 @@ mod tests {
 
     #[test]
     fn gitgraph_css_uses_neo_gradient_theme_rules() {
+        let config = json!({
+            "theme": "neo",
+            "themeVariables": {
+                "nodeBorder": "#101010",
+                "mainBkg": "#ffffff",
+                "strokeWidth": 2,
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566",
+                "git1": "#00aa00",
+                "gitInv1": "#aa00aa",
+                "gitBranchLabel1": "#202020"
+            }
+        });
+        let typography_theme = typography_plan(&config);
+        let static_paint = static_paint_plan();
         let css = gitgraph_css(
             "git",
-            &json!({
-                "theme": "neo",
-                "themeVariables": {
-                    "nodeBorder": "#101010",
-                    "mainBkg": "#ffffff",
-                    "strokeWidth": 2,
-                    "useGradient": true,
-                    "gradientStart": "#112233",
-                    "gradientStop": "#445566",
-                    "git1": "#00aa00",
-                    "gitInv1": "#aa00aa",
-                    "gitBranchLabel1": "#202020"
-                }
-            }),
+            typography_theme.css_binding(),
+            &static_paint,
+            &typography_theme,
+            None,
+            None,
         );
 
         assert!(
@@ -1710,19 +2327,28 @@ mod tests {
             commits: Vec::new(),
             arrows: Vec::new(),
         };
-        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(&layout);
+        let config = json!({
+            "theme": "base",
+            "themeVariables": {
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566"
+            }
+        });
+        let typography_theme = typography_plan(&config);
+        let static_paint = static_paint_plan();
+        let request = SvgRenderOptions::default();
+        static_paint.bind_terminal_styles(&typography_theme, &node_palette);
+        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,
                 None,
-                &json!({
-                    "theme": "base",
-                    "themeVariables": {
-                        "useGradient": true,
-                        "gradientStart": "#112233",
-                        "gradientStop": "#445566"
-                    }
-                }),
+                &node_palette,
+                &static_paint,
+                &typography_theme,
+                &config,
                 None,
                 &crate::text::DeterministicTextMeasurer::default(),
                 options,

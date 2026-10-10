@@ -1293,6 +1293,9 @@ fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
 
 impl C4Db {
     fn new(config: &MermaidConfig) -> Self {
+        // Mermaid captures the root `wrap` directive while parsing and stores it on
+        // each C4 source object. The renderer's diagram-local `c4.wrap` setting is
+        // applied later as the second half of the `object.wrap && conf.wrap` check.
         let wrap_enabled = config.get_bool("wrap").unwrap_or(false);
         let mut db = Self {
             wrap_enabled,

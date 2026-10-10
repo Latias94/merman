@@ -89,12 +89,16 @@ enum TreemapRow {
 
 type StyleClassDef = TreemapClassDefRenderModel;
 
+// The compatibility shape contains both a nested `root` tree and a flattened `nodes` array. Keep a
+// hard cap on the complete serialized shape so model limits cannot be bypassed by that duplication
+// or by cloning the effective config into the output.
+const TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES: usize = 8 * 1024 * 1024;
+
 #[derive(Debug, Clone)]
 struct NodeRecord {
     name: String,
     value: Option<Value>,
     class_selector: Option<String>,
-    css_compiled_styles: Option<Vec<String>>,
     children: Option<Vec<usize>>,
 }
 
@@ -166,23 +170,29 @@ impl TreemapParseOutcome {
                 treemap_error(meta, issue.message, issue.span),
                 parsed.editor_facts,
             )),
-            None => Ok(treemap_semantic_source_from_parsed_controlled(
-                parsed, control,
-            )?),
+            None => {
+                let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+                let model = source.render_model_controlled(control)?;
+                match treemap_compatibility_output_preflight(&model, meta, control)? {
+                    Ok(()) => Ok((source, model)),
+                    Err(error) => Err(family::CombinedSemanticFailure::new(
+                        error,
+                        source.editor_facts,
+                    )),
+                }
+            }
         };
-        let combined = family::CombinedSemanticParse::from_construction(
+        let combined = family::CombinedSemanticParse::from_construction_controlled(
             construction,
-            |source| {
-                let model = source.render_model();
-                (
-                    render_model_to_compat_json(&model, meta),
-                    source.editor_facts,
-                )
+            control,
+            |(source, model)| {
+                render_model_to_compat_json_unchecked(&model, meta, control)
+                    .map(|model| (model, source.editor_facts))
             },
             family::CombinedSemanticFailure::into_parts,
         );
         control.checkpoint()?;
-        Ok(combined)
+        combined
     }
 }
 
@@ -335,47 +345,504 @@ pub(crate) fn parse_treemap_model_for_render_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
-    control.checkpoint()?;
-    Ok(Ok(source.render_model()))
+    let model = source.render_model_controlled(control)?;
+    Ok(Ok(model))
 }
 
 pub(crate) fn render_model_to_compat_json(
     model: &TreemapDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
+    let control = crate::OperationControl::new();
+    render_model_to_compat_json_controlled(model, meta, &control)
+        .expect("a private compatibility projection control cannot be cancelled")
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    control.checkpoint()?;
+    let preflight = treemap_compatibility_output_preflight(model, meta, control)?;
+    match preflight {
+        Ok(()) => {}
+        Err(error) => return Ok(Err(error)),
+    }
+    control.checkpoint()?;
+    render_model_to_compat_json_unchecked(model, meta, control)
+}
+
+fn render_model_to_compat_json_unchecked(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    control.checkpoint()?;
     if model.root.children.is_none() {
-        return Ok(json!({}));
+        return Ok(Ok(json!({})));
     }
 
-    let mut nodes = Vec::new();
-    flatten_render_nodes(&model.root, &mut nodes);
+    let nodes = flatten_render_nodes(&model.root, &model.classes, control)?;
+    control.checkpoint()?;
+    let root = render_node_to_value(&model.root, &model.classes, control)?;
+    control.checkpoint()?;
+    let classes = render_classes_to_value(&model.classes, control)?;
+    control.checkpoint()?;
+    let config = crate::config::clone_value_nonrecursive_with_control(
+        meta.effective_config.as_value(),
+        control,
+    )?;
 
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("root".to_string(), render_node_to_value(&model.root));
+    out.insert("root".to_string(), root);
     out.insert("nodes".to_string(), Value::Array(nodes));
-    out.insert("classes".to_string(), json!(&model.classes));
-    out.insert(
-        "config".to_string(),
-        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-    );
-    Ok(Value::Object(out))
+    out.insert("classes".to_string(), classes);
+    out.insert("config".to_string(), config);
+    Ok(Ok(Value::Object(out)))
+}
+
+/// Estimates the complete compatibility JSON shape before allocating its output `Value` tree.
+/// The estimate includes the nested and flattened node representations, class definitions, source
+/// values, and effective config. It is deliberately conservative around JSON punctuation and
+/// escaping so a later projection cannot bypass the hard output cap. Cancellation remains on the
+/// outer [`crate::OperationControlResult`] channel.
+fn treemap_compatibility_output_preflight(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<()>> {
+    control.checkpoint()?;
+    if model.root.children.is_none() {
+        return Ok(Ok(()));
+    }
+
+    let class_style_bytes = estimate_class_style_arrays(&model.classes, control)?;
+    let estimated_bytes =
+        estimate_compatibility_json_bytes(model, meta, &class_style_bytes, control)?;
+    if estimated_bytes > TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES {
+        return Ok(Err(treemap_compatibility_output_budget_error(
+            meta,
+            estimated_bytes,
+        )));
+    }
+    Ok(Ok(()))
+}
+
+fn estimate_compatibility_json_bytes(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    class_style_bytes: &std::collections::HashMap<&str, usize>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 2usize; // top-level object braces
+    let field_count = 8usize;
+
+    total = total.saturating_add(json_field_bytes(
+        "type",
+        json_string_serialized_bytes(&meta.diagram_type),
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "title",
+        json_optional_string_bytes(model.title.as_deref()),
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "accTitle",
+        json_optional_string_bytes(model.acc_title.as_deref()),
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "accDescr",
+        json_optional_string_bytes(model.acc_descr.as_deref()),
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "root",
+        estimate_nested_node_tree_bytes(&model.root, class_style_bytes, control)?,
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "nodes",
+        estimate_flat_node_array_bytes(&model.root, class_style_bytes, control)?,
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "classes",
+        estimate_classes_value_bytes(&model.classes, control)?,
+    ));
+    total = total.saturating_add(json_field_bytes(
+        "config",
+        json_value_serialized_bytes(meta.effective_config.as_value(), control)?,
+    ));
+    total = total.saturating_add(field_count.saturating_sub(1));
+    Ok(total)
+}
+
+fn estimate_nested_node_tree_bytes(
+    root: &TreemapNodeRenderModel,
+    class_style_bytes: &std::collections::HashMap<&str, usize>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 0usize;
+    let mut stack = vec![root];
+    let mut visited = 0usize;
+    while let Some(node) = stack.pop() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+        total = total.saturating_add(estimate_node_map_bytes(
+            node,
+            true,
+            None,
+            class_style_bytes,
+            control,
+        )?);
+        if let Some(children) = node.children.as_ref() {
+            stack.extend(children.iter().rev());
+        }
+    }
+    control.checkpoint()?;
+    Ok(total)
+}
+
+fn estimate_flat_node_array_bytes(
+    root: &TreemapNodeRenderModel,
+    class_style_bytes: &std::collections::HashMap<&str, usize>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let children = root.children.as_deref().unwrap_or_default();
+    let mut total = 2usize; // array brackets; commas are added per emitted item
+    let mut stack = children
+        .iter()
+        .rev()
+        .map(|node| (node, 0usize))
+        .collect::<Vec<_>>();
+    let mut visited = 0usize;
+    while let Some((node, level)) = stack.pop() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+        if visited > 1 {
+            total = total.saturating_add(1);
+        }
+        total = total.saturating_add(estimate_node_map_bytes(
+            node,
+            false,
+            Some(level),
+            class_style_bytes,
+            control,
+        )?);
+        if let Some(children) = node.children.as_ref() {
+            stack.extend(
+                children
+                    .iter()
+                    .rev()
+                    .map(|child| (child, level.saturating_add(1))),
+            );
+        }
+    }
+    control.checkpoint()?;
+    Ok(total)
+}
+
+fn estimate_node_map_bytes(
+    node: &TreemapNodeRenderModel,
+    include_children: bool,
+    level: Option<usize>,
+    class_style_bytes: &std::collections::HashMap<&str, usize>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 2usize; // object braces
+    let mut fields = 1usize; // name
+    total = total.saturating_add(json_field_bytes(
+        "name",
+        json_string_serialized_bytes(&node.name),
+    ));
+
+    if include_children && let Some(children) = node.children.as_ref() {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes(
+            "children",
+            json_array_overhead(children.len()),
+        ));
+    }
+    if let Some(value) = node.value.as_ref() {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes(
+            "value",
+            json_value_serialized_bytes(value, control)?,
+        ));
+    }
+    if let Some(class_selector) = node.class_selector.as_deref() {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes(
+            "classSelector",
+            json_string_serialized_bytes(class_selector),
+        ));
+    }
+    if let Some(styles) = node.css_compiled_styles.as_deref() {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes(
+            "cssCompiledStyles",
+            estimate_string_array_bytes(styles, control)?,
+        ));
+    } else if let Some(selector) = node.class_selector.as_deref()
+        && let Some(&styles_bytes) = class_style_bytes.get(selector)
+    {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes("cssCompiledStyles", styles_bytes));
+    }
+    if let Some(level) = level {
+        fields = fields.saturating_add(1);
+        total = total.saturating_add(json_field_bytes("level", level.to_string().len()));
+    }
+
+    Ok(total.saturating_add(fields.saturating_sub(1)))
+}
+
+fn estimate_class_style_arrays<'a>(
+    classes: &'a std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::collections::HashMap<&'a str, usize>> {
+    let mut class_style_bytes = std::collections::HashMap::with_capacity(classes.len());
+    for (index, (id, class_def)) in classes.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        if !class_def.styles.is_empty() {
+            class_style_bytes.insert(
+                id.as_str(),
+                json_array_overhead(1).saturating_add(
+                    joined_style_json_content_bytes(&class_def.styles, control)?.saturating_add(2),
+                ),
+            );
+        }
+    }
+    Ok(class_style_bytes)
+}
+
+fn estimate_classes_value_bytes(
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = json_object_overhead(classes.len());
+    for (index, (name, class_def)) in classes.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let mut class_total = 2usize; // class definition object braces
+        class_total = class_total.saturating_add(json_field_bytes(
+            "id",
+            json_string_serialized_bytes(&class_def.id),
+        ));
+        class_total = class_total.saturating_add(json_field_bytes(
+            "styles",
+            estimate_string_array_bytes(&class_def.styles, control)?,
+        ));
+        class_total = class_total.saturating_add(json_field_bytes(
+            "textStyles",
+            estimate_string_array_bytes(&class_def.text_styles, control)?,
+        ));
+        class_total = class_total.saturating_add(2); // three class fields
+        total = total.saturating_add(json_string_serialized_bytes(name));
+        total = total.saturating_add(1); // map entry colon
+        total = total.saturating_add(class_total);
+    }
+    control.checkpoint()?;
+    Ok(total)
+}
+
+fn estimate_string_array_bytes(
+    values: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = json_array_overhead(values.len());
+    for (index, value) in values.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        total = total.saturating_add(json_string_serialized_bytes(value));
+    }
+    Ok(total)
+}
+
+fn joined_style_json_content_bytes(
+    styles: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 0usize;
+    for (index, style) in styles.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        if index != 0 {
+            total = total.saturating_add(json_string_content_bytes(";"));
+        }
+        total = total.saturating_add(json_string_content_bytes(style));
+    }
+    Ok(total)
+}
+
+// Keep the raw declaration-byte helper only as a test oracle; production preflight must use the
+// escaping-aware JSON size calculation above.
+#[cfg(test)]
+fn joined_style_bytes(
+    styles: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 0usize;
+    for (index, style) in styles.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        if index != 0 {
+            total = total.saturating_add(1);
+        }
+        total = total.saturating_add(style.len());
+    }
+    Ok(total)
+}
+
+fn json_value_serialized_bytes(
+    value: &Value,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    enum Task<'a> {
+        Value(&'a Value),
+        Array {
+            values: &'a [Value],
+            index: usize,
+        },
+        Object {
+            entries: serde_json::map::Iter<'a>,
+            remaining: usize,
+        },
+    }
+
+    let mut total = 0usize;
+    let mut tasks = vec![Task::Value(value)];
+    let mut visited = 0usize;
+    while let Some(task) = tasks.pop() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+        match task {
+            Task::Value(value) => match value {
+                Value::Null => total = total.saturating_add(4),
+                Value::Bool(value) => {
+                    total = total.saturating_add(if *value { 4 } else { 5 });
+                }
+                Value::Number(value) => total = total.saturating_add(value.to_string().len()),
+                Value::String(value) => {
+                    total = total.saturating_add(json_string_serialized_bytes(value));
+                }
+                Value::Array(values) => {
+                    total = total.saturating_add(json_array_overhead(values.len()));
+                    tasks.push(Task::Array { values, index: 0 });
+                }
+                Value::Object(values) => {
+                    total = total.saturating_add(json_object_overhead(values.len()));
+                    tasks.push(Task::Object {
+                        entries: values.iter(),
+                        remaining: values.len(),
+                    });
+                }
+            },
+            Task::Array { values, index } => {
+                if let Some(value) = values.get(index) {
+                    tasks.push(Task::Array {
+                        values,
+                        index: index.saturating_add(1),
+                    });
+                    tasks.push(Task::Value(value));
+                }
+            }
+            Task::Object {
+                mut entries,
+                remaining,
+            } => {
+                if remaining != 0
+                    && let Some((key, value)) = entries.next()
+                {
+                    total = total
+                        .saturating_add(json_string_serialized_bytes(key))
+                        .saturating_add(1);
+                    tasks.push(Task::Object {
+                        entries,
+                        remaining: remaining.saturating_sub(1),
+                    });
+                    tasks.push(Task::Value(value));
+                }
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn json_string_content_bytes(value: &str) -> usize {
+    value.bytes().fold(0usize, |total, byte| {
+        total.saturating_add(match byte {
+            b'"' | b'\\' | 0x08 | 0x09 | 0x0a | 0x0c | 0x0d => 2,
+            0x00..=0x1f => 6,
+            _ => 1,
+        })
+    })
+}
+
+fn json_string_serialized_bytes(value: &str) -> usize {
+    json_string_content_bytes(value).saturating_add(2)
+}
+
+fn json_optional_string_bytes(value: Option<&str>) -> usize {
+    value.map_or(4, json_string_serialized_bytes)
+}
+
+fn json_field_bytes(key: &str, value_bytes: usize) -> usize {
+    json_string_serialized_bytes(key)
+        .saturating_add(1)
+        .saturating_add(value_bytes)
+}
+
+fn json_array_overhead(item_count: usize) -> usize {
+    2usize.saturating_add(item_count.saturating_sub(1))
+}
+
+fn json_object_overhead(field_count: usize) -> usize {
+    2usize.saturating_add(field_count.saturating_sub(1))
+}
+
+fn treemap_compatibility_output_budget_error(
+    meta: &ParseMetadata,
+    estimated_bytes: usize,
+) -> Error {
+    Error::diagram_parse_fallback(
+        meta.diagram_type.clone(),
+        format!(
+            "treemap compatibility JSON output budget exceeded: estimated compatibility JSON requires {estimated_bytes} bytes, maximum is {TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES} bytes"
+        ),
+    )
 }
 
 fn render_node_to_map(
     node: &TreemapNodeRenderModel,
     children: Option<Vec<Value>>,
-) -> Map<String, Value> {
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Map<String, Value>> {
+    control.checkpoint()?;
     let mut out = Map::new();
     out.insert("name".to_string(), Value::String(node.name.clone()));
     if let Some(children) = children {
         out.insert("children".to_string(), Value::Array(children));
     }
     if let Some(value) = &node.value {
-        out.insert("value".to_string(), value.clone());
+        out.insert(
+            "value".to_string(),
+            crate::config::clone_value_nonrecursive_with_control(value, control)?,
+        );
     }
     if let Some(class_selector) = &node.class_selector {
         out.insert(
@@ -384,27 +851,60 @@ fn render_node_to_map(
         );
     }
     if let Some(styles) = &node.css_compiled_styles {
-        out.insert("cssCompiledStyles".to_string(), json!(styles));
+        out.insert(
+            "cssCompiledStyles".to_string(),
+            Value::Array(clone_string_array_with_control(styles, control)?),
+        );
+    } else if let Some(selector) = node.class_selector.as_deref()
+        && let Some(class_def) = classes.get(selector)
+    {
+        let styles = join_styles_with_control(&class_def.styles, control)?;
+        if !styles.is_empty() {
+            out.insert(
+                "cssCompiledStyles".to_string(),
+                Value::Array(vec![Value::String(styles)]),
+            );
+        }
     }
-    out
+    Ok(out)
 }
 
-fn render_node_to_value(root: &TreemapNodeRenderModel) -> Value {
+fn render_node_to_value(
+    root: &TreemapNodeRenderModel,
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Value> {
     let mut completed: std::collections::HashMap<*const TreemapNodeRenderModel, Value> =
         std::collections::HashMap::new();
     let mut stack = vec![(root, false)];
+    let mut visited = 0usize;
 
-    while let Some((node, visited)) = stack.pop() {
-        if visited {
+    while let Some((node, children_visited)) = stack.pop() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+        if children_visited {
             let children = node.children.as_ref().map(|children| {
-                children
-                    .iter()
-                    .filter_map(|child| completed.remove(&(child as *const TreemapNodeRenderModel)))
-                    .collect()
+                let mut values = Vec::with_capacity(children.len());
+                for (index, child) in children.iter().enumerate() {
+                    if index.is_multiple_of(128) {
+                        control.checkpoint()?;
+                    }
+                    if let Some(value) = completed.remove(&(child as *const TreemapNodeRenderModel))
+                    {
+                        values.push(value);
+                    }
+                }
+                Ok::<_, crate::OperationCancelled>(values)
             });
+            let children = match children {
+                Some(children) => Some(children?),
+                None => None,
+            };
             completed.insert(
                 node as *const TreemapNodeRenderModel,
-                Value::Object(render_node_to_map(node, children)),
+                Value::Object(render_node_to_map(node, children, classes, control)?),
             );
         } else {
             stack.push((node, true));
@@ -416,12 +916,20 @@ fn render_node_to_value(root: &TreemapNodeRenderModel) -> Value {
         }
     }
 
-    completed
-        .remove(&(root as *const TreemapNodeRenderModel))
-        .unwrap_or_else(|| Value::Object(render_node_to_map(root, None)))
+    match completed.remove(&(root as *const TreemapNodeRenderModel)) {
+        Some(value) => Ok(value),
+        None => Ok(Value::Object(render_node_to_map(
+            root, None, classes, control,
+        )?)),
+    }
 }
 
-fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
+fn flatten_render_nodes(
+    root: &TreemapNodeRenderModel,
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Vec<Value>> {
+    let mut out = Vec::new();
     let mut stack = root
         .children
         .as_deref()
@@ -430,9 +938,14 @@ fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
         .rev()
         .map(|node| (node, 0_i64))
         .collect::<Vec<_>>();
+    let mut visited = 0usize;
 
     while let Some((node, level)) = stack.pop() {
-        let mut value = render_node_to_map(node, None);
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+        let mut value = render_node_to_map(node, None, classes, control)?;
         value.insert("level".to_string(), Value::Number(level.into()));
         out.push(Value::Object(value));
 
@@ -442,32 +955,137 @@ fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
             }
         }
     }
+    control.checkpoint()?;
+    Ok(out)
+}
+
+fn render_classes_to_value(
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Value> {
+    let mut out = Map::new();
+    for (index, (name, class_def)) in classes.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let mut class = Map::new();
+        class.insert("id".to_string(), Value::String(class_def.id.clone()));
+        class.insert(
+            "styles".to_string(),
+            Value::Array(clone_string_array_with_control(&class_def.styles, control)?),
+        );
+        class.insert(
+            "textStyles".to_string(),
+            Value::Array(clone_string_array_with_control(
+                &class_def.text_styles,
+                control,
+            )?),
+        );
+        out.insert(name.clone(), Value::Object(class));
+    }
+    control.checkpoint()?;
+    Ok(Value::Object(out))
+}
+
+fn clone_string_array_with_control(
+    values: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Vec<Value>> {
+    let mut cloned = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        cloned.push(Value::String(value.clone()));
+    }
+    Ok(cloned)
+}
+
+fn join_styles_with_control(
+    styles: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<String> {
+    let mut joined = String::new();
+    for (index, style) in styles.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        if index != 0 {
+            joined.push(';');
+        }
+        joined.push_str(style);
+    }
+    Ok(joined)
 }
 
 impl TreemapSemanticSource {
     fn render_model(&self) -> TreemapDiagramRenderModel {
-        if !self.present {
-            return TreemapDiagramRenderModel::default();
+        self.render_model_with_control(None)
+            .expect("an uncontrolled Treemap render-model conversion cannot be cancelled")
+    }
+
+    fn render_model_controlled(
+        &self,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
+        self.render_model_with_control(Some(control))
+    }
+
+    fn render_model_with_control(
+        &self,
+        control: Option<&crate::OperationControl>,
+    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
+        if let Some(control) = control {
+            control.checkpoint()?;
         }
-        TreemapDiagramRenderModel {
+        if !self.present {
+            return Ok(TreemapDiagramRenderModel::default());
+        }
+
+        let mut workspace: Vec<Option<TreemapNodeRenderModel>> = vec![None; self.arena.nodes.len()];
+        let root_children =
+            render_nodes_from_arena(&self.arena, &self.roots, &mut workspace, control)?;
+        let classes = clone_class_defs(&self.class_defs, control)?;
+
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+
+        Ok(TreemapDiagramRenderModel {
             title: self.title.clone(),
             acc_title: self.acc_title.clone(),
             acc_descr: self.acc_descr.clone(),
             root: TreemapNodeRenderModel {
                 name: String::new(),
-                children: Some(
-                    self.roots
-                        .iter()
-                        .map(|&idx| node_to_render_model(&self.arena, idx))
-                        .collect(),
-                ),
+                children: Some(root_children),
                 value: None,
                 class_selector: None,
                 css_compiled_styles: None,
             },
-            classes: self.class_defs.clone().into_iter().collect(),
-        }
+            classes,
+        })
     }
+}
+
+fn render_nodes_from_arena(
+    arena: &Arena,
+    roots: &[usize],
+    workspace: &mut [Option<TreemapNodeRenderModel>],
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<Vec<TreemapNodeRenderModel>> {
+    let mut rendered_roots = Vec::with_capacity(roots.len());
+    for (root_index, &root) in roots.iter().enumerate() {
+        if root_index.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
+        }
+        rendered_roots.push(node_to_render_model(arena, root, workspace, control)?);
+    }
+    if let Some(control) = control {
+        control.checkpoint()?;
+    }
+    Ok(rendered_roots)
 }
 
 fn parse_treemap_semantic_source(
@@ -496,7 +1114,7 @@ fn treemap_semantic_source_from_parsed_controlled(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<TreemapSemanticSource> {
     let class_defs = class_defs_from_rows_controlled(&parsed.rows, control)?;
-    let flat_items = flat_items_from_rows_controlled(&parsed.rows, &class_defs, control)?;
+    let flat_items = flat_items_from_rows_controlled(&parsed.rows, control)?;
     let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
     control.checkpoint()?;
     Ok(TreemapSemanticSource {
@@ -704,7 +1322,6 @@ fn class_defs_from_rows_controlled(
 
 fn flat_items_from_rows_controlled(
     rows: &[TreemapRow],
-    class_defs: &std::collections::HashMap<String, StyleClassDef>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Vec<FlatItem>> {
     let mut flat_items: Vec<FlatItem> = Vec::new();
@@ -716,18 +1333,6 @@ fn flat_items_from_rows_controlled(
             continue;
         };
 
-        let styles = item
-            .class_selector
-            .as_ref()
-            .map(|cls| get_styles_for_class(class_defs, &cls.text))
-            .unwrap_or_default();
-        let compiled = if !styles.is_empty() {
-            Some(styles.join(";"))
-        } else {
-            None
-        };
-        let css_compiled_styles = compiled.and_then(|s| if s.is_empty() { None } else { Some(s) });
-
         flat_items.push(FlatItem {
             level: item.indent,
             name: item.name.text.clone(),
@@ -737,7 +1342,6 @@ fn flat_items_from_rows_controlled(
                 .class_selector
                 .as_ref()
                 .map(|selector| selector.text.clone()),
-            css_compiled_styles,
         });
     }
 
@@ -752,7 +1356,6 @@ struct FlatItem {
     item_type: ItemType,
     value: Option<Value>,
     class_selector: Option<String>,
-    css_compiled_styles: Option<String>,
 }
 
 #[cfg(test)]
@@ -781,7 +1384,6 @@ fn build_hierarchy_controlled(
             name: item.name.clone(),
             value: None,
             class_selector: item.class_selector.clone(),
-            css_compiled_styles: item.css_compiled_styles.as_ref().map(|s| vec![s.clone()]),
             children: match item.item_type {
                 ItemType::Leaf => None,
                 ItemType::Section => Some(Vec::new()),
@@ -837,12 +1439,6 @@ fn node_to_value(arena: &Arena, idx: usize) -> Value {
             if let Some(cls) = &node.class_selector {
                 obj.insert("classSelector".to_string(), Value::String(cls.clone()));
             }
-            if let Some(css) = &node.css_compiled_styles {
-                obj.insert(
-                    "cssCompiledStyles".to_string(),
-                    Value::Array(css.iter().cloned().map(Value::String).collect()),
-                );
-            }
             if let Some(children) = &node.children {
                 obj.insert(
                     "children".to_string(),
@@ -873,11 +1469,22 @@ fn node_to_value(arena: &Arena, idx: usize) -> Value {
         .unwrap_or_else(|| json!({ "name": "" }))
 }
 
-fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
-    let mut models: Vec<Option<TreemapNodeRenderModel>> = vec![None; arena.nodes.len()];
+fn node_to_render_model(
+    arena: &Arena,
+    idx: usize,
+    models: &mut [Option<TreemapNodeRenderModel>],
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<TreemapNodeRenderModel> {
     let mut stack = vec![(idx, false)];
+    let mut steps = 0usize;
 
     while let Some((node_idx, visited)) = stack.pop() {
+        if steps.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
+        }
+        steps = steps.saturating_add(1);
         let Some(node) = arena.nodes.get(node_idx) else {
             continue;
         };
@@ -894,7 +1501,7 @@ fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
                 children,
                 value: node.value.clone(),
                 class_selector: node.class_selector.clone(),
-                css_compiled_styles: node.css_compiled_styles.clone(),
+                css_compiled_styles: None,
             });
         } else {
             stack.push((node_idx, true));
@@ -906,10 +1513,29 @@ fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
         }
     }
 
-    models
+    Ok(models
         .get_mut(idx)
         .and_then(Option::take)
-        .unwrap_or_default()
+        .unwrap_or_default())
+}
+
+fn clone_class_defs(
+    class_defs: &std::collections::HashMap<String, StyleClassDef>,
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<std::collections::BTreeMap<String, StyleClassDef>> {
+    let mut classes = std::collections::BTreeMap::new();
+    for (index, (id, class_def)) in class_defs.iter().enumerate() {
+        if index.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
+        }
+        classes.insert(id.clone(), class_def.clone());
+    }
+    if let Some(control) = control {
+        control.checkpoint()?;
+    }
+    Ok(classes)
 }
 
 fn add_class(
@@ -917,11 +1543,13 @@ fn add_class(
     id: &str,
     style: &str,
 ) {
-    let mut style_class = classes.get(id).cloned().unwrap_or_else(|| StyleClassDef {
-        id: id.to_string(),
-        styles: Vec::new(),
-        text_styles: Vec::new(),
-    });
+    let style_class = classes
+        .entry(id.to_string())
+        .or_insert_with(|| StyleClassDef {
+            id: id.to_string(),
+            styles: Vec::new(),
+            text_styles: Vec::new(),
+        });
 
     const PLACEHOLDER: &str = "ก์ก์ก์";
     let replaced = style.replace("\\,", PLACEHOLDER);
@@ -934,8 +1562,6 @@ fn add_class(
         }
         style_class.styles.push(s.to_string());
     }
-
-    classes.insert(id.to_string(), style_class);
 }
 
 fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
@@ -963,16 +1589,6 @@ fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
     }
 
     Ok(())
-}
-
-fn get_styles_for_class(
-    classes: &std::collections::HashMap<String, StyleClassDef>,
-    class_selector: &str,
-) -> Vec<String> {
-    classes
-        .get(class_selector)
-        .map(|c| c.styles.clone())
-        .unwrap_or_default()
 }
 
 fn is_label_style_bug_compatible(s: &str) -> bool {
@@ -1480,6 +2096,56 @@ accDescr: Treemap accDescr
     }
 
     #[test]
+    fn treemap_render_model_preserves_a_wide_root_forest() {
+        const ROOT_COUNT: usize = 512;
+        let mut input = String::from("treemap\n");
+        for index in 0..ROOT_COUNT {
+            input.push_str(&format!("\"root-{index}\": 1\n"));
+        }
+
+        let model = parse_treemap_model_for_render(&input, &meta()).unwrap();
+        let roots = model.root.children.as_ref().expect("root forest");
+        assert_eq!(roots.len(), ROOT_COUNT);
+        assert_eq!(roots.first().map(|root| root.name.as_str()), Some("root-0"));
+        assert_eq!(
+            roots.last().map(|root| root.name.as_str()),
+            Some("root-511")
+        );
+    }
+
+    #[test]
+    fn treemap_render_model_conversion_observes_cancellation() {
+        const ROOT_COUNT: usize = 512;
+        let arena = Arena {
+            nodes: (0..ROOT_COUNT)
+                .map(|index| NodeRecord {
+                    name: format!("root-{index}"),
+                    value: Some(json!(1)),
+                    class_selector: None,
+                    children: None,
+                })
+                .collect(),
+        };
+        let source = TreemapSemanticSource {
+            present: true,
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            class_defs: std::collections::HashMap::new(),
+            roots: (0..ROOT_COUNT).collect(),
+            arena,
+            editor_facts: EditorSemanticFacts::new(),
+        };
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            source.render_model_controlled(&control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
     fn treemap_errors_on_trailing_whitespace_only_line() {
         let msg = parse_error("treemap\n\"A\": 1\n    \n");
         assert!(
@@ -1573,6 +2239,260 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
     }
 
     #[test]
+    fn treemap_duplicate_classdefs_append_styles_in_source_order() {
+        let model = parse(
+            r#"treemap
+"Root":::important
+classDef important fill:#f96
+classDef important stroke:#333
+"Leaf": 1:::important
+"#,
+        );
+
+        assert_eq!(
+            model["classes"]["important"]["styles"],
+            json!(["fill:#f96", "stroke:#333"])
+        );
+        assert_eq!(
+            model["root"]["children"][0]["cssCompiledStyles"],
+            json!(["fill:#f96;stroke:#333"])
+        );
+    }
+
+    fn model_with_shared_class_styles(
+        node_count: usize,
+        style_bytes: usize,
+    ) -> (TreemapDiagramRenderModel, String) {
+        let style = format!("fill:{}", "a".repeat(style_bytes.saturating_sub(5)));
+        let root = TreemapNodeRenderModel {
+            name: String::new(),
+            children: Some(
+                (0..node_count)
+                    .map(|index| TreemapNodeRenderModel {
+                        name: format!("node-{index}"),
+                        children: None,
+                        value: Some(json!(1)),
+                        class_selector: Some("shared".to_string()),
+                        css_compiled_styles: None,
+                    })
+                    .collect(),
+            ),
+            value: None,
+            class_selector: None,
+            css_compiled_styles: None,
+        };
+        let mut classes = std::collections::BTreeMap::new();
+        classes.insert(
+            "shared".to_string(),
+            TreemapClassDefRenderModel {
+                id: "shared".to_string(),
+                styles: vec![style.clone()],
+                text_styles: Vec::new(),
+            },
+        );
+        (
+            TreemapDiagramRenderModel {
+                acc_title: None,
+                acc_descr: None,
+                title: None,
+                root,
+                classes,
+            },
+            style,
+        )
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_accepts_bounded_shared_class_styles() {
+        let (model, style) = model_with_shared_class_styles(512, 256);
+        let output = render_model_to_compat_json(&model, &meta())
+            .expect("bounded repeated classDef styles should remain compatible");
+
+        assert_eq!(output["nodes"].as_array().unwrap().len(), 512);
+        assert_eq!(output["nodes"][0]["cssCompiledStyles"], json!([style]));
+        assert_eq!(
+            output["root"]["children"][511]["cssCompiledStyles"],
+            output["nodes"][511]["cssCompiledStyles"]
+        );
+    }
+
+    #[test]
+    fn treemap_compatibility_preflight_estimate_covers_serialized_output() {
+        let model = TreemapDiagramRenderModel {
+            title: Some("title \"with\" controls\n".to_string()),
+            acc_title: Some("acc".to_string()),
+            acc_descr: Some("description".to_string()),
+            root: TreemapNodeRenderModel {
+                name: "root".to_string(),
+                children: Some(vec![TreemapNodeRenderModel {
+                    name: "leaf \"\u{0001}".to_string(),
+                    children: None,
+                    value: Some(json!({"nested": ["value", true, null]})),
+                    class_selector: Some("shared".to_string()),
+                    css_compiled_styles: None,
+                }]),
+                value: None,
+                class_selector: None,
+                css_compiled_styles: None,
+            },
+            classes: std::collections::BTreeMap::from([(
+                "shared".to_string(),
+                TreemapClassDefRenderModel {
+                    id: "shared".to_string(),
+                    styles: vec!["fill:\"quoted\"".to_string(), "stroke:#123".to_string()],
+                    text_styles: vec!["font-size:12px".to_string()],
+                },
+            )]),
+        };
+        let meta = meta();
+        let control = crate::OperationControl::new();
+        let class_style_bytes = estimate_class_style_arrays(&model.classes, &control).unwrap();
+        let estimate =
+            estimate_compatibility_json_bytes(&model, &meta, &class_style_bytes, &control).unwrap();
+        let output = render_model_to_compat_json(&model, &meta).unwrap();
+        let actual = serde_json::to_vec(&output).unwrap().len();
+
+        assert!(
+            estimate >= actual,
+            "preflight estimate {estimate} must cover serialized output {actual}"
+        );
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_rejects_repeated_class_styles_before_value_build() {
+        let (model, _) = model_with_shared_class_styles(2_048, 4_096);
+        let error = render_model_to_compat_json(&model, &meta())
+            .expect_err("repeated classDef styles beyond the output budget must fail");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a structured compatibility output budget error");
+        };
+        assert!(
+            diagnostic
+                .message()
+                .contains("treemap compatibility JSON output budget exceeded"),
+            "{}",
+            diagnostic.message()
+        );
+        assert!(diagnostic.message().contains(&format!(
+            "maximum is {TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES}"
+        )));
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_rejects_large_nodes_before_value_build() {
+        const NODE_COUNT: usize = 64_000;
+        const NAME_BYTES: usize = 128;
+        let name_suffix = "x".repeat(NAME_BYTES.saturating_sub(12));
+        let root = TreemapNodeRenderModel {
+            name: String::new(),
+            children: Some(
+                (0..NODE_COUNT)
+                    .map(|index| TreemapNodeRenderModel {
+                        name: format!("node-{index:06}-{name_suffix}"),
+                        children: None,
+                        value: Some(json!(1)),
+                        class_selector: None,
+                        css_compiled_styles: None,
+                    })
+                    .collect(),
+            ),
+            value: None,
+            class_selector: None,
+            css_compiled_styles: None,
+        };
+        let model = TreemapDiagramRenderModel {
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            root,
+            classes: std::collections::BTreeMap::new(),
+        };
+
+        let error = render_model_to_compat_json(&model, &meta())
+            .expect_err("large nested and flat node output must fail before Value materialization");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a structured compatibility output budget error");
+        };
+        assert!(
+            diagnostic
+                .message()
+                .contains("treemap compatibility JSON output budget exceeded"),
+            "{}",
+            diagnostic.message()
+        );
+        assert!(diagnostic.message().contains("estimated "));
+    }
+
+    #[test]
+    fn treemap_compatibility_preflight_observes_cancellation() {
+        let (model, _) = model_with_shared_class_styles(512, 256);
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            render_model_to_compat_json_controlled(&model, &meta(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_observes_cancellation_after_preflight() {
+        let (model, _) = model_with_shared_class_styles(512, 256);
+        let control = crate::OperationControl::new();
+        treemap_compatibility_output_preflight(&model, &meta(), &control)
+            .expect("preflight control should remain active")
+            .expect("bounded model should pass preflight");
+        control.cancel();
+
+        assert!(matches!(
+            render_model_to_compat_json_unchecked(&model, &meta(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn treemap_style_byte_preflight_observes_cancellation_inside_one_class() {
+        let styles = (0..512)
+            .map(|index| format!("fill:{index}"))
+            .collect::<Vec<_>>();
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            joined_style_bytes(&styles, &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn treemap_combined_compatibility_budget_error_preserves_editor_facts() {
+        const NODE_COUNT: usize = 2_048;
+        const STYLE_BYTES: usize = 4_096;
+        let style = format!("fill:{}", "a".repeat(STYLE_BYTES.saturating_sub(5)));
+        let mut text = String::from("treemap\n");
+        for index in 0..NODE_COUNT {
+            text.push_str(&format!("\"node-{index}\": 1:::shared\n"));
+        }
+        text.push_str("classDef shared ");
+        text.push_str(&style);
+        text.push('\n');
+
+        let parsed =
+            parse_treemap_json_and_editor_facts(&text, &meta(), &crate::OperationControl::new())
+                .expect("budget rejection must remain a semantic result");
+        let (model, facts, _) = parsed.into_parts();
+        let error = model.expect_err("oversized compatibility output must not be truncated");
+        assert!(
+            error
+                .to_string()
+                .contains("treemap compatibility JSON output budget exceeded")
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "shared" && symbol.detail.as_deref() == Some("treemap class definition")
+        }));
+    }
+
+    #[test]
     fn treemap_classdef_rejects_bare_label_style_tokens_like_mermaid_parser() {
         let msg = parse_error(
             r#"treemap
@@ -1596,7 +2516,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 4,
@@ -1604,7 +2523,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1612,7 +2530,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(10)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1620,7 +2537,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(15)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 4,
@@ -1628,7 +2544,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1636,7 +2551,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(20)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1644,7 +2558,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(25)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1652,7 +2565,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(30)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
         ];
 
@@ -1758,7 +2670,15 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));
-        assert_eq!(compat["root"], serde_json::to_value(&typed.root).unwrap());
+        assert!(
+            typed.root.children.as_ref().unwrap()[0]
+                .css_compiled_styles
+                .is_none()
+        );
+        assert_eq!(
+            compat["root"]["children"][0]["cssCompiledStyles"][0],
+            json!("fill:#f96;stroke:#333")
+        );
         assert_eq!(compat["type"], json!("treemap"));
         assert!(compat["config"].is_object());
         assert_eq!(compat["accTitle"], Value::Null);

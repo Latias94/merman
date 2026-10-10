@@ -1,13 +1,83 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::VennDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
+const THEME_TYPOGRAPHY_SOURCE: &str = r#"venn-beta
+title Typography Surface
+set A["Alpha"]:20
+  text A1["Nested Alpha"]
+set B["Beta"]:12
+union A,B["Shared"]:3
+  text AB1["Nested Shared"]
+"#;
+
+fn venn_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::VENN, typography),
+        ))
+        .expect("compile Venn typography theme")
+}
+
+fn venn_paint_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                rules
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |rules, rule| rules.with_rule(rule)),
+            ),
+        )
+        .expect("compile Venn paint theme")
+}
+
+fn solid(color: &str) -> CanvasPaint {
+    CanvasPaint::solid(color).expect("valid Venn paint")
+}
+
+fn render_venn_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Venn")
+        .expect("detect themed Venn");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Venn session");
+
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("venn-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+}
+
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
+    render_typed_venn_with_engine(input, Engine::new())
+}
+
+fn render_typed_venn_with_engine(input: &str, engine: Engine) -> (VennDiagramLayout, String) {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -31,6 +101,399 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .to_owned();
 
     (layout, svg)
+}
+
+fn try_render_venn_svg_with_resource_policy(
+    input: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Venn resource-bound session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("parse Venn resource-bound fixture")
+        .expect("detect Venn resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("venn-bounded".to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn venn_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = "venn-beta\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B[\"Shared\"]:3\n";
+    let baseline = try_render_venn_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Venn baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "Venn fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Venn SVG byte ceiling");
+    let exact = try_render_venn_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Venn family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Venn SVG byte ceiling");
+    let error = try_render_venn_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Venn family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Venn MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
+}
+
+#[test]
+fn venn_typed_font_stack_reaches_every_local_text_selector_and_strict_receipt() {
+    let font_stack =
+        FontStack::new(["VennTyped", "monospace"]).expect("valid Venn typed font stack");
+    let expected_font = font_stack.as_css().to_string();
+    let theme = venn_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render strict portable Venn font stack");
+
+    for selector in [
+        ".venn-title{",
+        ".venn-circle text{",
+        ".venn-intersection text{",
+        ".venn-text-node{",
+    ] {
+        let start = rendered
+            .svg()
+            .find(selector)
+            .expect("Venn selector must be emitted");
+        let rule = &rendered.svg()[start..rendered.svg()[start..].find('}').unwrap() + start];
+        assert!(
+            rule.contains(&format!("font-family:{expected_font};")),
+            "Venn selector `{selector}` must use the typed font stack: {rule}"
+        );
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn venn_theme_font_family_outranks_root_and_typed_font_family() {
+    let theme = venn_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("VennTyped").expect("valid Venn typed font")),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "VennRootFont",
+        "themeVariables": { "fontFamily": "VennThemeFont" }
+    })));
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("render config-owned Venn font stack");
+
+    assert!(rendered.svg().contains("font-family:VennThemeFont;"));
+    assert!(!rendered.svg().contains("VennRootFont"));
+    assert!(!rendered.svg().contains("VennTyped"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn venn_font_size_is_a_structured_unsupported_residual_without_a_legacy_projection() {
+    let typography = ThemeTextStyle::default()
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Venn font size");
+    let theme = venn_typography_theme(typography);
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the structured Venn font-size residual");
+
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects unsupported Venn font size");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: DiagramFamilyId::VENN,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn venn_mixed_font_stack_and_size_fails_closed_without_legacy_projection() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("VennMixed").expect("valid Venn mixed font stack"))
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Venn mixed font size");
+    let theme = venn_typography_theme(typography);
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort renders the mixed Venn typography residual");
+
+    assert!(rendered.svg().contains("VennMixed"));
+    assert!(!rendered.svg().contains("font-size:24px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+
+    let error = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable rejects mixed unsupported Venn typography");
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: DiagramFamilyId::VENN,
+            residual_count: 1,
+        }
+    ));
+}
+
+#[test]
+fn venn_typed_text_fill_reaches_visible_terminals() {
+    let text_fill = "#123456";
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(solid(text_fill)),
+        )
+        .for_family(DiagramFamilyId::VENN);
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        let theme = venn_paint_theme([rule]);
+        let rendered = render_venn_with_theme_requirement(
+            THEME_TYPOGRAPHY_SOURCE,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("render strict portable Venn text fill theme");
+
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Venn SVG");
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Venn stylesheet");
+        assert!(
+            stylesheet.contains(".venn-intersection text{font-size:48px;fill:#123456;"),
+            "variant={variant:?}"
+        );
+        assert!(stylesheet.contains(".venn-text-node{font-family:"));
+        assert!(stylesheet.contains("color:#123456;"));
+        assert!(
+            rendered
+                .svg()
+                .contains("style=\"font-size: 24px; fill: #123456;\""),
+            "variant={variant:?}"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.applied_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "variant={variant:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "variant={variant:?}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "variant={variant:?}"
+        );
+    }
+}
+
+#[test]
+fn venn_text_fill_is_not_applicable_when_config_or_source_owns_every_terminal() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )
+    .for_family(DiagramFamilyId::VENN)]);
+    let config_owned = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "vennSetTextColor": "#654321" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("config-owned Venn text fill remains portable");
+    assert!(config_owned.svg().contains("fill:#654321;"));
+    assert!(!config_owned.svg().contains("fill:#123456;"));
+    let evidence =
+        merman_render::__private::family_evidence(config_owned.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let source_owned = render_venn_with_theme_requirement(
+        r#"venn-beta
+set A["Alpha"]:20
+  text A1["Nested Alpha"]
+set B["Beta"]:12
+union A,B["Shared"]:3
+  text AB1["Nested Shared"]
+style A,B color:#654321
+style A1 color:#654321
+style AB1 color:#654321
+"#,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("source-owned Venn text fill remains portable");
+    let evidence =
+        merman_render::__private::family_evidence(source_owned.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_text_fill_uses_final_venn_role_ownership() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )
+    .for_family(DiagramFamilyId::VENN)]);
+
+    // Default retains `vennSetTextColor` as a constructor snapshot. A caller-provided
+    // `textColor` therefore does not own the final Venn text role and must not suppress the
+    // typed route.
+    let default_snapshot = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "themeVariables": { "textColor": "#654321" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("Default Venn textColor does not own the Venn text role");
+    assert!(default_snapshot.svg().contains("fill:#123456;"));
+    let evidence =
+        merman_render::__private::family_evidence(default_snapshot.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    // Base derives `vennSetTextColor` from `textColor`, retaining the configuration ownership
+    // edge. Its effective role must win over the typed route.
+    let base_derived = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "base",
+            "themeVariables": { "textColor": "#654321" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("Base Venn textColor owns the derived Venn text role");
+    assert!(base_derived.svg().contains("fill:#654321;"));
+    assert!(!base_derived.svg().contains("fill:#123456;"));
+    let evidence =
+        merman_render::__private::family_evidence(base_derived.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_text_fill_remains_applied_for_mixed_source_owned_terminals() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )
+    .for_family(DiagramFamilyId::VENN)]);
+    let rendered = render_venn_with_theme_requirement(
+        r#"venn-beta
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+  text AB1["Nested Shared"]
+style A,B color:#654321
+"#,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .expect("mixed source-owned Venn text terminals remain portable");
+
+    let svg = rendered.svg();
+    assert!(svg.contains("fill: #654321;"));
+    assert!(svg.contains("color:#123456;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 fn find_venn_area<'a, 'input>(
@@ -72,6 +535,68 @@ union A,B["Shared"]:4
     assert!(svg.contains(r#"data-venn-sets="A_B""#));
     assert!(svg.contains(">Core</tspan></text>"));
     assert!(svg.contains(">Shared</tspan></text>"));
+}
+
+#[test]
+fn venn_non_default_theme_rederives_title_and_set_text_colors() {
+    let input = r##"%%{init: {"theme": "base", "themeVariables": {"titleColor": "#123456", "textColor": "#abcdef"}}}%%
+venn-beta
+title Dependency Surface
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+"##;
+
+    let (_, svg) = render_typed_venn_with_engine(
+        input,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "secure": []
+        }))),
+    );
+
+    assert!(
+        svg.contains(".venn-title{font-size:32px;fill:#123456;"),
+        "Venn stylesheet title fill must use the non-Default calculated dependency: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="venn-title" font-size="16px" text-anchor="middle" dominant-baseline="middle" x="50%" y="16" style="fill: #123456;""#),
+        "Venn title terminal must use the same calculated dependency: {svg}"
+    );
+    assert!(
+        svg.contains(".venn-intersection text{font-size:48px;fill:#abcdef;"),
+        "Venn set text must use the non-Default textColor dependency: {svg}"
+    );
+}
+
+#[test]
+fn venn_default_theme_preserves_constructor_snapshot_colors() {
+    let input = r##"%%{init: {"theme": "default", "themeVariables": {"titleColor": "#123456", "textColor": "#abcdef"}}}%%
+venn-beta
+title Constructor Snapshot
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+"##;
+
+    let (_, svg) = render_typed_venn_with_engine(
+        input,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "secure": []
+        }))),
+    );
+
+    assert!(
+        svg.contains(".venn-title{font-size:32px;fill:#333;"),
+        "Default Venn title must retain its constructor snapshot: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="venn-title" font-size="16px" text-anchor="middle" dominant-baseline="middle" x="50%" y="16" style="fill: #333;""#),
+        "Default Venn terminal title must retain its constructor snapshot: {svg}"
+    );
+    assert!(
+        svg.contains(".venn-intersection text{font-size:48px;fill:#333;"),
+        "Default Venn set text must retain its constructor snapshot: {svg}"
+    );
 }
 
 #[test]
@@ -121,10 +646,7 @@ union A,B
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
-    assert_eq!(
-        artifact.family_kind(),
-        merman_render::family::RenderFamilyKind::Venn
-    );
+    assert_eq!(artifact.family_id(), merman_render::DiagramFamilyId::VENN);
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render SVG")

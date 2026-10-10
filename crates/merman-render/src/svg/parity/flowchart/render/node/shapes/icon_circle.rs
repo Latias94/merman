@@ -1,23 +1,18 @@
 //! Flowchart v2 icon circle shape.
 
-use std::fmt::Write as _;
-
-use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, escape_attr,
-    flowchart_label_html,
-};
+use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 const FRAME_PADDING: f64 = 20.0;
 const HAND_DRAWN_FILL_WEIGHT: f64 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<()> {
+) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
     // Port of Mermaid `iconCircle.ts` (`icon-shape default`). A populated nested icon SVG has an
     // explicit square viewport, while an empty icon group has a zero-sized browser `getBBox()`.
     let icon_name = common.node_icon.filter(|icon| !icon.trim().is_empty());
@@ -29,19 +24,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     let asset_w = common.node_asset_width.unwrap_or(48.0);
     let icon_size = asset_h.max(asset_w);
 
-    let metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
-    let span_style_attr = OptionalStyleXmlAttr(common.label_style);
+    let mut metrics = common
+        .label_emission
+        .metrics(ctx, Some(common.layout_node), label);
+    if !has_label {
+        metrics.width = 0.0;
+        metrics.height = 0.0;
+    }
 
     let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
     let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-    let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
     let icon_bbox_size = if icon_name.is_some() { icon_size } else { 0.0 };
     let diameter = icon_bbox_size * std::f64::consts::SQRT_2 + FRAME_PADDING * 2.0;
     let outer_w = diameter.max(label_bbox_w);
@@ -59,6 +51,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.look_is_hand_drawn(),
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         }) {
@@ -97,27 +90,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     );
     out.push_str("</g>");
 
-    let label_html = super::super::helpers::timed_node_label_html(common.timing, details, || {
-        flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-    });
     let label_y = if top_label {
         -outer_h / 2.0
     } else {
         outer_h / 2.0 - label_bbox_h
     };
-    let _ = write!(
+    let label_receipt = common.label_emission.write_special_html_label(
         out,
-        r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
-        escape_attr(common.label_style),
-        fmt(-label_bbox_w / 2.0),
-        fmt(label_y),
-        fmt(label_bbox_w),
-        fmt(label_bbox_h),
-        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-        escape_attr(&label_div_style),
-        super::super::helpers::flowchart_node_label_span_class(label.label_type),
-        span_style_attr,
-        label_html,
+        ctx,
+        common,
+        label,
+        details,
+        -label_bbox_w / 2.0,
+        label_y,
+        label_bbox_w,
+        label_bbox_h,
     );
 
     if let Some(icon_name) = icon_name {
@@ -160,5 +147,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(())
+    Ok(label_receipt)
 }

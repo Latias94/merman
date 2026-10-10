@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d`
+Semantic digest: `sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4`
 
 ## Public Leaves
 
@@ -41,19 +41,22 @@ Semantic digest: `sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521
 
 ## Binding Operations
 
-| ID | Capability | Output | Compiled prerequisites | Media type | Requires URI | Targets |
-| --- | --- | --- | --- | --- | --- | --- |
-| `analysis-facts-json` | `analysis` | none | none | `application/json` | no | `native`, `web` |
-| `analysis-json` | `analysis` | none | none | `application/json` | no | `native`, `web`, `typst` |
-| `ascii` | `ascii` | `ascii` | none | `text/plain; charset=utf-8` | no | `native`, `web` |
-| `document-analysis-facts-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
-| `document-analysis-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
-| `edge-geometry-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
-| `jpeg` | `jpeg` | `jpeg` | `svg` | `image/jpeg` | no | `native` |
-| `layout-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
-| `pdf` | `pdf` | `pdf` | `svg` | `application/pdf` | no | `native` |
-| `png` | `png` | `png` | `svg` | `image/png` | no | `native` |
-| `semantic-json` | none | none | none | `application/json` | no | `native`, `web` |
-| `svg` | `svg` | `svg` | none | `image/svg+xml` | no | `native`, `web`, `typst` |
-| `svg-plan-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
-| `validation-json` | `analysis` | none | none | `application/json` | no | `native`, `web` |
+| ID | Maturity | Capability | Output | Compiled prerequisites | Input kind | Media type | Requires URI | Targets |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `analysis-facts-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
+| `analysis-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | no | `native`, `web`, `typst` |
+| `ascii` | `stable` | `ascii` | `ascii` | none | `mermaid-source` | `text/plain; charset=utf-8` | no | `native`, `web` |
+| `describe-theme-support-json` | `alpha` | `svg` | none | none | `theme-support-query-json` | `application/json` | no | `native`, `web`, `typst` |
+| `document-analysis-facts-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
+| `document-analysis-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
+| `edge-geometry-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
+| `export-theme-preset-json` | `alpha` | `svg` | none | none | `theme-preset-id` | `application/json` | no | `native`, `web`, `typst` |
+| `jpeg` | `stable` | `jpeg` | `jpeg` | `svg` | `mermaid-source` | `image/jpeg` | no | `native` |
+| `layout-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
+| `materialize-theme-json` | `alpha` | `svg` | none | none | `theme-definition-json` | `application/json` | no | `native`, `web`, `typst` |
+| `pdf` | `stable` | `pdf` | `pdf` | `svg` | `mermaid-source` | `application/pdf` | no | `native` |
+| `png` | `stable` | `png` | `png` | `svg` | `mermaid-source` | `image/png` | no | `native` |
+| `semantic-json` | `stable` | none | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
+| `svg` | `stable` | `svg` | `svg` | none | `mermaid-source` | `image/svg+xml` | no | `native`, `web`, `typst` |
+| `svg-plan-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
+| `validation-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |

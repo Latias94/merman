@@ -29,6 +29,22 @@ fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     ))
 }
 
+pub(crate) fn state_markdown_label_plain_text(text: &str) -> Option<Cow<'_, str>> {
+    simple_xhtml_text(&state_label_xhtml(text)).map(|text| Cow::Owned(text.into_owned()))
+}
+
+pub(crate) fn state_value_to_label_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(parts) => parts
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
 fn escape_xml_attribute(value: &str) -> String {
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());
@@ -291,6 +307,15 @@ pub(crate) fn measure_state_markdown_label(
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;
+    use serde_json::json;
+
+    #[test]
+    fn array_label_text_preserves_every_source_line() {
+        assert_eq!(
+            state_value_to_label_text(&json!(["first", "second", "third"])),
+            "first\nsecond\nthird"
+        );
+    }
 
     #[test]
     fn node_xhtml_normalizes_sanitized_images_like_mermaid_label_helper() {

@@ -9,7 +9,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import ClassVar, Mapping, Optional, Tuple
 
-BINDING_OPTIONS_SCHEMA_VERSION = 2
+BINDING_OPTIONS_SCHEMA_VERSION = 3
 
 class ResourceProfile(str, Enum):
     INTERACTIVE = "interactive"
@@ -23,7 +23,9 @@ class ResourceLimitId(str):
     MAX_MODEL_ITEMS: ClassVar[ResourceLimitId]
     MAX_MODEL_TEXT_BYTES: ClassVar[ResourceLimitId]
     MAX_MODEL_NESTING_DEPTH: ClassVar[ResourceLimitId]
+    MAX_OPTIONS_JSON_BYTES: ClassVar[ResourceLimitId]
     MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
+    MAX_PREPARED_TEXT_RETAINED_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
     SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
@@ -87,7 +89,9 @@ ResourceLimitId.MAX_SOURCE_BYTES = ResourceLimitId("max_source_bytes")
 ResourceLimitId.MAX_MODEL_ITEMS = ResourceLimitId("max_model_items")
 ResourceLimitId.MAX_MODEL_TEXT_BYTES = ResourceLimitId("max_model_text_bytes")
 ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_depth")
+ResourceLimitId.MAX_OPTIONS_JSON_BYTES = ResourceLimitId("max_options_json_bytes")
 ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
+ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES = ResourceLimitId("max_prepared_text_retained_bytes")
 ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
 ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
 ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
@@ -118,7 +122,9 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_MODEL_ITEMS,
     ResourceLimitId.MAX_MODEL_TEXT_BYTES,
     ResourceLimitId.MAX_MODEL_NESTING_DEPTH,
+    ResourceLimitId.MAX_OPTIONS_JSON_BYTES,
     ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
+    ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES,
     ResourceLimitId.MAX_SVG_BYTES,
     ResourceLimitId.MAX_SVG_ELEMENTS,
     ResourceLimitId.SVG_BACKEND_TREE_NODES,
@@ -151,7 +157,9 @@ _RESOURCE_LIMIT_METADATA = {
     "max_model_items": ("layout_model", True, 1),
     "max_model_text_bytes": ("layout_model", True, 1),
     "max_model_nesting_depth": ("layout_model", True, 1),
+    "max_options_json_bytes": ("options-json-preflight", False, 1),
     "max_layout_work_units": ("layout_model", True, 1),
+    "max_prepared_text_retained_bytes": ("layout_model", True, 1),
     "max_svg_bytes": ("svg_output", True, 1),
     "max_svg_elements": ("svg_postprocess", True, 1),
     "svg_backend_tree_nodes": ("svg_postprocess", False, 1),
@@ -184,6 +192,7 @@ class ResourceOverrideId(str, Enum):
     MAX_MODEL_TEXT_BYTES = "max_model_text_bytes"
     MAX_MODEL_NESTING_DEPTH = "max_model_nesting_depth"
     MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
+    MAX_PREPARED_TEXT_RETAINED_BYTES = "max_prepared_text_retained_bytes"
     MAX_SVG_BYTES = "max_svg_bytes"
     MAX_SVG_ELEMENTS = "max_svg_elements"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
@@ -208,6 +217,7 @@ _MINIMUM_LIMIT_VALUES = {
     ResourceOverrideId.MAX_MODEL_TEXT_BYTES: 1,
     ResourceOverrideId.MAX_MODEL_NESTING_DEPTH: 1,
     ResourceOverrideId.MAX_LAYOUT_WORK_UNITS: 1,
+    ResourceOverrideId.MAX_PREPARED_TEXT_RETAINED_BYTES: 1,
     ResourceOverrideId.MAX_SVG_BYTES: 1,
     ResourceOverrideId.MAX_SVG_ELEMENTS: 1,
     ResourceOverrideId.MAX_DOCUMENT_DIAGRAMS: 0,
@@ -254,7 +264,7 @@ class ResourceOptions:
             resources["profile"] = self.profile.value
         if limits:
             resources["limits"] = limits
-        payload = {"version": 2}
+        payload = {"version": 3}
         if resources:
             payload["resources"] = resources
         return json.dumps(payload, separators=(",", ":"), sort_keys=True)

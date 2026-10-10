@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::super::{SvgDiagramId, escape_xml_display, root_svg};
+use super::super::{SvgDiagramId, SvgOutput, escape_attr_display, escape_xml_display, root_svg};
 
 pub(super) struct ArchitectureA11y {
     pub(super) aria_labelledby: Option<String>,
@@ -27,7 +27,7 @@ pub(super) fn architecture_a11y_nodes(
         let _ = write!(
             &mut nodes,
             r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id,
+            escape_attr_display(diagram_id),
             escape_xml_display(t)
         );
     }
@@ -35,7 +35,7 @@ pub(super) fn architecture_a11y_nodes(
         let _ = write!(
             &mut nodes,
             r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id,
+            escape_attr_display(diagram_id),
             escape_xml_display(d)
         );
     }
@@ -48,7 +48,7 @@ pub(super) fn architecture_a11y_nodes(
 }
 
 pub(super) fn begin_architecture_document(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     root_viewport: &root_svg::RootViewportContext<'_>,
     diagram_id: SvgDiagramId<'_>,
     css: &str,
@@ -68,5 +68,6 @@ pub(super) fn begin_architecture_document(
     out.push_str(a11y.nodes.as_str());
     let _ = write!(out, "<style>{}</style>", css);
     out.push_str("<g/><g class=\"architecture-edges\">");
+    out.checkpoint()?;
     Ok(document)
 }

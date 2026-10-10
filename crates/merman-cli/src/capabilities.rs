@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 5;
+const CLI_CONTRACT_VERSION: u32 = 6;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
@@ -31,6 +31,15 @@ struct CapabilityDocument<'a> {
     outputs: Vec<OutputView<'a>>,
     #[cfg(feature = "ascii")]
     ascii: AsciiCapabilityDocument,
+    #[cfg(feature = "svg")]
+    theme_presets: Option<ThemePresetCatalogDocument>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Serialize)]
+struct ThemePresetCatalogDocument {
+    schema_version: u32,
+    presets: Vec<merman::svg::ThemePresetMetadataV1>,
 }
 
 #[derive(Serialize)]
@@ -183,6 +192,8 @@ pub(crate) fn write_compiled_capabilities(
             .collect(),
         #[cfg(feature = "ascii")]
         ascii: ascii_capability_document(),
+        #[cfg(feature = "svg")]
+        theme_presets: json.then(theme_preset_catalog_document),
     };
 
     if json {
@@ -199,6 +210,17 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\n');
     }
     write_stdout(output.as_bytes(), stdout)
+}
+
+#[cfg(feature = "svg")]
+fn theme_preset_catalog_document() -> ThemePresetCatalogDocument {
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
+    );
+    ThemePresetCatalogDocument {
+        schema_version: merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
+        presets: merman::svg::describe_theme_presets(&compiler),
+    }
 }
 
 #[cfg(feature = "ascii")]
@@ -246,15 +268,11 @@ fn ascii_capability_document() -> AsciiCapabilityDocument {
         .iter()
         .map(|capability| capability.family)
         .collect::<std::collections::BTreeSet<_>>();
-    let render_model_families = merman::built_in_typed_render_families()
-        .iter()
-        .map(|family| (family.render_model_kind, family.diagram_type))
-        .collect::<std::collections::BTreeMap<_, _>>();
     let mut detected_type_mappings = merman::diagram_family_capabilities()
         .iter()
         .filter(|capability| capability.has_detector)
         .filter_map(|capability| {
-            let family = render_model_families.get(capability.render_model_kind?)?;
+            let family = capability.typed_render_family()?.diagram_type;
             known_families
                 .contains(family)
                 .then_some(AsciiDetectedTypeMappingView {
@@ -296,7 +314,7 @@ fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {
                 .expect("a compiled CLI export must have an environment contract");
             let system_fonts = environment
                 .system_fonts
-                .expect("native CLI exports must disclose host system fonts");
+                .expect("native CLI exports must disclose their system-font capability");
             let limits = environment.embedded_images.default_limits;
             OutputView {
                 id: output.id,
@@ -379,6 +397,24 @@ fn compiled_capability_ids() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_detector_mappings_preserve_public_metadata_ids() {
+        let document = ascii_capability_document();
+        for (detected_type, expected_family) in [
+            ("gitGraph", "gitgraph"),
+            ("quadrantChart", "quadrantchart"),
+            ("swimlane", "flowchart"),
+        ] {
+            let mapping = document
+                .detected_type_mappings
+                .iter()
+                .find(|mapping| mapping.detected_type == detected_type)
+                .unwrap_or_else(|| panic!("missing {detected_type} detector mapping"));
+            assert_eq!(mapping.family, expected_family);
+        }
+    }
 
     #[test]
     fn compiled_ids_never_escape_the_canonical_descriptor() {

@@ -109,6 +109,20 @@ pub(crate) fn read_bytes(
     )
 }
 
+/// Reads a bounded binary auxiliary input.
+///
+/// Theme definition files use this helper outside the render operation lifecycle. Render
+/// entrypoints that need cancellation must use `read_bytes_with_limit_controlled` instead.
+pub(crate) fn read_bytes_with_limit(
+    reader: impl Read,
+    resource: impl Into<String>,
+    limit: InputLimit,
+    length_hint: Option<u64>,
+) -> Result<Vec<u8>, InputReadError> {
+    let resource = resource.into();
+    read_bytes_impl(reader, &resource, limit, length_hint, None)
+}
+
 #[cfg(feature = "icons")]
 pub(crate) fn read_bytes_with_limit_controlled(
     reader: impl Read,

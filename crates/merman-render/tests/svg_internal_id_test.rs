@@ -86,6 +86,69 @@ fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
     );
 }
 
+fn assert_css_root_scope_normalizes_selector_significant_id_characters(family: &str, source: &str) {
+    const DIAGRAM_ID: &str = "seq:prod.v1";
+    const NORMALIZED_ID: &str = "seq-prod-v1";
+
+    let svg = render_svg_from_text(source, DIAGRAM_ID);
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    assert_eq!(
+        document.root_element().attribute("id"),
+        Some(NORMALIZED_ID),
+        "{family} must normalize the XML id spelling"
+    );
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(
+        css.contains("#seq-prod-v1"),
+        "{family} must use the normalized root selector: {css}"
+    );
+    for invalid_selector_prefix in [
+        "#seq:prod.v1{",
+        "#seq:prod.v1 ",
+        "#seq:prod.v1.",
+        "#seq:prod.v1[",
+    ] {
+        assert!(
+            !css.contains(invalid_selector_prefix),
+            "{family} emitted an unescaped root selector {invalid_selector_prefix:?}: {css}"
+        );
+    }
+}
+
+#[test]
+fn css_root_scope_normalizes_selector_significant_ids_across_families() {
+    for (family, source) in [
+        ("Flowchart", "flowchart TD\n  A --> B\n"),
+        ("State", "stateDiagram-v2\n  [*] --> Ready\n"),
+        ("Class", "classDiagram\n  class Ready\n"),
+        (
+            "Kanban",
+            "kanban\n  todo[Todo]\n    task[Write regression]\n",
+        ),
+        ("Block", "block\n  A[\"Alpha\"] --> B[\"Beta\"]\n"),
+        (
+            "C4",
+            "C4Context\nPerson(customer, \"Customer\")\nSystem(system, \"System\")\nRel(customer, system, \"Uses\")\n",
+        ),
+        (
+            "Journey",
+            "journey\n  section Work\n    Write regression: 5: Developer\n",
+        ),
+        ("Timeline", "timeline\n  section Release\n    2026 : Ship\n"),
+        ("EventModeling", "eventmodeling\ntf 01 ui View\n"),
+        (
+            "Ishikawa",
+            "ishikawa-beta\n Root cause\n  Process\n   Slow step\n",
+        ),
+    ] {
+        assert_css_root_scope_normalizes_selector_significant_id_characters(family, source);
+    }
+}
+
 #[test]
 fn c4_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(
@@ -154,7 +217,7 @@ section Phase
 }
 
 #[test]
-fn sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors() {
+fn sequence_marker_ids_are_prefixed_without_exposing_raster_proof_markers() {
     let svg = render_svg_from_text(
         r#"sequenceDiagram
 autonumber
@@ -173,6 +236,10 @@ Bob-->>Alice: Back"#,
     assert_scoped_definition_id(&svg, "m15-sequence", "stickTopArrowHead");
     assert_scoped_definition_id(&svg, "m15-sequence", "stickBottomArrowHead");
     assert!(
+        !svg.contains("-merman-fill-stroke-paint"),
+        "renderer-owned raster proof metadata must not leak into the public SVG:\n{svg}"
+    );
+    assert!(
         svg.contains(r#"data-et="life-line" data-id="Alice""#),
         "expected sequence lifeline data attributes:\n{svg}"
     );
@@ -181,12 +248,12 @@ Bob-->>Alice: Back"#,
         "expected sequence message data attributes:\n{svg}"
     );
     assert!(
-        svg.contains(r#"[id$="-arrowhead"] path"#),
-        "expected sequence CSS to target prefixed marker IDs by suffix:\n{svg}"
+        svg.contains(r#"[id="m15-sequence-arrowhead"] path"#),
+        "expected sequence CSS to target the exact prefixed marker ID:\n{svg}"
     );
     assert!(
-        svg.contains(r#"[id$="-sequencenumber"]"#),
-        "expected sequence CSS to target prefixed sequence number IDs by suffix:\n{svg}"
+        svg.contains(r#"[id="m15-sequence-sequencenumber"]"#),
+        "expected sequence CSS to target the exact prefixed sequence number ID:\n{svg}"
     );
     assert!(
         !svg.contains(r#"#arrowhead path"#),

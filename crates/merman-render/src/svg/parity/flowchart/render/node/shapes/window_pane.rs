@@ -1,13 +1,11 @@
 //! Flowchart v2 window pane shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::{escape_attr, fmt};
 
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -49,6 +47,25 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
     );
 
     if let Some((fill_d, stroke_d)) =
+        super::super::helpers::hand_drawn_path_pair(common, details, &path_data)
+    {
+        let _ = write!(
+            out,
+            r#"<g transform="translate({}, {})" class="basic label-container outer-path" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+            fmt(rect_offset / 2.0),
+            fmt(rect_offset / 2.0),
+            escape_attr(common.rough_group_style),
+            escape_attr(&fill_d),
+            escape_attr(common.fill_color),
+            escape_attr(&stroke_d),
+            escape_attr(common.stroke_color),
+            fmt(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+        );
+        return;
+    }
+
+    if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -79,6 +96,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
             fmt(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
             escape_attr(common.style)
+        );
+        out.push_str("</g>");
+    } else if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g transform="translate({}, {})" class="basic label-container outer-path">"#,
+            fmt(rect_offset / 2.0),
+            fmt(rect_offset / 2.0),
+        );
+        super::super::helpers::write_raw_filled_stroked_path(
+            out,
+            &path_data,
+            common.fill_color,
+            common.stroke_color,
+            common.stroke_width,
+            common.style,
         );
         out.push_str("</g>");
     }

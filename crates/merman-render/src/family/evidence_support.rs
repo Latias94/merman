@@ -1,0 +1,1342 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use crate::diagram_theme::{
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, ThemeCapability,
+    ThemeTarget, ThemeVariant,
+};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
+
+use super::{DirectStaticPaint, FamilyThemeEvidence, FamilyThemeResidualReason};
+
+/// One direct paint value that a family writer must emit at a real terminal surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DirectPaintExpectation {
+    rule_index: usize,
+    css: Arc<str>,
+    capability: ThemeCapability,
+}
+
+impl DirectPaintExpectation {
+    pub(crate) fn new(
+        rule_index: usize,
+        css: impl Into<Arc<str>>,
+        capability: ThemeCapability,
+    ) -> Self {
+        Self {
+            rule_index,
+            css: css.into(),
+            capability,
+        }
+    }
+
+    pub(crate) fn from_paint(paint: DirectStaticPaint) -> Self {
+        let (css, rule_index, capability) = paint.into_parts();
+        Self::new(rule_index, Arc::<str>::from(css), capability)
+    }
+
+    pub(crate) const fn rule_index(&self) -> usize {
+        self.rule_index
+    }
+
+    pub(crate) fn css(&self) -> &str {
+        &self.css
+    }
+
+    pub(crate) const fn capability(&self) -> ThemeCapability {
+        self.capability
+    }
+}
+
+/// Exact per-property accounting shared by family-owned direct paint receipts.
+///
+/// Families retain ownership of terminal identity and geometry. This ledger only proves that
+/// every effective typed paint checkpoint emitted the same rule and value exactly once.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DirectPaintTerminalLedger {
+    effective_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+    emitted_by_property: BTreeMap<(usize, ResolvedStyleProperty), usize>,
+}
+
+impl DirectPaintTerminalLedger {
+    pub(crate) fn record(
+        &mut self,
+        expected: Option<&DirectPaintExpectation>,
+        source_owns: bool,
+        emitted: Option<(usize, &str)>,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        if source_owns {
+            return emitted.is_none();
+        }
+        match (expected, emitted) {
+            (None, None) => true,
+            (Some(expected), Some((rule_index, css))) => {
+                let expected_key = (expected.rule_index(), property);
+                *self.effective_by_property.entry(expected_key).or_default() += 1;
+                let matches = expected.rule_index() == rule_index && expected.css() == css;
+                if matches {
+                    *self
+                        .emitted_by_property
+                        .entry((rule_index, property))
+                        .or_default() += 1;
+                }
+                matches
+            }
+            (Some(expected), None) => {
+                *self
+                    .effective_by_property
+                    .entry((expected.rule_index(), property))
+                    .or_default() += 1;
+                false
+            }
+            (None, Some(_)) => false,
+        }
+    }
+
+    pub(crate) fn has_effective_rule(&self, rule_index: usize) -> bool {
+        self.effective_by_property
+            .iter()
+            .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
+    }
+
+    pub(crate) fn has_effective_property(
+        &self,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.effective_by_property
+            .get(&(rule_index, property))
+            .copied()
+            .unwrap_or(0)
+            != 0
+    }
+
+    pub(crate) fn proves_property(
+        &self,
+        terminal_complete: bool,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        let key = (rule_index, property);
+        let effective = self.effective_by_property.get(&key).copied().unwrap_or(0);
+        terminal_complete
+            && effective != 0
+            && self.emitted_by_property.get(&key).copied().unwrap_or(0) == effective
+    }
+
+    #[cfg(test)]
+    pub(crate) fn proves_rule(&self, terminal_complete: bool, rule_index: usize) -> bool {
+        let effective_properties = self
+            .effective_by_property
+            .keys()
+            .filter_map(|(candidate, property)| (*candidate == rule_index).then_some(*property))
+            .collect::<Vec<_>>();
+        !effective_properties.is_empty()
+            && effective_properties
+                .into_iter()
+                .all(|property| self.proves_property(terminal_complete, rule_index, property))
+    }
+}
+
+/// Family-owned variants for the real terminal occurrences of one semantic surface.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TerminalVariantDomain<'a> {
+    Uniform {
+        count: usize,
+        variant: ThemeVariant,
+    },
+    PerOccurrence {
+        variants: &'a [ThemeVariant],
+    },
+    GroupedAlternating {
+        group_lengths: &'a [usize],
+        odd: ThemeVariant,
+        even: ThemeVariant,
+    },
+}
+
+impl<'a> TerminalVariantDomain<'a> {
+    pub(crate) const fn uniform(count: usize, variant: ThemeVariant) -> Self {
+        Self::Uniform { count, variant }
+    }
+
+    pub(crate) const fn per_occurrence(variants: &'a [ThemeVariant]) -> Self {
+        Self::PerOccurrence { variants }
+    }
+
+    pub(crate) const fn grouped_alternating(
+        group_lengths: &'a [usize],
+        odd: ThemeVariant,
+        even: ThemeVariant,
+    ) -> Self {
+        Self::GroupedAlternating {
+            group_lengths,
+            odd,
+            even,
+        }
+    }
+
+    fn for_each(
+        self,
+        mut visit: impl FnMut(usize, ThemeVariant) -> Result<(), OperationWorkError>,
+    ) -> Result<(), OperationWorkError> {
+        match self {
+            Self::Uniform { count, variant } => {
+                for ordinal in 1..=count {
+                    visit(ordinal, variant)?;
+                }
+            }
+            Self::PerOccurrence { variants } => {
+                for (index, variant) in variants.iter().copied().enumerate() {
+                    visit(index.saturating_add(1), variant)?;
+                }
+            }
+            Self::GroupedAlternating {
+                group_lengths,
+                odd,
+                even,
+            } => {
+                let mut ordinal = 0usize;
+                for group_length in group_lengths.iter().copied() {
+                    for local_index in 0..group_length {
+                        ordinal = ordinal.saturating_add(1);
+                        visit(ordinal, if local_index % 2 == 0 { odd } else { even })?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TerminalStyleResolution<'a> {
+    Direct(ThemeTarget),
+    Textual {
+        terminal_target: ThemeTarget,
+        owned_rule_targets: &'a [ThemeTarget],
+    },
+}
+
+impl TerminalStyleResolution<'_> {
+    const fn terminal_target(self) -> ThemeTarget {
+        match self {
+            Self::Direct(target) => target,
+            Self::Textual {
+                terminal_target, ..
+            } => terminal_target,
+        }
+    }
+
+    fn owns_target(self, target: ThemeTarget) -> bool {
+        match self {
+            Self::Direct(owned) => owned == target,
+            Self::Textual {
+                owned_rule_targets, ..
+            } => owned_rule_targets.contains(&target),
+        }
+    }
+}
+
+/// One family-owned terminal domain reconciled only for mechanisms classified Unsupported.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UnsupportedTerminalDomain<'a> {
+    resolution: TerminalStyleResolution<'a>,
+    variants: TerminalVariantDomain<'a>,
+    source_owned_fill: Option<&'a [bool]>,
+    source_owned_stroke: Option<&'a [bool]>,
+    fill_fully_overridden: bool,
+    reconcile_rules: bool,
+    resolve_ordinal_rules: bool,
+}
+
+impl<'a> UnsupportedTerminalDomain<'a> {
+    pub(crate) const fn direct(target: ThemeTarget, variants: TerminalVariantDomain<'a>) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Direct(target),
+            variants,
+            source_owned_fill: None,
+            source_owned_stroke: None,
+            fill_fully_overridden: false,
+            reconcile_rules: true,
+            resolve_ordinal_rules: true,
+        }
+    }
+
+    /// Reconciles only ordinal-palette and effect-binding fallbacks for a surface whose rule
+    /// facets remain owned by a family-local plan.
+    pub(crate) const fn fallbacks_only(
+        target: ThemeTarget,
+        variants: TerminalVariantDomain<'a>,
+    ) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Direct(target),
+            variants,
+            source_owned_fill: None,
+            source_owned_stroke: None,
+            fill_fully_overridden: false,
+            reconcile_rules: false,
+            resolve_ordinal_rules: true,
+        }
+    }
+
+    /// Resolves whole-surface fallback winners without inventing an ordinal identity.
+    /// The family still owns ordinal-rule accounting and the final visible applicability check.
+    pub(crate) const fn static_fallbacks_only(target: ThemeTarget, variant: ThemeVariant) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Direct(target),
+            variants: TerminalVariantDomain::uniform(1, variant),
+            source_owned_fill: None,
+            source_owned_stroke: None,
+            fill_fully_overridden: false,
+            reconcile_rules: false,
+            resolve_ordinal_rules: false,
+        }
+    }
+
+    /// Marks per-occurrence fill terminals that are owned by Mermaid source/config output.
+    ///
+    /// Source/config fill overrides suppress unsupported fill-rule winners and ordinal-palette
+    /// fallback for that occurrence. Other winning properties and effect bindings remain active.
+    pub(crate) const fn with_source_owned_fill(mut self, owned: &'a [bool]) -> Self {
+        self.source_owned_fill = Some(owned);
+        self
+    }
+
+    /// Suppresses only stroke paint winners owned by source/config at the actual occurrence.
+    /// Fill, stroke geometry, and effect requests keep their independent ownership.
+    pub(crate) const fn with_source_owned_stroke(mut self, owned: &'a [bool]) -> Self {
+        self.source_owned_stroke = Some(owned);
+        self
+    }
+
+    /// Suppresses only fill requests when the family has proved that higher-priority terminal
+    /// owners cover every occurrence. This requires completed writer evidence, not just rules.
+    pub(crate) const fn with_fill_fully_overridden(mut self, overridden: bool) -> Self {
+        self.fill_fully_overridden = overridden;
+        self
+    }
+
+    pub(crate) const fn textual(
+        terminal_target: ThemeTarget,
+        owned_rule_targets: &'a [ThemeTarget],
+        variants: TerminalVariantDomain<'a>,
+    ) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Textual {
+                terminal_target,
+                owned_rule_targets,
+            },
+            variants,
+            source_owned_fill: None,
+            source_owned_stroke: None,
+            fill_fully_overridden: false,
+            reconcile_rules: true,
+            resolve_ordinal_rules: true,
+        }
+    }
+
+    fn stroke_is_overridden(self, ordinal: usize) -> bool {
+        self.source_owned_stroke
+            .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn fill_is_overridden(self, ordinal: usize) -> bool {
+        self.fill_fully_overridden
+            || self
+                .source_owned_fill
+                .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
+                .copied()
+                .unwrap_or(false)
+    }
+}
+
+#[derive(Debug)]
+enum UnsupportedMechanismObservation {
+    Rule {
+        all_unsupported: bool,
+        reasons_by_property: BTreeMap<ResolvedStyleProperty, FamilyThemeResidualReason>,
+    },
+    OrdinalPalette {
+        unsupported: bool,
+    },
+    EffectBinding {
+        unsupported: bool,
+    },
+}
+
+impl UnsupportedMechanismObservation {
+    fn is_owned(&self) -> bool {
+        match self {
+            Self::Rule {
+                all_unsupported, ..
+            } => *all_unsupported,
+            Self::OrdinalPalette { unsupported } | Self::EffectBinding { unsupported } => {
+                *unsupported
+            }
+        }
+    }
+}
+
+/// Reconciles terminal-less or unsupported family surfaces from real family occurrence facts.
+///
+/// The family owns occurrence identity. This shared algorithm owns selector matching, source-order
+/// winners, palette fallback, effect-binding selection, and final evidence accounting.
+pub(crate) fn reconcile_unsupported_terminal_domains(
+    theme: &ResolvedDiagramTheme,
+    evidence: &mut FamilyThemeEvidence,
+    domains: &[UnsupportedTerminalDomain<'_>],
+    work_meter: &OperationWorkMeter,
+) -> Result<(), OperationWorkError> {
+    work_meter.charge(theme.family_mechanism_routes().len())?;
+
+    let mut target_domains = BTreeMap::<ThemeTarget, usize>::new();
+    for (domain_index, domain) in domains.iter().copied().enumerate() {
+        match domain.resolution {
+            TerminalStyleResolution::Direct(target) => {
+                let previous = target_domains.insert(target, domain_index);
+                debug_assert!(previous.is_none());
+            }
+            TerminalStyleResolution::Textual {
+                owned_rule_targets, ..
+            } => {
+                for target in owned_rule_targets.iter().copied() {
+                    let previous = target_domains.insert(target, domain_index);
+                    debug_assert!(previous.is_none());
+                }
+            }
+        }
+    }
+
+    let mut observations = (0..domains.len())
+        .map(|_| BTreeMap::<FamilyThemeMechanismKey, UnsupportedMechanismObservation>::new())
+        .collect::<Vec<_>>();
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let target = match route.mechanism() {
+            FamilyThemeMechanism::BaseTypography(_) => continue,
+            FamilyThemeMechanism::RuleFacet { target, .. }
+            | FamilyThemeMechanism::OrdinalPalette { target }
+            | FamilyThemeMechanism::EffectBinding { target, .. } => target,
+        };
+        let Some(domain_index) = target_domains.get(&target).copied() else {
+            continue;
+        };
+        let key = theme.family_mechanism_key(route);
+        match route.mechanism() {
+            FamilyThemeMechanism::RuleFacet { facet, .. } => {
+                if !domains[domain_index].reconcile_rules {
+                    continue;
+                }
+                let entry = observations[domain_index].entry(key).or_insert_with(|| {
+                    UnsupportedMechanismObservation::Rule {
+                        all_unsupported: true,
+                        reasons_by_property: BTreeMap::new(),
+                    }
+                });
+                let UnsupportedMechanismObservation::Rule {
+                    all_unsupported,
+                    reasons_by_property,
+                } = entry
+                else {
+                    unreachable!("one family mechanism key has one mechanism kind")
+                };
+                *all_unsupported &= route.disposition() == FamilyThemeDisposition::Unsupported;
+                reasons_by_property
+                    .entry(resolved_style_property_for_facet(facet))
+                    .or_insert_with(|| unsupported_residual_for_facet(facet));
+            }
+            FamilyThemeMechanism::OrdinalPalette { .. } => {
+                observations[domain_index].insert(
+                    key,
+                    UnsupportedMechanismObservation::OrdinalPalette {
+                        unsupported: route.disposition() == FamilyThemeDisposition::Unsupported,
+                    },
+                );
+            }
+            FamilyThemeMechanism::EffectBinding { .. } => {
+                observations[domain_index].insert(
+                    key,
+                    UnsupportedMechanismObservation::EffectBinding {
+                        unsupported: route.disposition() == FamilyThemeDisposition::Unsupported,
+                    },
+                );
+            }
+            FamilyThemeMechanism::BaseTypography(_) => unreachable!("filtered above"),
+        }
+    }
+
+    for (domain, observations) in domains.iter().copied().zip(observations) {
+        let mut outcomes = observations
+            .iter()
+            .filter(|(_, observation)| observation.is_owned())
+            .map(|(key, _)| (key.clone(), None))
+            .collect::<BTreeMap<_, Option<FamilyThemeResidualReason>>>();
+        // A domain with no owned unsupported mechanism has nothing to reconcile.  In
+        // particular, do not rescan every ordinal occurrence just to discover that all
+        // observations are typed, shadowed, or otherwise not owned by this fallback path.
+        if outcomes.is_empty() {
+            continue;
+        }
+        // Palette membership is invariant across this domain's terminal occurrences.
+        let palette_keys = observations
+            .keys()
+            .filter(|key| matches!(key, FamilyThemeMechanismKey::OrdinalPalette { .. }))
+            .collect::<Vec<_>>();
+        domain.variants.for_each(|ordinal, variant| {
+            work_meter.charge(1)?;
+            let terminal_target = domain.resolution.terminal_target();
+            let ordinal_identity = domain.resolve_ordinal_rules.then_some(ordinal);
+            let style = match domain.resolution {
+                TerminalStyleResolution::Direct(_) => theme.style_with_work_meter(
+                    terminal_target,
+                    variant,
+                    ordinal_identity,
+                    work_meter,
+                )?,
+                TerminalStyleResolution::Textual { .. } => theme.text_style_with_work_meter(
+                    terminal_target,
+                    variant,
+                    ordinal_identity,
+                    work_meter,
+                )?,
+            };
+
+            for (property, origin) in style.winner_rule_properties() {
+                if (property == ResolvedStyleProperty::Fill && domain.fill_is_overridden(ordinal))
+                    || (property == ResolvedStyleProperty::Stroke
+                        && domain.stroke_is_overridden(ordinal))
+                {
+                    continue;
+                }
+                if !domain.resolution.owns_target(origin.target()) {
+                    continue;
+                }
+                let key = FamilyThemeMechanismKey::Rule {
+                    index: origin.rule_index(),
+                    target: origin.target(),
+                };
+                let Some(UnsupportedMechanismObservation::Rule {
+                    reasons_by_property,
+                    ..
+                }) = observations.get(&key)
+                else {
+                    continue;
+                };
+                if let Some(reason) = reasons_by_property.get(&property).copied()
+                    && let Some(outcome) = outcomes.get_mut(&key)
+                {
+                    outcome.get_or_insert(reason);
+                }
+            }
+
+            if !domain.fill_is_overridden(ordinal)
+                && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            {
+                for &key in &palette_keys {
+                    let FamilyThemeMechanismKey::OrdinalPalette { target } = key else {
+                        unreachable!("filtered palette key")
+                    };
+                    if theme.series_color(*target, ordinal).is_some()
+                        && let Some(outcome) = outcomes.get_mut(key)
+                    {
+                        outcome.get_or_insert(FamilyThemeResidualReason::UnsupportedOrdinalPalette);
+                    }
+                }
+            }
+
+            if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
+                theme.resolve_effect(terminal_target, style.effect_resolution())
+            {
+                let key = FamilyThemeMechanismKey::EffectBinding {
+                    target: binding.target(),
+                    effect_id: binding.effect_id().to_string(),
+                };
+                if let Some(outcome) = outcomes.get_mut(&key) {
+                    outcome.get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+                }
+            }
+            Ok(())
+        })?;
+
+        for (key, outcome) in outcomes {
+            if let Some(reason) = outcome {
+                evidence.mark_residual(key, reason);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) const fn resolved_style_property_for_facet(
+    facet: FamilyThemeRuleFacet,
+) -> ResolvedStyleProperty {
+    match facet {
+        FamilyThemeRuleFacet::Fill(_) => ResolvedStyleProperty::Fill,
+        FamilyThemeRuleFacet::Stroke(_) => ResolvedStyleProperty::Stroke,
+        FamilyThemeRuleFacet::StrokeWidth => ResolvedStyleProperty::StrokeWidth,
+        FamilyThemeRuleFacet::StrokeDasharray => ResolvedStyleProperty::StrokeDasharray,
+        FamilyThemeRuleFacet::StrokeLinecap => ResolvedStyleProperty::StrokeLinecap,
+        FamilyThemeRuleFacet::StrokeLinejoin => ResolvedStyleProperty::StrokeLinejoin,
+        FamilyThemeRuleFacet::Opacity => ResolvedStyleProperty::Opacity,
+        FamilyThemeRuleFacet::FillOpacity => ResolvedStyleProperty::FillOpacity,
+        FamilyThemeRuleFacet::StrokeOpacity => ResolvedStyleProperty::StrokeOpacity,
+        FamilyThemeRuleFacet::Radius => ResolvedStyleProperty::Radius,
+        FamilyThemeRuleFacet::Padding => ResolvedStyleProperty::Padding,
+        FamilyThemeRuleFacet::Typography(property) => ResolvedStyleProperty::Typography(property),
+        FamilyThemeRuleFacet::Effect => ResolvedStyleProperty::Effect,
+    }
+}
+
+pub(crate) const fn unsupported_residual_for_facet(
+    facet: FamilyThemeRuleFacet,
+) -> FamilyThemeResidualReason {
+    match facet {
+        FamilyThemeRuleFacet::Typography(_) => FamilyThemeResidualReason::UnsupportedTypography,
+        FamilyThemeRuleFacet::Effect => FamilyThemeResidualReason::UnsupportedEffect,
+        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_) => {
+            FamilyThemeResidualReason::UnsupportedPaint
+        }
+        FamilyThemeRuleFacet::StrokeWidth
+        | FamilyThemeRuleFacet::StrokeDasharray
+        | FamilyThemeRuleFacet::StrokeLinecap
+        | FamilyThemeRuleFacet::StrokeLinejoin
+        | FamilyThemeRuleFacet::Opacity
+        | FamilyThemeRuleFacet::FillOpacity
+        | FamilyThemeRuleFacet::StrokeOpacity
+        | FamilyThemeRuleFacet::Radius
+        | FamilyThemeRuleFacet::Padding => FamilyThemeResidualReason::UnsupportedGeometry,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
+        EffectGraph, EffectInput, EffectPrimitive, FamilyThemeMechanismKey, OrdinalPalette,
+        OrdinalSelector, ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+        ThemeVariant,
+    };
+    use crate::family::FamilyThemeEvidence;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    fn resolved_theme(
+        family: DiagramFamilyId,
+        rules: impl IntoIterator<Item = ThemeRule>,
+    ) -> crate::diagram_theme::ResolvedDiagramTheme {
+        let styles = rules
+            .into_iter()
+            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile terminal evidence fixture")
+            .resolve(family)
+    }
+
+    fn resolved_spec(
+        family: DiagramFamilyId,
+        spec: DiagramThemeSpec,
+    ) -> crate::diagram_theme::ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(spec)
+            .expect("compile terminal evidence fixture")
+            .resolve(family)
+    }
+
+    fn fill_rule(target: ThemeTarget, color: &str) -> ThemeRule {
+        ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(
+                CanvasPaint::solid(color).expect("valid terminal evidence fixture color"),
+            ),
+        )
+    }
+
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
+
+    fn static_label_stroke_workload(
+        rule_count: usize,
+        palettes: bool,
+        clear_fill: bool,
+    ) -> ResolvedDiagramTheme {
+        let mut styles = (0..rule_count).fold(ThemeRuleSet::default(), |styles, _| {
+            styles.with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+            ))
+        });
+        if palettes {
+            let palette =
+                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+            for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+                styles = styles.with_ordinal_palette(target, palette.clone());
+            }
+        }
+        if clear_fill {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = Specified::Clear;
+            styles = styles.with_rule(ThemeRule::new(ThemeTarget::NodeLabel, patch));
+        }
+        resolved_spec(
+            DiagramFamilyId::MINDMAP,
+            DiagramThemeSpec::new().with_styles(styles),
+        )
+    }
+
+    #[test]
+    fn large_static_label_domains_preserve_palette_fallback_and_exact_work_limits() {
+        const RULES: usize = 511;
+        const OCCURRENCES: usize = 1_000;
+        for (palettes, clear_fill, source_owned) in [
+            (false, false, false),
+            (true, false, false),
+            (true, false, true),
+            (true, true, false),
+        ] {
+            let theme = static_label_stroke_workload(RULES, palettes, clear_fill);
+            let source_owned_fill = vec![source_owned; OCCURRENCES];
+            let domains = [UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                TerminalVariantDomain::uniform(OCCURRENCES, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)];
+            let required_work = theme.family_mechanism_routes().len() + OCCURRENCES;
+            let meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
+                    .unwrap(),
+            );
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
+                .unwrap();
+            assert_eq!(meter.used(), required_work);
+            let expected_rule_residuals = 1 + usize::from(clear_fill);
+            let palette_applies = palettes && !clear_fill && !source_owned;
+            assert_eq!(
+                evidence.residuals().len(),
+                expected_rule_residuals + 2 * usize::from(palette_applies)
+            );
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                RULES - 1 + 2 * usize::from(palettes && !palette_applies)
+            );
+            for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+                let key = FamilyThemeMechanismKey::OrdinalPalette { target };
+                assert_eq!(
+                    evidence
+                        .residuals()
+                        .iter()
+                        .any(|residual| residual.key() == &key),
+                    palette_applies
+                );
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().contains(&key),
+                    palettes && !palette_applies
+                );
+            }
+            let limited = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
+                    .unwrap(),
+            );
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let error =
+                reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &limited)
+                    .unwrap_err();
+            assert!(matches!(
+                error,
+                OperationWorkError::ResourceLimitExceeded(_)
+            ));
+            assert_eq!(limited.used(), required_work - 1);
+        }
+    }
+
+    #[test]
+    #[ignore = "manual unsupported palette discovery benchmark"]
+    fn unsupported_palette_discovery_workload_benchmark() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        for rules in [1, 128, 512] {
+            let theme = static_label_stroke_workload(rules, false, false);
+            let domains = [UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                TerminalVariantDomain::uniform(1_000, ThemeVariant::Default),
+            )];
+            let mut samples = Vec::new();
+            for iteration in 0..9 {
+                let meter = work_meter();
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                let start = Instant::now();
+                reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
+                    .unwrap();
+                let elapsed = start.elapsed();
+                assert_eq!(evidence.residuals().len(), 1);
+                assert_eq!(evidence.not_applicable_mechanisms().len(), rules - 1);
+                assert_eq!(meter.used(), rules + 1_000);
+                black_box(evidence);
+                if iteration >= 2 {
+                    samples.push(elapsed);
+                }
+            }
+            samples.sort();
+            eprintln!(
+                "unsupported palette discovery: rules={rules}, terminals=1000, median={:?}",
+                samples[samples.len() / 2]
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_terminal_rule_is_residual_only_when_it_wins_a_real_occurrence() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [fill_rule(ThemeTarget::Node, "#123456").for_family(DiagramFamilyId::TREE_VIEW)],
+        );
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        };
+
+        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut visible,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile visible TreeView Node terminal");
+        assert_eq!(visible.residuals().len(), 1);
+        assert_eq!(visible.residuals()[0].key(), &key);
+        assert!(visible.not_applicable_mechanisms().is_empty());
+
+        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut absent,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile absent TreeView Node terminal");
+        assert_eq!(absent.not_applicable_mechanisms(), &[key]);
+        assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn source_owned_fill_suppresses_only_owned_unsupported_fill_occurrences() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [fill_rule(ThemeTarget::Node, "#123456").for_family(DiagramFamilyId::TREE_VIEW)],
+        );
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        };
+        for (source_owned, not_applicable) in [([true, true], true), ([true, false], false)] {
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned)],
+                &work_meter(),
+            )
+            .expect("reconcile source-owned unsupported fill");
+            assert_eq!(
+                evidence.not_applicable_mechanisms().contains(&key),
+                not_applicable
+            );
+            if not_applicable {
+                assert!(evidence.residuals().is_empty());
+            } else {
+                assert_eq!(evidence.residuals().len(), 1);
+                assert_eq!(evidence.residuals()[0].key(), &key);
+                assert_eq!(
+                    evidence.residuals()[0].reason(),
+                    FamilyThemeResidualReason::UnsupportedPaint,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn source_owned_fill_keeps_unsupported_siblings_in_the_same_rule() {
+        for font_sibling in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if font_sibling {
+                patch.typography.font_size_px = Specified::Value(40.0);
+            } else {
+                patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+            }
+            let theme = resolved_theme(
+                DiagramFamilyId::TREE_VIEW,
+                [ThemeRule::new(ThemeTarget::Node, patch).for_family(DiagramFamilyId::TREE_VIEW)],
+            );
+            let key = FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            };
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&[true])],
+                &work_meter(),
+            )
+            .expect("reconcile source-owned fill with an unsupported sibling");
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert_eq!(evidence.residuals().len(), 1);
+            assert_eq!(evidence.residuals()[0].key(), &key);
+            assert_eq!(
+                evidence.residuals()[0].reason(),
+                if font_sibling {
+                    FamilyThemeResidualReason::UnsupportedTypography
+                } else {
+                    FamilyThemeResidualReason::UnsupportedPaint
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_terminal_rules_respect_shadowing_and_ordinal_intersection() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [
+                fill_rule(ThemeTarget::Node, "#111111").for_family(DiagramFamilyId::TREE_VIEW),
+                fill_rule(ThemeTarget::Node, "#222222").for_family(DiagramFamilyId::TREE_VIEW),
+                fill_rule(ThemeTarget::Node, "#333333")
+                    .for_family(DiagramFamilyId::TREE_VIEW)
+                    .with_ordinal(OrdinalSelector::exact(2).expect("valid exact ordinal")),
+            ],
+        );
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile shadowed and non-intersecting TreeView rules");
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[
+                FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Node,
+                },
+                FamilyThemeMechanismKey::Rule {
+                    index: 2,
+                    target: ThemeTarget::Node,
+                },
+            ]
+        );
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::Node,
+            }
+        );
+    }
+
+    #[test]
+    fn domains_without_owned_outcomes_do_not_resolve_each_occurrence() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [fill_rule(ThemeTarget::Edge, "#123456").for_family(DiagramFamilyId::TREE_VIEW)],
+        );
+        let route_count = theme.family_mechanism_routes().len();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, route_count)
+            .expect("exact route-scan work limit");
+        let meter = OperationWorkMeter::new(policy);
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(10_000, ThemeVariant::Default),
+            )],
+            &meter,
+        )
+        .expect("a domain with no owned fallback must stop after the route scan");
+    }
+
+    #[test]
+    fn textual_terminal_domain_uses_one_text_and_role_local_winner_chain() {
+        let theme = resolved_theme(
+            DiagramFamilyId::MINDMAP,
+            [
+                fill_rule(ThemeTarget::Text, "#111111").for_family(DiagramFamilyId::MINDMAP),
+                fill_rule(ThemeTarget::NodeLabel, "#222222").for_family(DiagramFamilyId::MINDMAP),
+            ],
+        );
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile shared Mindmap label terminal");
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Text,
+            }]
+        );
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::NodeLabel,
+            }
+        );
+    }
+
+    #[test]
+    fn unsupported_ordinal_palette_tracks_visible_and_absent_occurrences() {
+        let palette =
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").expect("valid palette color")])
+                .expect("non-empty palette");
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+            ),
+        );
+        let key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::Node,
+        };
+
+        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut visible,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile visible unsupported palette");
+        assert_eq!(visible.residuals().len(), 1);
+        assert_eq!(visible.residuals()[0].key(), &key);
+        assert_eq!(
+            visible.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+        );
+
+        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut absent,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile absent unsupported palette");
+        assert_eq!(absent.not_applicable_mechanisms(), &[key]);
+        assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn fallback_only_palette_uses_the_real_fill_winner_without_claiming_the_rule() {
+        let palette =
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").expect("valid palette color")])
+                .expect("non-empty palette");
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        fill_rule(ThemeTarget::Edge, "#abcdef")
+                            .for_family(DiagramFamilyId::TREE_VIEW),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Edge, palette),
+            ),
+        );
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Edge,
+        };
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::Edge,
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile only TreeView Edge fallbacks");
+
+        assert_eq!(evidence.not_applicable_mechanisms(), &[palette_key]);
+        assert!(evidence.residuals().is_empty());
+        assert!(!evidence.not_applicable_mechanisms().contains(&rule_key));
+    }
+
+    #[test]
+    fn fallback_only_effect_binding_yields_to_an_explicit_effect_winner() {
+        let bound_effect_id = "tree-edge-bound";
+        let explicit_effect_id = "tree-edge-explicit";
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    bound_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .expect("valid bound effect graph"),
+            )
+            .expect("unique bound effect graph")
+            .with_graph(
+                EffectGraph::new(
+                    explicit_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }],
+                )
+                .expect("valid explicit effect graph"),
+            )
+            .expect("unique explicit effect graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::Edge, bound_effect_id)
+                    .expect("valid effect binding"),
+            )
+            .expect("unique effect binding");
+        let explicit_rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_effect(explicit_effect_id)
+                .expect("valid explicit effect"),
+        )
+        .for_family(DiagramFamilyId::TREE_VIEW);
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new()
+                .with_styles(ThemeRuleSet::default().with_rule(explicit_rule))
+                .with_effects(effects),
+        );
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Edge,
+        };
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::Edge,
+            effect_id: bound_effect_id.to_string(),
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile only TreeView Edge fallbacks");
+
+        assert_eq!(evidence.not_applicable_mechanisms(), &[binding_key]);
+        assert!(evidence.residuals().is_empty());
+        assert!(!evidence.not_applicable_mechanisms().contains(&rule_key));
+    }
+
+    #[test]
+    fn unsupported_effect_binding_tracks_visible_and_absent_occurrences() {
+        let effect_id = "tree-node-blur";
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .expect("valid effect graph"),
+            )
+            .expect("unique effect graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::Node, effect_id).expect("valid effect binding"),
+            )
+            .expect("unique effect binding");
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new().with_effects(effects),
+        );
+        let key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::Node,
+            effect_id: effect_id.to_string(),
+        };
+
+        let mut visible = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut visible,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&[true])],
+            &work_meter(),
+        )
+        .expect("reconcile visible unsupported effect");
+        assert_eq!(visible.residuals().len(), 1);
+        assert_eq!(visible.residuals()[0].key(), &key);
+        assert_eq!(
+            visible.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedEffect,
+        );
+
+        let mut absent = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut absent,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile absent unsupported effect");
+        assert_eq!(absent.not_applicable_mechanisms(), &[key]);
+        assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn stroke_ownership_does_not_mask_fill_or_other_winning_siblings() {
+        for extra_geometry in [false, true] {
+            let mut patch = ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke(CanvasPaint::solid("#abcdef").unwrap());
+            if extra_geometry {
+                patch = patch.with_stroke_width(3.0).unwrap();
+            }
+            let theme = resolved_theme(
+                DiagramFamilyId::FLOWCHART,
+                [ThemeRule::new(ThemeTarget::Marker, patch)],
+            );
+            for (fill_owned, stroke_owned) in [(false, true), (true, false), (true, true)] {
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                reconcile_unsupported_terminal_domains(
+                    &theme,
+                    &mut evidence,
+                    &[UnsupportedTerminalDomain::direct(
+                        ThemeTarget::Marker,
+                        TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+                    )
+                    .with_source_owned_fill(&[fill_owned])
+                    .with_source_owned_stroke(&[stroke_owned])],
+                    &work_meter(),
+                )
+                .unwrap();
+                let residual = extra_geometry || !fill_owned || !stroke_owned;
+                assert!(evidence.applied().is_empty());
+                assert_eq!(evidence.residuals().len(), usize::from(residual));
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().len(),
+                    usize::from(!residual)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stroke_ownership_is_per_occurrence_and_missing_flags_do_not_suppress_requests() {
+        let theme = resolved_theme(
+            DiagramFamilyId::FLOWCHART,
+            [ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(2).unwrap())],
+        );
+        for owned in [vec![true], vec![true, false], vec![false, true]] {
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Marker,
+                    TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+                )
+                .with_source_owned_stroke(&owned)],
+                &work_meter(),
+            )
+            .unwrap();
+            assert_eq!(
+                evidence.residuals().len(),
+                usize::from(owned.get(1) != Some(&true))
+            );
+        }
+        let mut unchanged = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut unchanged,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Marker,
+                TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&[true, true])],
+            &work_meter(),
+        )
+        .unwrap();
+        assert_eq!(unchanged.residuals().len(), 1);
+    }
+}

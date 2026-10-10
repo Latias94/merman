@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{
+    DiagramFamilyId, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
+    SvgRequest,
+};
 
 fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, RenderError> {
     let request = SvgRequest {
@@ -27,7 +30,7 @@ fn typed_facade_renders_a_mermaid_diagram() {
     assert!(svg.svg().contains("<svg"));
     assert!(svg.svg().contains("Start"));
     assert!(svg.svg().contains("Done"));
-    assert_eq!(svg.evidence().execution_path().as_str(), "renderer");
+    assert_eq!(svg.evidence().family_id(), DiagramFamilyId::FLOWCHART);
 }
 
 #[test]

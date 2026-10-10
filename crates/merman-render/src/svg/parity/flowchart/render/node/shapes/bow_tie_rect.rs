@@ -1,7 +1,5 @@
 //! Flowchart v2 bow tie rectangle (Stored data).
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
@@ -10,7 +8,7 @@ use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
@@ -18,6 +16,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         None,
         label.text,
         label.label_type,
@@ -57,6 +56,39 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
     ));
 
     let path_data = path_from_points(&points);
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
+        let _ = write!(
+            out,
+            r##"<g class="basic label-container outer-path" transform="translate({},0)" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
+            util::fmt(rx / 2.0),
+            escape_attr(common.rough_group_style),
+            escape_attr(&fill_d),
+            escape_attr(common.fill_color),
+            escape_attr(&stroke_d),
+            escape_attr(common.stroke_color),
+            util::fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+        );
+        return;
+    }
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" transform="translate({},0)">"#,
+            util::fmt(rx / 2.0),
+        );
+        helpers::write_raw_filled_stroked_path(
+            out,
+            &path_data,
+            common.fill_color,
+            common.stroke_color,
+            common.stroke_width,
+            common.style,
+        );
+        out.push_str("</g>");
+        return;
+    }
+
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(

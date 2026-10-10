@@ -32,12 +32,14 @@ pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_
 pub const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
 pub const RESOURCE_LIMIT_RULE_ID: &str = "merman.resource.source_bytes_exceeded";
 pub const DOCUMENT_DIAGRAM_LIMIT_RULE_ID: &str = "merman.resource.document_diagrams_exceeded";
+pub const THEME_EVALUATION_LIMIT_RULE_ID: &str = "merman.resource.theme_evaluation_exceeded";
 pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_matter";
 pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
 pub const INVALID_THEME_COLOR_RULE_ID: &str = "merman.config.invalid_theme_color";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const PARSER_CONTRACT_VIOLATION_RULE_ID: &str = "merman.internal.parser_contract_violation";
+pub const INTERNAL_FAILURE_RULE_ID: &str = "merman.internal.failure";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
@@ -351,6 +353,22 @@ const DOCUMENT_DIAGRAM_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+pub(crate) const THEME_EVALUATION_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
+    id: THEME_EVALUATION_LIMIT_RULE_ID,
+    description: "Report Mermaid theme configuration that exceeds the bounded evaluation budget.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Resource,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanResourcePolicy,
+    fixable: false,
+};
+
 pub(crate) const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     id: MALFORMED_FRONT_MATTER_RULE_ID,
     description: "Report malformed YAML front matter blocks before diagram parsing.",
@@ -434,6 +452,22 @@ pub(crate) const PARSER_CONTRACT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor
     evidence: &[
         "docs/adr/0070-diagnostics-first-analysis-contract.md",
         "docs/adr/0073-family-owned-diagram-architecture.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    tags: &[],
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
+    fixable: false,
+};
+
+pub(crate) const INTERNAL_FAILURE_RULE: RuleDescriptor = RuleDescriptor {
+    id: INTERNAL_FAILURE_RULE_ID,
+    description: "Report a low-frequency internal engine failure without assigning source ownership.",
+    evidence: &[
+        "docs/adr/0068-render-side-presentation-theme-view.md",
+        "docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
@@ -567,12 +601,14 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     RECOVERED_EDITOR_FACTS_RULE,
     RESOURCE_LIMIT_RULE,
     DOCUMENT_DIAGRAM_LIMIT_RULE,
+    THEME_EVALUATION_LIMIT_RULE,
     MALFORMED_FRONT_MATTER_RULE,
     INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE,
     INVALID_THEME_COLOR_RULE,
     PANIC_RULE,
     PARSER_CONTRACT_VIOLATION_RULE,
+    INTERNAL_FAILURE_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,

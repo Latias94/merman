@@ -49,11 +49,19 @@ fn source_node<'a>(document: &'a roxmltree::Document<'_>) -> roxmltree::Node<'a,
         .descendants()
         .find(|node| {
             node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                && node.attribute("data-id") == Some("A")
+                && node.attribute("data-et") == Some("node")
         })
-        .expect("node A")
+        .unwrap_or_else(|| {
+            panic!(
+                "node A not found; group IDs: {:?}",
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("g"))
+                    .filter_map(|node| node.attribute("id"))
+                    .collect::<Vec<_>>()
+            )
+        })
 }
 
 fn dimension(node: roxmltree::Node<'_, '_>, name: &str) -> f64 {
@@ -274,12 +282,7 @@ fn hourglass_fixture_labels_ignore_bounds_cached_before_the_label_was_cleared() 
             let document = roxmltree::Document::parse(&svg).unwrap();
             let hourglass = document
                 .descendants()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node
-                            .attribute("id")
-                            .is_some_and(|id| id.contains("flowchart-n44-"))
-                })
+                .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some("n44"))
                 .expect("fixture hourglass node");
             let label = hourglass
                 .descendants()

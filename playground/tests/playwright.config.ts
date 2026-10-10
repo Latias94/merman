@@ -62,12 +62,18 @@ export default defineConfig({
     },
     {
       name: "firefox-smoke",
-      testMatch: /cross-browser\.smoke\.spec\.ts/u,
+      testMatch: [
+        /cross-browser\.smoke\.spec\.ts/u,
+        /theme-text-surface\.smoke\.spec\.ts/u,
+      ],
       use: { ...devices["Desktop Firefox"] },
     },
     {
       name: "webkit-smoke",
-      testMatch: /cross-browser\.smoke\.spec\.ts/u,
+      testMatch: [
+        /cross-browser\.smoke\.spec\.ts/u,
+        /theme-text-surface\.smoke\.spec\.ts/u,
+      ],
       use: { ...devices["Desktop Safari"] },
     },
     {

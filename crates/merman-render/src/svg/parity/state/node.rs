@@ -17,24 +17,62 @@ use merman_core::svg_security::{
     MermaidNavigationSecurity, normalize_mermaid_tooltip_attribute, prepare_mermaid_navigation_href,
 };
 
+fn rounded_rect_rough_cache_key(
+    w: f64,
+    h: f64,
+    radius: f64,
+    seed: roughr::core::RoughJsSeed,
+) -> StateRoughCacheKey {
+    let radius = super::roughjs::normalized_rounded_rect_radius(w, h, radius);
+    StateRoughCacheKey {
+        tag: 6,
+        a: w.to_bits(),
+        b: h.to_bits(),
+        c: radius.to_bits(),
+        seed,
+    }
+}
+
+fn note_rough_cache_key(
+    w: f64,
+    h: f64,
+    radius: f64,
+    seed: roughr::core::RoughJsSeed,
+) -> StateRoughCacheKey {
+    let radius = super::roughjs::normalized_rounded_rect_radius(w, h, radius);
+    StateRoughCacheKey {
+        tag: 5,
+        a: w.to_bits(),
+        b: h.to_bits(),
+        c: radius.to_bits(),
+        seed,
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+)]
 pub(super) fn render_state_node_svg(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-) {
+    effect_outsets: &mut crate::diagram_theme::EffectOutsets,
+) -> Result<()> {
     let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
-        return;
+        return Ok(());
     };
     let Some(ln) = ctx.layout_nodes_by_id.get(node_id).copied() else {
-        return;
+        return Ok(());
     };
     if ln.is_cluster {
-        return;
+        return Ok(());
     }
+    let terminal_start = out.len();
     let cx = ln.x - origin_x;
     let cy = ln.y - origin_y;
     let w = ln.width.max(1.0);
@@ -47,53 +85,48 @@ pub(super) fn render_state_node_svg(
     };
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
-    let style_parse_start = timing.start();
-    let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
-    let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
-    let mut fill_override: Option<&str> = None;
-    let mut stroke_override: Option<&str> = None;
-    let mut stroke_width_override: Option<f64> = None;
-    for raw in node
-        .css_compiled_styles
-        .iter()
-        .chain(node.css_styles.iter())
-    {
-        let Some(d) = state_parse_inline_decl(raw) else {
-            continue;
-        };
-        if d.key.trim().eq_ignore_ascii_case("fill") {
-            fill_override = Some(d.val.trim());
-        }
-        if d.key.trim().eq_ignore_ascii_case("stroke") {
-            stroke_override = Some(d.val.trim());
-        }
-        if d.key.trim().eq_ignore_ascii_case("stroke-width") {
-            let val = d.val.trim().trim_end_matches("px").trim();
-            if let Ok(v) = val.parse::<f64>() {
-                stroke_width_override = Some(v);
-            }
-        }
-        if state_is_text_style_key(d.key) {
-            text_decls.push(d);
-        } else {
-            shape_decls.push(d);
-        }
-    }
-    let shape_style_attr = state_compact_style_attr(&shape_decls);
-    let text_style_attr = state_compact_style_attr(&text_decls);
-    let div_style_prefix = state_div_style_prefix(&text_decls);
-    if let Some(s) = style_parse_start {
-        details.leaf_nodes_style_parse += s.elapsed();
-    }
+    let effective_look = state_effective_look(ctx);
+    let node_style = ctx.style_plan.node(node_id);
+    let compatibility = ctx.style_plan.compatibility();
+    let node_text_style = node_style
+        .map(crate::state::StateNodeStylePlan::text_style)
+        .unwrap_or_else(|| ctx.style_plan.base_text_style());
+    let shape_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::shape_style_attr)
+        .unwrap_or_default();
+    let fill_path_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::fill_path_style_attr)
+        .unwrap_or_default();
+    let stroke_path_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::stroke_path_style_attr)
+        .unwrap_or_default();
+    let semantic_shape_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::semantic_shape_style_attr)
+        .unwrap_or_default();
+    let text_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::label_style_attr)
+        .unwrap_or_default();
+    let div_style_prefix = node_style
+        .map(crate::state::StateNodeStylePlan::div_style_prefix)
+        .unwrap_or_default();
+    let fill_override = node_style.and_then(crate::state::StateNodeStylePlan::fill_override);
+    let stroke_override = node_style.and_then(crate::state::StateNodeStylePlan::stroke_override);
+    let stroke_width_override =
+        node_style.and_then(crate::state::StateNodeStylePlan::stroke_width_override);
+    let classic_stroke_paint_width = node_style
+        .and_then(crate::state::StateNodeStylePlan::classic_stroke_paint_width)
+        .unwrap_or(0.0);
+    let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
+    let padding_override = node_style.and_then(crate::state::StateNodeStylePlan::padding_override);
 
     let small_shadow_attr = if matches!(node.shape.as_str(), "stateStart" | "stateEnd")
         && w < 25.0
-        && ctx.theme_defaults.node_shadow
+        && compatibility.node_shadow
         && data_look != "handDrawn"
     {
         format!(
             r#" style="filter:url(#{}-drop-shadow-small)""#,
-            ctx.diagram_id
+            escape_attr_display(ctx.diagram_id)
         )
     } else {
         String::new()
@@ -101,15 +134,87 @@ pub(super) fn render_state_node_svg(
 
     match node.shape.as_str() {
         "stateStart" => {
+            if effective_look == "handDrawn" {
+                let key = StateRoughCacheKey {
+                    tag: 7,
+                    a: 14.0f64.to_bits(),
+                    b: 0,
+                    c: 0,
+                    seed: ctx.hand_drawn_seed.seed(),
+                };
+                let rough_start = timing.start();
+                if timing.is_enabled() {
+                    details.leaf_roughjs_calls += 1;
+                    details.leaf_roughjs_unique.insert(key);
+                }
+                let path_d = ctx.rough_cache.get_or_build_circle(key, || {
+                    roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
+                        .unwrap_or_else(|| "M0,0".to_string())
+                });
+                if let Some(start) = rough_start {
+                    details.leaf_nodes_roughjs += start.elapsed();
+                }
+                let surface = compatibility
+                    .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                    .expect("State start node must have a compatibility surface");
+                let compatibility_fill = compatibility.terminal_paint_css(
+                    surface,
+                    crate::state::StateTerminalPaintProperty::Fill,
+                    ctx.diagram_id,
+                );
+                let compatibility_stroke = compatibility.terminal_paint_css(
+                    surface,
+                    crate::state::StateTerminalPaintProperty::Stroke,
+                    ctx.diagram_id,
+                );
+                let fill = fill_override.unwrap_or(compatibility_fill.as_str());
+                let stroke = stroke_override.unwrap_or(compatibility_stroke.as_str());
+                let stroke_width = stroke_width_override
+                    .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                    .max(0.0);
+                let fill_style = escape_attr(fill_path_style_attr);
+                let stroke_style = escape_attr(stroke_path_style_attr);
+                let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+                let _ = write!(
+                    out,
+                    r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                    node_dom_id.attr(),
+                    escape_xml_display(data_look),
+                    fmt_display(cx),
+                    fmt_display(cy),
+                    path_d.as_str(),
+                    escape_xml_display(fill),
+                    fill_style,
+                    path_d.as_str(),
+                    escape_xml_display(stroke),
+                    fmt_display(stroke_width),
+                    stroke_style,
+                );
+                drop(_g_emit);
+                ctx.style_plan.record_node_terminal_emission(
+                    &mut ctx.theme_receipt.borrow_mut(),
+                    node_id,
+                    terminal_start..out.len(),
+                );
+                return Ok(());
+            }
+            let mut semantic_style = semantic_shape_style_attr.to_string();
+            if !small_shadow_attr.is_empty() {
+                let _ = write!(
+                    semantic_style,
+                    ";filter:url(#{}-drop-shadow-small)",
+                    ctx.diagram_id
+                );
+            }
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"{}/></g>"#,
-                node_dom_id,
+                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14" style="{}"/></g>"#,
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
-                small_shadow_attr
+                escape_xml_display(&semantic_style)
             );
             drop(_g_emit);
         }
@@ -121,12 +226,14 @@ pub(super) fn render_state_node_svg(
                     tag: 1,
                     a: 14.0f64.to_bits(),
                     b: 0,
+                    c: 0,
                     seed: ctx.hand_drawn_seed.seed(),
                 });
                 details.leaf_roughjs_unique.insert(StateRoughCacheKey {
                     tag: 2,
                     a: 5.0f64.to_bits(),
                     b: 0,
+                    c: 0,
                     seed: ctx.hand_drawn_seed.seed(),
                 });
             }
@@ -134,12 +241,14 @@ pub(super) fn render_state_node_svg(
                 tag: 1,
                 a: 14.0f64.to_bits(),
                 b: 0,
+                c: 0,
                 seed: ctx.hand_drawn_seed.seed(),
             };
             let inner_key = StateRoughCacheKey {
                 tag: 2,
                 a: 5.0f64.to_bits(),
                 b: 0,
+                c: 0,
                 seed: ctx.hand_drawn_seed.seed(),
             };
 
@@ -154,17 +263,55 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let shape_style_escaped = escape_attr(&shape_style_attr);
-            // stateEnd overrides RoughJS options with lineColor for the outer outline and
-            // stateBorder (falling back to nodeBorder) for both paints of the inner circle.
-            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
-            let outer_stroke = ctx.theme_defaults.line_color.as_str();
-            let inner_fill = ctx.theme_defaults.state_border.as_str();
-            let inner_stroke = inner_fill;
+            // RoughJS emits the same base paints for every look. Neo's stylesheet supplies
+            // its final stroke; copying that CSS into inline style would change the cascade.
+            let outer_surface = crate::state::StateTerminalSurface::SpecialEndOuterClassic;
+            let inner_surface = crate::state::StateTerminalSurface::SpecialEndInnerClassic;
+            let compatibility_outer_fill = compatibility.terminal_paint_css(
+                outer_surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let compatibility_outer_stroke = compatibility.terminal_paint_css(
+                outer_surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let inner_fill = compatibility.terminal_paint_css(
+                inner_surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let inner_stroke = compatibility.terminal_paint_css(
+                inner_surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_str());
+            let outer_stroke_width = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(outer_surface))
+                .max(0.0);
+            let inner_stroke_width = compatibility
+                .terminal_stroke_width_value(inner_surface)
+                .max(0.0);
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
+            let inner_fill_path_style_escaped = escape_attr(
+                node_style
+                    .map(crate::state::StateNodeStylePlan::special_state_inner_fill_path_style_attr)
+                    .unwrap_or_default(),
+            );
+            let inner_stroke_path_style_escaped = escape_attr(
+                node_style
+                    .map(
+                        crate::state::StateNodeStylePlan::special_state_inner_stroke_path_style_attr,
+                    )
+                    .unwrap_or_default(),
+            );
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
@@ -172,16 +319,21 @@ pub(super) fn render_state_node_svg(
                 small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 outer_d.as_str(),
-                escape_attr(outer_stroke),
-                shape_style_escaped,
+                // Mermaid's stateEnd outer path keeps the compatibility stroke as its
+                // presentation attribute. A classDef override is emitted in `style`, where it
+                // can override that fallback without changing the terminal's base SVG shape.
+                escape_attr(&compatibility_outer_stroke),
+                fmt(outer_stroke_width),
+                stroke_path_style_escaped,
                 inner_d.as_str(),
-                escape_attr(inner_fill),
-                shape_style_escaped,
+                escape_attr(&inner_fill),
+                inner_fill_path_style_escaped,
                 inner_d.as_str(),
-                escape_attr(inner_stroke),
-                shape_style_escaped,
+                escape_attr(&inner_stroke),
+                fmt(inner_stroke_width),
+                inner_stroke_path_style_escaped,
             );
             drop(_g_emit);
         }
@@ -191,6 +343,7 @@ pub(super) fn render_state_node_svg(
                 tag: 3,
                 a: w.to_bits(),
                 b: h.to_bits(),
+                c: 0,
                 seed: ctx.hand_drawn_seed.seed(),
             };
             if timing.is_enabled() {
@@ -211,28 +364,40 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let fill_attr =
-                fill_override.unwrap_or(ctx.theme_defaults.special_state_color.as_str());
-            let stroke_attr =
-                stroke_override.unwrap_or(ctx.theme_defaults.special_state_color.as_str());
-            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
-            let shape_style_escaped = escape_attr(&shape_style_attr);
+            let surface = crate::state::StateTerminalSurface::SpecialForkJoinClassic;
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                .max(0.0);
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
-                node_dom_id,
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 stroke_d.as_str(),
                 escape_xml_display(stroke_attr),
                 fmt_display(stroke_width_attr),
-                shape_style_escaped
+                stroke_path_style_escaped
             );
             drop(_g_emit);
         }
@@ -242,6 +407,7 @@ pub(super) fn render_state_node_svg(
                 tag: 4,
                 a: w.to_bits(),
                 b: h.to_bits(),
+                c: 0,
                 seed: ctx.hand_drawn_seed.seed(),
             };
             if timing.is_enabled() {
@@ -261,43 +427,76 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
 
-            let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
-            let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
-            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
-            let shape_style_escaped = escape_attr(&shape_style_attr);
+            let surface = crate::state::StateTerminalSurface::SpecialChoiceClassic;
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                .max(0.0);
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
-                node_dom_id,
+                node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 stroke_d.as_str(),
                 escape_xml_display(stroke_attr),
                 fmt_display(stroke_width_attr),
-                shape_style_escaped
+                stroke_path_style_escaped
             );
             drop(_g_emit);
         }
         "note" => {
             let label = state_node_label_text(node);
+            let label_owner = crate::state::StateLabelOwner::Node(node_id);
+            let prepared_label = ctx.label_sidecar.node(node_id);
+            let measured_label = ctx.label_sidecar.measured_native_geometry(label_owner);
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
                 WrapMode::HtmlLike
             } else {
                 WrapMode::SvgLike
             };
-            let measurement = crate::state::measure_state_markdown_label(
-                &label,
-                ctx.measurer,
-                &ctx.text_style,
-                Some(ctx.html_label_wrapping_width),
-                wrap_mode,
+            let measurement = prepared_label.map_or_else(
+                || {
+                    measured_label.map_or_else(
+                        || {
+                            crate::state::measure_state_markdown_label(
+                                &label,
+                                ctx.measurer,
+                                node_text_style,
+                                Some(ctx.html_label_wrapping_width),
+                                wrap_mode,
+                            )
+                        },
+                        |geometry| crate::state::StateLabelMeasurement {
+                            metrics: geometry.layout_metrics(),
+                            uses_html_wrapping_table: false,
+                        },
+                    )
+                },
+                |prepared| crate::state::StateLabelMeasurement {
+                    metrics: prepared.layout_metrics(),
+                    uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
+                },
             );
             let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
@@ -306,91 +505,149 @@ pub(super) fn render_state_node_svg(
             let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
             let rough_start = timing.start();
-            let key = StateRoughCacheKey {
-                tag: 5,
-                a: w.to_bits(),
-                b: h.to_bits(),
-                seed: ctx.hand_drawn_seed.seed(),
-            };
+            let note_radius = super::roughjs::normalized_rounded_rect_radius(
+                w,
+                h,
+                radius_override.unwrap_or(0.0),
+            );
+            let key = note_rough_cache_key(w, h, note_radius, ctx.hand_drawn_seed.seed());
             if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
-                roughjs_paths_for_rect(StateRoughRectSpec {
-                    x: -w / 2.0,
-                    y: -h / 2.0,
-                    w,
-                    h,
-                    stroke_width: 1.3,
-                    randomness: &ctx.hand_drawn_seed,
-                })
+                if note_radius == 0.0 {
+                    roughjs_paths_for_rect(StateRoughRectSpec {
+                        x: -w / 2.0,
+                        y: -h / 2.0,
+                        w,
+                        h,
+                        stroke_width: 1.3,
+                        randomness: &ctx.hand_drawn_seed,
+                    })
+                } else {
+                    roughjs_paths_for_svg_path(
+                        &mermaid_rounded_rect_path_data(w, h, note_radius),
+                        1.3,
+                        "0 0",
+                        &ctx.hand_drawn_seed,
+                    )
+                }
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
             let label_html_start = timing.start();
-            let label_dom = if ctx.html_labels {
-                state_node_label_html(&label, ctx.text_style.font_size)
+            let label_span_style = (!text_style_attr.is_empty()).then_some(text_style_attr);
+            let label_dom = if let Some(prepared) = prepared_label {
+                if ctx.html_labels {
+                    state_prepared_node_label_html_with_style(prepared, label_span_style)
+                } else {
+                    state_native_svg_text_label(
+                        &label,
+                        Some(prepared),
+                        measured_label,
+                        false,
+                        label_span_style,
+                    )
+                }
+            } else if ctx.html_labels {
+                state_node_label_html_with_style(
+                    &label,
+                    label_span_style,
+                    node_text_style.font_size,
+                )
             } else {
-                state_svg_text_label(&label, false, None)
+                state_native_svg_text_label(&label, None, measured_label, false, label_span_style)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
+            let surface = crate::state::StateTerminalSurface::NoteClassic;
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                .max(0.0);
+            let fill_path_style_escaped = escape_xml_display(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_xml_display(stroke_path_style_attr);
+            let label_style_escaped = escape_xml_display(text_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                 let div_style = if measurement.uses_html_wrapping_table {
                     format!(
-                        "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        "{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        div_style_prefix,
                         fmt(ctx.html_label_wrapping_width),
                         fmt(ctx.html_label_wrapping_width),
                     )
                 } else if lw > metrics.width {
                     format!(
-                        "display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        "{}display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        div_style_prefix,
                         fmt(ctx.html_label_wrapping_width),
                         fmt(lw),
                     )
                 } else {
                     format!(
-                        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                        "{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                        div_style_prefix,
                         fmt(ctx.html_label_wrapping_width),
                     )
                 };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
                     fill_d.as_str(),
-                    escape_xml_display(ctx.theme_defaults.note_bkg.as_str()),
+                    escape_xml_display(fill_attr),
+                    fill_path_style_escaped,
                     stroke_d.as_str(),
-                    escape_xml_display(ctx.theme_defaults.note_border.as_str()),
+                    escape_xml_display(stroke_attr),
+                    fmt_display(stroke_width_attr),
+                    stroke_path_style_escaped,
+                    label_style_escaped,
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
+                    prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
-                    div_style,
+                    escape_attr(&div_style),
                     label_dom
                 );
             } else {
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/>{}</g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
                     fill_d.as_str(),
-                    escape_xml_display(ctx.theme_defaults.note_bkg.as_str()),
+                    escape_xml_display(fill_attr),
+                    fill_path_style_escaped,
                     stroke_d.as_str(),
-                    escape_xml_display(ctx.theme_defaults.note_border.as_str()),
+                    escape_xml_display(stroke_attr),
+                    fmt_display(stroke_width_attr),
+                    stroke_path_style_escaped,
+                    label_style_escaped,
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     label_dom
@@ -409,13 +666,44 @@ pub(super) fn render_state_node_svg(
                 .as_ref()
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
+            let prepared_title = ctx.label_sidecar.node_title(node_id);
+            let prepared_description = ctx.label_sidecar.node_description(node_id);
+            let measured_title = ctx
+                .label_sidecar
+                .measured_native_geometry(crate::state::StateLabelOwner::NodeTitle(node_id));
+            let measured_description = ctx
+                .label_sidecar
+                .measured_native_geometry(crate::state::StateLabelOwner::NodeDescription(node_id));
             let measure_start = timing.start();
-            let title_metrics =
-                ctx.measurer
-                    .measure_wrapped(&title, &ctx.text_style, None, WrapMode::HtmlLike);
-            let desc_metrics =
-                ctx.measurer
-                    .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::HtmlLike);
+            let wrap_mode = if ctx.html_labels {
+                WrapMode::HtmlLike
+            } else {
+                WrapMode::SvgLikeSingleRun
+            };
+            let title_metrics = prepared_title.map_or_else(
+                || {
+                    measured_title.map_or_else(
+                        || {
+                            ctx.measurer
+                                .measure_wrapped(&title, node_text_style, None, wrap_mode)
+                        },
+                        crate::state::StateNativeLabelGeometry::layout_metrics,
+                    )
+                },
+                crate::state::PreparedStateLabel::layout_metrics,
+            );
+            let desc_metrics = prepared_description.map_or_else(
+                || {
+                    measured_description.map_or_else(
+                        || {
+                            ctx.measurer
+                                .measure_wrapped(&desc, node_text_style, None, wrap_mode)
+                        },
+                        crate::state::StateNativeLabelGeometry::layout_metrics,
+                    )
+                },
+                crate::state::PreparedStateLabel::layout_metrics,
+            );
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
@@ -424,72 +712,154 @@ pub(super) fn render_state_node_svg(
             let title_h = title_metrics.height.max(0.0);
             let desc_w = desc_metrics.width.max(0.0);
             let desc_h = desc_metrics.height.max(0.0);
-            let padding = node.padding.unwrap_or(ctx.state_padding).max(0.0);
+            let padding = padding_override
+                .or(node.padding)
+                .unwrap_or(ctx.state_padding)
+                .max(0.0);
             let geometry = crate::state::RectWithTitleGeometry::from_metrics(
                 title_w, title_h, desc_w, desc_h, padding,
             );
             let label_html_start = timing.start();
-            let (title_dom, desc_dom) = if ctx.html_labels {
-                (
-                    state_node_label_plain_html(&title),
-                    state_node_label_plain_html(&desc),
-                )
-            } else {
-                (
-                    state_svg_text_label(&title, false, None),
-                    state_svg_text_label(&desc, false, None),
-                )
-            };
+            let label_span_style = (!text_style_attr.is_empty()).then_some(text_style_attr);
+            let (title_dom, desc_dom) =
+                if let (Some(prepared_title_label), Some(prepared_description_label)) =
+                    (prepared_title, prepared_description)
+                {
+                    if ctx.html_labels {
+                        (
+                            state_prepared_node_label_plain_html(prepared_title_label),
+                            state_prepared_node_label_plain_html(prepared_description_label),
+                        )
+                    } else {
+                        (
+                            state_native_svg_text_label(
+                                &title,
+                                Some(prepared_title_label),
+                                measured_title,
+                                false,
+                                label_span_style,
+                            ),
+                            state_native_svg_text_label(
+                                &desc,
+                                Some(prepared_description_label),
+                                measured_description,
+                                false,
+                                label_span_style,
+                            ),
+                        )
+                    }
+                } else if ctx.html_labels {
+                    (
+                        state_node_label_plain_html(&title),
+                        state_node_label_plain_html(&desc),
+                    )
+                } else {
+                    (
+                        state_native_svg_text_label(
+                            &title,
+                            None,
+                            measured_title,
+                            false,
+                            label_span_style,
+                        ),
+                        state_native_svg_text_label(
+                            &desc,
+                            None,
+                            measured_description,
+                            false,
+                            label_span_style,
+                        ),
+                    )
+                };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
+            let shape_style_escaped = escape_xml_display(shape_style_attr);
+            let divider_style_escaped = escape_xml_display(shape_style_attr);
+            let label_style_escaped = escape_xml_display(text_style_attr);
+            let html_div_style_raw = format!(
+                "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
+                div_style_prefix
+            );
+            let html_div_style = escape_xml_display(&html_div_style_raw);
+            let radius_attrs = radius_override
+                .map(|radius| {
+                    format!(
+                        r#" rx="{}" ry="{}""#,
+                        fmt_display(radius.max(0.0)),
+                        fmt_display(radius.max(0.0))
+                    )
+                })
+                .unwrap_or_default();
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_pair = prepared_title.zip(prepared_description);
+                let (title_token_attr, description_token_attr) = prepared_pair.map_or_else(
+                    || (String::new(), String::new()),
+                    |(title, description)| {
+                        (
+                            state_prepared_html_label_token_attr(Some(title)),
+                            state_prepared_html_label_token_attr(Some(description)),
+                        )
+                    },
+                );
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject{} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    shape_style_escaped,
+                    radius_attrs,
                     fmt_display(-w / 2.0),
                     fmt_display(-h / 2.0),
                     fmt_display(w),
                     fmt_display(h),
+                    divider_style_escaped,
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
                     fmt_display(geometry.divider_y),
                     fmt_display(geometry.divider_y),
+                    label_style_escaped,
                     fmt_display(geometry.label_x),
                     fmt_display(geometry.label_y),
+                    title_token_attr,
                     fmt_display(title_w),
                     fmt_display(title_h),
                     fmt_display(geometry.title_x),
+                    html_div_style,
                     title_dom,
+                    description_token_attr,
                     fmt_display(desc_w),
                     fmt_display(desc_h),
                     fmt_display(geometry.description_x),
                     fmt_display(geometry.description_y),
+                    html_div_style,
                     desc_dom
                 );
             } else {
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    shape_style_escaped,
+                    radius_attrs,
                     fmt_display(-w / 2.0),
                     fmt_display(-h / 2.0),
                     fmt_display(w),
                     fmt_display(h),
+                    divider_style_escaped,
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
                     fmt_display(geometry.divider_y),
                     fmt_display(geometry.divider_y),
+                    label_style_escaped,
                     fmt_display(geometry.label_x),
                     fmt_display(geometry.label_y),
                     fmt_display(geometry.title_x),
@@ -503,42 +873,9 @@ pub(super) fn render_state_node_svg(
         }
         _ => {
             let label = state_node_label_text(node);
-
-            fn parse_css_px_f64(v: &str) -> Option<f64> {
-                let t = v.trim();
-                let t = t.trim_end_matches(';').trim();
-                let t = t.trim_end_matches("!important").trim();
-                let t = t.trim_end_matches("px").trim();
-                t.parse::<f64>().ok()
-            }
-
-            let mut measure_style = ctx.text_style.clone();
-
-            for d in &text_decls {
-                let k = d.key.trim().to_ascii_lowercase();
-                let v = d.val.trim().trim_end_matches(';').trim();
-                let v_no_imp = v.trim_end_matches("!important").trim();
-                match k.as_str() {
-                    "font-weight" if !v_no_imp.is_empty() => {
-                        measure_style.font_weight = Some(v_no_imp.to_string());
-                    }
-                    "font-style" if !v_no_imp.is_empty() => {
-                        measure_style.font_style = Some(v_no_imp.to_string());
-                    }
-                    "font-size" => {
-                        if let Some(px) = parse_css_px_f64(v_no_imp)
-                            && px.is_finite()
-                            && px > 0.0
-                        {
-                            measure_style.font_size = px;
-                        }
-                    }
-                    "font-family" if !v_no_imp.is_empty() => {
-                        measure_style.font_family = Some(v_no_imp.to_string());
-                    }
-                    _ => {}
-                }
-            }
+            let label_owner = crate::state::StateLabelOwner::Node(node_id);
+            let prepared_label = ctx.label_sidecar.node(node_id);
+            let measured_label = ctx.label_sidecar.measured_native_geometry(label_owner);
 
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
@@ -546,12 +883,28 @@ pub(super) fn render_state_node_svg(
             } else {
                 WrapMode::SvgLike
             };
-            let measurement = crate::state::measure_state_markdown_label(
-                &label,
-                ctx.measurer,
-                &measure_style,
-                Some(ctx.html_label_wrapping_width),
-                wrap_mode,
+            let measurement = prepared_label.map_or_else(
+                || {
+                    measured_label.map_or_else(
+                        || {
+                            crate::state::measure_state_markdown_label(
+                                &label,
+                                ctx.measurer,
+                                node_text_style,
+                                Some(ctx.html_label_wrapping_width),
+                                wrap_mode,
+                            )
+                        },
+                        |geometry| crate::state::StateLabelMeasurement {
+                            metrics: geometry.layout_metrics(),
+                            uses_html_wrapping_table: false,
+                        },
+                    )
+                },
+                |prepared| crate::state::StateLabelMeasurement {
+                    metrics: prepared.layout_metrics(),
+                    uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
+                },
             );
             let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
@@ -613,22 +966,51 @@ pub(super) fn render_state_node_svg(
                 }
             }
 
-            let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.state_bkg.as_str());
-            let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
+            let surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::State)
+                .expect("ordinary State node must have a compatibility surface");
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
             let stroke_width_attr = stroke_width_override
-                .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
 
             let label_span_style = if text_style_attr.is_empty() {
                 None
             } else {
-                Some(text_style_attr.as_str())
+                Some(text_style_attr)
             };
             let label_html_start = timing.start();
-            let label_dom = if ctx.html_labels {
-                state_node_label_html_with_style(&label, label_span_style, ctx.text_style.font_size)
+            let label_dom = if let Some(prepared) = prepared_label {
+                if ctx.html_labels {
+                    state_prepared_node_label_html_with_style(prepared, label_span_style)
+                } else {
+                    state_native_svg_text_label(
+                        &label,
+                        Some(prepared),
+                        measured_label,
+                        false,
+                        label_span_style,
+                    )
+                }
+            } else if ctx.html_labels {
+                state_node_label_html_with_style(
+                    &label,
+                    label_span_style,
+                    node_text_style.font_size,
+                )
             } else {
-                state_svg_text_label(&label, false, label_span_style)
+                state_native_svg_text_label(&label, None, measured_label, false, label_span_style)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
@@ -656,80 +1038,127 @@ pub(super) fn render_state_node_svg(
                 )
             };
 
-            if data_look != "handDrawn" {
-                let rect_radius = ctx.theme_defaults.rect_radius;
-                let rect_style = escape_xml_display(&shape_style_attr);
+            if effective_look != "handDrawn" {
+                let effect_filter = if let Some(binding) =
+                    node_style.and_then(crate::state::StateNodeStylePlan::effect)
+                {
+                    if let Some((effect, materialized)) =
+                        ctx.style_plan.effect_plan().materialize_classic_rect(
+                            binding.effect_id(),
+                            w,
+                            h,
+                            classic_stroke_paint_width,
+                        )?
+                    {
+                        effect_outsets.include(materialized.outsets());
+                        let region = materialized.region();
+                        let scoped_filter_id =
+                            format!("{}-theme-effect-{}", node_dom_id, effect.id());
+                        let filter_url =
+                            write_theme_shadow_application(out, &scoped_filter_id, effect, region);
+                        Some((effect, scoped_filter_id, filter_url, region))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+                .map(|(effect, scoped_filter_id, filter_url, region)| {
+                    let attr = format!(r#" filter="{}""#, escape_attr(&filter_url));
+                    (effect, scoped_filter_id, attr, region)
+                });
+                let effect_filter_attr = effect_filter
+                    .as_ref()
+                    .map(|(_, _, attr, _)| attr.as_str())
+                    .unwrap_or_default();
+                let rect_radius = radius_override
+                    .unwrap_or(compatibility.rect_radius)
+                    .max(0.0);
+                let rect_style = escape_xml_display(shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
+                    let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
-                        node_dom_id,
+                        node_dom_id.attr(),
                         escape_xml_display(data_look),
                         fmt_display(cx),
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
+                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
                         fmt_display(-h / 2.0),
                         fmt_display(w),
                         fmt_display(h),
-                        escape_xml_display(&text_style_attr),
+                        escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
+                        prepared_token_attr,
                         fmt_display(lw),
                         fmt_display(lh),
-                        div_style,
+                        escape_attr(&div_style),
                         label_dom,
                         link_close
                     );
                 } else {
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
+                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
-                        node_dom_id,
+                        node_dom_id.attr(),
                         escape_xml_display(data_look),
                         fmt_display(cx),
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
+                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
                         fmt_display(-h / 2.0),
                         fmt_display(w),
                         fmt_display(h),
-                        escape_xml_display(&text_style_attr),
+                        escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         label_dom,
                         link_close
                     );
                 }
+                if let Some((effect, scoped_filter_id, _, region)) = effect_filter.as_ref() {
+                    ctx.effect_evidence
+                        .record_application(effect, scoped_filter_id, *region);
+                }
                 drop(_g_emit);
-                return;
+                ctx.style_plan.record_node_terminal_emission(
+                    &mut ctx.theme_receipt.borrow_mut(),
+                    node_id,
+                    terminal_start..out.len(),
+                );
+                return Ok(());
             }
 
             let rough_start = timing.start();
-            let key = StateRoughCacheKey {
-                tag: 6,
-                a: w.to_bits(),
-                b: h.to_bits(),
-                seed: ctx.hand_drawn_seed.seed(),
-            };
+            let rect_radius = super::roughjs::normalized_rounded_rect_radius(
+                w,
+                h,
+                radius_override.unwrap_or(5.0),
+            );
+            let key = rounded_rect_rough_cache_key(w, h, rect_radius, ctx.hand_drawn_seed.seed());
             if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
-                    &mermaid_rounded_rect_path_data(w, h),
+                    &mermaid_rounded_rect_path_data(w, h, rect_radius),
                     1.3,
                     "0 0",
                     &ctx.hand_drawn_seed,
@@ -742,29 +1171,31 @@ pub(super) fn render_state_node_svg(
 
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                 let _ = write!(
                     out,
-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                     link_open,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
                     node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(&shape_style_attr),
-                    escape_xml_display(&text_style_attr),
+                    escape_xml_display(stroke_path_style_attr),
+                    escape_xml_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
+                    prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
-                    div_style,
+                    escape_attr(&div_style),
                     label_dom,
                     link_close
                 );
@@ -774,19 +1205,19 @@ pub(super) fn render_state_node_svg(
                     r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
                     link_open,
                     escape_xml_display(&node_class),
-                    node_dom_id,
+                    node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
                     node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(&shape_style_attr),
-                    escape_xml_display(&text_style_attr),
+                    escape_xml_display(stroke_path_style_attr),
+                    escape_xml_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     label_dom,
@@ -795,5 +1226,49 @@ pub(super) fn render_state_node_svg(
             }
             drop(_g_emit);
         }
+    }
+
+    ctx.style_plan.record_node_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        node_id,
+        terminal_start..out.len(),
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn note_cache_key_tracks_normalized_radius_without_colliding_with_rects() {
+        let seed = roughr::core::RoughJsSeed::new(1.0);
+        let square = note_rough_cache_key(100.0, 40.0, 0.0, seed);
+        let rounded = note_rough_cache_key(100.0, 40.0, 12.0, seed);
+        let clamped = note_rough_cache_key(100.0, 40.0, 100.0, seed);
+        let max = note_rough_cache_key(100.0, 40.0, 20.0, seed);
+        let ordinary_rect = rounded_rect_rough_cache_key(100.0, 40.0, 12.0, seed);
+
+        assert_eq!(square.tag, 5);
+        assert_eq!(ordinary_rect.tag, 6);
+        assert_ne!(square, rounded);
+        assert_ne!(rounded, ordinary_rect);
+        assert_eq!(clamped, max);
+        assert_eq!(square.c, 0.0f64.to_bits());
+        assert_eq!(rounded.c, 12.0f64.to_bits());
+    }
+
+    #[test]
+    fn rounded_rect_cache_key_tracks_normalized_radius() {
+        let seed = roughr::core::RoughJsSeed::new(1.0);
+        let square = rounded_rect_rough_cache_key(100.0, 40.0, 0.0, seed);
+        let rounded = rounded_rect_rough_cache_key(100.0, 40.0, 12.0, seed);
+        let clamped = rounded_rect_rough_cache_key(100.0, 40.0, 100.0, seed);
+        let max = rounded_rect_rough_cache_key(100.0, 40.0, 20.0, seed);
+
+        assert_ne!(square, rounded);
+        assert_eq!(clamped, max);
+        assert_eq!(square.c, 0.0f64.to_bits());
+        assert_eq!(rounded.c, 12.0f64.to_bits());
     }
 }

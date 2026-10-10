@@ -22,8 +22,8 @@ const WORKSPACE: WorkspaceSnapshot = {
   mermaidConfig: '{"look":"neo"}',
   diagramTheme: "forest",
   diagramFont: "arial",
-  presentationProfileId: "future-profile",
-  presentationThemePresetId: "future-theme",
+  themePresetId: "future-theme",
+  themeRecipeJson: null,
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -246,4 +246,25 @@ test("writes nothing when the workspace fragment is invalid", () => {
 
   assert.deepEqual(result, { status: "ignored", warning: null });
   assert.equal(applyCalls, 0);
+});
+
+test("hydrates a shared custom recipe with its workspace and view", () => {
+  const workspace: WorkspaceSnapshot = {
+    ...WORKSPACE,
+    themePresetId: null,
+    themeRecipeJson: '{"schema_version":1,"kind":"definition","definition":{}}',
+  };
+  const issueUrl = new URL(
+    createIssueShareUrl(workspace, VIEW, {
+      origin: "https://example.test",
+      pathname: "/merman/",
+    }),
+  );
+  const applied: StartupShareHydration[] = [];
+  assert.match(issueUrl.hash, /^#s3:/u);
+  assert.deepEqual(
+    hydrateStartupShareLocation(issueUrl, (hydration) => applied.push(hydration)),
+    { status: "applied", warning: null },
+  );
+  assert.deepEqual(applied, [{ workspace, view: VIEW, warning: null }]);
 });

@@ -12,10 +12,11 @@ use crate::diagram::{
 };
 use crate::{
     DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
-    OperationControl, OperationControlResult, ParseMetadata, Result,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
+use std::fmt;
 use std::sync::OnceLock;
 
 pub(crate) type CombinedSemanticParser = fn(
@@ -191,6 +192,41 @@ impl CombinedSemanticParse {
         }
     }
 
+    /// Builds a semantic parse while allowing the compatibility projection to observe the
+    /// operation's cancellation channel. The uncontrolled constructor remains useful for the
+    /// older family parsers; controlled families should use this variant so a cancellation that
+    /// arrives after semantic construction is not converted into a successful parse result.
+    #[allow(
+        dead_code,
+        reason = "Shared parser facilities have different consumers in each family selection."
+    )]
+    pub(crate) fn from_construction_controlled<S, F>(
+        construction: std::result::Result<S, F>,
+        control: &OperationControl,
+        success: impl FnOnce(S) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)>,
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> OperationControlResult<Self> {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts) = success(source)?;
+                Ok(Self {
+                    model,
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                })
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                control.checkpoint()?;
+                Ok(Self {
+                    model: Err(error),
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                })
+            }
+        }
+    }
+
     #[allow(
         dead_code,
         reason = "Shared parser facilities have different consumers in each family selection."
@@ -301,6 +337,8 @@ pub struct DiagramHeaderFact {
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
+    /// Catalog-owned logical family identity.
+    pub family_id: DiagramFamilyId,
     /// Logical diagram family. This does not change when a family reuses another render model.
     pub logical_family_kind: &'static str,
     /// Public metadata identity, retained even when its implementation is unavailable.
@@ -321,6 +359,21 @@ pub struct DiagramFamilyCapability {
     pub has_header: bool,
     /// Mermaid configuration namespace associated with this id.
     pub config_namespace: Option<&'static str>,
+}
+
+impl DiagramFamilyCapability {
+    /// Returns the concrete render-model family behind this parser/detector ID.
+    ///
+    /// Logical families may share a render model: Swimlane uses Flowchart's model, while
+    /// metadata spellings such as `gitgraph` remain distinct from the detector's `gitGraph`.
+    pub fn typed_render_family(&self) -> Option<&'static BuiltInTypedRenderFamily> {
+        let parser = render_parser_facts()
+            .iter()
+            .find(|parser| parser.id == self.diagram_type)?;
+        built_in_typed_render_families()
+            .iter()
+            .find(|family| family.render_model_kind == parser.model_kind)
+    }
 }
 
 /// Public Cargo selector for one logical family, regardless of this build's availability.
@@ -351,16 +404,20 @@ pub struct BuiltInTypedRenderFamily {
 /// The inner value is private so editor facts cannot invent family ownership from an arbitrary
 /// string. Instances only come from the admitted family catalog and are cheap to copy into
 /// lexical provenance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct DiagramFamilyId(&'static str);
 
 impl DiagramFamilyId {
-    /// Logical identity shared by all admitted Flowchart parser variants.
-    pub const FLOWCHART: Self = Self("flowchart");
-
-    pub fn as_str(self) -> &'static str {
+    /// Returns the stable string identifier used by public metadata and serde output.
+    pub const fn as_str(self) -> &'static str {
         self.0
+    }
+}
+
+impl fmt::Display for DiagramFamilyId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -450,7 +507,8 @@ impl FamilyCatalogProjection {
                 identity.catalog_order,
                 DiagramFamilyCapability {
                     diagram_type: identity.id,
-                    logical_family_kind: family.logical_kind,
+                    family_id: family.id,
+                    logical_family_kind: family.id.as_str(),
                     metadata_id: identity.metadata.map(|metadata| metadata.id),
                     render_model_kind: identity.render_model_kind,
                     has_detector: identity.detector.is_some(),
@@ -571,7 +629,7 @@ pub(crate) fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
             .iter()
             .filter_map(|family| {
                 family.selector.map(|feature| DiagramFamilySelector {
-                    logical_family_kind: family.logical_kind,
+                    logical_family_kind: family.id.as_str(),
                     feature,
                 })
             })
@@ -598,17 +656,40 @@ pub(crate) fn render_model_kind_supports_diagram_type(
         .any(|fact| fact.id == diagram_type && fact.model_kind == model_kind)
 }
 
-pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
-    diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
-}
-
 pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
     find_variant(diagram_type)
         .and_then(|(_, variant)| variant.identity.metadata.map(|metadata| metadata.id))
 }
 
+/// Returns the catalog-owned logical family identity for one built-in Mermaid diagram type.
 pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
-    find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
+    find_variant(diagram_type).map(|(family, _)| family.id)
+}
+
+/// Returns the logical family name independently of implementation availability.
+pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
+    diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
+}
+
+/// Returns the presentation owner after configuration, without changing language identity.
+///
+/// Flowchart and Swimlane share paint consumers. This projection is used only for theme
+/// contributions; parser admission and public logical identity always use the catalog.
+pub(crate) fn operation_family_id(
+    diagram_type: &str,
+    effective_config: &MermaidConfig,
+) -> Option<DiagramFamilyId> {
+    let family = diagram_type_family_id(diagram_type)?;
+    if family == DiagramFamilyId::FLOWCHART || family == DiagramFamilyId::SWIMLANE {
+        return Some(
+            if effective_config.get_str("layout") == Some(DiagramFamilyId::SWIMLANE.as_str()) {
+                DiagramFamilyId::SWIMLANE
+            } else {
+                DiagramFamilyId::FLOWCHART
+            },
+        );
+    }
+    Some(family)
 }
 
 pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<EditorFamilySemantics> {
@@ -699,11 +780,21 @@ fn render_flowchart(
         .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
 #[cfg(feature = "diagram-class")]
-render_parser_controlled!(
-    render_class,
-    crate::diagrams::class::parse_class_typed_controlled,
-    RenderSemanticModel::Class
-);
+fn render_class(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    control.checkpoint()?;
+    let result = crate::diagrams::class::parse_class_typed_with_render_context_controlled(
+        code, meta, control,
+    )?
+    .map(|(model, style_precedence_facts)| {
+        RenderSemanticParseOutput::class(model, style_precedence_facts)
+    });
+    control.checkpoint()?;
+    Ok(result)
+}
 #[cfg(feature = "diagram-c4")]
 render_parser_controlled!(
     render_c4,
@@ -958,7 +1049,7 @@ struct FamilyConfigDefinition {
 
 #[derive(Clone, Copy)]
 struct DiagramFamilyDefinition {
-    logical_kind: &'static str,
+    id: DiagramFamilyId,
     selector: Option<&'static str>,
     editor_semantics: EditorFamilySemantics,
     config: Option<FamilyConfigDefinition>,
@@ -985,6 +1076,51 @@ const STATE_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Class);
 const BLOCK_EDITOR_SEMANTICS: EditorFamilySemantics =
     EditorFamilySemantics::new(EditorSemanticKind::Object);
+
+macro_rules! define_family_catalog {
+    (
+        $(
+            $constant:ident => $id:literal {
+                selector: $selector:expr,
+                editor_semantics: $editor_semantics:expr,
+                config: $config:expr,
+                variants: $variants:expr $(,)?
+            }
+        ),+ $(,)?
+    ) => {
+        impl DiagramFamilyId {
+            $(
+                #[doc = concat!("Built-in `", $id, "` diagram family identity.")]
+                pub const $constant: Self = Self($id);
+            )+
+
+            /// Returns every built-in family identity in pinned catalog order.
+            pub const fn all() -> &'static [Self] {
+                &[$(Self::$constant),+]
+            }
+
+            /// Parses one built-in family identity from its stable wire identifier.
+            pub fn from_id(value: &str) -> Option<Self> {
+                match value {
+                    $($id => Some(Self::$constant),)+
+                    _ => None,
+                }
+            }
+        }
+
+        const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
+            $(
+                DiagramFamilyDefinition {
+                    id: DiagramFamilyId::$constant,
+                    selector: $selector,
+                    editor_semantics: $editor_semantics,
+                    config: $config,
+                    variants: $variants,
+                },
+            )+
+        ];
+    };
+}
 
 macro_rules! variant {
     (
@@ -1808,16 +1944,14 @@ const AGENTFLOW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     config_alias_order: Some(36),
 }];
 
-const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
-    DiagramFamilyDefinition {
-        logical_kind: "error",
+define_family_catalog! {
+    ERROR => "error" {
         selector: None,
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: ERROR_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "flowchart",
+    FLOWCHART => "flowchart" {
         selector: Some("diagram-flowchart"),
         editor_semantics: FLOWCHART_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1826,8 +1960,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: FLOWCHART_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "swimlane",
+    SWIMLANE => "swimlane" {
         selector: Some("diagram-swimlane"),
         editor_semantics: SWIMLANE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1836,8 +1969,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: SWIMLANE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "mindmap",
+    MINDMAP => "mindmap" {
         selector: Some("diagram-mindmap"),
         editor_semantics: MINDMAP_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1846,8 +1978,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: MINDMAP_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "architecture",
+    ARCHITECTURE => "architecture" {
         selector: Some("diagram-architecture"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1856,8 +1987,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: ARCHITECTURE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "zenuml",
+    ZENUML => "zenuml" {
         selector: Some("diagram-zenuml"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1866,8 +1996,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: ZENUML_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "sequence",
+    SEQUENCE => "sequence" {
         selector: Some("diagram-sequence"),
         editor_semantics: SEQUENCE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1876,8 +2005,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: SEQUENCE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "c4",
+    C4 => "c4" {
         selector: Some("diagram-c4"),
         editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1886,8 +2014,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: C4_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "kanban",
+    KANBAN => "kanban" {
         selector: Some("diagram-kanban"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1896,8 +2023,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: KANBAN_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "class",
+    CLASS => "class" {
         selector: Some("diagram-class"),
         editor_semantics: CLASS_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1906,8 +2032,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: CLASS_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "er",
+    ER => "er" {
         selector: Some("diagram-er"),
         editor_semantics: ER_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1916,8 +2041,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: ER_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "gantt",
+    GANTT => "gantt" {
         selector: Some("diagram-gantt"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1926,15 +2050,13 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: GANTT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "info",
+    INFO => "info" {
         selector: Some("diagram-info"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: INFO_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "pie",
+    PIE => "pie" {
         selector: Some("diagram-pie"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1943,8 +2065,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: PIE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "requirement",
+    REQUIREMENT => "requirement" {
         selector: Some("diagram-requirement"),
         editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1953,8 +2074,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: REQUIREMENT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "timeline",
+    TIMELINE => "timeline" {
         selector: Some("diagram-timeline"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1963,8 +2083,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: TIMELINE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "gitGraph",
+    GIT_GRAPH => "gitGraph" {
         selector: Some("diagram-git-graph"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1973,8 +2092,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: GIT_GRAPH_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "state",
+    STATE => "state" {
         selector: Some("diagram-state"),
         editor_semantics: STATE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1983,8 +2101,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: STATE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "journey",
+    JOURNEY => "journey" {
         selector: Some("diagram-journey"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -1993,8 +2110,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: JOURNEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "quadrantChart",
+    QUADRANT_CHART => "quadrantChart" {
         selector: Some("diagram-quadrant-chart"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2003,8 +2119,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: QUADRANT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "sankey",
+    SANKEY => "sankey" {
         selector: Some("diagram-sankey"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2013,8 +2128,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: SANKEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "packet",
+    PACKET => "packet" {
         selector: Some("diagram-packet"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2023,8 +2137,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: PACKET_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "xychart",
+    XY_CHART => "xychart" {
         selector: Some("diagram-xychart"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2033,8 +2146,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: XYCHART_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "block",
+    BLOCK => "block" {
         selector: Some("diagram-block"),
         editor_semantics: BLOCK_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2043,8 +2155,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: BLOCK_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "eventmodeling",
+    EVENT_MODELING => "eventmodeling" {
         selector: Some("diagram-event-modeling"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2053,8 +2164,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: EVENTMODELING_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "treeView",
+    TREE_VIEW => "treeView" {
         selector: Some("diagram-tree-view"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2063,8 +2173,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: TREE_VIEW_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "radar",
+    RADAR => "radar" {
         selector: Some("diagram-radar"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2073,8 +2182,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: RADAR_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "ishikawa",
+    ISHIKAWA => "ishikawa" {
         selector: Some("diagram-ishikawa"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2083,8 +2191,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: ISHIKAWA_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "treemap",
+    TREEMAP => "treemap" {
         selector: Some("diagram-treemap"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2093,8 +2200,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: TREEMAP_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "railroad",
+    RAILROAD => "railroad" {
         selector: Some("diagram-railroad"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2103,8 +2209,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: RAILROAD_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "venn",
+    VENN => "venn" {
         selector: Some("diagram-venn"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2113,8 +2218,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: VENN_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "wardley",
+    WARDLEY => "wardley" {
         selector: Some("diagram-wardley"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2123,8 +2227,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: WARDLEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "cynefin",
+    CYNEFIN => "cynefin" {
         selector: Some("diagram-cynefin"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2133,8 +2236,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: CYNEFIN_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "usecase",
+    USECASE => "usecase" {
         selector: Some("diagram-usecase"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2143,8 +2245,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: USECASE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "agentflow",
+    AGENTFLOW => "agentflow" {
         selector: Some("diagram-agentflow"),
         editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
@@ -2153,12 +2254,176 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         }),
         variants: AGENTFLOW_VARIANTS,
     },
-];
+}
 
 #[cfg(test)]
 mod catalog_tests {
     use super::*;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, HashSet};
+
+    const EXPECTED_FAMILY_IDS: &[(DiagramFamilyId, &str)] = &[
+        (DiagramFamilyId::ERROR, "error"),
+        (DiagramFamilyId::FLOWCHART, "flowchart"),
+        (DiagramFamilyId::SWIMLANE, "swimlane"),
+        (DiagramFamilyId::MINDMAP, "mindmap"),
+        (DiagramFamilyId::ARCHITECTURE, "architecture"),
+        (DiagramFamilyId::ZENUML, "zenuml"),
+        (DiagramFamilyId::SEQUENCE, "sequence"),
+        (DiagramFamilyId::C4, "c4"),
+        (DiagramFamilyId::KANBAN, "kanban"),
+        (DiagramFamilyId::CLASS, "class"),
+        (DiagramFamilyId::ER, "er"),
+        (DiagramFamilyId::GANTT, "gantt"),
+        (DiagramFamilyId::INFO, "info"),
+        (DiagramFamilyId::PIE, "pie"),
+        (DiagramFamilyId::REQUIREMENT, "requirement"),
+        (DiagramFamilyId::TIMELINE, "timeline"),
+        (DiagramFamilyId::GIT_GRAPH, "gitGraph"),
+        (DiagramFamilyId::STATE, "state"),
+        (DiagramFamilyId::JOURNEY, "journey"),
+        (DiagramFamilyId::QUADRANT_CHART, "quadrantChart"),
+        (DiagramFamilyId::SANKEY, "sankey"),
+        (DiagramFamilyId::PACKET, "packet"),
+        (DiagramFamilyId::XY_CHART, "xychart"),
+        (DiagramFamilyId::BLOCK, "block"),
+        (DiagramFamilyId::EVENT_MODELING, "eventmodeling"),
+        (DiagramFamilyId::TREE_VIEW, "treeView"),
+        (DiagramFamilyId::RADAR, "radar"),
+        (DiagramFamilyId::ISHIKAWA, "ishikawa"),
+        (DiagramFamilyId::TREEMAP, "treemap"),
+        (DiagramFamilyId::RAILROAD, "railroad"),
+        (DiagramFamilyId::VENN, "venn"),
+        (DiagramFamilyId::WARDLEY, "wardley"),
+        (DiagramFamilyId::CYNEFIN, "cynefin"),
+        (DiagramFamilyId::USECASE, "usecase"),
+        (DiagramFamilyId::AGENTFLOW, "agentflow"),
+    ];
+
+    #[test]
+    fn family_ids_are_unique_round_trip_and_keep_string_wire_values() {
+        let mut unique = HashSet::new();
+
+        for &(family, id) in EXPECTED_FAMILY_IDS {
+            assert!(unique.insert(family), "duplicate family id {id}");
+            assert_eq!(family.as_str(), id);
+            assert_eq!(family.to_string(), id);
+            assert_eq!(DiagramFamilyId::from_id(id), Some(family));
+            assert_eq!(
+                serde_json::to_value(family).unwrap(),
+                Value::String(id.into())
+            );
+        }
+
+        assert_eq!(unique.len(), 35);
+        assert_eq!(DiagramFamilyId::from_id("future-family"), None);
+    }
+
+    #[test]
+    fn public_family_catalog_exactly_covers_the_typed_core_catalog() {
+        let expected = EXPECTED_FAMILY_IDS
+            .iter()
+            .map(|(family, _)| *family)
+            .collect::<Vec<_>>();
+        let catalog = FAMILY_CATALOG
+            .iter()
+            .map(|family| family.id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(DiagramFamilyId::all(), expected.as_slice());
+        assert_eq!(catalog.as_slice(), expected.as_slice());
+        for family in FAMILY_CATALOG {
+            for variant in family.variants {
+                assert_eq!(diagram_type_family_id(variant.identity.id), Some(family.id));
+            }
+        }
+    }
+
+    #[test]
+    fn operation_family_id_uses_effective_layout_for_flowchart_and_swimlane() {
+        for (diagram_type, layout, expected) in [
+            ("flowchart", None, DiagramFamilyId::FLOWCHART),
+            ("flowchart-v2", Some("dagre"), DiagramFamilyId::FLOWCHART),
+            ("flowchart-elk", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("flowchart", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("swimlane", None, DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+        ] {
+            let mut config = MermaidConfig::empty_object();
+            if let Some(layout) = layout {
+                config.set_value("layout", Value::String(layout.to_string()));
+            }
+            assert_eq!(
+                operation_family_id(diagram_type, &config),
+                Some(expected),
+                "{diagram_type} with layout {layout:?}"
+            );
+        }
+
+        let user_config = MermaidConfig::empty_object();
+        let mut defaulted_swimlane =
+            MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
+        crate::config::resolve_appearance(
+            "swimlane",
+            &user_config,
+            &MermaidConfig::empty_object(),
+            None,
+            &crate::generated::upstream_default_config(),
+            &mut defaulted_swimlane,
+        );
+        assert_eq!(defaulted_swimlane.get_str("layout"), Some("swimlane"));
+        assert_eq!(
+            operation_family_id("swimlane", &defaulted_swimlane),
+            Some(DiagramFamilyId::SWIMLANE)
+        );
+
+        let user_config = MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
+        let mut configured_flowchart = user_config.clone();
+        crate::config::resolve_appearance(
+            "swimlane",
+            &user_config,
+            &MermaidConfig::empty_object(),
+            None,
+            &crate::generated::upstream_default_config(),
+            &mut configured_flowchart,
+        );
+        assert_eq!(
+            operation_family_id("swimlane", &configured_flowchart),
+            Some(DiagramFamilyId::FLOWCHART)
+        );
+
+        let config = MermaidConfig::from_value(serde_json::json!({"layout": "swimlane"}));
+        assert_eq!(
+            operation_family_id("mindmap", &config),
+            Some(DiagramFamilyId::MINDMAP)
+        );
+        assert_eq!(operation_family_id("future-diagram", &config), None);
+    }
+
+    #[test]
+    fn detector_capabilities_resolve_shared_models_and_public_metadata_names() {
+        for (detected, metadata) in [
+            ("gitGraph", "gitgraph"),
+            ("quadrantChart", "quadrantchart"),
+            ("swimlane", "flowchart"),
+            ("classDiagram", "class"),
+        ] {
+            let capability = diagram_family_capabilities()
+                .iter()
+                .find(|capability| capability.diagram_type == detected)
+                .unwrap();
+            if capability.has_render_parser {
+                let family = capability.typed_render_family().unwrap();
+                if detected != "swimlane" || cfg!(feature = "diagram-flowchart") {
+                    assert_eq!(family.diagram_type, metadata);
+                } else {
+                    assert_eq!(family.diagram_type, "swimlane");
+                }
+            } else {
+                assert!(capability.typed_render_family().is_none());
+            }
+        }
+    }
 
     #[test]
     fn selectors_cover_logical_families_once_without_infrastructure_or_aliases() {
@@ -2178,10 +2443,10 @@ mod catalog_tests {
             );
         }
         for family in FAMILY_CATALOG {
-            assert_eq!(family.selector.is_some(), family.logical_kind != "error");
+            assert_eq!(family.selector.is_some(), family.id.as_str() != "error");
             assert_eq!(
-                families.contains(family.logical_kind),
-                family.logical_kind != "error"
+                families.contains(family.id.as_str()),
+                family.id.as_str() != "error"
             );
         }
         for (id, expected) in [
@@ -2337,7 +2602,7 @@ mod catalog_tests {
         let projected_variants = variants()
             .map(|(family, variant)| {
                 let mut variant = *variant;
-                if family.logical_kind != "swimlane" {
+                if family.id.as_str() != "swimlane" {
                     variant.implementation = FamilyImplementation::default();
                 }
                 (family, variant)

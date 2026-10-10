@@ -43,6 +43,7 @@ pub mod cynefin;
     feature = "diagram-state"
 ))]
 mod dagre;
+pub mod diagram_theme;
 #[cfg(feature = "layout-elk")]
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -200,11 +201,12 @@ mod mermaid_style;
 #[cfg(feature = "diagram-mindmap")]
 pub mod mindmap;
 pub mod model;
+mod native_filter_receipt;
+mod number_format;
 #[cfg(feature = "diagram-packet")]
 pub mod packet;
 #[cfg(feature = "diagram-pie")]
 pub mod pie;
-pub mod presentation;
 #[cfg(feature = "diagram-quadrant-chart")]
 pub mod quadrantchart;
 #[cfg(feature = "diagram-radar")]
@@ -221,6 +223,8 @@ pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
+#[cfg(merman_internal_theme_acceptance)]
+mod svg_artifact_receipts;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -236,15 +240,7 @@ pub mod swimlane;
     )
 )]
 pub mod text;
-#[cfg_attr(
-    not(feature = "all-diagrams"),
-    allow(
-        dead_code,
-        unused_imports,
-        reason = "Shared rendering utilities have different callers in each diagram selection."
-    )
-)]
-mod theme;
+mod theme_route_cutover;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;
 #[cfg(feature = "diagram-tree-view")]
@@ -271,6 +267,378 @@ mod xml;
 pub mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 pub mod zenuml;
+
+pub use merman_core::DiagramFamilyId;
+
+/// Workspace-internal implementation seams with no compatibility promise.
+///
+/// Only route-cutover inventory is expected to disappear after family migration; the bounded
+/// facade projections may evolve independently of the public renderer API.
+#[doc(hidden)]
+pub mod __private {
+    use crate::family::{FamilyRenderReport, FamilyStyleVerification};
+
+    pub use crate::diagram_theme::{EffectColorSpace, EffectInput};
+    pub use crate::native_filter_receipt::{
+        NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits,
+        NativeSvgShadowStage,
+    };
+    pub const MAX_NATIVE_SHADOW_STAGES: usize =
+        crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
+
+    #[cfg(merman_internal_theme_acceptance)]
+    pub use crate::svg_artifact_receipts::{
+        SvgArtifactReceipt, SvgAttributeObservation, SvgElementObservation, SvgFontFaceObservation,
+        SvgStyleDeclarationObservation, SvgStyleRuleObservation, SvgStylesheetObservation,
+    };
+
+    pub use crate::text::__private::{
+        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
+        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance, PreparedTextTerminalFace,
+        PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
+    };
+
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
+    pub use crate::theme_route_cutover::{
+        ArchitectureTextCutoverReceipt, ArchitectureTextCutoverRole,
+        ArchitectureTextCutoverTerminal,
+    };
+
+    #[cfg(merman_internal_theme_acceptance)]
+    pub use crate::theme_route_cutover::{
+        ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
+        ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
+        ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
+        ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+    };
+
+    /// Returns every currently typed route that replaces a concrete legacy bridge projection.
+    #[cfg(merman_internal_theme_acceptance)]
+    pub fn legacy_replacing_typed_theme_routes()
+    -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
+        crate::diagram_theme::legacy_replacing_typed_routes()
+    }
+
+    /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
+    pub fn architecture_text_cutover_receipt(
+        report: &FamilyRenderReport,
+    ) -> Option<&ArchitectureTextCutoverReceipt> {
+        report.architecture_text_cutover_receipt()
+    }
+
+    /// Coarse family-evidence state used by the workspace facade.
+    ///
+    /// This type is intentionally isolated from the stable renderer surface. It carries only the
+    /// terminal projection needed to build document admission and must not grow family mechanism
+    /// keys, selectors, contribution identifiers, or per-element evidence.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FamilyEvidenceStatus {
+        NotApplicable,
+        Verified,
+        Unverified,
+        Unadapted,
+        Incomplete,
+    }
+
+    impl FamilyEvidenceStatus {
+        pub(crate) const fn from_verification(verification: FamilyStyleVerification) -> Self {
+            match verification {
+                FamilyStyleVerification::NotApplicable => Self::NotApplicable,
+                FamilyStyleVerification::Verified => Self::Verified,
+                FamilyStyleVerification::Unverified => Self::Unverified,
+                FamilyStyleVerification::Unadapted => Self::Unadapted,
+                FamilyStyleVerification::Incomplete => Self::Incomplete,
+            }
+        }
+    }
+
+    /// Bounded terminal family evidence projected for the workspace facade.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FamilyEvidenceSummary {
+        status: FamilyEvidenceStatus,
+        required_count: usize,
+        accounted_count: usize,
+        applied_count: usize,
+        not_applicable_count: usize,
+        theme_residual_count: usize,
+        source_residual_count: usize,
+        compatibility_residual_count: usize,
+        mermaid_compatibility_residual_count: usize,
+        output_mutated: bool,
+    }
+
+    impl FamilyEvidenceSummary {
+        #[allow(clippy::too_many_arguments)]
+        pub(crate) const fn new(
+            status: FamilyEvidenceStatus,
+            required_count: usize,
+            accounted_count: usize,
+            applied_count: usize,
+            not_applicable_count: usize,
+            theme_residual_count: usize,
+            source_residual_count: usize,
+            compatibility_residual_count: usize,
+            mermaid_compatibility_residual_count: usize,
+            output_mutated: bool,
+        ) -> Self {
+            Self {
+                status,
+                required_count,
+                accounted_count,
+                applied_count,
+                not_applicable_count,
+                theme_residual_count,
+                source_residual_count,
+                compatibility_residual_count,
+                mermaid_compatibility_residual_count,
+                output_mutated,
+            }
+        }
+
+        pub const fn status(self) -> FamilyEvidenceStatus {
+            self.status
+        }
+
+        pub const fn required_count(self) -> usize {
+            self.required_count
+        }
+
+        pub const fn accounted_count(self) -> usize {
+            self.accounted_count
+        }
+
+        pub const fn applied_count(self) -> usize {
+            self.applied_count
+        }
+
+        pub const fn not_applicable_count(self) -> usize {
+            self.not_applicable_count
+        }
+
+        pub const fn theme_residual_count(self) -> usize {
+            self.theme_residual_count
+        }
+
+        pub const fn source_residual_count(self) -> usize {
+            self.source_residual_count
+        }
+
+        pub const fn compatibility_residual_count(self) -> usize {
+            self.compatibility_residual_count
+        }
+
+        pub const fn mermaid_compatibility_residual_count(self) -> usize {
+            self.mermaid_compatibility_residual_count
+        }
+
+        pub const fn output_mutated(self) -> bool {
+            self.output_mutated
+        }
+    }
+
+    /// Projects renderer-private family evidence into the bounded workspace facade summary.
+    pub fn family_evidence(report: &FamilyRenderReport) -> FamilyEvidenceSummary {
+        report.evidence_summary()
+    }
+
+    /// Bounded root-evidence projection used by the workspace facade.
+    ///
+    /// Mechanism keys, per-capability ledgers, and residual identities remain renderer-private.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct RootEvidenceSummary {
+        status: crate::diagram_theme::RootThemeVerification,
+        required_count: usize,
+        accounted_count: usize,
+        applied_count: usize,
+        residual_count: usize,
+        output_mutated: bool,
+    }
+
+    impl RootEvidenceSummary {
+        pub const fn status(self) -> crate::diagram_theme::RootThemeVerification {
+            self.status
+        }
+
+        pub const fn required_count(self) -> usize {
+            self.required_count
+        }
+
+        pub const fn accounted_count(self) -> usize {
+            self.accounted_count
+        }
+
+        pub const fn applied_count(self) -> usize {
+            self.applied_count
+        }
+
+        pub const fn residual_count(self) -> usize {
+            self.residual_count
+        }
+
+        pub const fn output_mutated(self) -> bool {
+            self.output_mutated
+        }
+    }
+
+    /// Moves user explanations to the facade after it has read the completed report.
+    pub fn into_theme_diagnostics(
+        report: FamilyRenderReport,
+    ) -> Box<[crate::family::ThemeDiagnostic]> {
+        report.into_theme_diagnostics()
+    }
+
+    /// Projects renderer-private root evidence without exporting the mechanism ledger.
+    pub fn root_evidence(report: &FamilyRenderReport) -> RootEvidenceSummary {
+        let root = report.root_theme_report();
+        let required_count = root.required_mechanisms().len();
+        let applied_count = root.applied_mechanisms().len();
+        let residual_count = root.residuals().len();
+        RootEvidenceSummary {
+            status: root.verification(),
+            required_count,
+            accounted_count: applied_count.saturating_add(residual_count),
+            applied_count,
+            residual_count,
+            output_mutated: root.residuals().iter().any(|residual| {
+                residual.reason() == crate::diagram_theme::RootThemeResidualReason::OutputMutation
+            }),
+        }
+    }
+
+    /// Returns the bounded set of root capabilities proved by the terminal SVG consumer.
+    pub fn root_applied_capabilities(
+        report: &FamilyRenderReport,
+    ) -> Box<[crate::diagram_theme::ThemeCapability]> {
+        report
+            .root_theme_report()
+            .applied_capabilities()
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    /// Returns the exact State hard-shadow receipt frozen after SVG emission.
+    pub fn family_native_filter_receipt(
+        report: &FamilyRenderReport,
+    ) -> Option<NativeSvgFilterReceipt> {
+        report.native_filter_receipt()
+    }
+
+    /// Returns the exact host/theme resource-policy intersection captured by the session.
+    pub fn effective_theme_resource_policy(
+        report: &crate::environment::RenderSessionReport,
+    ) -> &crate::diagram_theme::ThemeResourcePolicy {
+        report.effective_theme_resource_policy()
+    }
+
+    /// Returns the terminal SVG carrying renderer-owned prepared-label locators.
+    pub fn native_export_svg(svg: &crate::svg::ResvgCompatibleSvg) -> &str {
+        svg.native_export_svg()
+    }
+
+    /// Returns per-label native-export evidence retained by the sealed SVG.
+    pub fn prepared_text_label_ledger(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> &[PreparedTextLabelLedgerEntry] {
+        svg.prepared_text_label_ledger()
+    }
+
+    /// Returns the renderer-owned terminal receipt bound to the exact native SVG artifact.
+    pub fn prepared_text_terminal_receipt(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> Option<&PreparedTextTerminalReceipt> {
+        svg.prepared_text_terminal_receipt()
+    }
+
+    /// Returns the number of prepared labels retained by the sealed native artifact.
+    pub fn prepared_text_label_count(svg: &crate::svg::ResvgCompatibleSvg) -> usize {
+        svg.prepared_text_label_ledger().len()
+    }
+
+    /// Reports whether the terminal pipeline preserved prepared-label locators.
+    pub const fn prepared_text_evidence_valid(svg: &crate::svg::ResvgCompatibleSvg) -> bool {
+        svg.prepared_text_evidence_valid()
+    }
+
+    /// Bounded prepared-math projection used by document and target admission.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct PreparedMathEvidenceSummary {
+        evidence_valid: bool,
+        expected_occurrence_count: usize,
+        terminal_occurrence_count: usize,
+        terminal_artifact_digest: Option<[u8; 32]>,
+    }
+
+    impl PreparedMathEvidenceSummary {
+        pub const fn not_applicable() -> Self {
+            Self {
+                evidence_valid: true,
+                expected_occurrence_count: 0,
+                terminal_occurrence_count: 0,
+                terminal_artifact_digest: None,
+            }
+        }
+
+        pub const fn evidence_valid(self) -> bool {
+            self.evidence_valid
+        }
+
+        pub const fn expected_occurrence_count(self) -> usize {
+            self.expected_occurrence_count
+        }
+
+        pub const fn terminal_occurrence_count(self) -> usize {
+            self.terminal_occurrence_count
+        }
+
+        pub const fn terminal_artifact_digest(self) -> Option<[u8; 32]> {
+            self.terminal_artifact_digest
+        }
+
+        pub const fn terminal_proof_complete(self) -> bool {
+            self.evidence_valid
+                && self.expected_occurrence_count == self.terminal_occurrence_count
+                && (self.expected_occurrence_count == 0 || self.terminal_artifact_digest.is_some())
+        }
+    }
+
+    /// Projects renderer-owned prepared-math evidence from the sealed native SVG.
+    pub fn prepared_math_evidence(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> PreparedMathEvidenceSummary {
+        let receipt = svg.prepared_math_terminal_receipt();
+        PreparedMathEvidenceSummary {
+            evidence_valid: svg.prepared_math_evidence_valid(),
+            expected_occurrence_count: svg.prepared_math_evidence_count(),
+            terminal_occurrence_count: receipt.map_or(0, |receipt| receipt.occurrence_count()),
+            terminal_artifact_digest: receipt.map(|receipt| receipt.artifact_digest()),
+        }
+    }
+
+    /// Finalizes a standalone SVG while deferring the caller's portability requirement to the
+    /// workspace facade's target-owned admission receipt.
+    pub fn finalize_standalone_for_target_admission(
+        rendered: crate::family::RenderedFamilySvg,
+        pipeline: Option<&crate::svg::SvgPipeline>,
+    ) -> crate::Result<crate::family::RenderedStandaloneSvg> {
+        rendered.finalize_standalone_for_target_admission(pipeline)
+    }
+
+    /// Reports whether terminal SVG text is fully resolved by a renderer-owned font seal.
+    pub const fn svg_text_fonts_are_self_contained(
+        report: &crate::svg::SvgFinalizationReport,
+    ) -> bool {
+        report.font_seal().is_complete()
+    }
+
+    /// Installs a compiled theme's explicit Mermaid compatibility and selected-family bridge.
+    pub fn install_parse_compatibility(
+        theme: &crate::diagram_theme::DiagramTheme,
+        engine: merman_core::Engine,
+    ) -> merman_core::Engine {
+        merman_core::__private::install_theme_compatibility(engine, theme.parse_compatibility())
+    }
+}
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
 pub const fn layout_cytoscape_available() -> bool {
@@ -367,7 +735,9 @@ impl std::fmt::Display for RenderCapability {
     }
 }
 
-use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+#[cfg(test)]
+use crate::environment::RenderSession;
+use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::OperationPhase;
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -383,7 +753,7 @@ pub use resources::{
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
     ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    resource_limit_descriptors, resource_profile_descriptors,
+    ResourcePolicyRestrictionError, resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -398,8 +768,65 @@ pub enum Error {
         capability: RenderCapability,
         diagram_type: String,
     },
+    #[error(
+        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_id}`"
+    )]
+    UnverifiedFamilyStyle {
+        family_id: DiagramFamilyId,
+        residual_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_id}`"
+    )]
+    UnverifiedFamilyTheme {
+        family_id: DiagramFamilyId,
+        residual_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected SVG output mutation after family `{family_id}` emitted its evidence"
+    )]
+    UnverifiedFamilyOutputMutation { family_id: DiagramFamilyId },
+    #[error(
+        "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_id}`"
+    )]
+    LegacyFamilyThemeCompatibility {
+        family_id: DiagramFamilyId,
+        residual_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected {residual_count} explicit Mermaid compatibility field(s) for `{family_id}`"
+    )]
+    MermaidThemeCompatibility {
+        family_id: DiagramFamilyId,
+        residual_count: usize,
+    },
+    #[error(
+        "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_id}`"
+    )]
+    UnadaptedFamilyTheme { family_id: DiagramFamilyId },
+    #[error(
+        "portable theme rendering has incomplete structured family evidence for `{family_id}`: accounted for {accounted_count} of {required_count} mechanism(s)"
+    )]
+    IncompleteFamilyTheme {
+        family_id: DiagramFamilyId,
+        required_count: usize,
+        accounted_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected root theme verification {verification:?} with {residual_count} residual(s)"
+    )]
+    RejectedRootTheme {
+        verification: crate::diagram_theme::RootThemeVerification,
+        residual_count: usize,
+    },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error("parsed diagram is bound to a different theme session")]
+    ThemeParseBindingMismatch,
+    #[error(transparent)]
+    TextLayout(crate::text::TextLayoutFailure),
+    #[error(transparent)]
+    ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
     #[error(
         "custom JSON model `{model_name}` from {provenance:?} cannot render diagram type `{diagram_type}`"
     )]
@@ -417,6 +844,8 @@ pub enum Error {
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
+    ThemeResourceLimitExceeded(#[from] crate::diagram_theme::ThemeResourceLimitExceeded),
+    #[error(transparent)]
     OperationResourceTerminal(merman_core::OperationLedgerError),
     #[error(transparent)]
     Color(#[from] merman_core::theme_color::ColorError),
@@ -427,6 +856,12 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<crate::text::TextLayoutError> for Error {
+    fn from(error: crate::text::TextLayoutError) -> Self {
+        Self::TextLayout(crate::text::TextLayoutFailure::from(&error))
+    }
+}
 
 impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {
@@ -487,6 +922,56 @@ impl Error {
     pub const fn missing_capability(&self) -> Option<RenderCapability> {
         match self {
             Self::MissingCapability { capability, .. } => Some(*capability),
+            _ => None,
+        }
+    }
+
+    pub const fn unverified_family_style(&self) -> Option<(DiagramFamilyId, usize)> {
+        match self {
+            Self::UnverifiedFamilyStyle {
+                family_id,
+                residual_count,
+            } => Some((*family_id, *residual_count)),
+            _ => None,
+        }
+    }
+
+    pub const fn unadapted_family_theme(&self) -> Option<DiagramFamilyId> {
+        match self {
+            Self::UnadaptedFamilyTheme { family_id } => Some(*family_id),
+            _ => None,
+        }
+    }
+
+    pub const fn incomplete_family_theme(&self) -> Option<(DiagramFamilyId, usize, usize)> {
+        match self {
+            Self::IncompleteFamilyTheme {
+                family_id,
+                required_count,
+                accounted_count,
+            } => Some((*family_id, *required_count, *accounted_count)),
+            _ => None,
+        }
+    }
+
+    pub const fn unverified_family_theme(&self) -> Option<(DiagramFamilyId, usize)> {
+        match self {
+            Self::UnverifiedFamilyTheme {
+                family_id,
+                residual_count,
+            } => Some((*family_id, *residual_count)),
+            _ => None,
+        }
+    }
+
+    pub const fn rejected_root_theme(
+        &self,
+    ) -> Option<(crate::diagram_theme::RootThemeVerification, usize)> {
+        match self {
+            Self::RejectedRootTheme {
+                verification,
+                residual_count,
+            } => Some((*verification, *residual_count)),
             _ => None,
         }
     }
@@ -551,7 +1036,7 @@ impl LayoutOptions {
 )]
 pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
-    session: &'a RenderSession,
+    family: crate::family::FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
@@ -563,38 +1048,75 @@ pub(crate) struct LayoutExecution<'a> {
     )
 )]
 impl<'a> LayoutExecution<'a> {
-    pub(crate) fn new(request: &'a LayoutOptions, session: &'a RenderSession) -> Self {
+    pub(crate) fn new(
+        request: &'a LayoutOptions,
+        family: crate::family::FamilyExecutionView<'a>,
+    ) -> Self {
         Self {
             request,
-            session,
-            text_measurer: session
+            family,
+            text_measurer: family
+                .session()
                 .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn unthemed_for_test(
+        request: &'a LayoutOptions,
+        session: &'a RenderSession,
+        family_id: DiagramFamilyId,
+    ) -> Self {
+        Self::new(
+            request,
+            crate::family::FamilyExecutionView::for_test(session, family_id),
+        )
+    }
+
+    pub(crate) const fn family_id(&self) -> DiagramFamilyId {
+        self.family.family_id()
+    }
+
+    #[cfg(feature = "diagram-state")]
+    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
+        self.family.style_plan().and_then(|plan| plan.state())
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
         &self.text_measurer
     }
 
+    pub(crate) fn prepared_text_layout(&self) -> Option<&crate::text::PreparedTextLayout> {
+        self.family.session().prepared_text_layout()
+    }
+
+    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
+        self.family.resolved_theme()
+    }
+
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
-        self.session.math_renderer()
+        self.family.session().math_renderer()
+    }
+
+    pub(crate) fn math_backend(&self) -> Option<&crate::math::ConfiguredMathBackend> {
+        self.family.session().math_backend()
     }
 
     pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
-        std::sync::Arc::clone(self.session.work_meter())
+        std::sync::Arc::clone(self.family.session().work_meter())
     }
 
     pub(crate) fn work_meter_ref(&self) -> &crate::resources::OperationWorkMeter {
-        self.session.work_meter().as_ref()
+        self.family.session().work_meter().as_ref()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
-        self.session.local_time_zone()
+        self.family.session().local_time_zone()
     }
 
     #[cfg(feature = "layout-cytoscape")]
     pub(crate) fn operation_seed(&self) -> u64 {
-        self.session.render_seed().get()
+        self.family.session().render_seed().get()
     }
 
     #[cfg(feature = "layout-elk")]
@@ -602,7 +1124,9 @@ impl<'a> LayoutExecution<'a> {
         // The ELK source port applies its own stable ELK-specific domain and graph-path
         // derivation. This token merely keeps every ELK random boundary tied to one immutable
         // render operation.
-        merman_layout_elk::ElkOperationSeed::from_operation_seed(self.session.render_seed())
+        merman_layout_elk::ElkOperationSeed::from_operation_seed(
+            self.family.session().render_seed(),
+        )
     }
 }
 
@@ -619,6 +1143,8 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    typography_theme: &crate::class::ClassTextThemePlan,
+    render_config: &crate::class::ClassRenderConfig,
 ) -> Result<model::ClassDiagramLayout> {
     options
         .work_meter_ref()
@@ -636,6 +1162,8 @@ pub(crate) fn layout_class_typed_by_engine(
             options.text_measurer(),
             options.math_renderer(),
             options.elk_operation_seed(),
+            typography_theme,
+            render_config,
             &mut work_control,
         );
     }
@@ -644,6 +1172,8 @@ pub(crate) fn layout_class_typed_by_engine(
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        typography_theme,
+        render_config,
         &mut work_control,
     )
 }
@@ -659,12 +1189,19 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        options.work_meter_ref(),
+    )?;
     layout_flowchart_typed_with_render_labels_by_engine(
         model,
         &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
         effective_config,
         options,
         None,
+        &edge_style_plan,
     )
 }
 
@@ -679,8 +1216,12 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
-    options.session.checkpoint(OperationPhase::Layout)?;
+    options
+        .family
+        .session()
+        .checkpoint(OperationPhase::Layout)?;
     let selection = layout_backend::resolve_graph_layout(effective_config.as_value());
     selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
@@ -694,18 +1235,20 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
                 options.math_renderer(),
                 options.elk_operation_seed(),
                 svg_label_sidecar,
+                edge_style_plan,
                 options.work_meter(),
             ),
         );
     }
 
-    flowchart::layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
+    flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         render_label_sources,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
         svg_label_sidecar,
+        edge_style_plan,
         options.work_meter(),
     )
 }
@@ -777,7 +1320,7 @@ mod tests {
         layout_flowchart_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session),
+            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::FLOWCHART),
         )
         .expect("flowchart layout")
     }
@@ -791,10 +1334,18 @@ mod tests {
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected class render model");
         };
+        let typography_theme =
+            crate::class::ClassTextThemePlan::resolve(None, &parsed.metadata().effective_config);
+        let render_config = crate::class::ClassRenderConfig::resolve(
+            &parsed.metadata().effective_config,
+            &typography_theme,
+        );
         layout_class_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session),
+            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
+            &typography_theme,
+            &render_config,
         )
         .expect("class layout")
     }
@@ -820,6 +1371,22 @@ mod tests {
     }
 
     #[cfg(feature = "layout-elk")]
+    fn element_with_id_suffix_position(svg: &str, tag: &str, suffix: &str) -> usize {
+        let needle = format!("<{tag}");
+        svg.match_indices(&needle)
+            .find_map(|(position, _)| {
+                let end = svg[position..].find('>')? + position;
+                let element = &svg[position..=end];
+                let id = element
+                    .split_once(r#"id="#)
+                    .and_then(|(_, value)| value.strip_prefix('"'))
+                    .and_then(|value| value.split('"').next())?;
+                id.ends_with(suffix).then_some(position)
+            })
+            .unwrap_or_else(|| panic!("missing <{tag}> with id suffix {suffix:?}"))
+    }
+
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_operation_seed_is_captured_once_per_render_operation() {
         fn capture(seed: u64) -> merman_layout_elk::ElkOperationSeed {
@@ -829,7 +1396,12 @@ mod tests {
                 )
                 .begin_session()
                 .expect("render session");
-            LayoutExecution::new(&LayoutOptions::default(), &session).elk_operation_seed()
+            LayoutExecution::unthemed_for_test(
+                &LayoutOptions::default(),
+                &session,
+                DiagramFamilyId::ERROR,
+            )
+            .elk_operation_seed()
         }
 
         assert_eq!(capture(17), capture(17));
@@ -852,10 +1424,7 @@ mod tests {
             .unwrap();
 
         let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
-        assert_eq!(
-            artifact.family_kind(),
-            crate::family::RenderFamilyKind::Flowchart
-        );
+        assert_eq!(artifact.family_id(), crate::DiagramFamilyId::FLOWCHART);
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1146,13 +1715,11 @@ Animal <|-- Duck
         );
 
         assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
-        assert!(svg.contains("elk-smoke_flowchart-elk-pointEnd"));
+        assert!(svg.contains("elk-smoke-merman-flowchart-document_flowchart-elk-pointEnd"));
         assert!(!svg.contains(r#"aria-roledescription="flowchart-v2""#));
         assert!(svg.contains(r#"<g class="root""#));
 
-        let marker_pos = svg
-            .find(r#"<g><marker id="elk-smoke_flowchart-elk-pointEnd""#)
-            .expect("ELK marker group");
+        let marker_pos = element_with_id_suffix_position(&svg, "marker", "-pointEnd");
         let root_pos = svg.find(r#"<g class="root">"#).expect("ELK root group");
         let clusters_pos = svg
             .find(r#"<g class="clusters"/>"#)
@@ -1164,9 +1731,7 @@ Animal <|-- Duck
             .find(r#"<g class="edgeLabels">"#)
             .expect("ELK edge labels group");
         let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
-        let defs_pos = svg
-            .find(r#"<defs><filter id="elk-smoke-drop-shadow""#)
-            .expect("ELK shadow defs");
+        let defs_pos = element_with_id_suffix_position(&svg, "filter", "-drop-shadow");
 
         assert!(marker_pos < root_pos);
         assert!(root_pos < clusters_pos);
@@ -1195,12 +1760,10 @@ A{A} --> B & C
         );
 
         assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
-        assert!(svg.contains("layout-elk-smoke_flowchart-v2-pointEnd"));
+        assert!(svg.contains("layout-elk-smoke-merman-flowchart-document_flowchart-v2-pointEnd"));
         assert!(svg.contains(r#"<g class="root""#));
 
-        let marker_pos = svg
-            .find(r#"<g><marker id="layout-elk-smoke_flowchart-v2-pointEnd""#)
-            .expect("ELK marker group");
+        let marker_pos = element_with_id_suffix_position(&svg, "marker", "-pointEnd");
         let root_pos = svg.find(r#"<g class="root">"#).expect("ELK root group");
         let clusters_pos = svg
             .find(r#"<g class="clusters"/>"#)
@@ -1212,9 +1775,7 @@ A{A} --> B & C
             .find(r#"<g class="edgeLabels">"#)
             .expect("ELK edge labels group");
         let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
-        let defs_pos = svg
-            .find(r#"<defs><filter id="layout-elk-smoke-drop-shadow""#)
-            .expect("ELK shadow defs");
+        let defs_pos = element_with_id_suffix_position(&svg, "filter", "-drop-shadow");
 
         assert!(marker_pos < root_pos);
         assert!(root_pos < clusters_pos);
@@ -1629,10 +2190,12 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
 
     #[cfg(feature = "layout-elk")]
     fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
-        let id_attr = format!(r#"id="merman-{edge_id}""#);
-        let id_start = svg.find(&id_attr).expect("edge id");
-        let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
-        let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
+        let semantic_attrs = format!(r#"data-et="edge" data-id="{edge_id}""#);
+        let semantic_start = svg.find(&semantic_attrs).expect("semantic edge id");
+        let path_start = svg[..semantic_start]
+            .rfind("<path ")
+            .expect("edge path start");
+        let path_end = svg[semantic_start..].find("/>").expect("edge path end") + semantic_start;
         &svg[path_start..path_end]
     }
 
