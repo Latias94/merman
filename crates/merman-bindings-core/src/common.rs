@@ -785,6 +785,10 @@ pub(crate) struct BindingOptions {
     pub(crate) analysis: BindingAnalysisOptionsJson,
     pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "svg")]
+    #[serde(
+        default,
+        deserialize_with = "crate::theme::deserialize_validated_theme"
+    )]
     pub(crate) theme: Option<crate::theme::BindingThemeOptionsJson>,
     #[cfg(feature = "ascii")]
     pub(crate) ascii: Option<AsciiOptionsJson>,
@@ -4196,6 +4200,48 @@ mod tests {
         assert_eq!(
             options.pdf.and_then(|pdf| pdf.page_paint),
             Some("transparent".into())
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_union_and_payload_errors_preserve_option_validation_precedence() {
+        for (input, expected) in [
+            (
+                br#"{"theme":{"preset":"editor-dark","spec":{}},"layout":{"text_measurer":"removed"}}"#.as_slice(),
+                "must not contain both `preset` and `spec`",
+            ),
+            (
+                br#"{"theme":{"preset":false},"site_config":{"themeCSS":".node {}"}}"#.as_slice(),
+                "site_config.themeCSS",
+            ),
+            (
+                br#"{"theme":{"preset":false},"layout":{"text_measurer":"removed"}}"#.as_slice(),
+                "layout.text_measurer was removed",
+            ),
+            (
+                br#"{"theme":{"preset":false}}"#.as_slice(),
+                "invalid options_json: invalid type: boolean `false`, expected a string",
+            ),
+        ] {
+            let error = parse_options(input).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains(expected), "{error:?}");
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_null_and_omission_leave_the_outer_theme_unset() {
+        for input in [b"{}".as_slice(), br#"{"theme":null}"#.as_slice()] {
+            assert!(parse_options(input).unwrap().theme.is_none());
+        }
+        let error = parse_options(br#"{"version":2,"theme":{"preset":false}}"#)
+            .expect_err("options schema admission precedes theme decoding");
+        assert!(
+            error
+                .message()
+                .contains("unsupported options_json schema version")
         );
     }
 

@@ -20,23 +20,39 @@ pub(crate) struct ThemeSelectionJson {
     spec: Option<DiagramThemeSpecWireV1>,
 }
 
-impl<'de> Deserialize<'de> for BindingThemeOptionsJson {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = Value::deserialize(deserializer)?;
-        validate_theme_wire(Some(&value)).map_err(|error| D::Error::custom(error.message()))?;
-        if value.get("kind").is_some() || value.get("schema_version").is_some() {
-            serde_json::from_value(value)
-                .map(Self::Recipe)
-                .map_err(D::Error::custom)
-        } else {
-            serde_json::from_value(value)
-                .map(Self::Selection)
-                .map_err(D::Error::custom)
-        }
+/// Decodes one theme value after its tagged union has been validated.
+fn decode_validated_theme_value(
+    value: Value,
+) -> Result<BindingThemeOptionsJson, serde_json::Error> {
+    if value.get("kind").is_some() || value.get("schema_version").is_some() {
+        serde_json::from_value(value).map(BindingThemeOptionsJson::Recipe)
+    } else {
+        serde_json::from_value(value).map(BindingThemeOptionsJson::Selection)
     }
+}
+
+/// The options owner validates the union before decoding the remaining option groups.
+/// Decode its payload at the ordinary Serde field position to preserve error precedence.
+pub(crate) fn deserialize_validated_theme<'de, D>(
+    deserializer: D,
+) -> Result<Option<BindingThemeOptionsJson>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<Value>::deserialize(deserializer)?
+        .map(decode_validated_theme_value)
+        .transpose()
+        .map_err(D::Error::custom)
+}
+
+/// Validates and decodes the standalone theme selection once.
+pub(crate) fn decode_theme_value(
+    value: Value,
+    error_context: &str,
+) -> Result<BindingThemeOptionsJson, BindingError> {
+    validate_theme_wire(Some(&value))?;
+    decode_validated_theme_value(value)
+        .map_err(|error| invalid_options(format!("invalid {error_context}: {error}")))
 }
 
 #[derive(Debug, Deserialize)]
@@ -164,13 +180,7 @@ pub fn compile_theme_selection_json_with(
             format!("invalid theme selection JSON: {error}"),
         )
     })?;
-    validate_theme_wire(Some(&value))?;
-    let selection = serde_json::from_value::<BindingThemeOptionsJson>(value).map_err(|error| {
-        BindingError::new(
-            BindingStatus::OptionsJsonError,
-            format!("invalid theme selection JSON: {error}"),
-        )
-    })?;
+    let selection = decode_theme_value(value, "theme selection JSON")?;
     compile_theme_with(compiler, Some(&selection))?.ok_or_else(|| {
         BindingError::internal("validated theme selection did not produce a compiled theme")
     })
@@ -493,7 +503,7 @@ mod tests {
                 "{input}"
             );
             assert!(
-                validate_theme_input_json(options.as_bytes()).is_err(),
+                crate::common::parse_options(options.as_bytes()).is_err(),
                 "{input}"
             );
         }
@@ -520,8 +530,11 @@ mod tests {
 
     #[test]
     fn preset_and_structured_spec_compile_through_the_renderer_wire_authority() {
-        let preset: BindingThemeOptionsJson =
-            serde_json::from_value(serde_json::json!({"preset": "editor-dark"})).unwrap();
+        let preset: BindingThemeOptionsJson = decode_theme_value(
+            serde_json::json!({"preset": "editor-dark"}),
+            "theme selection JSON",
+        )
+        .unwrap();
         let preset = compile_theme_with(&DiagramThemeCompiler::new(), Some(&preset))
             .unwrap()
             .unwrap();
@@ -531,29 +544,32 @@ mod tests {
                 .requires_capability(ThemeCapability::SemanticRules)
         );
 
-        let spec: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
-            "spec": {
-                "typography": {
-                    "default": {
-                        "font_stack": ["Inter", "sans-serif"],
-                        "font_size_px": 18.0,
-                        "line_height": 1.4
-                    }
-                },
-                "styles": [{
-                    "kind": "rule",
-                    "target": "node",
-                    "family": "flowchart",
-                    "style": {
-                        "fill": "#101820",
-                        "stroke": { "paint": "#f2aa4c", "width": 2.0 },
-                        "radius": 6.0
-                    }
-                }],
-                "canvas": { "base": "#0b0f14", "bleed": 8.0 },
-                "requirements": { "capabilities": ["rounded-geometry"] }
-            }
-        }))
+        let spec = decode_theme_value(
+            serde_json::json!({
+                "spec": {
+                    "typography": {
+                        "default": {
+                            "font_stack": ["Inter", "sans-serif"],
+                            "font_size_px": 18.0,
+                            "line_height": 1.4
+                        }
+                    },
+                    "styles": [{
+                        "kind": "rule",
+                        "target": "node",
+                        "family": "flowchart",
+                        "style": {
+                            "fill": "#101820",
+                            "stroke": { "paint": "#f2aa4c", "width": 2.0 },
+                            "radius": 6.0
+                        }
+                    }],
+                    "canvas": { "base": "#0b0f14", "bleed": 8.0 },
+                    "requirements": { "capabilities": ["rounded-geometry"] }
+                }
+            }),
+            "theme selection JSON",
+        )
         .unwrap();
         let theme = compile_theme_with(&DiagramThemeCompiler::new(), Some(&spec))
             .unwrap()
@@ -755,15 +771,18 @@ mod tests {
 
     #[test]
     fn renderer_wire_errors_are_mapped_to_binding_status() {
-        let selection: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
-            "spec": {
-                "styles": [{
-                    "kind": "rule",
-                    "target": "future-node",
-                    "style": {}
-                }]
-            }
-        }))
+        let selection = decode_theme_value(
+            serde_json::json!({
+                "spec": {
+                    "styles": [{
+                        "kind": "rule",
+                        "target": "future-node",
+                        "style": {}
+                    }]
+                }
+            }),
+            "theme selection JSON",
+        )
         .unwrap();
 
         let error = compile_theme_with(&DiagramThemeCompiler::new(), Some(&selection)).unwrap_err();

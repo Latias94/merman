@@ -3,12 +3,8 @@ use merman_render::__private::{
     PreparedTextLabelId, PreparedTextLabelProvenance, PreparedTextTerminalFace,
     PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
 };
-#[cfg(test)]
-use merman_render::__private::{
-    native_export_svg, prepared_text_label_count, prepared_text_terminal_receipt,
-};
 use merman_render::diagram_theme::{
-    FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontSource, GenericFontFamily,
+    FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontSource,
 };
 use merman_render::svg::ResvgCompatibleSvg;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -48,15 +44,6 @@ impl ExportFontMode {
     /// Returns whether this mode permits host system fonts.
     pub const fn allows_system_fonts(self) -> bool {
         !matches!(self, Self::EmbeddedOnly)
-    }
-
-    fn sources(self) -> &'static [FontSource] {
-        match self {
-            Self::SystemOnly => &[FontSource::System],
-            Self::EmbeddedOnly => &[FontSource::Embedded],
-            Self::EmbeddedThenSystem => &[FontSource::Embedded, FontSource::System],
-            Self::SystemThenEmbedded => &[FontSource::System, FontSource::Embedded],
-        }
     }
 }
 
@@ -193,9 +180,7 @@ struct FontResolutionRecorder {
 pub(crate) struct ExportFontPlanSeed {
     catalog_fingerprint: FontCatalogFingerprint,
     source_mode: ExportFontMode,
-    loaded_embedded_face_count: usize,
     faces: ExportFaceOrigins,
-    catalog_assets: Arc<[ExportCatalogAssetEvidence]>,
     recorder: Arc<FontResolutionRecorder>,
 }
 
@@ -207,7 +192,7 @@ impl ExportFontPlanSeed {
         expected_label_count: usize,
         receipt: Option<&PreparedTextTerminalReceipt>,
     ) -> ExportFontPlan {
-        let evidence = FinalTreeFontEvidence::collect(tree, &self.faces, &self.catalog_assets);
+        let evidence = FinalTreeFontEvidence::collect(tree, &self.faces);
         let prepared = verify_prepared_text_labels(
             self.catalog_fingerprint,
             source,
@@ -225,8 +210,8 @@ impl ExportFontPlanSeed {
         ExportFontPlan {
             catalog_fingerprint: self.catalog_fingerprint,
             source_mode: self.source_mode,
-            loaded_embedded_face_count: self.loaded_embedded_face_count,
-            used_embedded_fonts: evidence.used_embedded_fonts,
+            loaded_embedded_face_count: 0,
+            used_embedded_fonts: false,
             used_system_fonts: evidence.used_system_fonts,
             family_fallback_used: self.recorder.family_fallback_used.load(Ordering::Relaxed),
             glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed),
@@ -258,29 +243,18 @@ struct ExportResolvedFace {
     source: FontSource,
 }
 
-/// Immutable system membership is already owned by the shared database. Only faces
-/// loaded for this operation need an additional origin index.
+/// Final face classification uses membership in the admitted shared system database.
 struct ExportFaceOrigins {
-    system: Option<Arc<usvg::fontdb::Database>>,
-    loaded: HashMap<usvg::fontdb::ID, ExportResolvedFace>,
+    system: Arc<usvg::fontdb::Database>,
 }
 
 impl ExportFaceOrigins {
     fn get(&self, id: usvg::fontdb::ID) -> Option<ExportResolvedFace> {
-        self.loaded.get(&id).copied().or_else(|| {
-            self.system.as_ref()?.face(id).map(|_| ExportResolvedFace {
-                key: None,
-                source: FontSource::System,
-            })
+        self.system.face(id).map(|_| ExportResolvedFace {
+            key: None,
+            source: FontSource::System,
         })
     }
-}
-
-#[derive(Debug, Clone)]
-struct ExportCatalogAssetEvidence {
-    fingerprint: FontAssetFingerprint,
-    data: Arc<[u8]>,
-    face_indices: Box<[u32]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -334,7 +308,6 @@ impl ObservedPreparedLabel {
 
 #[derive(Debug, Default)]
 struct FinalTreeFontEvidence {
-    used_embedded_fonts: bool,
     used_system_fonts: bool,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
@@ -343,40 +316,25 @@ struct FinalTreeFontEvidence {
 }
 
 impl FinalTreeFontEvidence {
-    fn collect(
-        tree: &usvg::Tree,
-        faces: &ExportFaceOrigins,
-        catalog_assets: &[ExportCatalogAssetEvidence],
-    ) -> Self {
+    fn collect(tree: &usvg::Tree, faces: &ExportFaceOrigins) -> Self {
         let mut evidence = Self::default();
         let mut unclassified_faces = HashSet::new();
-        let mut selected_system_face_keys = HashMap::new();
         let mut visited_groups = HashSet::new();
         evidence.visit_group(
             tree.root(),
-            tree.fontdb(),
             faces,
-            catalog_assets,
             &mut unclassified_faces,
-            &mut selected_system_face_keys,
             &mut visited_groups,
         );
         evidence.unclassified_face_count = unclassified_faces.len();
         evidence
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Traverses the validated SVG tree while carrying each independent font evidence accumulator."
-    )]
     fn visit_group(
         &mut self,
         group: &usvg::Group,
-        fontdb: &usvg::fontdb::Database,
         faces: &ExportFaceOrigins,
-        catalog_assets: &[ExportCatalogAssetEvidence],
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
-        selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
         visited_groups: &mut HashSet<*const usvg::Group>,
     ) {
         if !visited_groups.insert(std::ptr::from_ref(group)) {
@@ -384,35 +342,14 @@ impl FinalTreeFontEvidence {
         }
         for node in group.children() {
             match node {
-                usvg::Node::Group(group) => self.visit_group(
-                    group,
-                    fontdb,
-                    faces,
-                    catalog_assets,
-                    unclassified_faces,
-                    selected_system_face_keys,
-                    visited_groups,
-                ),
-                usvg::Node::Text(text) => self.visit_text(
-                    text,
-                    fontdb,
-                    faces,
-                    catalog_assets,
-                    unclassified_faces,
-                    selected_system_face_keys,
-                ),
+                usvg::Node::Group(group) => {
+                    self.visit_group(group, faces, unclassified_faces, visited_groups)
+                }
+                usvg::Node::Text(text) => self.visit_text(text, faces, unclassified_faces),
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
             }
             node.subroots(|subroot| {
-                self.visit_group(
-                    subroot,
-                    fontdb,
-                    faces,
-                    catalog_assets,
-                    unclassified_faces,
-                    selected_system_face_keys,
-                    visited_groups,
-                );
+                self.visit_group(subroot, faces, unclassified_faces, visited_groups);
             });
         }
     }
@@ -420,11 +357,8 @@ impl FinalTreeFontEvidence {
     fn visit_text(
         &mut self,
         text: &usvg::Text,
-        fontdb: &usvg::fontdb::Database,
         faces: &ExportFaceOrigins,
-        catalog_assets: &[ExportCatalogAssetEvidence],
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
-        selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
     ) {
         let prepared_token = parse_prepared_text_token(text.id());
         if PreparedTextLabelId::is_svg_id_candidate(text.id()) && prepared_token.is_none() {
@@ -448,24 +382,8 @@ impl FinalTreeFontEvidence {
                 if glyph.id.0 == 0 {
                     self.notdef_glyph_count = self.notdef_glyph_count.saturating_add(1);
                 }
-                let face = if let Some(mut face) = faces.get(glyph.font) {
-                    if face.source == FontSource::System && face.key.is_none() {
-                        face.key =
-                            *selected_system_face_keys
-                                .entry(glyph.font)
-                                .or_insert_with(|| {
-                                    catalog_face_key_for_database_face(
-                                        fontdb,
-                                        glyph.font,
-                                        catalog_assets,
-                                    )
-                                });
-                    }
-                    match face.source {
-                        FontSource::Embedded => self.used_embedded_fonts = true,
-                        FontSource::System => self.used_system_fonts = true,
-                        _ => {}
-                    }
+                let face = if let Some(face) = faces.get(glyph.font) {
+                    self.used_system_fonts = true;
                     ObservedFaceEvidence::Classified(face)
                 } else {
                     unclassified_faces.insert(glyph.font);
@@ -644,8 +562,6 @@ pub(crate) struct ExportFontEnvironment {
     pub(crate) default_family: String,
     pub(crate) resolver: usvg::FontResolver<'static>,
     pub(crate) plan: ExportFontPlanSeed,
-    #[cfg(test)]
-    pub(crate) retained_face_ids: Box<[usvg::fontdb::ID]>,
 }
 
 impl ExportFontEnvironment {
@@ -662,281 +578,66 @@ impl ExportFontEnvironment {
         policy: &merman_render::diagram_theme::FontSourcePolicy,
         system_fonts: impl FnOnce() -> Arc<usvg::fontdb::Database>,
     ) -> Result<Self> {
-        let effective_sources = policy
-            .priority()
-            .filter(|source| {
-                catalog
+        if !policy.priority().any(|source| {
+            source == FontSource::System
+                && catalog
                     .available_sources()
-                    .any(|available| available == *source)
-            })
-            .collect::<Vec<_>>();
-        let mode = match effective_sources.as_slice() {
-            [FontSource::System] => ExportFontMode::SystemOnly,
-            [FontSource::Embedded] => ExportFontMode::EmbeddedOnly,
-            [FontSource::Embedded, FontSource::System] => ExportFontMode::EmbeddedThenSystem,
-            [FontSource::System, FontSource::Embedded] => ExportFontMode::SystemThenEmbedded,
-            _ => return Err(ExportError::FontSourceUnavailable),
-        };
-
-        let system_allowed = effective_sources.contains(&FontSource::System);
-        let embedded_allowed = effective_sources.contains(&FontSource::Embedded);
-        let system_db = system_allowed.then(system_fonts);
-        let mut fontdb = system_db
-            .as_ref()
-            .map(Arc::clone)
-            .unwrap_or_else(|| Arc::new(usvg::fontdb::Database::new()));
-        let mut retained_db = usvg::fontdb::Database::new();
-        let mut retained_to_combined = HashMap::new();
-        let mut retained_face_ids = Vec::new();
-        let mut resolved_faces = ExportFaceOrigins {
-            system: system_db.as_ref().map(Arc::clone),
-            loaded: HashMap::new(),
-        };
-        let catalog_assets: Arc<[ExportCatalogAssetEvidence]> = catalog
-            .assets()
-            .iter()
-            .map(|asset| ExportCatalogAssetEvidence {
-                fingerprint: asset.fingerprint(),
-                data: asset.canonical_data(),
-                face_indices: catalog
-                    .faces()
-                    .iter()
-                    .filter(|face| face.asset_id() == asset.id())
-                    .map(|face| face.face_index())
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            })
-            .collect::<Vec<_>>()
-            .into();
-
-        if embedded_allowed {
-            // Preserve the shared system database; only merging embedded sources needs a copy.
-            let combined_db = Arc::make_mut(&mut fontdb);
-            for asset in catalog.assets() {
-                let data: Arc<dyn AsRef<[u8]> + Send + Sync> =
-                    Arc::new(SharedFontData(asset.canonical_data()));
-                let retained_ids =
-                    retained_db.load_font_source(usvg::fontdb::Source::Binary(Arc::clone(&data)));
-                let combined_ids = combined_db.load_font_source(usvg::fontdb::Source::Binary(data));
-                if retained_ids.len() != combined_ids.len() || retained_ids.is_empty() {
-                    return Err(ExportError::FontCatalogLoad);
-                }
-                for (retained, combined) in retained_ids.into_iter().zip(combined_ids) {
-                    let retained_face_index = retained_db
-                        .face(retained)
-                        .map(|face| face.index)
-                        .ok_or(ExportError::FontCatalogLoad)?;
-                    let combined_face_index = combined_db
-                        .face(combined)
-                        .map(|face| face.index)
-                        .ok_or(ExportError::FontCatalogLoad)?;
-                    if retained_face_index != combined_face_index
-                        || !catalog.faces().iter().any(|face| {
-                            face.asset_id() == asset.id()
-                                && face.face_index() == combined_face_index
-                        })
-                    {
-                        return Err(ExportError::FontCatalogLoad);
-                    }
-                    retained_to_combined.insert(retained, combined);
-                    resolved_faces.loaded.insert(
-                        combined,
-                        ExportResolvedFace {
-                            key: Some(ExportFaceKey {
-                                asset_fingerprint: asset.fingerprint(),
-                                face_index: combined_face_index,
-                            }),
-                            source: FontSource::Embedded,
-                        },
-                    );
-                    retained_face_ids.push(combined);
-                }
-            }
-            if retained_face_ids.len() != catalog.faces().len() {
-                return Err(ExportError::FontCatalogLoad);
-            }
-            configure_catalog_generic_families(&mut retained_db, catalog);
-            configure_fontdb_generic_families(&mut retained_db);
-            configure_catalog_generic_families(combined_db, catalog);
-            configure_fontdb_generic_families(combined_db);
+                    .any(|available| available == source)
+        }) {
+            return Err(ExportError::FontSourceUnavailable);
         }
 
-        let retained_db = Arc::new(retained_db);
-        let mappings = Arc::new(CatalogFamilyMappings::from_catalog(catalog));
+        let fontdb = system_fonts();
         let recorder = Arc::new(FontResolutionRecorder::default());
-        let default_family = catalog_default_family(catalog)
-            .or_else(|| {
-                default_family_for_sources(mode, system_db.as_deref(), retained_db.as_ref())
-            })
-            .unwrap_or_else(|| "Arial".to_owned());
-        let resolver = catalog_font_resolver(
-            mode,
-            system_db,
-            Arc::clone(&retained_db),
-            Arc::new(retained_to_combined),
-            mappings,
-            Arc::clone(&recorder),
-        );
+        let default_family = default_font_family(&fontdb).unwrap_or_else(|| "Arial".to_owned());
+        let resolver = system_font_resolver(Arc::clone(&fontdb), Arc::clone(&recorder));
 
         Ok(Self {
-            fontdb,
+            fontdb: Arc::clone(&fontdb),
             default_family,
             resolver,
             plan: ExportFontPlanSeed {
                 catalog_fingerprint: catalog.fingerprint(),
-                source_mode: mode,
-                loaded_embedded_face_count: retained_face_ids.len(),
-                faces: resolved_faces,
-                catalog_assets,
+                source_mode: ExportFontMode::SystemOnly,
+                faces: ExportFaceOrigins { system: fontdb },
                 recorder,
             },
-            #[cfg(test)]
-            retained_face_ids: retained_face_ids.into_boxed_slice(),
         })
     }
 }
 
-fn catalog_face_key_for_database_face(
-    database: &usvg::fontdb::Database,
-    id: usvg::fontdb::ID,
-    catalog_assets: &[ExportCatalogAssetEvidence],
-) -> Option<ExportFaceKey> {
-    database
-        .with_face_data(id, |data, face_index| {
-            let asset = catalog_assets.iter().find(|asset| {
-                asset.data.as_ref() == data && asset.face_indices.contains(&face_index)
-            })?;
-            Some(ExportFaceKey {
-                asset_fingerprint: asset.fingerprint,
-                face_index,
-            })
-        })
-        .flatten()
-}
-
-#[derive(Clone)]
-struct SharedFontData(Arc<[u8]>);
-
-impl AsRef<[u8]> for SharedFontData {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-fn catalog_font_resolver(
-    mode: ExportFontMode,
-    system_db: Option<Arc<usvg::fontdb::Database>>,
-    retained_db: Arc<usvg::fontdb::Database>,
-    retained_to_combined: Arc<HashMap<usvg::fontdb::ID, usvg::fontdb::ID>>,
-    mappings: Arc<CatalogFamilyMappings>,
+fn system_font_resolver(
+    fontdb: Arc<usvg::fontdb::Database>,
     recorder: Arc<FontResolutionRecorder>,
 ) -> usvg::FontResolver<'static> {
-    let sources = Arc::new(FontResolverSources {
-        mode,
-        system_db,
-        retained_db,
-        retained_to_combined,
-        mappings,
-        recorder,
-    });
-    let select_sources = Arc::clone(&sources);
-    let fallback_sources = Arc::clone(&sources);
+    let select_fontdb = Arc::clone(&fontdb);
+    let select_recorder = Arc::clone(&recorder);
 
     usvg::FontResolver {
         select_font: Box::new(move |font, combined_db| {
-            if let Some((_, id)) = select_sources.query_requested_font(font) {
+            if let Some(id) = query_font(font, &select_fontdb) {
                 debug_assert!(combined_db.face(id).is_some());
                 return Some(id);
             }
-            if let Some((_, id)) = select_sources.query_family_fallback(font) {
+            if let Some(id) = query_default_serif(font, &select_fontdb)
+                .or_else(|| query_browser_like_fallback_font(font, &select_fontdb))
+                .or_else(|| select_fontdb.faces().next().map(|face| face.id))
+            {
                 debug_assert!(combined_db.face(id).is_some());
-                select_sources
-                    .recorder
+                select_recorder
                     .family_fallback_used
                     .store(true, Ordering::Relaxed);
                 return Some(id);
             }
-            select_sources
-                .recorder
+            select_recorder
                 .unresolved_font_request
                 .store(true, Ordering::Relaxed);
             None
         }),
         select_fallback: Box::new(move |character, excluded, combined_db| {
-            if let Some((_, id)) =
-                fallback_sources.query_glyph_fallback(character, excluded, combined_db.as_ref())
-            {
-                fallback_sources
-                    .recorder
-                    .glyph_fallback_used
-                    .store(true, Ordering::Relaxed);
-                return Some(id);
-            }
-            fallback_sources
-                .recorder
-                .unresolved_glyph_fallback
-                .store(true, Ordering::Relaxed);
-            None
-        }),
-    }
-}
-
-struct FontResolverSources {
-    mode: ExportFontMode,
-    system_db: Option<Arc<usvg::fontdb::Database>>,
-    retained_db: Arc<usvg::fontdb::Database>,
-    retained_to_combined: Arc<HashMap<usvg::fontdb::ID, usvg::fontdb::ID>>,
-    mappings: Arc<CatalogFamilyMappings>,
-    recorder: Arc<FontResolutionRecorder>,
-}
-
-impl FontResolverSources {
-    fn database(&self, source: FontSource) -> Option<&usvg::fontdb::Database> {
-        match source {
-            FontSource::Embedded => Some(self.retained_db.as_ref()),
-            FontSource::System => self.system_db.as_deref(),
-            _ => None,
-        }
-    }
-
-    fn to_combined_id(&self, source: FontSource, id: usvg::fontdb::ID) -> Option<usvg::fontdb::ID> {
-        match source {
-            FontSource::Embedded => self.retained_to_combined.get(&id).copied(),
-            FontSource::System => Some(id),
-            _ => None,
-        }
-    }
-
-    fn query_requested_font(&self, font: &usvg::Font) -> Option<(FontSource, usvg::fontdb::ID)> {
-        self.mode.sources().iter().find_map(|source| {
-            let database = self.database(*source)?;
-            let id = query_font(font, database, self.mappings.as_ref())?;
-            Some((*source, self.to_combined_id(*source, id)?))
-        })
-    }
-
-    fn query_family_fallback(&self, font: &usvg::Font) -> Option<(FontSource, usvg::fontdb::ID)> {
-        self.mode.sources().iter().find_map(|source| {
-            let database = self.database(*source)?;
-            let id = query_default_serif(font, database)
-                .or_else(|| query_browser_like_fallback_font(font, database))
-                .or_else(|| database.faces().next().map(|face| face.id))?;
-            Some((*source, self.to_combined_id(*source, id)?))
-        })
-    }
-
-    fn query_glyph_fallback(
-        &self,
-        character: char,
-        excluded: &[usvg::fontdb::ID],
-        combined_db: &usvg::fontdb::Database,
-    ) -> Option<(FontSource, usvg::fontdb::ID)> {
-        let base_face = excluded.first().and_then(|id| combined_db.face(*id));
-        self.mode.sources().iter().find_map(|source| {
-            let database = self.database(*source)?;
-            database.faces().find_map(|face| {
-                let combined_id = self.to_combined_id(*source, face.id)?;
-                if excluded.contains(&combined_id) {
+            let base_face = excluded.first().and_then(|id| combined_db.face(*id));
+            let selected = fontdb.faces().find_map(|face| {
+                if excluded.contains(&face.id) {
                     return None;
                 }
                 if let Some(base) = base_face
@@ -946,9 +647,17 @@ impl FontResolverSources {
                 {
                     return None;
                 }
-                face_has_char(database, face.id, character).then_some((*source, combined_id))
-            })
-        })
+                face_has_char(&fontdb, face.id, character).then_some(face.id)
+            });
+            if selected.is_some() {
+                recorder.glyph_fallback_used.store(true, Ordering::Relaxed);
+            } else {
+                recorder
+                    .unresolved_glyph_fallback
+                    .store(true, Ordering::Relaxed);
+            }
+            selected
+        }),
     }
 }
 
@@ -963,108 +672,19 @@ fn face_has_char(database: &usvg::fontdb::Database, id: usvg::fontdb::ID, charac
         .unwrap_or(false)
 }
 
-#[derive(Default)]
-struct CatalogFamilyMappings {
-    aliases: HashMap<String, String>,
-    generic_families: HashMap<GenericFontFamily, String>,
-}
-
-impl CatalogFamilyMappings {
-    fn from_catalog(catalog: &FontCatalog) -> Self {
-        let mut aliases = catalog
-            .aliases()
-            .iter()
-            .map(|alias| {
-                (
-                    alias.alias().to_ascii_lowercase(),
-                    alias.target().to_owned(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        if let Some(system_ui) = catalog.generic_family(GenericFontFamily::SystemUi) {
-            aliases.insert("system-ui".to_owned(), system_ui.to_owned());
-        }
-        let generic_families = [
-            GenericFontFamily::Serif,
-            GenericFontFamily::SansSerif,
-            GenericFontFamily::Monospace,
-            GenericFontFamily::Cursive,
-            GenericFontFamily::Fantasy,
-        ]
-        .into_iter()
-        .filter_map(|generic| {
-            catalog
-                .generic_family(generic)
-                .map(|target| (generic, target.to_owned()))
-        })
-        .collect();
-        Self {
-            aliases,
-            generic_families,
-        }
-    }
-
-    fn resolve(&self, family: &usvg::FontFamily) -> ResolvedFamily {
-        let generic = match family {
-            usvg::FontFamily::Serif => Some(GenericFontFamily::Serif),
-            usvg::FontFamily::SansSerif => Some(GenericFontFamily::SansSerif),
-            usvg::FontFamily::Cursive => Some(GenericFontFamily::Cursive),
-            usvg::FontFamily::Fantasy => Some(GenericFontFamily::Fantasy),
-            usvg::FontFamily::Monospace => Some(GenericFontFamily::Monospace),
-            usvg::FontFamily::Named(name) => {
-                return ResolvedFamily::Named(
-                    self.aliases
-                        .get(&name.to_ascii_lowercase())
-                        .cloned()
-                        .unwrap_or_else(|| name.clone()),
-                );
-            }
-        };
-        if let Some(target) = generic.and_then(|family| self.generic_families.get(&family)) {
-            return ResolvedFamily::Named(target.clone());
-        }
-        match family {
-            usvg::FontFamily::Serif => ResolvedFamily::Serif,
-            usvg::FontFamily::SansSerif => ResolvedFamily::SansSerif,
-            usvg::FontFamily::Cursive => ResolvedFamily::Cursive,
-            usvg::FontFamily::Fantasy => ResolvedFamily::Fantasy,
-            usvg::FontFamily::Monospace => ResolvedFamily::Monospace,
-            usvg::FontFamily::Named(_) => unreachable!("named family returned above"),
-        }
-    }
-}
-
-enum ResolvedFamily {
-    Serif,
-    SansSerif,
-    Cursive,
-    Fantasy,
-    Monospace,
-    Named(String),
-}
-
-fn query_font(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-    mappings: &CatalogFamilyMappings,
-) -> Option<usvg::fontdb::ID> {
-    let resolved = font
+fn query_font(font: &usvg::Font, fontdb: &usvg::fontdb::Database) -> Option<usvg::fontdb::ID> {
+    let families = font
         .families()
         .iter()
-        .map(|family| mappings.resolve(family))
-        .collect::<Vec<_>>();
-    let families = resolved
-        .iter()
         .map(|family| match family {
-            ResolvedFamily::Serif => usvg::fontdb::Family::Serif,
-            ResolvedFamily::SansSerif => usvg::fontdb::Family::SansSerif,
-            ResolvedFamily::Cursive => usvg::fontdb::Family::Cursive,
-            ResolvedFamily::Fantasy => usvg::fontdb::Family::Fantasy,
-            ResolvedFamily::Monospace => usvg::fontdb::Family::Monospace,
-            ResolvedFamily::Named(name) => usvg::fontdb::Family::Name(name),
+            usvg::FontFamily::Serif => usvg::fontdb::Family::Serif,
+            usvg::FontFamily::SansSerif => usvg::fontdb::Family::SansSerif,
+            usvg::FontFamily::Cursive => usvg::fontdb::Family::Cursive,
+            usvg::FontFamily::Fantasy => usvg::fontdb::Family::Fantasy,
+            usvg::FontFamily::Monospace => usvg::fontdb::Family::Monospace,
+            usvg::FontFamily::Named(name) => usvg::fontdb::Family::Name(name),
         })
         .collect::<Vec<_>>();
-
     fontdb.query(&usvg::fontdb::Query {
         families: &families,
         weight: usvg::fontdb::Weight(font.weight()),
@@ -1123,51 +743,6 @@ fn font_requests_monospace(font: &usvg::Font) -> bool {
         }
         _ => false,
     })
-}
-
-fn catalog_default_family(catalog: &FontCatalog) -> Option<String> {
-    [
-        GenericFontFamily::SansSerif,
-        GenericFontFamily::SystemUi,
-        GenericFontFamily::Serif,
-    ]
-    .into_iter()
-    .find_map(|generic| catalog.generic_family(generic).map(ToOwned::to_owned))
-}
-
-fn default_family_for_sources(
-    mode: ExportFontMode,
-    system_db: Option<&usvg::fontdb::Database>,
-    retained_db: &usvg::fontdb::Database,
-) -> Option<String> {
-    mode.sources().iter().find_map(|source| match source {
-        FontSource::Embedded => default_font_family(retained_db),
-        FontSource::System => system_db.and_then(default_font_family),
-        _ => None,
-    })
-}
-
-fn configure_catalog_generic_families(fontdb: &mut usvg::fontdb::Database, catalog: &FontCatalog) {
-    for generic in [
-        GenericFontFamily::Serif,
-        GenericFontFamily::SansSerif,
-        GenericFontFamily::Monospace,
-        GenericFontFamily::Cursive,
-        GenericFontFamily::Fantasy,
-    ] {
-        let Some(target) = catalog.generic_family(generic) else {
-            continue;
-        };
-        match generic {
-            GenericFontFamily::Serif => fontdb.set_serif_family(target),
-            GenericFontFamily::SansSerif => fontdb.set_sans_serif_family(target),
-            GenericFontFamily::Monospace => fontdb.set_monospace_family(target),
-            GenericFontFamily::Cursive => fontdb.set_cursive_family(target),
-            GenericFontFamily::Fantasy => fontdb.set_fantasy_family(target),
-            GenericFontFamily::SystemUi => unreachable!("system-ui is resolved as a named alias"),
-            _ => {}
-        }
-    }
 }
 
 pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
@@ -1264,14 +839,27 @@ mod tests {
 
     #[test]
     fn system_font_catalog_reuses_the_shared_system_database() {
-        let svg = sealed_svg(
-            FontCatalog::system_fonts(),
+        for policy in [
+            FontSourcePolicy::system_only(),
             FontSourcePolicy::embedded_then_system(),
-        );
-        let environment = ExportFontEnvironment::from_svg(&svg).unwrap();
+            FontSourcePolicy::system_then_embedded(),
+        ] {
+            let svg = sealed_svg(FontCatalog::system_fonts(), policy);
+            let environment = ExportFontEnvironment::from_svg(&svg).unwrap();
 
-        assert_eq!(environment.plan.source_mode, ExportFontMode::SystemOnly);
-        assert!(Arc::ptr_eq(&environment.fontdb, &shared_system_fontdb()));
-        assert!(environment.retained_face_ids.is_empty());
+            assert_eq!(environment.plan.source_mode, ExportFontMode::SystemOnly);
+            assert!(Arc::ptr_eq(&environment.fontdb, &shared_system_fontdb()));
+        }
+    }
+
+    #[test]
+    fn embedded_only_policy_rejects_before_system_font_discovery() {
+        let result = ExportFontEnvironment::from_resources(
+            &FontCatalog::system_fonts(),
+            &FontSourcePolicy::embedded_only(),
+            || panic!("unavailable font sources must be rejected before discovering system fonts"),
+        );
+
+        assert!(matches!(result, Err(ExportError::FontSourceUnavailable)));
     }
 }
