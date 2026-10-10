@@ -1027,84 +1027,57 @@ mod tests {
 
     #[test]
     fn every_mermaid_compatibility_field_changes_recipe_identity() {
-        assert_recipe_field_changes(
-            "mermaid.theme",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
+        let variable = |name, value: super::super::MermaidThemeValue| {
+            MermaidThemeCompatibility::default()
+                .with_variable(name, value)
+                .unwrap()
+        };
+        for (field, left, right) in [
+            (
+                "mermaid.theme",
                 MermaidThemeCompatibility::default()
                     .with_theme("base")
                     .unwrap(),
-            ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
                 MermaidThemeCompatibility::default()
                     .with_theme("dark")
                     .unwrap(),
             ),
-        );
-        assert_recipe_field_changes(
-            "mermaid.dark_mode",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
+            (
+                "mermaid.dark_mode",
                 MermaidThemeCompatibility::default()
                     .with_dark_mode(false)
                     .unwrap(),
-            ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
                 MermaidThemeCompatibility::default()
                     .with_dark_mode(true)
                     .unwrap(),
             ),
-        );
-        assert_recipe_field_changes(
-            "mermaid.variable.name",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("primaryColor", "#112233")
-                    .unwrap(),
+            (
+                "mermaid.variable.name",
+                variable("primaryColor", "#112233".into()),
+                variable("secondaryColor", "#112233".into()),
             ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("secondaryColor", "#112233")
-                    .unwrap(),
+            (
+                "mermaid.variable.string",
+                variable("primaryColor", "#112233".into()),
+                variable("primaryColor", "#223344".into()),
             ),
-        );
-        assert_recipe_field_changes(
-            "mermaid.variable.string",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("primaryColor", "#112233")
-                    .unwrap(),
+            (
+                "mermaid.variable.number",
+                variable("fontSize", 17.0_f64.into()),
+                variable("fontSize", 18.0_f64.into()),
             ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("primaryColor", "#223344")
-                    .unwrap(),
+            (
+                "mermaid.variable.boolean",
+                variable("darkMode", false.into()),
+                variable("darkMode", true.into()),
             ),
-        );
-        assert_recipe_field_changes(
-            "mermaid.variable.number",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("fontSize", 17.0)
-                    .unwrap(),
-            ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("fontSize", 18.0)
-                    .unwrap(),
-            ),
-        );
-        assert_recipe_field_changes(
-            "mermaid.variable.boolean",
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("darkMode", false)
-                    .unwrap(),
-            ),
-            DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_variable("darkMode", true)
-                    .unwrap(),
-            ),
-        );
+        ] {
+            assert_recipe_field_changes(
+                field,
+                DiagramThemeSpec::new().with_mermaid_compatibility(left),
+                DiagramThemeSpec::new().with_mermaid_compatibility(right),
+            );
+        }
     }
 
     #[test]
@@ -1468,501 +1441,330 @@ mod tests {
             with_canvas(CanvasSpec::default()),
             with_canvas(CanvasSpec::transparent()),
         );
-        let mut cases = Vec::new();
-        cases.push((
-            "canvas.solid.color",
-            CanvasSpec::default().with_base(CanvasPaint::Solid(color("#111827"))),
-            CanvasSpec::default().with_base(CanvasPaint::Solid(color("#1f2937"))),
-        ));
-        cases.push((
-            "canvas.linear.angle",
-            CanvasSpec::default().with_base(linear_paint(30.0, 0.0, "#111827")),
-            CanvasSpec::default().with_base(linear_paint(45.0, 0.0, "#111827")),
-        ));
-        cases.push((
-            "canvas.linear.stop.offset",
-            CanvasSpec::default().with_base(linear_paint(30.0, 0.0, "#111827")),
-            CanvasSpec::default().with_base(linear_paint(30.0, 0.1, "#111827")),
-        ));
-        cases.push((
-            "canvas.linear.stop.color",
-            CanvasSpec::default().with_base(linear_paint(30.0, 0.0, "#111827")),
-            CanvasSpec::default().with_base(linear_paint(30.0, 0.0, "#1f2937")),
-        ));
-        cases.push((
-            "canvas.linear.repeating_period_px",
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_repeating_period_px(16.0)
-                    .unwrap(),
-            )),
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_repeating_period_px(24.0)
-                    .unwrap(),
-            )),
-        ));
-        cases.push((
-            "canvas.linear.tile_width_px",
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_tile_px(16.0, 20.0)
-                    .unwrap(),
-            )),
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_tile_px(24.0, 20.0)
-                    .unwrap(),
-            )),
-        ));
-        cases.push((
-            "canvas.linear.tile_height_px",
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_tile_px(16.0, 20.0)
-                    .unwrap(),
-            )),
-            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
-                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
-                    .unwrap()
-                    .with_tile_px(16.0, 24.0)
-                    .unwrap(),
-            )),
-        ));
-        cases.push((
-            "canvas.radial.center_x",
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(40.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(45.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-        ));
-        cases.push((
-            "canvas.radial.center_y",
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(40.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(45.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-        ));
-        cases.push((
-            "canvas.radial.radius",
-            CanvasSpec::default().with_base(radial_paint(
+        let base = |paint| CanvasSpec::default().with_base(paint);
+        let linear = || LinearGradient::new(30.0, gradient_stops(0.0, "#111827")).unwrap();
+        let radial = |x, y, radius, offset, color| base(radial_paint(x, y, radius, offset, color));
+        let radial_gradient = || {
+            RadialGradient::new(
                 ThemeLength::percent(50.0),
                 ThemeLength::percent(50.0),
                 ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(70.0),
-                0.0,
-                "#111827",
-            )),
-        ));
-        cases.push((
-            "canvas.radial.length_unit",
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::px(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-        ));
-        cases.push((
-            "canvas.radial.stop",
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.1,
-                "#1f2937",
-            )),
-        ));
-        cases.push((
-            "canvas.radial.repeating",
-            CanvasSpec::default().with_base(radial_paint(
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(50.0),
-                ThemeLength::percent(60.0),
-                0.0,
-                "#111827",
-            )),
-            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
-                RadialGradient::new(
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(60.0),
-                    gradient_stops(0.0, "#111827"),
-                )
-                .unwrap()
-                .with_repeating()
-                .unwrap(),
-            )),
-        ));
-        cases.push((
-            "canvas.radial.tile_size_px",
-            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
-                RadialGradient::new(
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(60.0),
-                    gradient_stops(0.0, "#111827"),
-                )
-                .unwrap()
-                .with_tile_px(16.0, 20.0)
-                .unwrap(),
-            )),
-            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
-                RadialGradient::new(
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(50.0),
-                    ThemeLength::percent(60.0),
-                    gradient_stops(0.0, "#111827"),
-                )
-                .unwrap()
-                .with_tile_px(20.0, 20.0)
-                .unwrap(),
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.kind",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Grid,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.cell_width",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                13.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.cell_height",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                15.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.foreground",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#1f2937",
-                "#f8fafc",
-                10.0,
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.background",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#e2e8f0",
-                10.0,
-            )),
-        ));
-        cases.push((
-            "canvas.pattern.angle",
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                10.0,
-            )),
-            CanvasSpec::default().with_base(pattern_paint(
-                PatternKind::Dots,
-                12.0,
-                14.0,
-                "#111827",
-                "#f8fafc",
-                20.0,
-            )),
-        ));
-
+                gradient_stops(0.0, "#111827"),
+            )
+            .unwrap()
+        };
+        let pattern = |kind, width, height, foreground, background, angle| {
+            base(pattern_paint(
+                kind, width, height, foreground, background, angle,
+            ))
+        };
         let layer = |paint: CanvasPaint, opacity: f32, blend, offset_x, offset_y| {
-            CanvasLayer::new(paint)
-                .with_opacity(opacity)
-                .unwrap()
-                .with_blend_mode(blend)
-                .with_offset(offset_x, offset_y)
+            CanvasSpec::default()
+                .with_layer(
+                    CanvasLayer::new(paint)
+                        .with_opacity(opacity)
+                        .unwrap()
+                        .with_blend_mode(blend)
+                        .with_offset(offset_x, offset_y)
+                        .unwrap(),
+                )
                 .unwrap()
         };
-        cases.push((
-            "canvas.layer.paint",
-            CanvasSpec::default()
-                .with_layer(layer(
+        for (field, left, right) in [
+            (
+                "canvas.solid.color",
+                base(CanvasPaint::Solid(color("#111827"))),
+                base(CanvasPaint::Solid(color("#1f2937"))),
+            ),
+            (
+                "canvas.linear.angle",
+                base(linear_paint(30.0, 0.0, "#111827")),
+                base(linear_paint(45.0, 0.0, "#111827")),
+            ),
+            (
+                "canvas.linear.stop.offset",
+                base(linear_paint(30.0, 0.0, "#111827")),
+                base(linear_paint(30.0, 0.1, "#111827")),
+            ),
+            (
+                "canvas.linear.stop.color",
+                base(linear_paint(30.0, 0.0, "#111827")),
+                base(linear_paint(30.0, 0.0, "#1f2937")),
+            ),
+            (
+                "canvas.linear.repeating_period_px",
+                base(CanvasPaint::LinearGradient(
+                    linear().with_repeating_period_px(16.0).unwrap(),
+                )),
+                base(CanvasPaint::LinearGradient(
+                    linear().with_repeating_period_px(24.0).unwrap(),
+                )),
+            ),
+            (
+                "canvas.linear.tile_width_px",
+                base(CanvasPaint::LinearGradient(
+                    linear().with_tile_px(16.0, 20.0).unwrap(),
+                )),
+                base(CanvasPaint::LinearGradient(
+                    linear().with_tile_px(24.0, 20.0).unwrap(),
+                )),
+            ),
+            (
+                "canvas.linear.tile_height_px",
+                base(CanvasPaint::LinearGradient(
+                    linear().with_tile_px(16.0, 20.0).unwrap(),
+                )),
+                base(CanvasPaint::LinearGradient(
+                    linear().with_tile_px(16.0, 24.0).unwrap(),
+                )),
+            ),
+            (
+                "canvas.radial.center_x",
+                radial(
+                    ThemeLength::percent(40.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+                radial(
+                    ThemeLength::percent(45.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+            ),
+            (
+                "canvas.radial.center_y",
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(40.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(45.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+            ),
+            (
+                "canvas.radial.radius",
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(70.0),
+                    0.0,
+                    "#111827",
+                ),
+            ),
+            (
+                "canvas.radial.length_unit",
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+                radial(
+                    ThemeLength::px(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+            ),
+            (
+                "canvas.radial.stop",
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.0,
+                    "#111827",
+                ),
+                radial(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    0.1,
+                    "#1f2937",
+                ),
+            ),
+            (
+                "canvas.radial.repeating",
+                base(CanvasPaint::RadialGradient(radial_gradient())),
+                base(CanvasPaint::RadialGradient(
+                    radial_gradient().with_repeating().unwrap(),
+                )),
+            ),
+            (
+                "canvas.radial.tile_size_px",
+                base(CanvasPaint::RadialGradient(
+                    radial_gradient().with_tile_px(16.0, 20.0).unwrap(),
+                )),
+                base(CanvasPaint::RadialGradient(
+                    radial_gradient().with_tile_px(20.0, 20.0).unwrap(),
+                )),
+            ),
+            (
+                "canvas.pattern.kind",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Grid, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+            ),
+            (
+                "canvas.pattern.cell_width",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Dots, 13.0, 14.0, "#111827", "#f8fafc", 10.0),
+            ),
+            (
+                "canvas.pattern.cell_height",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Dots, 12.0, 15.0, "#111827", "#f8fafc", 10.0),
+            ),
+            (
+                "canvas.pattern.foreground",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Dots, 12.0, 14.0, "#1f2937", "#f8fafc", 10.0),
+            ),
+            (
+                "canvas.pattern.background",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#e2e8f0", 10.0),
+            ),
+            (
+                "canvas.pattern.angle",
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 10.0),
+                pattern(PatternKind::Dots, 12.0, 14.0, "#111827", "#f8fafc", 20.0),
+            ),
+            (
+                "canvas.layer.paint",
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+                layer(
                     CanvasPaint::Solid(color("#1f2937")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-        ));
-        cases.push((
-            "canvas.layer.opacity",
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+            ),
+            (
+                "canvas.layer.opacity",
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.7,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-        ));
-        cases.push((
-            "canvas.layer.blend_mode",
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+            ),
+            (
+                "canvas.layer.blend_mode",
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Screen,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-        ));
-        cases.push((
-            "canvas.layer.offset_x",
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+            ),
+            (
+                "canvas.layer.offset_x",
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     3.0,
                     2.0,
-                ))
-                .unwrap(),
-        ));
-        cases.push((
-            "canvas.layer.offset_y",
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+            ),
+            (
+                "canvas.layer.offset_y",
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     2.0,
-                ))
-                .unwrap(),
-            CanvasSpec::default()
-                .with_layer(layer(
+                ),
+                layer(
                     CanvasPaint::Solid(color("#111827")),
                     0.8,
                     BlendMode::Multiply,
                     1.0,
                     3.0,
-                ))
-                .unwrap(),
-        ));
-
-        for (field, left, right) in cases {
+                ),
+            ),
+        ] {
             assert_recipe_field_changes(field, with_canvas(left), with_canvas(right));
         }
 
-        for (field, left, right) in [
-            (
-                "canvas.bleed.top",
-                InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 4.0,
-                },
-                InsetsPx {
-                    top: 5.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 4.0,
-                },
-            ),
+        let bleed = InsetsPx {
+            top: 1.0,
+            right: 2.0,
+            bottom: 3.0,
+            left: 4.0,
+        };
+        for (field, right) in [
+            ("canvas.bleed.top", InsetsPx { top: 5.0, ..bleed }),
             (
                 "canvas.bleed.right",
                 InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 4.0,
-                },
-                InsetsPx {
-                    top: 1.0,
                     right: 5.0,
-                    bottom: 3.0,
-                    left: 4.0,
+                    ..bleed
                 },
             ),
             (
                 "canvas.bleed.bottom",
                 InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 4.0,
-                },
-                InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
                     bottom: 5.0,
-                    left: 4.0,
+                    ..bleed
                 },
             ),
-            (
-                "canvas.bleed.left",
-                InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 4.0,
-                },
-                InsetsPx {
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 3.0,
-                    left: 5.0,
-                },
-            ),
+            ("canvas.bleed.left", InsetsPx { left: 5.0, ..bleed }),
         ] {
             assert_recipe_field_changes(
                 field,
-                with_canvas(CanvasSpec::default().with_bleed(left).unwrap()),
+                with_canvas(CanvasSpec::default().with_bleed(bleed).unwrap()),
                 with_canvas(CanvasSpec::default().with_bleed(right).unwrap()),
             );
         }
