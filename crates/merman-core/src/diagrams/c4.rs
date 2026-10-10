@@ -2513,43 +2513,71 @@ mod tests {
 
     #[test]
     fn c4_cancellation_during_boundary_closure_releases_partial_fragments() {
-        const DEPTH: usize = 64;
-        let source = boundary_chain(DEPTH);
-        let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-        // Construction entry/header use three checkpoints; each macro uses two. Cancel halfway
-        // through the closers, after completed inner boundaries belong to an open frame.
-        control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH / 2);
+        std::thread::Builder::new()
+            .name("c4-deep-closure-cancellation".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                const DEPTH: usize = 15_000;
+                let source = boundary_chain(DEPTH);
+                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                // Construction entry/header use three checkpoints; each macro uses two. Cancel
+                // halfway through the closers, after completed inner boundaries belong to an
+                // open frame. Nextest isolates this named unit in its own OS subprocess.
+                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH / 2);
 
-        let cancelled = match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
-            Ok(_) => panic!("closure construction must observe cancellation"),
-            Err(cancelled) => cancelled,
-        };
-        assert_eq!(cancelled.reason, crate::CancelReason::Requested);
-        assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
-        assert_eq!(control.checkpoint().unwrap_err(), cancelled);
-        assert!(
-            parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta()).is_ok()
-        );
+                let cancelled =
+                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
+                        Ok(_) => panic!("closure construction must observe cancellation"),
+                        Err(cancelled) => cancelled,
+                    };
+                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
+                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
+                assert!(
+                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
+                        .is_ok()
+                );
+                println!(
+                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
+                );
+            })
+            .expect("spawn 2 MiB C4 closure-cancellation worker")
+            .join()
+            .expect("C4 closure cancellation releases completed inner frames");
     }
 
     #[test]
     fn c4_cancellation_during_boundary_replay_releases_partial_fragments() {
-        const DEPTH: usize = 64;
-        let source = boundary_chain(DEPTH);
-        let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
-        // Consume construction and all closers, then enter half the nested replay frames.
-        control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH + DEPTH / 2);
+        std::thread::Builder::new()
+            .name("c4-deep-replay-cancellation".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                const DEPTH: usize = 15_000;
+                let source = boundary_chain(DEPTH);
+                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                // Consume construction and all closers, then enter half the nested replay
+                // frames. Nextest isolates this named unit in its own OS subprocess.
+                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH + DEPTH / 2);
 
-        let cancelled = match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
-            Ok(_) => panic!("boundary replay must observe cancellation"),
-            Err(cancelled) => cancelled,
-        };
-        assert_eq!(cancelled.reason, crate::CancelReason::Requested);
-        assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
-        assert_eq!(control.checkpoint().unwrap_err(), cancelled);
-        assert!(
-            parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta()).is_ok()
-        );
+                let cancelled =
+                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
+                        Ok(_) => panic!("boundary replay must observe cancellation"),
+                        Err(cancelled) => cancelled,
+                    };
+                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
+                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
+                assert!(
+                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
+                        .is_ok()
+                );
+                println!(
+                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
+                );
+            })
+            .expect("spawn 2 MiB C4 replay-cancellation worker")
+            .join()
+            .expect("C4 replay cancellation releases completed boundary records");
     }
 
     #[test]

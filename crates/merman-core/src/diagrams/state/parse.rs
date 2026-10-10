@@ -13,7 +13,7 @@ use std::cell::Cell;
 use std::collections::HashSet;
 
 use super::db::StateDb;
-use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
+use super::{Lexer, StateDiagramRenderModel, StateDocument, StateStatement, Tok};
 
 #[cfg(test)]
 thread_local! {
@@ -68,17 +68,23 @@ impl StateSyntax {
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
-        std::result::Result<Vec<Stmt>, StateGrammarError>,
+        std::result::Result<StateDocument, StateGrammarError>,
     )> {
         let editor_facts = collect_state_editor_facts_from_events(&self.events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
             emitted = emitted.saturating_add(1);
             active
         });
-        let document = super::state_grammar::RootParser::new().parse(controlled_events);
+        let mut document = StateDocument::default();
+        let parsed =
+            super::state_grammar::RootParser::new().parse(&mut document, controlled_events);
+        let document = parsed.map(|root| {
+            document.root = Some(root);
+            document
+        });
         control.checkpoint()?;
         Ok((editor_facts, document))
     }
@@ -148,7 +154,7 @@ fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> 
 }
 
 pub(crate) fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_state_semantic_source(code, meta)?.db.to_model(meta)
+    parse_state_semantic_source(code, meta)?.db.into_model(meta)
 }
 
 pub(crate) fn parse_state_model_for_render_controlled(
@@ -158,7 +164,7 @@ pub(crate) fn parse_state_model_for_render_controlled(
 ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
     let construction = construct_state_semantic_source(code, control)?;
     match construction {
-        Ok(source) => Ok(source.db.to_model_for_render_typed(meta)),
+        Ok(source) => source.db.into_model_controlled(meta, control),
         Err(failure) => Ok(Err(failure.into_parse_error(meta, code.len()))),
     }
 }
@@ -169,12 +175,29 @@ pub(crate) fn parse_state_json_and_editor_facts(
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_state_semantic_source(code, control)?;
+    let construction = match construction {
+        Ok(StateSemanticSource { db, editor_facts }) => {
+            let model = match db.into_model_controlled(meta, control)? {
+                Ok(model) => super::render_model::render_model_to_compat_json_controlled(
+                    &model, meta, control,
+                )?,
+                Err(error) => Err(error),
+            };
+            Ok((model, editor_facts))
+        }
+        Err(failure) => Err(failure),
+    };
+    control.checkpoint()?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |StateSemanticSource { db, editor_facts }| (db.to_model(meta), editor_facts),
+        |(model, editor_facts)| {
+            (
+                model.map(crate::ManagedSemanticJson::into_unmanaged_value),
+                editor_facts,
+            )
+        },
         |failure| failure.into_error_and_editor_facts(meta, code.len()),
     );
-    control.checkpoint()?;
     Ok(parsed)
 }
 
@@ -204,52 +227,55 @@ fn construct_state_semantic_source(
     assign_divider_ids(&mut doc, &mut divider_cnt, control)?;
 
     let mut db = StateDb::new();
-    db.set_root_doc(doc);
+    db.set_root_doc(doc, control)?;
     control.checkpoint()?;
     Ok(Ok(StateSemanticSource { db, editor_facts }))
 }
 
-fn assign_divider_ids(
-    stmts: &mut [Stmt],
+pub(super) fn assign_divider_ids(
+    document: &mut StateDocument,
     cnt: &mut usize,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
-    let mut stack = vec![stmts.iter_mut()];
+    let Some(root) = document.root else {
+        return Ok(());
+    };
+    let mut stack = vec![(root, 0usize)];
     let mut inspected = 0usize;
-    while let Some(iter) = stack.last_mut() {
+    while let Some((doc, index)) = stack.last_mut() {
         if inspected.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        let Some(stmt) = iter.next() else {
+        let Some(stmt) = document.documents[doc.0].get_mut(*index) else {
             stack.pop();
             continue;
         };
-
+        *index += 1;
+        let mut child = None;
         match stmt {
-            Stmt::State(st) => {
+            StateStatement::State(st) => {
                 if st.ty == "divider" && st.id == "__divider__" {
                     *cnt += 1;
                     st.id = format!("divider-id-{cnt}");
                 }
-                if let Some(doc) = st.doc.as_mut() {
-                    stack.push(doc.iter_mut());
-                }
+                child = st.doc;
             }
-            Stmt::Relation(relation) => {
-                if relation.state1.ty == "divider" && relation.state1.id == "__divider__" {
-                    *cnt += 1;
-                    relation.state1.id = format!("divider-id-{cnt}");
-                }
-                if relation.state2.ty == "divider" && relation.state2.id == "__divider__" {
-                    *cnt += 1;
-                    relation.state2.id = format!("divider-id-{cnt}");
+            StateStatement::Relation(relation) => {
+                for st in [&mut relation.state1, &mut relation.state2] {
+                    if st.ty == "divider" && st.id == "__divider__" {
+                        *cnt += 1;
+                        st.id = format!("divider-id-{cnt}");
+                    }
                 }
             }
             _ => {}
         }
+        if let Some(child) = child {
+            stack.push((child, 0));
+        }
         inspected = inspected.saturating_add(1);
     }
-    Ok(())
+    control.checkpoint()
 }
 
 fn state_editor_facts_from_events(events: Vec<StateEditorEvent>) -> EditorSemanticFacts {

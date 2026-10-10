@@ -1,8 +1,8 @@
 // State diagram grammar (phase 1), based on Mermaid 11.12.2 `stateDiagram.jison`.
 
-grammar;
+grammar(document: &mut StateDocument);
 
-use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
+use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
 
 extern {
@@ -59,8 +59,8 @@ extern {
   }
 }
 
-pub Root: Vec<Stmt> = {
-  <_p:Prelude> "stateDiagram" <items:Items> => items,
+pub Root: StateDocumentId = {
+  <_p:Prelude> "stateDiagram" <items:Items> => document.push(items),
 };
 
 Prelude: () = {
@@ -68,16 +68,16 @@ Prelude: () = {
   Newline <rest:Prelude> => rest,
 };
 
-Items: Vec<Stmt> = {
+Items: Vec<StateStatement> = {
   <items:(Item)*> => items.into_iter().filter_map(|i| i).collect()
 };
 
-Item: Option<Stmt> = {
+Item: Option<StateStatement> = {
   Newline => None,
   <s:Statement> => Some(s),
 };
 
-Statement: Stmt = {
+Statement: StateStatement = {
   <s:ClassDefStatement> => s,
   <s:StyleStatement> => s,
   <s:CssClassStatement> => s,
@@ -85,10 +85,10 @@ Statement: Stmt = {
   <s:AccessibilityStatement> => s,
   <s:ClickStatement> => s,
   <s:NoteStatement> => s,
-  HideEmptyDescription => Stmt::Noop,
-  ScaleWidth => Stmt::Noop,
+  HideEmptyDescription => StateStatement::Noop,
+  ScaleWidth => StateStatement::Noop,
 
-  <s1:IdStatement> "-->" <s2:IdStatement> <d:OptDescr> => Stmt::Relation(Box::new(RelationStmt {
+  <s1:IdStatement> "-->" <s2:IdStatement> <d:OptDescr> => StateStatement::Relation(Box::new(StateStatementRelation {
     state1: s1,
     state2: s2,
     description: d,
@@ -96,13 +96,13 @@ Statement: Stmt = {
 
   <mut s:IdStatement> <d:OptDescr> => {
     s.description = d;
-    Stmt::State(s)
+    StateStatement::State(s)
   },
 
   // `state <id>` without a `{ ... }` is effectively a no-op in Mermaid's parser.
-  <_id:CompositState> => Stmt::Noop,
+  <_id:CompositState> => StateStatement::Noop,
 
-  <l:@L> <id:CompositState> <r:@R> <doc:Block> => Stmt::State(StateStmt {
+  <l:@L> <id:CompositState> <r:@R> <doc:Block> => StateStatement::State(StateStatementState {
     id,
     id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
@@ -132,7 +132,7 @@ Statement: Stmt = {
         descriptions.push(extra.to_string());
       }
     }
-    Stmt::State(StateStmt {
+    StateStatement::State(StateStatementState {
       id: state_id,
       id_span,
       ty: "default".to_string(),
@@ -148,32 +148,32 @@ Statement: Stmt = {
   },
 
   <l:@L> <id:Fork> => {
-    let mut state = StateStmt::new_typed(id, "fork");
+    let mut state = StateStatementState::new_typed(id, "fork");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   },
   <l:@L> <id:Join> => {
-    let mut state = StateStmt::new_typed(id, "join");
+    let mut state = StateStatementState::new_typed(id, "join");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   },
   <l:@L> <id:Choice> => {
-    let mut state = StateStmt::new_typed(id, "choice");
+    let mut state = StateStatementState::new_typed(id, "choice");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   },
-  Concurrent => Stmt::State(StateStmt::new_typed("__divider__".to_string(), "divider")),
+  Concurrent => StateStatement::State(StateStatementState::new_typed("__divider__".to_string(), "divider")),
 };
 
-NoteStatement: Stmt = {
-  Note <pos:NotePosition> <l:@L> <id:Id> <r:@R> <text:NoteTextTok> => Stmt::State(StateStmt {
+NoteStatement: StateStatement = {
+  Note <pos:NotePosition> <l:@L> <id:Id> <r:@R> <text:NoteTextTok> => StateStatement::State(StateStatementState {
     id,
     id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
     description: None,
     descriptions: Vec::new(),
     doc: None,
-    note: Some(Note { position: Some(pos), text }),
+    note: Some(StateStatementNote { position: Some(pos), text }),
     classes: Vec::new(),
     styles: Vec::new(),
     text_styles: Vec::new(),
@@ -184,7 +184,7 @@ NoteStatement: Stmt = {
   //
   // Note: downstream relations can still reference the note id; in that case Mermaid will render a
   // regular state node for that id (the note text is ignored).
-  Note <_text:NoteTextTok> "as" <_id:Id> => Stmt::Noop,
+  Note <_text:NoteTextTok> "as" <_id:Id> => StateStatement::Noop,
 };
 
 NotePosition: String = {
@@ -197,64 +197,64 @@ OptDescr: Option<String> = {
   <d:Descr> => Some(d),
 };
 
-Block: Vec<Stmt> = {
-  "{" <doc:Items> "}" => doc
+Block: StateDocumentId = {
+  "{" <doc:Items> "}" => document.push(doc)
 };
 
-OptBlock: Option<Vec<Stmt>> = {
+OptBlock: Option<StateDocumentId> = {
   => None,
   <b:Block> => Some(b),
 };
 
-ClassDefStatement: Stmt = {
-  ClassDef <id:ClassDefId> <raw:ClassDefStyleOpts> => Stmt::ClassDef { id, classes: raw },
+ClassDefStatement: StateStatement = {
+  ClassDef <id:ClassDefId> <raw:ClassDefStyleOpts> => StateStatement::ClassDef { id, classes: raw },
 };
 
-StyleStatement: Stmt = {
-  Style <ids:StyleIds> <raw:StyleDefStyleOpts> => Stmt::Style { ids, styles: raw },
+StyleStatement: StateStatement = {
+  Style <ids:StyleIds> <raw:StyleDefStyleOpts> => StateStatement::Style { ids, styles: raw },
 };
 
-CssClassStatement: Stmt = {
-  Class <ids:ClassEntityIds> <style:StyleClass> => Stmt::ApplyClass { ids, class_name: style },
+CssClassStatement: StateStatement = {
+  Class <ids:ClassEntityIds> <style:StyleClass> => StateStatement::ApplyClass { ids, class_name: style },
 };
 
-DirectionStatement: Stmt = {
-  <d:Direction> => Stmt::Direction(d.value),
+DirectionStatement: StateStatement = {
+  <d:Direction> => StateStatement::Direction(d.value),
 };
 
-AccessibilityStatement: Stmt = {
-  <t:AccTitle> => Stmt::AccTitle(t),
-  <d:AccDescr> => Stmt::AccDescr(d),
-  <d:AccDescrMultiline> => Stmt::AccDescr(d),
+AccessibilityStatement: StateStatement = {
+  <t:AccTitle> => StateStatement::AccTitle(t),
+  <d:AccDescr> => StateStatement::AccDescr(d),
+  <d:AccDescrMultiline> => StateStatement::AccDescr(d),
 };
 
-ClickStatement: Stmt = {
-  Click <s:IdStatement> <url:StringLit> <tooltip:StringLit> => Stmt::Click(ClickStmt {
+ClickStatement: StateStatement = {
+  Click <s:IdStatement> <url:StringLit> <tooltip:StringLit> => StateStatement::Click(StateStatementClick {
     id: s.id,
     url,
     tooltip,
   }),
-  Click <s:IdStatement> Href <url:StringLit> => Stmt::Click(ClickStmt {
+  Click <s:IdStatement> Href <url:StringLit> => StateStatement::Click(StateStatementClick {
     id: s.id,
     url,
     tooltip: String::new(),
   }),
 };
 
-IdStatement: StateStmt = {
+IdStatement: StateStatementState = {
   <l:@L> <id:Id> <r:@R> => {
-    let mut state = StateStmt::new(id);
+    let mut state = StateStatementState::new(id);
     state.id_span = Some(SourceSpan::new(l, r));
     state
   },
   <l:@L> EdgeState <r:@R> => {
-    let mut state = StateStmt::new("[*]".to_string());
+    let mut state = StateStatementState::new("[*]".to_string());
     state.id_span = Some(SourceSpan::new(l, r));
     state
   },
   <l:@L> <pair:StyledId> => {
     let (id, class_id) = pair;
-    let mut s = StateStmt::new(id);
+    let mut s = StateStatementState::new(id);
     s.id_span = Some(SourceSpan::new(l, l + s.id.len()));
     s.classes.push(class_id);
     s

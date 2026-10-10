@@ -105,7 +105,7 @@ impl TypedSvgRenderer {
         svg.into_parts().0
     }
 
-    fn layout_json(&self, source: &str) -> Value {
+    fn layout_json(&self, source: &str) -> merman_core::ManagedSemanticJson {
         let output = self
             .renderer()
             .render(RenderRequest::layout_json(

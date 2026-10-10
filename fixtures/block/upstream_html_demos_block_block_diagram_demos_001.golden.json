@@ -37,7 +37,12 @@
             "type": "square",
             "label": "A wide one in the middle",
             "children": [],
-            "widthInColumns": 1
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#f9F",
+              "stroke:#333",
+              "stroke-width:4px"
+            ]
           },
           {
             "id": "C",
@@ -127,7 +132,12 @@
                 "type": "square",
                 "label": "A wide one in the middle",
                 "children": [],
-                "widthInColumns": 1
+                "widthInColumns": 1,
+                "styles": [
+                  "fill:#f9F",
+                  "stroke:#333",
+                  "stroke-width:4px"
+                ]
               },
               {
                 "id": "C",
@@ -191,7 +201,12 @@
             "type": "square",
             "label": "A wide one in the middle",
             "children": [],
-            "widthInColumns": 1
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#f9F",
+              "stroke:#333",
+              "stroke-width:4px"
+            ]
           },
           {
             "id": "C",

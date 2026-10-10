@@ -6,7 +6,7 @@ use std::fs::{self, File};
 use std::io::{self, Write as _};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CASE_ENV: &str = "MERMAN_CORE_DEEP_LIFECYCLE_CASE";
 const DEPTH_ENV: &str = "MERMAN_CORE_DEEP_LIFECYCLE_DEPTH";
@@ -31,10 +31,14 @@ enum Case {
     MindmapJsonCloneExport,
     TreemapTypedCloneDrop,
     IshikawaTypedCloneDrop,
+    #[cfg(feature = "test-support")]
+    StateProjectionCancel,
+    #[cfg(feature = "test-support")]
+    BlockProjectionCancel,
 }
 
 impl Case {
-    const ALL: [Self; 15] = [
+    const ALL: &'static [Self] = &[
         Self::FlowchartValid,
         Self::FlowchartMissingOuterEnd,
         Self::StateTypedDrop,
@@ -50,6 +54,10 @@ impl Case {
         Self::MindmapJsonCloneExport,
         Self::TreemapTypedCloneDrop,
         Self::IshikawaTypedCloneDrop,
+        #[cfg(feature = "test-support")]
+        Self::StateProjectionCancel,
+        #[cfg(feature = "test-support")]
+        Self::BlockProjectionCancel,
     ];
 
     fn selector(self) -> &'static str {
@@ -69,12 +77,17 @@ impl Case {
             Self::MindmapJsonCloneExport => "mindmap-json-clone-export",
             Self::TreemapTypedCloneDrop => "treemap-typed-clone-drop",
             Self::IshikawaTypedCloneDrop => "ishikawa-typed-clone-drop",
+            #[cfg(feature = "test-support")]
+            Self::StateProjectionCancel => "state-projection-cancel",
+            #[cfg(feature = "test-support")]
+            Self::BlockProjectionCancel => "block-projection-cancel",
         }
     }
 
     fn from_selector(selector: &str) -> Self {
         Self::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .find(|case| case.selector() == selector)
             .expect("known lifecycle case selector")
     }
@@ -91,6 +104,12 @@ impl Case {
     }
 
     fn source(self, depth: usize) -> String {
+        #[cfg(feature = "test-support")]
+        match self {
+            Self::StateProjectionCancel => return Self::StateTypedDrop.source(depth),
+            Self::BlockProjectionCancel => return Self::BlockValid.source(depth),
+            _ => {}
+        }
         let (header, closer, leaf) = match self {
             Self::FlowchartValid | Self::FlowchartMissingOuterEnd => {
                 ("flowchart TD\n", "end\n", "leaf[Leaf]\n")
@@ -128,6 +147,10 @@ impl Case {
                     writeln!(source, "{}Node {index}", "  ".repeat(index + 2)).unwrap();
                 }
                 return source;
+            }
+            #[cfg(feature = "test-support")]
+            Self::StateProjectionCancel | Self::BlockProjectionCancel => {
+                unreachable!("controlled projection sources returned above")
             }
         };
         let mut source = String::from(header);
@@ -201,6 +224,65 @@ fn run_worker(case: Case, depth: usize) {
     let engine = Engine::new();
     marker(started, "parse", "begin");
 
+    #[cfg(feature = "test-support")]
+    if matches!(
+        case,
+        Case::StateProjectionCancel | Case::BlockProjectionCancel
+    ) {
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        marker(started, "parse", "done");
+        marker(started, "projection", "begin");
+        let (_, model) = parsed.into_parts();
+        let control =
+            merman_core::OperationControl::new().for_phase(merman_core::OperationPhase::Export);
+        let (cancelled, scheduled_checkpoints) = match model {
+            merman_core::RenderSemanticModel::State(mut model) => {
+                // Retain one record to make HashMap iteration irrelevant. Its document still
+                // owns the complete canonical chain. Projection descends through `depth - 1`
+                // state statements and one leaf, then completes nested documents on ascent.
+                model.states.retain(|id, _| id == "s0");
+                assert_eq!(model.states.len(), 1);
+                assert!(model.states["s0"].doc.is_some());
+                // One record checkpoint precedes document steps checked every 128 steps.
+                // Cancel halfway through ascent, after at least depth / 2 nested documents
+                // have completed and become a deep managed value in an open parent frame.
+                let scheduled = 1 + (depth + depth / 2 + 1).div_ceil(128);
+                control.cancel_after_checkpoints(scheduled);
+                let cancelled = model
+                    .to_json_controlled(&control)
+                    .expect_err("projection cancels after completed inner documents");
+                drop(model);
+                (cancelled, scheduled)
+            }
+            merman_core::RenderSemanticModel::Block(model) => {
+                assert_eq!(model.blocks_flat.len(), depth + 2);
+                // Root-to-leaf descent uses `depth + 1` steps, followed by leaf completion.
+                // One entry checkpoint plus each 128-step traversal checkpoint succeeds;
+                // cancellation halfway through ascent releases a completed inner subtree
+                // containing at least depth / 2 nested ancestors.
+                let scheduled = 1 + (depth + depth / 2 + 3).div_ceil(128);
+                control.cancel_after_checkpoints(scheduled);
+                let cancelled = model
+                    .to_json_controlled(&control)
+                    .expect_err("projection cancels after a completed inner Block subtree");
+                drop(model);
+                (cancelled, scheduled)
+            }
+            other => panic!("unexpected controlled projection family: {}", other.kind()),
+        };
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+        assert_eq!(cancelled.phase, merman_core::OperationPhase::Export);
+        assert_eq!(control.checkpoint().unwrap_err(), cancelled);
+        println!("scheduled_checkpoints={scheduled_checkpoints}");
+        marker(started, "projection", "cancelled-after-nested-completion");
+        marker(started, "drop", "done");
+        after_small_operation(&engine, started);
+        return;
+    }
+
     if matches!(case, Case::MindmapJsonDrop | Case::MindmapJsonCloneExport) {
         let parsed = engine
             .parse_diagram_sync(&source, ParseOptions::strict())
@@ -269,6 +351,15 @@ fn run_worker(case: Case, depth: usize) {
         marker(started, "model", "done");
         // A typed ownership probe must not introduce compatibility JSON ownership.
         marker(started, "export", "not-requested");
+        if matches!(case, Case::StateTypedCloneDrop) && depth >= 128 {
+            let merman_core::RenderSemanticModel::State(model) = parsed.model() else {
+                panic!("expected the canonical State model");
+            };
+            marker(started, "generic-serde", "begin");
+            let error = serde_json::to_vec(model).unwrap_err();
+            assert!(error.to_string().contains("128"));
+            marker(started, "generic-serde", "reported-error");
+        }
         if matches!(case, Case::StateTypedDrop) {
             marker(started, "clone", "not-requested");
         } else {
@@ -288,13 +379,22 @@ fn run_worker(case: Case, depth: usize) {
 
 fn run_child(case: Case, depth: usize) {
     let started = Instant::now();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("diagnostic timestamp follows the Unix epoch")
+        .as_nanos();
     let directory = std::env::temp_dir().join(format!(
-        "merman-core-deep-lifecycle-{}-{}-{depth}-{}",
+        "merman-core-deep-lifecycle-{}-{}-{depth}-{}-{timestamp}",
         std::process::id(),
         case.selector(),
         CHILD_SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));
-    fs::create_dir(&directory).expect("create child diagnostic directory");
+    fs::create_dir(&directory).unwrap_or_else(|error| {
+        panic!(
+            "create child diagnostic directory {}: {error}",
+            directory.display()
+        )
+    });
     let stdout_path = directory.join("stdout.txt");
     let stderr_path = directory.join("stderr.txt");
     let mut child = Command::new(std::env::current_exe().expect("current test executable"))
@@ -362,6 +462,13 @@ fn run_child(case: Case, depth: usize) {
         stdout.contains("phase=after-small-operation status=done"),
         "child must complete a subsequent small operation"
     );
+    #[cfg(feature = "test-support")]
+    if matches!(
+        case,
+        Case::StateProjectionCancel | Case::BlockProjectionCancel
+    ) {
+        assert!(stdout.contains("phase=projection status=cancelled-after-nested-completion"));
+    }
 }
 
 #[test]
@@ -386,7 +493,7 @@ fn lifecycle_child() {
 
 #[test]
 fn small_lifecycle_cases_complete_on_host_stack() {
-    for case in Case::ALL {
+    for &case in Case::ALL {
         run_child(case, 4);
     }
 }
@@ -402,21 +509,30 @@ fn deep_flowchart_missing_outer_end_10000() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the State ownership repair"]
 fn deep_state_typed_drop_5000() {
     run_child(Case::StateTypedDrop, 5_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the State ownership repair"]
 fn deep_state_typed_clone_drop_5000() {
     run_child(Case::StateTypedCloneDrop, 5_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the State fragment repair"]
 fn deep_state_missing_outer_brace_10000() {
     run_child(Case::StateMissingOuterBrace, 10_000);
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+fn deep_state_projection_cancellation_releases_completed_documents_on_host_stack() {
+    run_child(Case::StateProjectionCancel, 3_000);
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+fn deep_block_projection_cancellation_releases_completed_subtrees_on_host_stack() {
+    run_child(Case::BlockProjectionCancel, 3_000);
 }
 
 #[test]
@@ -435,19 +551,16 @@ fn deep_c4_missing_outer_brace_15000() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the Block ownership repair"]
 fn deep_block_valid_3000() {
     run_child(Case::BlockValid, 3_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the Block fragment repair"]
 fn deep_block_missing_outer_end_10000() {
     run_child(Case::BlockMissingOuterEnd, 10_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the Railroad construction-depth repair"]
 fn deep_railroad_ebnf_postfix_5000() {
     run_child(Case::RailroadEbnfPostfix, 5_000);
 }
@@ -458,13 +571,11 @@ fn deep_mindmap_json_drop_3000() {
 }
 
 #[test]
-#[ignore = "deep typed clone/drop probe; prior parse/drop success does not establish clone safety"]
 fn deep_treemap_typed_clone_drop_5000() {
     run_child(Case::TreemapTypedCloneDrop, 5_000);
 }
 
 #[test]
-#[ignore = "deep typed clone/drop probe; prior parse/drop success does not establish clone safety"]
 fn deep_ishikawa_typed_clone_drop_5000() {
     run_child(Case::IshikawaTypedCloneDrop, 5_000);
 }

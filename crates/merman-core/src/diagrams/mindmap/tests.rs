@@ -778,6 +778,86 @@ fn mindmap_json_projection_observes_cancellation_inside_large_models() {
     );
 }
 
+#[cfg(feature = "all-diagrams")]
+#[test]
+fn mindmap_projection_cancels_after_deep_completed_subtree_child() {
+    crate::diagrams::treemap::tests::run_lifecycle_child(
+        "diagrams::mindmap::tests::mindmap_projection_cancels_after_deep_completed_subtree_child",
+        || {
+            const DEPTH: usize = 3_000;
+            let mut source = deep_mindmap_chain(DEPTH + 1);
+            source.push_str(" sibling\n");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Mindmap(model) = parsed.model() else {
+                panic!("typed mindmap");
+            };
+            let control = crate::OperationControl::new();
+            let node_count = DEPTH + 2;
+            let edge_count = DEPTH + 1;
+            // Cancel at the second root-child transfer; the first deep child is in a managed vector.
+            let checkpoints = node_count.div_ceil(128)
+                + 2
+                + edge_count.div_ceil(128)
+                + (2 * node_count).div_ceil(128)
+                + edge_count
+                + DEPTH;
+            control.cancel_after_checkpoints(checkpoints);
+            assert!(matches!(
+                super::render_model::mindmap_root_node_to_compat_json_controlled(
+                    model,
+                    parsed.metadata(),
+                    &control
+                ),
+                Err(crate::OperationCancelled { .. })
+            ));
+            let projected =
+                super::render_model::render_model_to_compat_json(model, parsed.metadata()).unwrap();
+            drop(crate::ManagedSemanticJson::from_value(projected));
+            drop(parsed);
+        },
+    );
+}
+
+#[cfg(feature = "all-diagrams")]
+#[test]
+fn mindmap_projection_failure_drops_deep_completed_children_child() {
+    crate::diagrams::treemap::tests::run_lifecycle_child(
+        "diagrams::mindmap::tests::mindmap_projection_failure_drops_deep_completed_children_child",
+        || {
+            let source = deep_mindmap_chain(3_001);
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Mindmap(model) = parsed.model() else {
+                panic!("typed mindmap");
+            };
+            let mut model = model.clone();
+            let root = model.nodes[0].id.clone();
+            model.nodes[0].id = "invalid-number".to_string();
+            for edge in &mut model.edges {
+                if edge.start == root {
+                    edge.start = "invalid-number".to_string();
+                }
+            }
+            assert!(
+                super::render_model::mindmap_root_node_to_compat_json_controlled(
+                    &model,
+                    parsed.metadata(),
+                    &crate::OperationControl::new()
+                )
+                .unwrap()
+                .is_err()
+            );
+            drop(model);
+            drop(parsed);
+        },
+    );
+}
+
 #[test]
 fn mindmap_get_data_projects_look_and_theme_shape_like_mermaid_11_15() {
     let model = parse(

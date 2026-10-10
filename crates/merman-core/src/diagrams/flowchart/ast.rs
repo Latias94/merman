@@ -189,6 +189,8 @@ pub(crate) struct StatementArena {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+// Generated grammar actions retain the original lexer token and diagnostic span in errors.
+#[allow(clippy::result_large_err)]
 impl StatementArena {
     pub(crate) fn construction_checkpoint(
         &mut self,

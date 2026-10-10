@@ -1,6 +1,6 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: 06cb172a02406190187bdc3c8c7e2b83df5cf891932a65bec4f5a9fa267a69a6
-use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
+// sha3: fdec1a4db285d64f90c3b3124ed8c27463a42d181f5808b79f88a520c2f58eb3
+use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
 extern crate lalrpop_util as ___lalrpop_util;
@@ -13,7 +13,7 @@ extern crate alloc;
 #[allow(explicit_outlives_requirements, non_snake_case, non_camel_case_types, unused_mut, unused_variables, unused_imports, unused_parens, clippy::needless_lifetimes, clippy::type_complexity, clippy::needless_return, clippy::too_many_arguments, clippy::match_single_binding, clippy::clone_on_copy, clippy::unit_arg)]
 mod ___parse___Root {
 
-    use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
+    use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocument, StateDocumentId, Tok};
     use crate::SourceSpan;
     #[allow(unused_extern_crates)]
     extern crate lalrpop_util as ___lalrpop_util;
@@ -30,14 +30,15 @@ mod ___parse___Root {
         Variant2((String, String)),
         Variant3(usize),
         Variant4(crate::diagrams::state::SpannedDirection),
-        Variant5(Option<Stmt>),
-        Variant6(alloc::vec::Vec<Option<Stmt>>),
-        Variant7(Stmt),
-        Variant8(Vec<Stmt>),
-        Variant9(StateStmt),
-        Variant10(Option<Vec<Stmt>>),
-        Variant11(Option<String>),
-        Variant12(()),
+        Variant5(Option<StateStatement>),
+        Variant6(alloc::vec::Vec<Option<StateStatement>>),
+        Variant7(StateStatement),
+        Variant8(StateDocumentId),
+        Variant9(StateStatementState),
+        Variant10(Vec<StateStatement>),
+        Variant11(Option<StateDocumentId>),
+        Variant12(Option<String>),
+        Variant13(()),
     }
     const ___ACTION: &[i8] = &[
         // State 0
@@ -428,6 +429,7 @@ mod ___parse___Root {
         }).collect()
     }
     fn ___expected_tokens_from_states<
+        '___0,
     >(
         ___states: &[i8],
         _: core::marker::PhantomData<()>,
@@ -441,12 +443,13 @@ mod ___parse___Root {
             }
         }).collect()
     }
-    struct ___StateMachine<>
+    struct ___StateMachine<'___0>
     where
     {
+        document: &'___0 mut StateDocument,
         ___phantom: core::marker::PhantomData<()>,
     }
-    impl<> ___state_machine::ParserDefinition for ___StateMachine<>
+    impl<'___0> ___state_machine::ParserDefinition for ___StateMachine<'___0>
     where
     {
         type Location = usize;
@@ -454,7 +457,7 @@ mod ___parse___Root {
         type Token = Tok;
         type TokenIndex = usize;
         type Symbol = ___Symbol<>;
-        type Success = Vec<Stmt>;
+        type Success = StateDocumentId;
         type StateIndex = i8;
         type Action = i8;
         type ReduceIndex = i8;
@@ -528,6 +531,7 @@ mod ___parse___Root {
             symbols: &mut alloc::vec::Vec<___state_machine::SymbolTriple<Self>>,
         ) -> Option<___state_machine::ParseResult<Self>> {
             ___reduce(
+                self.document,
                 action,
                 start_location,
                 states,
@@ -618,10 +622,11 @@ mod ___parse___Root {
         }
     }
     fn ___simulate_reduce<
+        '___0,
     >(
         ___reduce_index: i8,
         _: core::marker::PhantomData<()>,
-    ) -> ___state_machine::SimulatedReduce<___StateMachine<>>
+    ) -> ___state_machine::SimulatedReduce<___StateMachine<'___0>>
     {
         match ___reduce_index {
             0 => {
@@ -964,13 +969,15 @@ mod ___parse___Root {
             ___TOKENS: IntoIterator<Item=___TOKEN>,
         >(
             &self,
+            document: &mut StateDocument,
             ___tokens0: ___TOKENS,
-        ) -> Result<Vec<Stmt>, ___lalrpop_util::ParseError<usize, Tok, crate::diagrams::state::LexError>>
+        ) -> Result<StateDocumentId, ___lalrpop_util::ParseError<usize, Tok, crate::diagrams::state::LexError>>
         {
             let ___tokens = ___tokens0.into_iter();
             let mut ___tokens = ___tokens.map(|t| ___ToTriple::to_triple(t));
             ___state_machine::Parser::drive(
                 ___StateMachine {
+                    document,
                     ___phantom: core::marker::PhantomData::<()>,
                 },
                 ___tokens,
@@ -978,6 +985,7 @@ mod ___parse___Root {
         }
     }
     fn ___accepts<
+        '___0,
     >(
         ___error_state: Option<i8>,
         ___states: &[i8],
@@ -1011,179 +1019,180 @@ mod ___parse___Root {
     }
     fn ___reduce<
     >(
+        document: &mut StateDocument,
         ___action: i8,
         ___lookahead_start: Option<&usize>,
         ___states: &mut alloc::vec::Vec<i8>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
-    ) -> Option<Result<Vec<Stmt>,___lalrpop_util::ParseError<usize, Tok, crate::diagrams::state::LexError>>>
+    ) -> Option<Result<StateDocumentId,___lalrpop_util::ParseError<usize, Tok, crate::diagrams::state::LexError>>>
     {
         let (___pop_states, ___nonterminal) = match ___action {
             0 => {
-                ___reduce0(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce0(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             1 => {
-                ___reduce1(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce1(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             2 => {
-                ___reduce2(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce2(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             3 => {
-                ___reduce3(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce3(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             4 => {
-                ___reduce4(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce4(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             5 => {
-                ___reduce5(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce5(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             6 => {
-                ___reduce6(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce6(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             7 => {
-                ___reduce7(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce7(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             8 => {
-                ___reduce8(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce8(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             9 => {
-                ___reduce9(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce9(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             10 => {
-                ___reduce10(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce10(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             11 => {
-                ___reduce11(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce11(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             12 => {
-                ___reduce12(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce12(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             13 => {
-                ___reduce13(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce13(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             14 => {
-                ___reduce14(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce14(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             15 => {
-                ___reduce15(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce15(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             16 => {
-                ___reduce16(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce16(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             17 => {
-                ___reduce17(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce17(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             18 => {
-                ___reduce18(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce18(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             19 => {
-                ___reduce19(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce19(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             20 => {
-                ___reduce20(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce20(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             21 => {
-                ___reduce21(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce21(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             22 => {
-                ___reduce22(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce22(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             23 => {
-                ___reduce23(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce23(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             24 => {
-                ___reduce24(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce24(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             25 => {
-                ___reduce25(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce25(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             26 => {
-                ___reduce26(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce26(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             27 => {
-                ___reduce27(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce27(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             28 => {
-                ___reduce28(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce28(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             29 => {
-                ___reduce29(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce29(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             30 => {
-                ___reduce30(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce30(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             31 => {
-                ___reduce31(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce31(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             32 => {
-                ___reduce32(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce32(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             33 => {
-                ___reduce33(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce33(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             34 => {
-                ___reduce34(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce34(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             35 => {
-                ___reduce35(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce35(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             36 => {
-                ___reduce36(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce36(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             37 => {
-                ___reduce37(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce37(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             38 => {
-                ___reduce38(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce38(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             39 => {
-                ___reduce39(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce39(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             40 => {
-                ___reduce40(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce40(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             41 => {
-                ___reduce41(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce41(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             42 => {
-                ___reduce42(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce42(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             43 => {
-                ___reduce43(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce43(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             44 => {
-                ___reduce44(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce44(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             45 => {
-                ___reduce45(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce45(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             46 => {
-                ___reduce46(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce46(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             47 => {
-                ___reduce47(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce47(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             48 => {
-                ___reduce48(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce48(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             49 => {
-                ___reduce49(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce49(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             50 => {
-                ___reduce50(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce50(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             51 => {
-                ___reduce51(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce51(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             52 => {
-                ___reduce52(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+                ___reduce52(document, ___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
             }
             53 => {
                 // ___Root = Root => ActionFn(0);
                 let ___sym0 = ___pop_Variant8(___symbols);
                 let ___start = ___sym0.0.clone();
                 let ___end = ___sym0.2.clone();
-                let ___nt = super::___action0::<>(___sym0);
+                let ___nt = super::___action0::<>(document, ___sym0);
                 return Some(Ok(___nt));
             }
             _ => panic!("invalid action code {___action}")
@@ -1199,13 +1208,13 @@ mod ___parse___Root {
     fn ___symbol_type_mismatch() -> ! {
         panic!("symbol type mismatch")
     }
-    fn ___pop_Variant12<
+    fn ___pop_Variant13<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, (), usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant12(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant13(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
@@ -1219,53 +1228,63 @@ mod ___parse___Root {
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant5<
-    >(
-        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Option<Stmt>, usize)
-     {
-        match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant5(___v), ___r)) => (___l, ___v, ___r),
-            _ => ___symbol_type_mismatch()
-        }
-    }
     fn ___pop_Variant11<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Option<String>, usize)
+    ) -> (usize, Option<StateDocumentId>, usize)
      {
         match ___symbols.pop() {
             Some((___l, ___Symbol::Variant11(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant10<
+    fn ___pop_Variant5<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Option<Vec<Stmt>>, usize)
+    ) -> (usize, Option<StateStatement>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant10(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant5(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant9<
+    fn ___pop_Variant12<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, StateStmt, usize)
+    ) -> (usize, Option<String>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant9(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant12(___v), ___r)) => (___l, ___v, ___r),
+            _ => ___symbol_type_mismatch()
+        }
+    }
+    fn ___pop_Variant8<
+    >(
+        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+    ) -> (usize, StateDocumentId, usize)
+     {
+        match ___symbols.pop() {
+            Some((___l, ___Symbol::Variant8(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
     fn ___pop_Variant7<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Stmt, usize)
+    ) -> (usize, StateStatement, usize)
      {
         match ___symbols.pop() {
             Some((___l, ___Symbol::Variant7(___v), ___r)) => (___l, ___v, ___r),
+            _ => ___symbol_type_mismatch()
+        }
+    }
+    fn ___pop_Variant9<
+    >(
+        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+    ) -> (usize, StateStatementState, usize)
+     {
+        match ___symbols.pop() {
+            Some((___l, ___Symbol::Variant9(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
@@ -1289,20 +1308,20 @@ mod ___parse___Root {
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant8<
+    fn ___pop_Variant10<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Vec<Stmt>, usize)
+    ) -> (usize, Vec<StateStatement>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant8(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant10(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
     fn ___pop_Variant6<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, alloc::vec::Vec<Option<Stmt>>, usize)
+    ) -> (usize, alloc::vec::Vec<Option<StateStatement>>, usize)
      {
         match ___symbols.pop() {
             Some((___l, ___Symbol::Variant6(___v), ___r)) => (___l, ___v, ___r),
@@ -1331,6 +1350,7 @@ mod ___parse___Root {
     }
     fn ___reduce0<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1340,12 +1360,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant5(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action50::<>(___sym0);
+        let ___nt = super::___action50::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 0)
     }
     fn ___reduce1<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1354,12 +1375,13 @@ mod ___parse___Root {
         // (Item)* =  => ActionFn(48);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action48::<>(&___start, &___end);
+        let ___nt = super::___action48::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (0, 1)
     }
     fn ___reduce2<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1369,12 +1391,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action49::<>(___sym0);
+        let ___nt = super::___action49::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (1, 1)
     }
     fn ___reduce3<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1384,12 +1407,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant5(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action53::<>(___sym0);
+        let ___nt = super::___action53::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (1, 2)
     }
     fn ___reduce4<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1401,12 +1425,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
-        let ___nt = super::___action54::<>(___sym0, ___sym1);
+        let ___nt = super::___action54::<>(document, ___sym0, ___sym1);
         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (2, 2)
     }
     fn ___reduce5<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1415,12 +1440,13 @@ mod ___parse___Root {
         // @L =  => ActionFn(47);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action47::<>(&___start, &___end);
+        let ___nt = super::___action47::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
         (0, 3)
     }
     fn ___reduce6<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1429,12 +1455,13 @@ mod ___parse___Root {
         // @R =  => ActionFn(46);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action46::<>(&___start, &___end);
+        let ___nt = super::___action46::<>(document, &___start, &___end);
         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
         (0, 4)
     }
     fn ___reduce7<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1444,12 +1471,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action38::<>(___sym0);
+        let ___nt = super::___action38::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce8<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1459,12 +1487,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action39::<>(___sym0);
+        let ___nt = super::___action39::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce9<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1474,12 +1503,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action40::<>(___sym0);
+        let ___nt = super::___action40::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce10<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1488,16 +1518,17 @@ mod ___parse___Root {
         // Block = "{", Items, "}" => ActionFn(31);
         assert!(___symbols.len() >= 3);
         let ___sym2 = ___pop_Variant0(___symbols);
-        let ___sym1 = ___pop_Variant8(___symbols);
+        let ___sym1 = ___pop_Variant10(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
-        let ___nt = super::___action31::<>(___sym0, ___sym1, ___sym2);
+        let ___nt = super::___action31::<>(document, ___sym0, ___sym1, ___sym2);
         ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (3, 6)
     }
     fn ___reduce11<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1510,12 +1541,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
-        let ___nt = super::___action34::<>(___sym0, ___sym1, ___sym2);
+        let ___nt = super::___action34::<>(document, ___sym0, ___sym1, ___sym2);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 7)
     }
     fn ___reduce12<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1529,12 +1561,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action41::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action41::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 8)
     }
     fn ___reduce13<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1548,12 +1581,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action42::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action42::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 8)
     }
     fn ___reduce14<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1566,12 +1600,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
-        let ___nt = super::___action36::<>(___sym0, ___sym1, ___sym2);
+        let ___nt = super::___action36::<>(document, ___sym0, ___sym1, ___sym2);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 9)
     }
     fn ___reduce15<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1581,12 +1616,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant4(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action37::<>(___sym0);
+        let ___nt = super::___action37::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 10)
     }
     fn ___reduce16<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1596,12 +1632,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action66::<>(___sym0);
+        let ___nt = super::___action66::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce17<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1611,12 +1648,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action67::<>(___sym0);
+        let ___nt = super::___action67::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce18<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1626,12 +1664,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant2(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action59::<>(___sym0);
+        let ___nt = super::___action59::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce19<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1641,12 +1680,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action5::<>(___sym0);
+        let ___nt = super::___action5::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 12)
     }
     fn ___reduce20<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1656,12 +1696,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action6::<>(___sym0);
+        let ___nt = super::___action6::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 12)
     }
     fn ___reduce21<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1670,12 +1711,13 @@ mod ___parse___Root {
         // Items =  => ActionFn(55);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action55::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+        let ___nt = super::___action55::<>(document, &___start, &___end);
+        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
         (0, 13)
     }
     fn ___reduce22<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1685,12 +1727,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action56::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+        let ___nt = super::___action56::<>(document, ___sym0);
+        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
         (1, 13)
     }
     fn ___reduce23<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1700,12 +1743,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action27::<>(___sym0);
+        let ___nt = super::___action27::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant1(___nt), ___end));
         (1, 14)
     }
     fn ___reduce24<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1715,12 +1759,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action28::<>(___sym0);
+        let ___nt = super::___action28::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant1(___nt), ___end));
         (1, 14)
     }
     fn ___reduce25<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1734,12 +1779,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action68::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action68::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 15)
     }
     fn ___reduce26<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1753,12 +1799,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action26::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action26::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 15)
     }
     fn ___reduce27<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1767,12 +1814,13 @@ mod ___parse___Root {
         // OptBlock =  => ActionFn(32);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action32::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+        let ___nt = super::___action32::<>(document, &___start, &___end);
+        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
         (0, 16)
     }
     fn ___reduce28<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1782,12 +1830,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant8(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action33::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+        let ___nt = super::___action33::<>(document, ___sym0);
+        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
         (1, 16)
     }
     fn ___reduce29<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1796,12 +1845,13 @@ mod ___parse___Root {
         // OptDescr =  => ActionFn(29);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action29::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
+        let ___nt = super::___action29::<>(document, &___start, &___end);
+        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
         (0, 17)
     }
     fn ___reduce30<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1811,12 +1861,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action30::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
+        let ___nt = super::___action30::<>(document, ___sym0);
+        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
         (1, 17)
     }
     fn ___reduce31<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1825,12 +1876,13 @@ mod ___parse___Root {
         // Prelude =  => ActionFn(2);
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
-        let ___nt = super::___action2::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
+        let ___nt = super::___action2::<>(document, &___start, &___end);
+        ___symbols.push((___start, ___Symbol::Variant13(___nt), ___end));
         (0, 18)
     }
     fn ___reduce32<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1838,16 +1890,17 @@ mod ___parse___Root {
     {
         // Prelude = Newline, Prelude => ActionFn(3);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant12(___symbols);
+        let ___sym1 = ___pop_Variant13(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
-        let ___nt = super::___action3::<>(___sym0, ___sym1);
-        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
+        let ___nt = super::___action3::<>(document, ___sym0, ___sym1);
+        ___symbols.push((___start, ___Symbol::Variant13(___nt), ___end));
         (2, 18)
     }
     fn ___reduce33<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1855,17 +1908,18 @@ mod ___parse___Root {
     {
         // Root = Prelude, "stateDiagram", Items => ActionFn(1);
         assert!(___symbols.len() >= 3);
-        let ___sym2 = ___pop_Variant8(___symbols);
+        let ___sym2 = ___pop_Variant10(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
-        let ___sym0 = ___pop_Variant12(___symbols);
+        let ___sym0 = ___pop_Variant13(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
-        let ___nt = super::___action1::<>(___sym0, ___sym1, ___sym2);
+        let ___nt = super::___action1::<>(document, ___sym0, ___sym1, ___sym2);
         ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (3, 19)
     }
     fn ___reduce34<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1875,12 +1929,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action7::<>(___sym0);
+        let ___nt = super::___action7::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce35<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1890,12 +1945,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action8::<>(___sym0);
+        let ___nt = super::___action8::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce36<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1905,12 +1961,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action9::<>(___sym0);
+        let ___nt = super::___action9::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce37<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1920,12 +1977,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action10::<>(___sym0);
+        let ___nt = super::___action10::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce38<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1935,12 +1993,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action11::<>(___sym0);
+        let ___nt = super::___action11::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce39<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1950,12 +2009,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action12::<>(___sym0);
+        let ___nt = super::___action12::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce40<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1965,12 +2025,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action13::<>(___sym0);
+        let ___nt = super::___action13::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce41<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1980,12 +2041,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action14::<>(___sym0);
+        let ___nt = super::___action14::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce42<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1995,12 +2057,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant3(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action15::<>(___sym0);
+        let ___nt = super::___action15::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce43<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2008,18 +2071,19 @@ mod ___parse___Root {
     {
         // Statement = IdStatement, "-->", IdStatement, OptDescr => ActionFn(16);
         assert!(___symbols.len() >= 4);
-        let ___sym3 = ___pop_Variant11(___symbols);
+        let ___sym3 = ___pop_Variant12(___symbols);
         let ___sym2 = ___pop_Variant9(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
         let ___sym0 = ___pop_Variant9(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action16::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action16::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 20)
     }
     fn ___reduce44<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2027,16 +2091,17 @@ mod ___parse___Root {
     {
         // Statement = IdStatement, OptDescr => ActionFn(17);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant11(___symbols);
+        let ___sym1 = ___pop_Variant12(___symbols);
         let ___sym0 = ___pop_Variant9(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
-        let ___nt = super::___action17::<>(___sym0, ___sym1);
+        let ___nt = super::___action17::<>(document, ___sym0, ___sym1);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (2, 20)
     }
     fn ___reduce45<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2046,12 +2111,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action18::<>(___sym0);
+        let ___nt = super::___action18::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce46<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2063,12 +2129,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
-        let ___nt = super::___action69::<>(___sym0, ___sym1);
+        let ___nt = super::___action69::<>(document, ___sym0, ___sym1);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (2, 20)
     }
     fn ___reduce47<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2076,18 +2143,19 @@ mod ___parse___Root {
     {
         // Statement = StateDescr, "as", Id, OptBlock => ActionFn(62);
         assert!(___symbols.len() >= 4);
-        let ___sym3 = ___pop_Variant10(___symbols);
+        let ___sym3 = ___pop_Variant11(___symbols);
         let ___sym2 = ___pop_Variant1(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
-        let ___nt = super::___action62::<>(___sym0, ___sym1, ___sym2, ___sym3);
+        let ___nt = super::___action62::<>(document, ___sym0, ___sym1, ___sym2, ___sym3);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 20)
     }
     fn ___reduce48<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2097,12 +2165,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action63::<>(___sym0);
+        let ___nt = super::___action63::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce49<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2112,12 +2181,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action64::<>(___sym0);
+        let ___nt = super::___action64::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce50<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2127,12 +2197,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action65::<>(___sym0);
+        let ___nt = super::___action65::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce51<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2142,12 +2213,13 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
-        let ___nt = super::___action24::<>(___sym0);
+        let ___nt = super::___action24::<>(document, ___sym0);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce52<
     >(
+        document: &mut StateDocument,
         ___lookahead_start: Option<&usize>,
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2160,7 +2232,7 @@ mod ___parse___Root {
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
-        let ___nt = super::___action35::<>(___sym0, ___sym1, ___sym2);
+        let ___nt = super::___action35::<>(document, ___sym0, ___sym1, ___sym2);
         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 21)
     }
@@ -2168,38 +2240,46 @@ mod ___parse___Root {
 #[allow(unused_imports)]
 pub use self::___parse___Root::RootParser;
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action0<
 >(
-    (_, ___0, _): (usize, Vec<Stmt>, usize),
-) -> Vec<Stmt>
+    document: &mut StateDocument,
+    (_, ___0, _): (usize, StateDocumentId, usize),
+) -> StateDocumentId
 {
     ___0
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action1<
 >(
+    document: &mut StateDocument,
     (_, _p, _): (usize, (), usize),
     (_, _, _): (usize, Tok, usize),
-    (_, items, _): (usize, Vec<Stmt>, usize),
-) -> Vec<Stmt>
+    (_, items, _): (usize, Vec<StateStatement>, usize),
+) -> StateDocumentId
 {
-    items
+    document.push(items)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action2<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action3<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, rest, _): (usize, (), usize),
 )
@@ -2207,162 +2287,194 @@ fn ___action3<
     rest
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action4<
 >(
-    (_, items, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
-) -> Vec<Stmt>
+    document: &mut StateDocument,
+    (_, items, _): (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
+) -> Vec<StateStatement>
 {
     items.into_iter().filter_map(|i| i).collect()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action5<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, Tok, usize),
-) -> Option<Stmt>
+) -> Option<StateStatement>
 {
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action6<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Option<Stmt>
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> Option<StateStatement>
 {
     Some(s)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action7<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action8<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action9<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action10<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action11<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action12<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action13<
 >(
-    (_, s, _): (usize, Stmt, usize),
-) -> Stmt
+    document: &mut StateDocument,
+    (_, s, _): (usize, StateStatement, usize),
+) -> StateStatement
 {
     s
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action14<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, Tok, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Noop
+    StateStatement::Noop
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action15<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, usize, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Noop
+    StateStatement::Noop
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action16<
 >(
-    (_, s1, _): (usize, StateStmt, usize),
+    document: &mut StateDocument,
+    (_, s1, _): (usize, StateStatementState, usize),
     (_, _, _): (usize, Tok, usize),
-    (_, s2, _): (usize, StateStmt, usize),
+    (_, s2, _): (usize, StateStatementState, usize),
     (_, d, _): (usize, Option<String>, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Relation(Box::new(RelationStmt {
+    StateStatement::Relation(Box::new(StateStatementRelation {
     state1: s1,
     state2: s2,
     description: d,
   }))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action17<
 >(
-    (_, mut s, _): (usize, StateStmt, usize),
+    document: &mut StateDocument,
+    (_, mut s, _): (usize, StateStatementState, usize),
     (_, d, _): (usize, Option<String>, usize),
-) -> Stmt
+) -> StateStatement
 {
     {
     s.description = d;
-    Stmt::State(s)
+    StateStatement::State(s)
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action18<
 >(
+    document: &mut StateDocument,
     (_, _id, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Noop
+    StateStatement::Noop
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action19<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
-    (_, doc, _): (usize, Vec<Stmt>, usize),
-) -> Stmt
+    (_, doc, _): (usize, StateDocumentId, usize),
+) -> StateStatement
 {
-    Stmt::State(StateStmt {
+    StateStatement::State(StateStatementState {
     id,
     id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
@@ -2377,15 +2489,17 @@ fn ___action19<
   })
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action20<
 >(
+    document: &mut StateDocument,
     (_, descr, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
-    (_, doc, _): (usize, Option<Vec<Stmt>>, usize),
-) -> Stmt
+    (_, doc, _): (usize, Option<StateDocumentId>, usize),
+) -> StateStatement
 {
     {
     let trimmed = descr.trim().to_string();
@@ -2403,7 +2517,7 @@ fn ___action20<
         descriptions.push(extra.to_string());
       }
     }
-    Stmt::State(StateStmt {
+    StateStatement::State(StateStatementState {
       id: state_id,
       id_span,
       ty: "default".to_string(),
@@ -2419,76 +2533,86 @@ fn ___action20<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action21<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     {
-    let mut state = StateStmt::new_typed(id, "fork");
+    let mut state = StateStatementState::new_typed(id, "fork");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action22<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     {
-    let mut state = StateStmt::new_typed(id, "join");
+    let mut state = StateStatementState::new_typed(id, "join");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action23<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     {
-    let mut state = StateStmt::new_typed(id, "choice");
+    let mut state = StateStatementState::new_typed(id, "choice");
     state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
-    Stmt::State(state)
+    StateStatement::State(state)
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action24<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, Tok, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::State(StateStmt::new_typed("__divider__".to_string(), "divider"))
+    StateStatement::State(StateStatementState::new_typed("__divider__".to_string(), "divider"))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action25<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, pos, _): (usize, String, usize),
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
     (_, text, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::State(StateStmt {
+    StateStatement::State(StateStatementState {
     id,
     id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
     description: None,
     descriptions: Vec::new(),
     doc: None,
-    note: Some(Note { position: Some(pos), text }),
+    note: Some(StateStatementNote { position: Some(pos), text }),
     classes: Vec::new(),
     styles: Vec::new(),
     text_styles: Vec::new(),
@@ -2496,39 +2620,47 @@ fn ___action25<
   })
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action26<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, _text, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, _id, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Noop
+    StateStatement::Noop
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action27<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, Tok, usize),
 ) -> String
 {
     "left of".to_string()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action28<
 >(
+    document: &mut StateDocument,
     (_, ___0, _): (usize, Tok, usize),
 ) -> String
 {
     "right of".to_string()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action29<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
 ) -> Option<String>
@@ -2536,195 +2668,229 @@ fn ___action29<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action30<
 >(
+    document: &mut StateDocument,
     (_, d, _): (usize, String, usize),
 ) -> Option<String>
 {
     Some(d)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action31<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
-    (_, doc, _): (usize, Vec<Stmt>, usize),
+    (_, doc, _): (usize, Vec<StateStatement>, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Stmt>
+) -> StateDocumentId
 {
-    doc
+    document.push(doc)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action32<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
-) -> Option<Vec<Stmt>>
+) -> Option<StateDocumentId>
 {
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action33<
 >(
-    (_, b, _): (usize, Vec<Stmt>, usize),
-) -> Option<Vec<Stmt>>
+    document: &mut StateDocument,
+    (_, b, _): (usize, StateDocumentId, usize),
+) -> Option<StateDocumentId>
 {
     Some(b)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action34<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, raw, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::ClassDef { id, classes: raw }
+    StateStatement::ClassDef { id, classes: raw }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action35<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, ids, _): (usize, String, usize),
     (_, raw, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Style { ids, styles: raw }
+    StateStatement::Style { ids, styles: raw }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action36<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
     (_, ids, _): (usize, String, usize),
     (_, style, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::ApplyClass { ids, class_name: style }
+    StateStatement::ApplyClass { ids, class_name: style }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action37<
 >(
+    document: &mut StateDocument,
     (_, d, _): (usize, crate::diagrams::state::SpannedDirection, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Direction(d.value)
+    StateStatement::Direction(d.value)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action38<
 >(
+    document: &mut StateDocument,
     (_, t, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::AccTitle(t)
+    StateStatement::AccTitle(t)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action39<
 >(
+    document: &mut StateDocument,
     (_, d, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::AccDescr(d)
+    StateStatement::AccDescr(d)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action40<
 >(
+    document: &mut StateDocument,
     (_, d, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::AccDescr(d)
+    StateStatement::AccDescr(d)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action41<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
-    (_, s, _): (usize, StateStmt, usize),
+    (_, s, _): (usize, StateStatementState, usize),
     (_, url, _): (usize, String, usize),
     (_, tooltip, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Click(ClickStmt {
+    StateStatement::Click(StateStatementClick {
     id: s.id,
     url,
     tooltip,
   })
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action42<
 >(
+    document: &mut StateDocument,
     (_, _, _): (usize, Tok, usize),
-    (_, s, _): (usize, StateStmt, usize),
+    (_, s, _): (usize, StateStatementState, usize),
     (_, _, _): (usize, Tok, usize),
     (_, url, _): (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
-    Stmt::Click(ClickStmt {
+    StateStatement::Click(StateStatementClick {
     id: s.id,
     url,
     tooltip: String::new(),
   })
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action43<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     {
-    let mut state = StateStmt::new(id);
+    let mut state = StateStatementState::new(id);
     state.id_span = Some(SourceSpan::new(l, r));
     state
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action44<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, r, _): (usize, usize, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     {
-    let mut state = StateStmt::new("[*]".to_string());
+    let mut state = StateStatementState::new("[*]".to_string());
     state.id_span = Some(SourceSpan::new(l, r));
     state
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action45<
 >(
+    document: &mut StateDocument,
     (_, l, _): (usize, usize, usize),
     (_, pair, _): (usize, (String, String), usize),
-) -> StateStmt
+) -> StateStatementState
 {
     {
     let (id, class_id) = pair;
-    let mut s = StateStmt::new(id);
+    let mut s = StateStatementState::new(id);
     s.id_span = Some(SourceSpan::new(l, l + s.id.len()));
     s.classes.push(class_id);
     s
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::needless_lifetimes)]
 fn ___action46<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
 ) -> usize
@@ -2732,9 +2898,11 @@ fn ___action46<
     *___lookbehind
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::needless_lifetimes)]
 fn ___action47<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
 ) -> usize
@@ -2742,212 +2910,254 @@ fn ___action47<
     *___lookahead
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action48<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
-) -> alloc::vec::Vec<Option<Stmt>>
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     alloc::vec![]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action49<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
-) -> alloc::vec::Vec<Option<Stmt>>
+    document: &mut StateDocument,
+    (_, v, _): (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     v
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action50<
 >(
-    (_, ___0, _): (usize, Option<Stmt>, usize),
-) -> Option<Stmt>
+    document: &mut StateDocument,
+    (_, ___0, _): (usize, Option<StateStatement>, usize),
+) -> Option<StateStatement>
 {
     ___0
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action51<
 >(
-    (_, ___0, _): (usize, Option<Stmt>, usize),
-) -> alloc::vec::Vec<Option<Stmt>>
+    document: &mut StateDocument,
+    (_, ___0, _): (usize, Option<StateStatement>, usize),
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     alloc::vec![___0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action52<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
-    (_, e, _): (usize, Option<Stmt>, usize),
-) -> alloc::vec::Vec<Option<Stmt>>
+    document: &mut StateDocument,
+    (_, v, _): (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
+    (_, e, _): (usize, Option<StateStatement>, usize),
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action53<
 >(
-    ___0: (usize, Option<Stmt>, usize),
-) -> alloc::vec::Vec<Option<Stmt>>
+    document: &mut StateDocument,
+    ___0: (usize, Option<StateStatement>, usize),
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.2;
     let ___temp0 = ___action50(
+        document,
         ___0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action51(
+        document,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action54<
 >(
-    ___0: (usize, alloc::vec::Vec<Option<Stmt>>, usize),
-    ___1: (usize, Option<Stmt>, usize),
-) -> alloc::vec::Vec<Option<Stmt>>
+    document: &mut StateDocument,
+    ___0: (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
+    ___1: (usize, Option<StateStatement>, usize),
+) -> alloc::vec::Vec<Option<StateStatement>>
 {
     let ___start0 = ___1.0;
     let ___end0 = ___1.2;
     let ___temp0 = ___action50(
+        document,
         ___1,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action52(
+        document,
         ___0,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action55<
 >(
+    document: &mut StateDocument,
     ___lookbehind: &usize,
     ___lookahead: &usize,
-) -> Vec<Stmt>
+) -> Vec<StateStatement>
 {
     let ___start0 = *___lookbehind;
     let ___end0 = *___lookahead;
     let ___temp0 = ___action48(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action4(
+        document,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action56<
 >(
-    ___0: (usize, alloc::vec::Vec<Option<Stmt>>, usize),
-) -> Vec<Stmt>
+    document: &mut StateDocument,
+    ___0: (usize, alloc::vec::Vec<Option<StateStatement>>, usize),
+) -> Vec<StateStatement>
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.2;
     let ___temp0 = ___action49(
+        document,
         ___0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action4(
+        document,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action57<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
     ___1: (usize, usize, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action43(
+        document,
         ___temp0,
         ___0,
         ___1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action58<
 >(
+    document: &mut StateDocument,
     ___0: (usize, Tok, usize),
     ___1: (usize, usize, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action44(
+        document,
         ___temp0,
         ___0,
         ___1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action59<
 >(
+    document: &mut StateDocument,
     ___0: (usize, (String, String), usize),
-) -> StateStmt
+) -> StateStatementState
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action45(
+        document,
         ___temp0,
         ___0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action60<
 >(
+    document: &mut StateDocument,
     ___0: (usize, Tok, usize),
     ___1: (usize, String, usize),
     ___2: (usize, String, usize),
     ___3: (usize, usize, usize),
     ___4: (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     let ___start0 = ___1.2;
     let ___end0 = ___2.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action25(
+        document,
         ___0,
         ___1,
         ___temp0,
@@ -2957,23 +3167,27 @@ fn ___action60<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action61<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
     ___1: (usize, usize, usize),
-    ___2: (usize, Vec<Stmt>, usize),
-) -> Stmt
+    ___2: (usize, StateDocumentId, usize),
+) -> StateStatement
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action19(
+        document,
         ___temp0,
         ___0,
         ___1,
@@ -2981,24 +3195,28 @@ fn ___action61<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action62<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
     ___1: (usize, Tok, usize),
     ___2: (usize, String, usize),
-    ___3: (usize, Option<Vec<Stmt>>, usize),
-) -> Stmt
+    ___3: (usize, Option<StateDocumentId>, usize),
+) -> StateStatement
 {
     let ___start0 = ___1.2;
     let ___end0 = ___2.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action20(
+        document,
         ___0,
         ___1,
         ___temp0,
@@ -3007,124 +3225,148 @@ fn ___action62<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action63<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action21(
+        document,
         ___temp0,
         ___0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action64<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action22(
+        document,
         ___temp0,
         ___0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action65<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     let ___start0 = ___0.0;
     let ___end0 = ___0.0;
     let ___temp0 = ___action47(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action23(
+        document,
         ___temp0,
         ___0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action66<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     let ___start0 = ___0.2;
     let ___end0 = ___0.2;
     let ___temp0 = ___action46(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action57(
+        document,
         ___0,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action67<
 >(
+    document: &mut StateDocument,
     ___0: (usize, Tok, usize),
-) -> StateStmt
+) -> StateStatementState
 {
     let ___start0 = ___0.2;
     let ___end0 = ___0.2;
     let ___temp0 = ___action46(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action58(
+        document,
         ___0,
         ___temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action68<
 >(
+    document: &mut StateDocument,
     ___0: (usize, Tok, usize),
     ___1: (usize, String, usize),
     ___2: (usize, String, usize),
     ___3: (usize, String, usize),
-) -> Stmt
+) -> StateStatement
 {
     let ___start0 = ___2.2;
     let ___end0 = ___3.0;
     let ___temp0 = ___action46(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action60(
+        document,
         ___0,
         ___1,
         ___2,
@@ -3133,22 +3375,26 @@ fn ___action68<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn ___action69<
 >(
+    document: &mut StateDocument,
     ___0: (usize, String, usize),
-    ___1: (usize, Vec<Stmt>, usize),
-) -> Stmt
+    ___1: (usize, StateDocumentId, usize),
+) -> StateStatement
 {
     let ___start0 = ___0.2;
     let ___end0 = ___1.0;
     let ___temp0 = ___action46(
+        document,
         &___start0,
         &___end0,
     );
     let ___temp0 = (___start0, ___temp0, ___end0);
     ___action61(
+        document,
         ___0,
         ___temp0,
         ___1,

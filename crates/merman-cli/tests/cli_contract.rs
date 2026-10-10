@@ -1392,3 +1392,39 @@ fn developer_commands_keep_payload_only_stdout() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout.trim(), "sequence");
 }
+
+#[cfg(feature = "diagram-mindmap")]
+#[test]
+fn parse_exports_deep_managed_json_in_compact_and_pretty_modes() {
+    use std::fmt::Write as _;
+    let mut source = String::from("mindmap\nroot\n");
+    for depth in 1..=150 {
+        writeln!(source, "{}node{depth}", "  ".repeat(depth)).unwrap();
+    }
+    for meta in [false, true] {
+        for pretty in [false, true] {
+            let mut args = vec!["parse", "-"];
+            if meta {
+                args.push("--meta");
+            }
+            if pretty {
+                args.push("--pretty");
+            }
+            let output = run_with_stdin(&args, &source);
+            assert!(
+                output.status.success(),
+                "stderr={}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(output.stdout.ends_with(b"\n"));
+            let text = String::from_utf8(output.stdout).unwrap();
+            assert!(text.contains("node150"));
+            if meta {
+                assert!(text.contains("\"meta\"") && text.contains("\"model\""));
+            }
+            if pretty {
+                assert!(text.contains("\n  \""));
+            }
+        }
+    }
+}

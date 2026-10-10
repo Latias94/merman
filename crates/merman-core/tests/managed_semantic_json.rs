@@ -28,6 +28,23 @@ fn compact_writer_preserves_scalar_representation_and_object_order() {
 }
 
 #[test]
+fn pretty_writer_preserves_serde_whitespace_and_empty_containers() {
+    for value in [
+        json!({"empty": [{}, [], null], "nested": {"snow": "雪", "n": [1, -0.0]}}),
+        json!([]),
+        json!({}),
+        json!("scalar\n"),
+    ] {
+        let expected = serde_json::to_vec_pretty(&value).unwrap();
+        let mut actual = Vec::new();
+        ManagedSemanticJson::from(value)
+            .write_json_pretty(&mut actual)
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+}
+
+#[test]
 fn generic_serde_checks_actual_container_depth_before_serializing() {
     for depth in [127, 128] {
         let value = chain(depth);
@@ -83,6 +100,93 @@ impl Write for FailingWriter {
 }
 
 #[test]
+fn controlled_writer_preserves_observed_cancellation_when_io_also_fails() {
+    use merman_core::{CancelReason, OperationCancelled, OperationControl, OperationPhase};
+
+    struct CancelAndFailWriter<'a> {
+        control: &'a OperationControl,
+        latch: bool,
+        written: usize,
+        observed: Option<OperationCancelled>,
+    }
+
+    impl Write for CancelAndFailWriter<'_> {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.written == 0 {
+                self.written += bytes.len();
+                return Ok(bytes.len());
+            }
+            self.control.cancel();
+            if self.latch {
+                self.observed = Some(
+                    self.control
+                        .checkpoint_at(OperationPhase::Layout)
+                        .unwrap_err(),
+                );
+            }
+            Err(io::Error::other(
+                "writer failed after requesting cancellation",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    for pretty in [false, true] {
+        for latch in [false, true] {
+            let control = OperationControl::new().for_phase(OperationPhase::Export);
+            let value = ManagedSemanticJson::from(json!({"value": [1, 2, 3]}));
+            let mut writer = CancelAndFailWriter {
+                control: &control,
+                latch,
+                written: 0,
+                observed: None,
+            };
+            let result = if pretty {
+                value.write_json_pretty_controlled(&mut writer, &control)
+            } else {
+                value.write_json_controlled(&mut writer, &control)
+            };
+            assert!(writer.written > 0, "failure follows partial output");
+            if let Some(observed) = writer.observed {
+                assert_eq!(observed.reason, CancelReason::Requested);
+                assert_eq!(observed.phase, OperationPhase::Layout);
+                assert_eq!(result.unwrap_err(), observed);
+                assert_eq!(control.checkpoint().unwrap_err(), observed);
+            } else {
+                assert!(result.unwrap().unwrap_err().is_io());
+                let later = control.checkpoint().unwrap_err();
+                assert_eq!(later.reason, CancelReason::Requested);
+                assert_eq!(later.phase, OperationPhase::Export);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "operation-deadlines")]
+struct DeadlineWriter<'a> {
+    control: &'a merman_core::OperationControl,
+    written: usize,
+}
+
+#[cfg(feature = "operation-deadlines")]
+impl Write for DeadlineWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.written += bytes.len();
+        if self.written >= 256 {
+            self.control.set_deadline(Duration::ZERO);
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
 fn managed_json_lifecycle_child() {
     if std::env::var_os("MERMAN_MANAGED_JSON_LIFECYCLE_CHILD").is_none() {
         return;
@@ -96,6 +200,7 @@ fn managed_json_lifecycle_child() {
             assert_eq!(value, cloned);
             let mut encoded = Vec::new();
             value.write_json(&mut encoded).unwrap();
+            value.write_json_pretty(io::sink()).unwrap();
             assert_eq!(encoded.len(), 10_006);
             assert!(encoded.starts_with(b"[[[["));
             assert!(encoded.ends_with(b"]]]]"));
@@ -107,6 +212,23 @@ fn managed_json_lifecycle_child() {
                     .write_json(FailingWriter { remaining: 3_000 })
                     .is_err()
             );
+            #[cfg(feature = "operation-deadlines")]
+            {
+                let control = merman_core::OperationControl::new();
+                let mut writer = DeadlineWriter {
+                    control: &control,
+                    written: 0,
+                };
+                let error = value
+                    .write_json_controlled(&mut writer, &control)
+                    .unwrap_err();
+                assert!(
+                    writer.written >= 256,
+                    "deadline expires after output begins"
+                );
+                assert_eq!(error.reason, merman_core::CancelReason::DeadlineExceeded);
+                assert_eq!(control.checkpoint().unwrap_err(), error);
+            }
             #[cfg(feature = "test-support")]
             {
                 let control = merman_core::OperationControl::new();
@@ -119,6 +241,62 @@ fn managed_json_lifecycle_child() {
             drop(cloned);
             drop(value);
             println!("managed-deep-clone-equality-export-debug-drop=done");
+            io::stdout().flush().unwrap();
+            let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
+            let mut engine = merman_core::Engine::new();
+            engine.diagram_registry_mut().insert("sequence", |_, _, _| {
+                Ok(Ok(chain(5_000).into_unmanaged_value()))
+            });
+            let parsed = engine
+                .parse_diagram_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            drop(parsed.clone());
+            parsed.model.write_json(io::sink()).unwrap();
+            drop(parsed);
+            let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+            let model = snapshot.outcome().parsed_model().unwrap();
+            model.write_json(io::sink()).unwrap();
+            drop(model.clone());
+            drop(snapshot);
+            let typed = engine
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                merman_core::resources::ModelComplexity::from_render_model(typed.model())
+                    .nesting_depth,
+                4_999
+            );
+            assert!(
+                merman_core::resources::InputResourcePolicy::default()
+                    .check_render_model(typed.model())
+                    .is_err()
+            );
+            drop(typed.clone());
+            drop(typed);
+            engine
+                .diagram_registry_mut()
+                .insert("sequence", |_, _, control| {
+                    let value = chain(5_000);
+                    control.cancel();
+                    Ok(Ok(value.into_unmanaged_value()))
+                });
+            let control = merman_core::OperationControl::new();
+            let error = engine
+                .parse_diagram_for_render_model_controlled_sync(
+                    source,
+                    merman_core::ParseOptions::lenient(),
+                    &control,
+                )
+                .unwrap_err();
+            assert_eq!(error, control.checkpoint().unwrap_err());
+            let control = merman_core::OperationControl::new();
+            let error = engine
+                .parse_diagram_snapshot_controlled_sync(source, &control)
+                .unwrap_err();
+            assert_eq!(error, control.checkpoint().unwrap_err());
+            println!("managed-custom-overlay-snapshot-budget-cancellation-drop=done");
             io::stdout().flush().unwrap();
             let shallow = ManagedSemanticJson::from(json!({"still": "usable"}));
             shallow.write_json(io::sink()).unwrap();
@@ -133,9 +311,20 @@ fn managed_json_lifecycle_child() {
 
 #[test]
 fn deep_managed_json_lifecycle_finishes_on_a_2_mib_worker() {
-    let directory =
-        std::env::temp_dir().join(format!("merman-managed-json-{}", std::process::id()));
-    std::fs::create_dir(&directory).unwrap();
+    let run_stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "merman-managed-json-{}-{run_stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&directory).unwrap_or_else(|error| {
+        panic!(
+            "create managed JSON diagnostic directory {}: {error}",
+            directory.display()
+        )
+    });
     let stdout_path = directory.join("stdout.txt");
     let stderr_path = directory.join("stderr.txt");
     let mut child = Command::new(std::env::current_exe().unwrap())
@@ -169,5 +358,6 @@ fn deep_managed_json_lifecycle_finishes_on_a_2_mib_worker() {
         "{status}; stdout={stdout}; stderr={stderr}"
     );
     assert!(stdout.contains("managed-deep-clone-equality-export-debug-drop=done"));
+    assert!(stdout.contains("managed-custom-overlay-snapshot-budget-cancellation-drop=done"));
     assert!(stdout.contains("managed-after-small-operation=done"));
 }

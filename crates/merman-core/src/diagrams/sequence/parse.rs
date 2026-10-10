@@ -823,9 +823,9 @@ mod tests {
         let actions = carrier_actions(&source, (256 * 3, 256 * 3 - 1));
         let control = OperationControl::new();
         control.cancel_after_checkpoints(16);
-        let error = build_sequence_db(actions, None, &control)
-            .err()
-            .expect("replay returns cancellation through the outer result");
+        let Err(error) = build_sequence_db(actions, None, &control) else {
+            panic!("replay returns cancellation through the outer result");
+        };
         assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 

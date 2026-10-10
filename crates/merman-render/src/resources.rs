@@ -51,14 +51,6 @@ pub const SVG_BACKEND_TREE_NODES_HARD_CAP_ID: &str = "svg_backend_tree_nodes";
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = WASM_RESVG_TREE_DEPTH_HARD_CAP;
 
-// Backend capability for recursively owned typed/compatibility trees, not a Mermaid syntax limit.
-// It remains active when policy budgets are disabled because increasing it is not stack-safe.
-#[cfg(not(target_arch = "wasm32"))]
-const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = merman_core::MAX_DIAGRAM_NESTING_DEPTH;
-
-#[cfg(target_arch = "wasm32")]
-const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
-
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
 const RENDER_RESOURCE_LIMIT_COUNT: usize = 5;
 pub const RESOURCE_LIMIT_COUNT: usize =
@@ -509,7 +501,7 @@ impl RenderResourcePolicy {
         model: &RenderSemanticModel,
     ) -> Result<(), ResourceLimitExceeded> {
         let complexity = ModelComplexity::from_render_model(model);
-        self.check_render_model_complexity(model, complexity)
+        self.check_model_complexity(complexity)
     }
 
     pub fn check_parsed_render(
@@ -520,38 +512,7 @@ impl RenderResourcePolicy {
         complexity.text_bytes = complexity
             .text_bytes
             .saturating_add(parsed.retained_render_context_bytes());
-        self.check_render_model_complexity(parsed.model(), complexity)
-    }
-
-    fn check_render_model_complexity(
-        &self,
-        model: &RenderSemanticModel,
-        complexity: ModelComplexity,
-    ) -> Result<(), ResourceLimitExceeded> {
         self.check_model_complexity(complexity)?;
-
-        let recursive_tree = match model {
-            #[cfg(feature = "diagram-treemap")]
-            RenderSemanticModel::Treemap(_) => true,
-            #[cfg(feature = "diagram-ishikawa")]
-            RenderSemanticModel::Ishikawa(_) => true,
-            _ => false,
-        };
-        if recursive_tree && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH {
-            return Err(ResourceLimitExceeded {
-                cause: ResourceLimitCause::Ceiling,
-                phase: ResourceLimitPhase::LayoutModel,
-                limit: "typed_model_tree_depth",
-                actual: complexity.nesting_depth,
-                max: MAX_RECURSIVE_MODEL_TREE_DEPTH,
-                profile: self.profile(),
-                explicit_overrides: self
-                    .explicit_overrides()
-                    .map(|(id, value)| ResourceLimitOverride { id, value })
-                    .collect(),
-            });
-        }
-
         Ok(())
     }
 

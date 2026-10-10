@@ -60,16 +60,50 @@ impl ManagedSemanticJson {
 
     /// Writes compact JSON while observing cancellation between traversal steps.
     ///
-    /// A writer error remains distinct from cancellation. The caller owns any partial output.
+    /// An already observed cancellation retains its phase and precedes a later writer error.
+    /// Otherwise, writer errors remain distinct from cancellation requests. The caller owns any
+    /// partial output.
     pub fn write_json_controlled(
+        &self,
+        writer: impl Write,
+        control: &OperationControl,
+    ) -> OperationControlResult<serde_json::Result<()>> {
+        self.write_with_formatter(writer, control, serde_json::ser::CompactFormatter)
+    }
+
+    /// Writes indented JSON with serde_json's standard whitespace and no container-depth limit.
+    pub fn write_json_pretty(&self, writer: impl Write) -> serde_json::Result<()> {
+        self.write_json_pretty_controlled(writer, &OperationControl::new())
+            .expect("a private operation control cannot be cancelled")
+    }
+
+    /// Writes indented JSON while observing the original operation control.
+    pub fn write_json_pretty_controlled(
+        &self,
+        writer: impl Write,
+        control: &OperationControl,
+    ) -> OperationControlResult<serde_json::Result<()>> {
+        self.write_with_formatter(writer, control, serde_json::ser::PrettyFormatter::new())
+    }
+
+    fn write_with_formatter(
         &self,
         mut writer: impl Write,
         control: &OperationControl,
+        mut formatter: impl serde_json::ser::Formatter,
     ) -> OperationControlResult<serde_json::Result<()>> {
         enum Task<'a> {
             Value(&'a Value),
             Key(&'a str),
-            Bytes(&'static [u8]),
+            ArrayItems(std::slice::Iter<'a, Value>, bool),
+            ObjectEntries(serde_json::map::Iter<'a>, bool),
+            ArrayValue(bool),
+            ArrayValueEnd,
+            ArrayEnd,
+            ObjectKey(bool),
+            ObjectValue,
+            ObjectValueEnd,
+            ObjectEnd,
         }
 
         let mut stack = vec![Task::Value(&self.value)];
@@ -80,39 +114,68 @@ impl ManagedSemanticJson {
             }
             steps = steps.saturating_add(1);
             let result = match task {
-                Task::Bytes(bytes) => writer.write_all(bytes).map_err(serde_json::Error::io),
+                Task::ArrayItems(mut items, first) => {
+                    if let Some(item) = items.next() {
+                        stack.push(Task::ArrayItems(items, false));
+                        stack.push(Task::ArrayValueEnd);
+                        stack.push(Task::Value(item));
+                        stack.push(Task::ArrayValue(first));
+                    }
+                    Ok(())
+                }
+                Task::ObjectEntries(mut entries, first) => {
+                    if let Some((key, value)) = entries.next() {
+                        stack.push(Task::ObjectEntries(entries, false));
+                        stack.push(Task::ObjectValueEnd);
+                        stack.push(Task::Value(value));
+                        stack.push(Task::ObjectValue);
+                        stack.push(Task::Key(key));
+                        stack.push(Task::ObjectKey(first));
+                    }
+                    Ok(())
+                }
+                Task::ArrayValue(first) => formatter
+                    .begin_array_value(&mut writer, first)
+                    .map_err(serde_json::Error::io),
+                Task::ArrayValueEnd => formatter
+                    .end_array_value(&mut writer)
+                    .map_err(serde_json::Error::io),
+                Task::ArrayEnd => formatter
+                    .end_array(&mut writer)
+                    .map_err(serde_json::Error::io),
+                Task::ObjectKey(first) => formatter
+                    .begin_object_key(&mut writer, first)
+                    .map_err(serde_json::Error::io),
+                Task::ObjectValue => formatter
+                    .begin_object_value(&mut writer)
+                    .map_err(serde_json::Error::io),
+                Task::ObjectValueEnd => formatter
+                    .end_object_value(&mut writer)
+                    .map_err(serde_json::Error::io),
+                Task::ObjectEnd => formatter
+                    .end_object(&mut writer)
+                    .map_err(serde_json::Error::io),
                 Task::Key(key) => serde_json::to_writer(&mut writer, key),
                 Task::Value(Value::Array(items)) => {
-                    stack.push(Task::Bytes(b"]"));
-                    for (index, item) in items.iter().enumerate().rev() {
-                        if index.is_multiple_of(64) {
-                            control.checkpoint()?;
-                        }
-                        stack.push(Task::Value(item));
-                        if index > 0 {
-                            stack.push(Task::Bytes(b","));
-                        }
-                    }
-                    writer.write_all(b"[").map_err(serde_json::Error::io)
+                    stack.push(Task::ArrayEnd);
+                    stack.push(Task::ArrayItems(items.iter(), true));
+                    formatter
+                        .begin_array(&mut writer)
+                        .map_err(serde_json::Error::io)
                 }
                 Task::Value(Value::Object(entries)) => {
-                    stack.push(Task::Bytes(b"}"));
-                    for (index, (key, value)) in entries.iter().enumerate().rev() {
-                        if index.is_multiple_of(64) {
-                            control.checkpoint()?;
-                        }
-                        stack.push(Task::Value(value));
-                        stack.push(Task::Bytes(b":"));
-                        stack.push(Task::Key(key));
-                        if index > 0 {
-                            stack.push(Task::Bytes(b","));
-                        }
-                    }
-                    writer.write_all(b"{").map_err(serde_json::Error::io)
+                    stack.push(Task::ObjectEnd);
+                    stack.push(Task::ObjectEntries(entries.iter(), true));
+                    formatter
+                        .begin_object(&mut writer)
+                        .map_err(serde_json::Error::io)
                 }
                 Task::Value(scalar) => serde_json::to_writer(&mut writer, scalar),
             };
             if let Err(error) = result {
+                if let Some(cancelled) = control.observed_cancellation() {
+                    return Err(cancelled);
+                }
                 return Ok(Err(error));
             }
         }
@@ -272,30 +335,6 @@ pub(crate) fn number_value(value: f64) -> Value {
         Number::from_f64(value)
             .map(Value::Number)
             .unwrap_or(Value::Null)
-    }
-}
-
-#[cfg(feature = "diagram-state")]
-pub(crate) fn string_array_value(values: &[String]) -> Value {
-    Value::Array(values.iter().cloned().map(Value::String).collect())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn number_projection_does_not_saturate_at_the_rounded_i64_upper_bound() {
-        let upper_bound = i64::MAX as f64;
-        let projected = number_value(upper_bound);
-        assert_eq!(projected.as_f64(), Some(upper_bound));
-        assert_ne!(projected, Value::Number(Number::from(i64::MAX)));
-        assert_eq!(
-            number_value(i64::MIN as f64),
-            Value::Number(Number::from(i64::MIN))
-        );
-        assert_eq!(number_value(-0.0), Value::Number(Number::from(0)));
-        assert_eq!(number_value(f64::INFINITY), Value::Null);
     }
 }
 
@@ -476,5 +515,24 @@ pub(crate) fn drop_value_nonrecursive(value: Value) {
             }
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn number_projection_does_not_saturate_at_the_rounded_i64_upper_bound() {
+        let upper_bound = i64::MAX as f64;
+        let projected = number_value(upper_bound);
+        assert_eq!(projected.as_f64(), Some(upper_bound));
+        assert_ne!(projected, Value::Number(Number::from(i64::MAX)));
+        assert_eq!(
+            number_value(i64::MIN as f64),
+            Value::Number(Number::from(i64::MIN))
+        );
+        assert_eq!(number_value(-0.0), Value::Number(Number::from(0)));
+        assert_eq!(number_value(f64::INFINITY), Value::Null);
     }
 }

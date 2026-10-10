@@ -1,13 +1,15 @@
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
+use crate::resources::ModelComplexity;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
-    ParseMetadata, Result, SourceSpan, editor::trailing_ascii_whitespace_slot,
+    EditorSemanticSymbol, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan,
+    editor::trailing_ascii_whitespace_slot,
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -33,22 +35,269 @@ pub(crate) fn block_syntax_construction_count() -> usize {
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+/// Flat Block records in Mermaid database insertion order.
+///
+/// Child indices address `blocks_flat`; compatibility serialization expands the nested wire shape.
+#[derive(Debug, Clone, Default)]
 pub struct BlockDiagramRenderModel {
-    #[serde(default, rename = "blocksFlat")]
     pub blocks_flat: Vec<BlockNodeRenderModel>,
-    #[serde(default)]
     pub edges: Vec<BlockEdgeRenderModel>,
-    #[serde(
-        default,
-        rename = "warningFacts",
-        skip_serializing_if = "Vec::is_empty"
-    )]
     pub warning_facts: Vec<DiagramWarningFact>,
-    #[serde(default, rename = "classes")]
     pub class_defs: IndexMap<String, BlockClassDefRenderModel>,
-    #[serde(skip)]
     compat_root_id: String,
+}
+
+#[derive(Clone, Copy, Default)]
+struct BlockRecordMetrics {
+    items: usize,
+    text_bytes: usize,
+    container_depth: usize,
+}
+
+impl BlockDiagramRenderModel {
+    /// Returns the canonical root composite, when present.
+    pub fn root(&self) -> Option<&BlockNodeRenderModel> {
+        let root_id = if self.compat_root_id.is_empty() {
+            "root"
+        } else {
+            &self.compat_root_id
+        };
+        self.blocks_flat.iter().find(|block| block.id == root_id)
+    }
+
+    /// Resolves a direct child index without constructing a subtree.
+    pub fn block(&self, index: usize) -> Option<&BlockNodeRenderModel> {
+        self.blocks_flat.get(index)
+    }
+
+    fn record_metrics(&self) -> std::result::Result<Vec<BlockRecordMetrics>, String> {
+        let mut metrics = vec![BlockRecordMetrics::default(); self.blocks_flat.len()];
+        let mut state = vec![0u8; self.blocks_flat.len()];
+        for start in 0..self.blocks_flat.len() {
+            let mut stack = vec![(start, false)];
+            while let Some((index, complete)) = stack.pop() {
+                let Some(block) = self.blocks_flat.get(index) else {
+                    return Err(format!("invalid Block child index {index}"));
+                };
+                if complete {
+                    let mut value = BlockRecordMetrics {
+                        items: block
+                            .classes
+                            .len()
+                            .saturating_add(block.styles.len())
+                            .saturating_add(block.directions.len())
+                            .saturating_add(block.children.len()),
+                        text_bytes: block
+                            .id
+                            .len()
+                            .saturating_add(block.label.len())
+                            .saturating_add(block.block_type.len()),
+                        container_depth: 2,
+                    };
+                    for text in block
+                        .classes
+                        .iter()
+                        .chain(&block.styles)
+                        .chain(&block.directions)
+                    {
+                        value.text_bytes = value.text_bytes.saturating_add(text.len());
+                    }
+                    for &child in &block.children {
+                        value.items = value.items.saturating_add(metrics[child].items);
+                        value.text_bytes =
+                            value.text_bytes.saturating_add(metrics[child].text_bytes);
+                        value.container_depth = value
+                            .container_depth
+                            .max(metrics[child].container_depth.saturating_add(2));
+                    }
+                    metrics[index] = value;
+                    state[index] = 2;
+                } else if state[index] != 2 {
+                    if state[index] == 1 {
+                        return Err("cyclic Block child indices".to_string());
+                    }
+                    state[index] = 1;
+                    stack.push((index, true));
+                    stack.extend(block.children.iter().rev().map(|&child| (child, false)));
+                }
+            }
+        }
+        Ok(metrics)
+    }
+
+    /// Counts the previous typed wire shape without allocating repeated descendant output.
+    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+        let Ok(metrics) = self.record_metrics() else {
+            return ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX);
+        };
+        let mut result = ModelComplexity::new(self.blocks_flat.len(), 0, 1);
+        for value in metrics {
+            result.items = result.items.saturating_add(value.items);
+            result.text_bytes = result.text_bytes.saturating_add(value.text_bytes);
+            result.nesting_depth = result
+                .nesting_depth
+                .max(value.container_depth.saturating_add(1));
+        }
+        for (value, empty) in [
+            (
+                ModelComplexity::from_serializable(&self.edges),
+                self.edges.is_empty(),
+            ),
+            (
+                ModelComplexity::from_serializable(&self.class_defs),
+                self.class_defs.is_empty(),
+            ),
+            (
+                ModelComplexity::from_serializable(&self.warning_facts),
+                self.warning_facts.is_empty(),
+            ),
+        ] {
+            result.items = result
+                .items
+                .saturating_add(if empty { 0 } else { value.items });
+            result.text_bytes = result.text_bytes.saturating_add(value.text_bytes);
+            result.nesting_depth = result
+                .nesting_depth
+                .max(value.nesting_depth.saturating_add(1));
+        }
+        result.items = result.items.max(1);
+        result
+    }
+
+    /// Projects the original nested typed wire shape into a managed JSON owner.
+    ///
+    /// Use the owner's iterative writer for output deeper than generic serde supports.
+    pub fn to_json(&self) -> Result<ManagedSemanticJson> {
+        self.to_json_controlled(&OperationControl::new())
+            .expect("a private projection control cannot be cancelled")
+    }
+
+    /// Projects typed JSON while safely owning partial nested results during cancellation.
+    pub fn to_json_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        control.checkpoint()?;
+        if let Err(message) = self.record_metrics() {
+            return Ok(Err(Error::diagram_parse_fallback("block", message)));
+        }
+        let mut blocks = Vec::with_capacity(self.blocks_flat.len());
+        for index in 0..self.blocks_flat.len() {
+            blocks.push(block_render_node_to_value_controlled(
+                self, index, true, control,
+            )?);
+        }
+        control.checkpoint()?;
+        // Preserve derive's field order; transfers occur only in this checkpoint-free assembly.
+        let mut object = Map::new();
+        object.insert(
+            "blocksFlat".to_string(),
+            Value::Array(
+                blocks
+                    .into_iter()
+                    .map(ManagedSemanticJson::into_unmanaged_value)
+                    .collect(),
+            ),
+        );
+        object.insert("edges".to_string(), json!(self.edges));
+        if !self.warning_facts.is_empty() {
+            object.insert("warningFacts".to_string(), json!(self.warning_facts));
+        }
+        object.insert("classes".to_string(), json!(self.class_defs));
+        Ok(Ok(Value::Object(object).into()))
+    }
+}
+
+impl serde::Serialize for BlockDiagramRenderModel {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let metrics = self.record_metrics().map_err(serde::ser::Error::custom)?;
+        if metrics
+            .iter()
+            .any(|value| value.container_depth.saturating_add(2) > 128)
+        {
+            return Err(serde::ser::Error::custom(
+                "semantic JSON exceeds generic serde's 128-container depth; use compatibility_json().write_json",
+            ));
+        }
+        serde::Serialize::serialize(
+            &self.to_json().map_err(serde::ser::Error::custom)?,
+            serializer,
+        )
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BlockDiagramRenderModel {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = <ManagedSemanticJson as serde::Deserialize>::deserialize(deserializer)?;
+        if !value.is_object() {
+            return Err(serde::de::Error::custom("Block model must be an object"));
+        }
+        let mut model = Self::default();
+        let mut indices = HashMap::<String, usize>::new();
+        let mut pending = Vec::<(usize, &Value)>::new();
+        if let Some(blocks) = value.get("blocksFlat") {
+            let blocks = blocks
+                .as_array()
+                .ok_or_else(|| serde::de::Error::custom("blocksFlat must be an array"))?;
+            for block in blocks {
+                let record = <BlockNodeRenderModel as serde::Deserialize>::deserialize(block)
+                    .map_err(serde::de::Error::custom)?;
+                let index = model.blocks_flat.len();
+                indices.insert(record.id.clone(), index);
+                model.blocks_flat.push(record);
+                pending.push((index, block));
+            }
+        }
+        // Top-level records are authoritative; nested-only records follow in first-encounter order.
+        let mut next = 0usize;
+        while let Some(&(index, block)) = pending.get(next) {
+            next += 1;
+            let mut children = Vec::new();
+            if let Some(value) = block.get("children") {
+                let nested = value
+                    .as_array()
+                    .ok_or_else(|| serde::de::Error::custom("Block children must be an array"))?;
+                for child in nested {
+                    let record = <BlockNodeRenderModel as serde::Deserialize>::deserialize(child)
+                        .map_err(serde::de::Error::custom)?;
+                    let child_index = if let Some(&index) = indices.get(&record.id) {
+                        index
+                    } else {
+                        let index = model.blocks_flat.len();
+                        indices.insert(record.id.clone(), index);
+                        model.blocks_flat.push(record);
+                        pending.push((index, child));
+                        index
+                    };
+                    children.push(child_index);
+                }
+            }
+            model.blocks_flat[index].children = children;
+        }
+        if let Some(edges) = value.get("edges") {
+            model.edges = <Vec<BlockEdgeRenderModel> as serde::Deserialize>::deserialize(edges)
+                .map_err(serde::de::Error::custom)?;
+        }
+        if let Some(classes) = value.get("classes") {
+            model.class_defs =
+                <IndexMap<String, BlockClassDefRenderModel> as serde::Deserialize>::deserialize(
+                    classes,
+                )
+                .map_err(serde::de::Error::custom)?;
+        }
+        if let Some(warnings) = value.get("warningFacts") {
+            model.warning_facts =
+                <Vec<DiagramWarningFact> as serde::Deserialize>::deserialize(warnings)
+                    .map_err(serde::de::Error::custom)?;
+        }
+        model.record_metrics().map_err(serde::de::Error::custom)?;
+        Ok(model)
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -61,7 +310,7 @@ pub struct BlockClassDefRenderModel {
     pub text_styles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct BlockNodeRenderModel {
     pub id: String,
     #[serde(
@@ -74,8 +323,9 @@ pub struct BlockNodeRenderModel {
     pub label: String,
     #[serde(default, rename = "type")]
     pub block_type: String,
-    #[serde(default)]
-    pub children: Vec<BlockNodeRenderModel>,
+    /// Indices of direct children in the owning model's `blocks_flat` records.
+    #[serde(skip)]
+    pub children: Vec<usize>,
     #[serde(default)]
     pub columns: Option<i64>,
     #[serde(default, rename = "widthInColumns")]
@@ -140,7 +390,7 @@ struct Block {
     color_index: Option<usize>,
     block_type: String,
     label: Option<String>,
-    children: Vec<Block>,
+    children: Vec<usize>,
 
     start: Option<String>,
     end: Option<String>,
@@ -170,70 +420,11 @@ impl Block {
     }
 }
 
-fn clone_block_shallow(block: &Block) -> Block {
-    Block {
-        id: block.id.clone(),
-        color_index: block.color_index,
-        block_type: block.block_type.clone(),
-        label: block.label.clone(),
-        children: Vec::new(),
-        start: block.start.clone(),
-        end: block.end.clone(),
-        arrow_type_end: block.arrow_type_end.clone(),
-        arrow_type_start: block.arrow_type_start.clone(),
-        width: block.width,
-        columns: block.columns,
-        width_in_columns: block.width_in_columns,
-        directions: block.directions.clone(),
-        classes: block.classes.clone(),
-        styles: block.styles.clone(),
-        css: block.css.clone(),
-        style_class: block.style_class.clone(),
-        styles_str: block.styles_str.clone(),
-    }
-}
-
-fn clone_block_tree_nonrecursive(
-    block: &Block,
-    control: &OperationControl,
-) -> OperationControlResult<Block> {
-    let mut completed: HashMap<*const Block, Block> = HashMap::new();
-    let mut stack = vec![(block, false)];
-    let mut visited_count = 0usize;
-
-    while let Some((block, visited)) = stack.pop() {
-        if visited_count.is_multiple_of(128) {
-            control.checkpoint()?;
-        }
-        visited_count += 1;
-        if visited {
-            let children = block
-                .children
-                .iter()
-                .filter_map(|child| completed.remove(&(child as *const Block)))
-                .collect();
-            let mut cloned = clone_block_shallow(block);
-            cloned.children = children;
-            completed.insert(block as *const Block, cloned);
-        } else {
-            stack.push((block, true));
-            for child in block.children.iter().rev() {
-                stack.push((child, false));
-            }
-        }
-    }
-
-    Ok(completed
-        .remove(&(block as *const Block))
-        .unwrap_or_else(|| clone_block_shallow(block)))
-}
-
 #[derive(Debug, Default)]
 struct BlockDb {
     root_id: String,
     next_color_index: usize,
-    block_database: HashMap<String, Block>,
-    block_database_order: Vec<String>,
+    block_ids: HashMap<String, usize>,
     blocks: Vec<Block>,
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
@@ -243,43 +434,36 @@ struct BlockDb {
 
 impl BlockDb {
     fn clear(&mut self) {
+        *self = Self::default();
         self.root_id = "root".to_string();
-        self.next_color_index = 0;
-        self.block_database.clear();
-        self.block_database_order.clear();
-        self.blocks.clear();
-        self.edges.clear();
-        self.edge_count.clear();
-        self.classes.clear();
-        self.warning_facts.clear();
-
-        let root = Block {
+        self.insert_block(Block {
             id: self.root_id.clone(),
             block_type: "composite".to_string(),
-            children: Vec::new(),
             columns: Some(-1),
-            label: Some("".to_string()),
+            label: Some(String::new()),
             ..Default::default()
-        };
-        self.insert_block(self.root_id.clone(), root);
+        });
     }
 
-    fn insert_block(&mut self, id: String, block: Block) {
-        let existed = self.block_database.contains_key(&id);
-        self.block_database.insert(id.clone(), block);
-        if !existed {
-            self.block_database_order.push(id);
+    fn insert_block(&mut self, block: Block) -> usize {
+        if let Some(&index) = self.block_ids.get(&block.id) {
+            self.blocks[index] = block;
+            index
+        } else {
+            let index = self.blocks.len();
+            self.block_ids.insert(block.id.clone(), index);
+            self.blocks.push(block);
+            index
         }
     }
 
     fn ensure_block_exists(&mut self, id: &str) -> &mut Block {
-        match self.block_database.entry(id.to_string()) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => {
-                self.block_database_order.push(id.to_string());
-                entry.insert(Block::new(id.to_string()))
-            }
-        }
+        let index = self
+            .block_ids
+            .get(id)
+            .copied()
+            .unwrap_or_else(|| self.insert_block(Block::new(id.to_string())));
+        &mut self.blocks[index]
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
@@ -314,14 +498,15 @@ impl BlockDb {
             .filter(|s| !s.is_empty())
             .collect();
 
-        if let Some(block) = self.block_database.get_mut(id) {
+        if let Some(&index) = self.block_ids.get(id) {
+            let block = &mut self.blocks[index];
             block.styles = Some(parts);
             return;
         }
 
         let mut placeholder = Block::new(id.to_string());
         placeholder.styles = Some(parts);
-        self.insert_block(id.to_string(), placeholder);
+        self.insert_block(placeholder);
     }
 
     fn set_css_class(&mut self, item_ids: &str, css_class_name: &str) {
@@ -338,69 +523,38 @@ impl BlockDb {
 
     fn set_hierarchy(
         &mut self,
-        blocks: Vec<Block>,
+        document: BlockDocument,
         config: &MermaidConfig,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let root_id = self.root_id.clone();
-        self.populate_block_database(blocks, &root_id, config, control)?;
-        let root_children = self
-            .block_database
-            .get(&self.root_id)
-            .map(|root| root.children.as_slice())
-            .unwrap_or_default();
-        let mut blocks = Vec::with_capacity(root_children.len());
-        for child in root_children {
-            blocks.push(clone_block_tree_nonrecursive(child, control)?);
-        }
-        self.blocks = blocks;
-        Ok(())
-    }
-
-    fn populate_block_database(
-        &mut self,
-        blocks: Vec<Block>,
-        parent_id: &str,
-        config: &MermaidConfig,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        let mut stack = vec![PopulateFrame::new(parent_id.to_string(), blocks)];
+        let mut records = document.records.into_iter().map(Some).collect::<Vec<_>>();
+        let mut stack = vec![PopulateFrame::new(Some(0), document.blocks, &records)];
         let mut visited_count = 0usize;
-
         while !stack.is_empty() {
             if visited_count.is_multiple_of(128) {
                 control.checkpoint()?;
             }
             visited_count += 1;
-            let next = {
-                let Some(frame) = stack.last_mut() else {
-                    break;
-                };
+            let next = stack.last_mut().and_then(|frame| {
                 frame
                     .blocks
                     .next()
-                    .map(|block| (block, frame.parent_id.clone(), frame.col))
-            };
-
-            let Some((mut block, parent_id, col)) = next else {
-                let Some(frame) = stack.pop() else {
-                    break;
-                };
-                let mut child_blocks = Vec::with_capacity(frame.child_ids.len());
-                for id in &frame.child_ids {
-                    if let Some(block) = self.block_database.get(id) {
-                        child_blocks.push(clone_block_tree_nonrecursive(block, control)?);
-                    }
-                }
-                if let Some(parent) = self.block_database.get_mut(&frame.parent_id) {
-                    parent.children = child_blocks;
+                    .map(|index| (index, frame.parent, frame.col))
+            });
+            let Some((index, parent, col)) = next else {
+                if let Some(frame) = stack.pop()
+                    && let Some(parent) = frame.parent
+                {
+                    self.blocks[parent].children = frame.child_ids;
                 }
                 continue;
             };
-
+            let Some(mut block) = records[index].take() else {
+                continue;
+            };
             if col > 0
                 && block.block_type != "column-setting"
-                && block.width_in_columns.is_some_and(|w| w > col)
+                && block.width_in_columns.is_some_and(|width| width > col)
             {
                 self.warning_facts.push(DiagramWarningFact::new(
                     BLOCK_WIDTH_WARNING_RULE_ID,
@@ -412,142 +566,117 @@ impl BlockDb {
                     ),
                 ));
             }
-
             if let Some(label) = &block.label {
                 block.label = Some(sanitize_text(label, config));
             }
-
             match block.block_type.as_str() {
                 "classDef" => {
-                    let css = block.css.clone().unwrap_or_default();
-                    self.add_style_class(&block.id, &css);
+                    self.add_style_class(&block.id, block.css.as_deref().unwrap_or_default());
                     continue;
                 }
                 "applyClass" => {
-                    let style_class = block.style_class.clone().unwrap_or_default();
-                    self.set_css_class(&block.id, &style_class);
+                    self.set_css_class(&block.id, block.style_class.as_deref().unwrap_or_default());
                     continue;
                 }
                 "applyStyles" => {
-                    if let Some(styles) = block.styles_str.clone() {
-                        self.add_style_to_node(&block.id, &styles);
+                    if let Some(styles) = &block.styles_str {
+                        self.add_style_to_node(&block.id, styles);
                     }
                     continue;
                 }
                 "column-setting" => {
-                    if let Some(parent) = self.block_database.get_mut(&parent_id) {
-                        parent.columns = block.columns;
+                    if let Some(parent) = parent {
+                        self.blocks[parent].columns = block.columns;
                     }
                     continue;
                 }
                 "edge" => {
-                    let base_id = block.id.clone();
-                    let count = self.edge_count.get(&base_id).copied().unwrap_or(0) + 1;
-                    self.edge_count.insert(base_id.clone(), count);
-                    block.id = format!("{count}-{base_id}");
+                    let count = self.edge_count.entry(block.id.clone()).or_default();
+                    *count += 1;
+                    block.id = format!("{count}-{}", block.id);
                     self.edges.push(block);
                     continue;
                 }
                 _ => {}
             }
-
             if block.label.is_none() {
-                if block.block_type == "composite" {
-                    block.label = Some("".to_string());
+                block.label = Some(if block.block_type == "composite" {
+                    String::new()
                 } else {
-                    block.label = Some(block.id.clone());
-                }
+                    block.id.clone()
+                });
             }
-
-            let parsed_children = std::mem::take(&mut block.children);
-            let block_id = block.id.clone();
-
-            let existed = self.block_database.contains_key(&block.id);
-            if !existed {
-                // Assign only on first insertion, before descending into children, like BlockDB.
+            let children = std::mem::take(&mut block.children);
+            let existed = self.block_ids.get(&block.id).copied();
+            let is_space = block.block_type == "space";
+            let space_width = block.width.unwrap_or(1).max(0);
+            let block_index = if let Some(index) = existed {
+                let existing = &mut self.blocks[index];
+                // Mermaid only updates type and an explicit label on repeated declarations.
+                if block.block_type != "na" {
+                    existing.block_type = block.block_type.clone();
+                }
+                if let Some(label) = &block.label
+                    && label != &block.id
+                {
+                    existing.label = Some(label.clone());
+                }
+                index
+            } else {
                 if block.block_type == "composite" {
                     block.color_index = Some(self.next_color_index);
                     self.next_color_index += 1;
                 }
-                self.insert_block(block.id.clone(), clone_block_shallow(&block));
-            } else {
-                let mut existing = self
-                    .block_database
-                    .get(&block.id)
-                    .map(|block| clone_block_tree_nonrecursive(block, control))
-                    .transpose()?
-                    .unwrap_or_else(|| Block::new(block.id.clone()));
-                // Mermaid's blockDB only merges a small subset of fields when a block id is
-                // encountered multiple times. In particular, later occurrences do *not* override
-                // arrow directions (see upstream cypress BL6), so keep the first-seen properties
-                // and only patch in "obviously relevant" updates.
-                if block.block_type != "na" {
-                    existing.block_type = block.block_type.clone();
-                }
-                if let Some(lbl) = &block.label
-                    && lbl != &block.id
-                {
-                    existing.label = Some(lbl.clone());
-                }
-                self.insert_block(block.id.clone(), existing);
-            }
-
-            if block.block_type == "space" {
-                let w = block.width.unwrap_or(1).max(0);
-                for j in 0..w {
-                    if j % 128 == 0 {
+                self.insert_block(block.clone())
+            };
+            if is_space {
+                for offset in 0..space_width {
+                    if offset % 128 == 0 {
                         control.checkpoint()?;
                     }
-                    let id = format!("{}-{}", block.id, j);
-                    let mut new_block = clone_block_shallow(&block);
-                    new_block.id = id.clone();
-                    self.insert_block(id.clone(), new_block);
-                    if let Some(frame) = stack.last_mut() {
-                        frame.child_ids.push(id);
+                    let mut space = block.clone();
+                    space.id = format!("{}-{offset}", block.id);
+                    let index = self.insert_block(space);
+                    if let Some(frame) = stack.last_mut()
+                        && frame.parent.is_some()
+                    {
+                        frame.child_ids.push(index);
                     }
                 }
-                if !parsed_children.is_empty() {
-                    stack.push(PopulateFrame::new(block_id, parsed_children));
-                }
-                continue;
+            } else if existed.is_none()
+                && let Some(frame) = stack.last_mut()
+                && frame.parent.is_some()
+            {
+                frame.child_ids.push(block_index);
             }
-
-            if !existed && let Some(frame) = stack.last_mut() {
-                frame.child_ids.push(block.id.clone());
-            }
-
-            if !parsed_children.is_empty() {
-                stack.push(PopulateFrame::new(block_id, parsed_children));
+            if !children.is_empty() {
+                // Upstream replays a repeated composite into its new declaration object,
+                // while the first registered object keeps its own children and columns.
+                let parent = existed.is_none().then_some(block_index);
+                stack.push(PopulateFrame::new(parent, children, &records));
             }
         }
-
         Ok(())
-    }
-
-    fn blocks_flat(&self) -> Vec<&Block> {
-        self.block_database_order
-            .iter()
-            .filter_map(|id| self.block_database.get(id))
-            .collect()
     }
 }
 
 struct PopulateFrame {
-    parent_id: String,
-    blocks: std::vec::IntoIter<Block>,
+    parent: Option<usize>,
+    blocks: std::vec::IntoIter<usize>,
     col: i64,
-    child_ids: Vec<String>,
+    child_ids: Vec<usize>,
 }
 
 impl PopulateFrame {
-    fn new(parent_id: String, blocks: Vec<Block>) -> Self {
+    fn new(parent: Option<usize>, blocks: Vec<usize>, records: &[Option<Block>]) -> Self {
         let col = blocks
             .iter()
-            .find(|b| b.block_type == "column-setting")
-            .and_then(|b| b.columns)
+            .filter_map(|&index| records[index].as_ref())
+            .find(|block| block.block_type == "column-setting")
+            .and_then(|block| block.columns)
             .unwrap_or(-1);
         Self {
-            parent_id,
+            parent,
             blocks: blocks.into_iter(),
             col,
             child_ids: Vec::new(),
@@ -587,32 +716,80 @@ fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Ve
     Value::Object(obj)
 }
 
-fn block_render_node_to_value(block: &BlockNodeRenderModel) -> Value {
-    let mut stack: Vec<(&BlockNodeRenderModel, bool)> = vec![(block, false)];
-    let mut completed: HashMap<*const BlockNodeRenderModel, Value> = HashMap::new();
-
-    while let Some((block, visited)) = stack.pop() {
-        if visited {
-            let children = block
-                .children
-                .iter()
-                .filter_map(|child| completed.remove(&(child as *const BlockNodeRenderModel)))
-                .collect();
-            completed.insert(
-                block as *const BlockNodeRenderModel,
-                block_render_node_to_value_shallow(block, children),
-            );
+fn block_render_node_to_value_controlled(
+    model: &BlockDiagramRenderModel,
+    index: usize,
+    typed: bool,
+    control: &OperationControl,
+) -> OperationControlResult<ManagedSemanticJson> {
+    struct Frame {
+        index: usize,
+        next: usize,
+        children: Vec<ManagedSemanticJson>,
+    }
+    let mut stack = vec![Frame {
+        index,
+        next: 0,
+        children: Vec::new(),
+    }];
+    let mut steps = 0usize;
+    loop {
+        if steps.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        steps += 1;
+        let Some(frame) = stack.last_mut() else {
+            return Ok(Value::Null.into());
+        };
+        let block = &model.blocks_flat[frame.index];
+        if let Some(&child) = block.children.get(frame.next) {
+            frame.next += 1;
+            stack.push(Frame {
+                index: child,
+                next: 0,
+                children: Vec::new(),
+            });
+            continue;
+        }
+        let Some(frame) = stack.pop() else {
+            return Ok(Value::Null.into());
+        };
+        // Raw values exist only during this checkpoint-free assembly, then regain managed ownership.
+        let children = frame
+            .children
+            .into_iter()
+            .map(ManagedSemanticJson::into_unmanaged_value)
+            .collect();
+        let value = if typed {
+            block_typed_node_to_value_shallow(block, children)
         } else {
-            stack.push((block, true));
-            for child in block.children.iter().rev() {
-                stack.push((child, false));
-            }
+            block_render_node_to_value_shallow(block, children)
+        };
+        let value = ManagedSemanticJson::from(value);
+        if let Some(parent) = stack.last_mut() {
+            parent.children.push(value);
+        } else {
+            return Ok(value);
         }
     }
+}
 
-    completed
-        .remove(&(block as *const BlockNodeRenderModel))
-        .unwrap_or_else(|| block_render_node_to_value_shallow(block, Vec::new()))
+fn block_typed_node_to_value_shallow(block: &BlockNodeRenderModel, children: Vec<Value>) -> Value {
+    let mut obj = Map::new();
+    obj.insert("id".to_string(), json!(block.id));
+    if let Some(index) = block.color_index {
+        obj.insert("colorIndex".to_string(), json!(index));
+    }
+    obj.insert("label".to_string(), json!(block.label));
+    obj.insert("type".to_string(), json!(block.block_type));
+    obj.insert("children".to_string(), Value::Array(children));
+    obj.insert("columns".to_string(), json!(block.columns));
+    obj.insert("widthInColumns".to_string(), json!(block.width_in_columns));
+    obj.insert("width".to_string(), json!(block.width));
+    obj.insert("classes".to_string(), json!(block.classes));
+    obj.insert("styles".to_string(), json!(block.styles));
+    obj.insert("directions".to_string(), json!(block.directions));
+    Value::Object(obj)
 }
 
 fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
@@ -650,81 +827,65 @@ fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderM
     Value::Object(obj)
 }
 
-fn block_to_render_node_shallow(
-    b: &Block,
-    children: Vec<BlockNodeRenderModel>,
-) -> BlockNodeRenderModel {
+fn block_to_render_node(b: Block) -> BlockNodeRenderModel {
+    let compatibility = BlockNodeCompatibility {
+        styles: CompatibilityFieldPresence::from_option(&b.styles),
+        directions: CompatibilityFieldPresence::from_option(&b.directions),
+    };
     BlockNodeRenderModel {
-        id: b.id.clone(),
+        id: b.id,
         color_index: b.color_index,
-        label: b.label.clone().unwrap_or_default(),
-        block_type: b.block_type.clone(),
-        children,
+        label: b.label.unwrap_or_default(),
+        block_type: b.block_type,
+        children: b.children,
         columns: b.columns,
         width_in_columns: b.width_in_columns,
         width: b.width,
-        classes: b.classes.clone(),
-        styles: b.styles.clone().unwrap_or_default(),
-        directions: b.directions.clone().unwrap_or_default(),
-        compatibility: BlockNodeCompatibility {
-            styles: CompatibilityFieldPresence::from_option(&b.styles),
-            directions: CompatibilityFieldPresence::from_option(&b.directions),
-        },
+        classes: b.classes,
+        styles: b.styles.unwrap_or_default(),
+        directions: b.directions.unwrap_or_default(),
+        compatibility,
     }
 }
 
-fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
-    let mut stack: Vec<(&Block, bool)> = vec![(b, false)];
-    let mut completed: HashMap<*const Block, BlockNodeRenderModel> = HashMap::new();
-
-    while let Some((block, visited)) = stack.pop() {
-        if visited {
-            let children = block
-                .children
-                .iter()
-                .filter_map(|child| completed.remove(&(child as *const Block)))
-                .collect();
-            completed.insert(
-                block as *const Block,
-                block_to_render_node_shallow(block, children),
-            );
-        } else {
-            stack.push((block, true));
-            for child in block.children.iter().rev() {
-                stack.push((child, false));
-            }
-        }
-    }
-
-    completed
-        .remove(&(b as *const Block))
-        .unwrap_or_else(|| block_to_render_node_shallow(b, Vec::new()))
-}
-
-fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
+fn block_to_render_edge(b: Block) -> BlockEdgeRenderModel {
     BlockEdgeRenderModel {
-        id: b.id.clone(),
-        start: b.start.clone().unwrap_or_default(),
-        end: b.end.clone().unwrap_or_default(),
-        arrow_type_end: b.arrow_type_end.clone(),
-        arrow_type_start: b.arrow_type_start.clone(),
-        label: b.label.clone().unwrap_or_default(),
-        compat_directions: b.directions.clone(),
+        id: b.id,
+        start: b.start.unwrap_or_default(),
+        end: b.end.unwrap_or_default(),
+        arrow_type_end: b.arrow_type_end,
+        arrow_type_start: b.arrow_type_start,
+        label: b.label.unwrap_or_default(),
+        compat_directions: b.directions,
     }
 }
 
-fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
-    BlockDiagramRenderModel {
-        blocks_flat: db
-            .blocks_flat()
-            .into_iter()
-            .map(block_to_render_node)
-            .collect(),
-        edges: db.edges.iter().map(block_to_render_edge).collect(),
-        warning_facts: db.warning_facts.clone(),
-        class_defs: db.classes.clone(),
-        compat_root_id: db.root_id.clone(),
+fn block_db_to_render_model(
+    db: BlockDb,
+    control: &OperationControl,
+) -> OperationControlResult<BlockDiagramRenderModel> {
+    let mut blocks_flat = Vec::with_capacity(db.blocks.len());
+    for (index, block) in db.blocks.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        blocks_flat.push(block_to_render_node(block));
     }
+    let mut edges = Vec::with_capacity(db.edges.len());
+    for (index, edge) in db.edges.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        edges.push(block_to_render_edge(edge));
+    }
+    control.checkpoint()?;
+    Ok(BlockDiagramRenderModel {
+        blocks_flat,
+        edges,
+        warning_facts: db.warning_facts,
+        class_defs: db.classes,
+        compat_root_id: db.root_id,
+    })
 }
 
 struct BlockSemanticSource {
@@ -792,7 +953,7 @@ fn construct_block_semantic_source(
     control.checkpoint()?;
     let mut db = BlockDb::default();
     db.clear();
-    db.set_hierarchy(document.blocks, &meta.effective_config, control)?;
+    db.set_hierarchy(document, &meta.effective_config, control)?;
 
     control.checkpoint()?;
     Ok(Ok(BlockSemanticSource { db, editor_facts }))
@@ -806,7 +967,10 @@ pub(crate) fn parse_block_model_for_render(
     let source = construct_block_semantic_source(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
-    Ok(block_db_to_render_model(&source.db))
+    Ok(
+        block_db_to_render_model(source.db, &OperationControl::new())
+            .expect("a private conversion control cannot be cancelled"),
+    )
 }
 
 pub(crate) fn parse_block_model_for_render_controlled(
@@ -820,7 +984,7 @@ pub(crate) fn parse_block_model_for_render_controlled(
         Err(failure) => return Ok(Err(*failure.error)),
     };
     control.checkpoint()?;
-    Ok(Ok(block_db_to_render_model(&source.db)))
+    Ok(Ok(block_db_to_render_model(source.db, control)?))
 }
 
 fn type_str_to_type(type_str: &str) -> String {
@@ -1125,13 +1289,17 @@ pub(crate) fn parse_block_json_and_editor_facts(
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_block_semantic_source(code, meta, control)?;
+    let construction = match construction {
+        Ok(source) => {
+            let model = block_db_to_render_model(source.db, control)?;
+            let compatibility = render_model_to_compat_json_controlled(&model, meta, control)?;
+            Ok((compatibility, source.editor_facts, model.warning_facts))
+        }
+        Err(failure) => Err(failure),
+    };
     let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
         construction,
-        |source| {
-            let model = block_db_to_render_model(&source.db);
-            let compatibility = render_model_to_compat_json(&model, meta);
-            (compatibility, source.editor_facts, model.warning_facts)
-        },
+        |parts| parts,
         BlockParseFailure::into_error_and_editor_facts,
     );
     control.checkpoint()?;
@@ -1221,7 +1389,7 @@ enum DocumentFrameKind {
 
 struct DocumentFrame {
     kind: DocumentFrameKind,
-    children: Vec<Block>,
+    children: Vec<usize>,
 }
 
 impl DocumentFrame {
@@ -1283,8 +1451,8 @@ fn current_document_frame_mut(frames: &mut [DocumentFrame]) -> Result<&mut Docum
     frames.last_mut().ok_or_else(block_document_frame_error)
 }
 
-fn push_document_child(frames: &mut [DocumentFrame], block: Block) -> Result<()> {
-    current_document_frame_mut(frames)?.children.push(block);
+fn push_document_child(frames: &mut [DocumentFrame], index: usize) -> Result<()> {
+    current_document_frame_mut(frames)?.children.push(index);
     Ok(())
 }
 
@@ -1294,7 +1462,8 @@ struct BlockStatementFailure {
 }
 
 struct BlockDocument {
-    blocks: Vec<Block>,
+    records: Vec<Block>,
+    blocks: Vec<usize>,
     failure: Option<BlockStatementFailure>,
 }
 
@@ -1326,6 +1495,7 @@ struct Parser<'input, 'control> {
     control: &'control OperationControl,
     pos: usize,
     gen_counter: i64,
+    records: Vec<Block>,
     declared_entities: HashSet<String>,
     editor_facts: EditorSemanticFacts,
 }
@@ -1337,6 +1507,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             control,
             pos: 0,
             gen_counter: 0,
+            records: Vec::new(),
             declared_entities: HashSet::new(),
             editor_facts: EditorSemanticFacts::new(),
         }
@@ -1584,6 +1755,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         };
         self.control.checkpoint()?;
         Ok(Ok(BlockDocument {
+            records: std::mem::take(&mut self.records),
             blocks: frame.children,
             failure: first_failure,
         }))
@@ -1629,34 +1801,40 @@ impl<'input, 'control> Parser<'input, 'control> {
 
         if self.peek_keyword("columns") {
             let block = self.parse_columns_statement()?;
-            push_document_child(frames, block)?;
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
             return Ok(false);
         }
         if self.peek_keyword("space") {
             let block = self.parse_space_statement()?;
-            push_document_child(frames, block)?;
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
             return Ok(false);
         }
         if self.peek_keyword("classDef") {
             let block = self.parse_classdef_statement()?;
-            push_document_child(frames, block)?;
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
             return Ok(false);
         }
         if self.peek_keyword("class") {
             let block = self.parse_apply_class_statement()?;
-            push_document_child(frames, block)?;
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
             return Ok(false);
         }
         if self.peek_keyword("style") {
             let block = self.parse_style_statement()?;
-            push_document_child(frames, block)?;
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
             return Ok(false);
         }
 
-        let mut blocks = self.parse_node_statement("block node", EditorSemanticKind::Object)?;
-        current_document_frame_mut(frames)?
-            .children
-            .append(&mut blocks);
+        let blocks = self.parse_node_statement("block node", EditorSemanticKind::Object)?;
+        for block in blocks {
+            let index = self.insert_record(block);
+            push_document_child(frames, index)?;
+        }
         Ok(false)
     }
 
@@ -1665,8 +1843,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             return Err(block_document_frame_error());
         };
         let block = frame.into_block(self);
-        current_document_frame_mut(frames)?.children.push(block);
-        Ok(())
+        let index = self.insert_record(block);
+        push_document_child(frames, index)
+    }
+
+    fn insert_record(&mut self, block: Block) -> usize {
+        let index = self.records.len();
+        self.records.push(block);
+        index
     }
 
     fn parse_columns_statement(&mut self) -> Result<Block> {
@@ -2499,42 +2683,78 @@ pub(crate) fn render_model_to_compat_json(
     model: &BlockDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let warnings = legacy_warning_messages(&model.warning_facts);
-    let blocks = model
-        .blocks_flat
-        .iter()
-        .find(|block| block.id == model.compat_root_id)
-        .map(|root| {
-            root.children
-                .iter()
-                .map(block_render_node_to_value)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
+        .expect("a private projection control cannot be cancelled")
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &BlockDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
+    if let Err(message) = model.record_metrics() {
+        return Ok(Err(Error::diagram_parse_fallback("block", message)));
+    }
+    let mut blocks = Vec::<ManagedSemanticJson>::new();
+    if let Some(root) = model.root() {
+        for &index in &root.children {
+            blocks.push(block_render_node_to_value_controlled(
+                model, index, false, control,
+            )?);
+        }
+    }
+    let mut blocks_flat = Vec::<ManagedSemanticJson>::with_capacity(model.blocks_flat.len());
+    for index in 0..model.blocks_flat.len() {
+        control.checkpoint()?;
+        blocks_flat.push(block_render_node_to_value_controlled(
+            model, index, false, control,
+        )?);
+    }
     let edges = model
         .edges
         .iter()
         .map(block_render_edge_to_value)
         .collect::<Vec<_>>();
-    let blocks_flat = model
-        .blocks_flat
-        .iter()
-        .map(block_render_node_to_value)
-        .collect::<Vec<_>>();
-    let classes = block_compat_classes_to_value(&model.class_defs);
+    let config = ManagedSemanticJson::from(
+        crate::compatibility_json::clone_value_nonrecursive_with_control(
+            meta.effective_config.as_value(),
+            control,
+        )?,
+    );
+    control.checkpoint()?;
+    // All deep values remain managed until this checkpoint-free final handoff.
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("blocks".to_string(), Value::Array(blocks));
-    out.insert("edges".to_string(), Value::Array(edges));
-    out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
-    out.insert("classes".to_string(), classes);
-    out.insert("warningFacts".to_string(), json!(&model.warning_facts));
-    out.insert("warnings".to_string(), json!(warnings));
     out.insert(
-        "config".to_string(),
-        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+        "blocks".to_string(),
+        Value::Array(
+            blocks
+                .into_iter()
+                .map(ManagedSemanticJson::into_unmanaged_value)
+                .collect(),
+        ),
     );
-    Ok(Value::Object(out))
+    out.insert("edges".to_string(), Value::Array(edges));
+    out.insert(
+        "blocksFlat".to_string(),
+        Value::Array(
+            blocks_flat
+                .into_iter()
+                .map(ManagedSemanticJson::into_unmanaged_value)
+                .collect(),
+        ),
+    );
+    out.insert(
+        "classes".to_string(),
+        block_compat_classes_to_value(&model.class_defs),
+    );
+    out.insert("warningFacts".to_string(), json!(&model.warning_facts));
+    out.insert(
+        "warnings".to_string(),
+        json!(legacy_warning_messages(&model.warning_facts)),
+    );
+    out.insert("config".to_string(), config.into_unmanaged_value());
+    Ok(Ok(Value::Object(out)))
 }
 
 pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -2548,7 +2768,8 @@ pub(crate) fn parse_block_with_warning_facts(
     let source = construct_block_semantic_source(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
-    let model = block_db_to_render_model(&source.db);
+    let model = block_db_to_render_model(source.db, &OperationControl::new())
+        .expect("a private conversion control cannot be cancelled");
     let compatibility = render_model_to_compat_json(&model, meta)?;
     Ok(crate::family::WarningSemanticParse::new(
         compatibility,
@@ -2610,11 +2831,19 @@ mod tests {
         db.clear();
 
         assert!(matches!(
-            db.set_hierarchy(vec![space], &MermaidConfig::default(), &control),
+            db.set_hierarchy(
+                BlockDocument {
+                    records: vec![space],
+                    blocks: vec![0],
+                    failure: None
+                },
+                &MermaidConfig::default(),
+                &control
+            ),
             Err(crate::OperationCancelled { .. })
         ));
-        assert!(db.block_database.len() > 2);
-        assert!(db.block_database.len() < 1_024);
+        assert!(db.blocks.len() > 2);
+        assert!(db.blocks.len() < 1_024);
     }
 
     #[test]
@@ -2651,6 +2880,157 @@ mod tests {
             input.push_str("end\n");
         }
         input
+    }
+
+    #[test]
+    fn block_cancellation_releases_records_after_nested_completion() {
+        const DEPTH: usize = 500;
+        let input = deep_block_chain(DEPTH);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2 * (DEPTH + 3));
+        let mut parser = Parser::new(&input, &control);
+        parser.parse_header().unwrap();
+        assert!(parser.parse_document(false).is_err());
+        assert!(
+            parser
+                .records
+                .iter()
+                .any(|record| { record.block_type == "composite" && !record.children.is_empty() }),
+            "cancellation must follow a completed nested child"
+        );
+        drop(parser);
+        assert!(parse_block_model_for_render("block\nA\n", &meta()).is_ok());
+    }
+
+    #[test]
+    fn block_conversion_observes_control_after_partial_record_transfer() {
+        let input = deep_block_chain(500);
+        let source = construct_block_semantic_source(&input, &meta(), &OperationControl::new())
+            .unwrap()
+            .unwrap_or_else(|failure| panic!("unexpected parse error: {}", failure.error));
+        let control = OperationControl::new().for_phase(crate::OperationPhase::Semantic);
+        control.cancel_after_checkpoints(1);
+        let cancelled = block_db_to_render_model(source.db, &control).unwrap_err();
+        assert_eq!(cancelled.phase, crate::OperationPhase::Semantic);
+        assert!(parse_block_model_for_render("block\nA\n", &meta()).is_ok());
+    }
+
+    #[test]
+    fn block_cancellation_releases_managed_partial_projection() {
+        let model = parse_block_model_for_render(&deep_block_chain(500), &meta()).unwrap();
+        let control = OperationControl::new().for_phase(crate::OperationPhase::Export);
+        // The first subtree has finished its leaf and assembled deep ancestors at checkpoint seven.
+        control.cancel_after_checkpoints(6);
+        let cancelled =
+            render_model_to_compat_json_controlled(&model, &meta(), &control).unwrap_err();
+        assert_eq!(cancelled.phase, crate::OperationPhase::Export);
+        assert!(parse_block_model_for_render("block\nA\n", &meta()).is_ok());
+    }
+
+    #[test]
+    fn block_typed_serde_preflights_actual_nested_wire_depth() {
+        let supported = parse_block_model_for_render(&deep_block_chain(61), &meta()).unwrap();
+        let wire = serde_json::to_value(&supported).expect("128 containers are supported");
+        let restored: BlockDiagramRenderModel = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
+        assert_eq!(restored.blocks_flat.len(), supported.blocks_flat.len());
+        let deep = parse_block_model_for_render(&deep_block_chain(62), &meta()).unwrap();
+        assert!(
+            serde_json::to_value(&deep)
+                .unwrap_err()
+                .to_string()
+                .contains("128-container")
+        );
+        let compatibility =
+            ManagedSemanticJson::from(render_model_to_compat_json(&deep, &meta()).unwrap());
+        let mut bytes = Vec::new();
+        compatibility.write_json(&mut bytes).unwrap();
+        assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    fn block_canonical_growth_and_legacy_output_cost_are_separate() {
+        let mut measurements = Vec::new();
+        for depth in [16, 32, 64] {
+            let source = deep_block_chain(depth);
+            let model = parse_block_model_for_render(&source, &meta()).unwrap();
+            let records = model.blocks_flat.len();
+            let child_ids = model
+                .blocks_flat
+                .iter()
+                .map(|block| block.children.len())
+                .sum::<usize>();
+            assert_eq!(records, depth + 2);
+            assert_eq!(child_ids, depth + 1);
+            let compatibility =
+                ManagedSemanticJson::from(render_model_to_compat_json(&model, &meta()).unwrap());
+            let mut bytes = Vec::new();
+            compatibility.write_json(&mut bytes).unwrap();
+            println!(
+                "depth={depth} source_bytes={} records={records} child_ids={child_ids} legacy_bytes={}",
+                source.len(),
+                bytes.len()
+            );
+            measurements.push(bytes.len());
+        }
+        assert!(measurements[2] > 3 * measurements[1]);
+    }
+
+    #[test]
+    fn block_flat_complexity_matches_previous_typed_wire_accounting() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct LegacyNode {
+            id: String,
+            #[serde(
+                rename = "colorIndex",
+                default,
+                skip_serializing_if = "Option::is_none"
+            )]
+            color_index: Option<usize>,
+            label: String,
+            #[serde(rename = "type")]
+            block_type: String,
+            children: Vec<LegacyNode>,
+            columns: Option<i64>,
+            #[serde(rename = "widthInColumns")]
+            width_in_columns: Option<i64>,
+            width: Option<i64>,
+            classes: Vec<String>,
+            styles: Vec<String>,
+            directions: Vec<String>,
+        }
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct LegacyModel {
+            #[serde(rename = "blocksFlat")]
+            blocks_flat: Vec<LegacyNode>,
+            edges: Vec<BlockEdgeRenderModel>,
+            #[serde(
+                rename = "warningFacts",
+                default,
+                skip_serializing_if = "Vec::is_empty"
+            )]
+            warning_facts: Vec<DiagramWarningFact>,
+            #[serde(rename = "classes")]
+            class_defs: IndexMap<String, BlockClassDefRenderModel>,
+        }
+        for source in [
+            "block\nA\n",
+            "block\ncolumns 1\nblock:outer\nA[\"Alpha\"]:2\nA --> B\nC<[\"Route\"]>(left,down)\nend\nclassDef important fill:red,color:blue\nclass A important\nstyle B stroke-width:3px\n",
+            "block\ncolumns 1\nA:3\n",
+            "block\nblock:G\nA<[\"old\"]>(down):1\nend\nstyle A fill:red,stroke:blue\nclass A hot\nA<[\"middle\"]>(up):3\nA((\"new\")):4\n",
+            "block\nblock:G\ncolumns 2\nA\nend\nblock:G\ncolumns 3\nB\nend\n",
+        ] {
+            let model = parse_block_model_for_render(source, &meta()).unwrap();
+            let wire = serde_json::to_value(&model).unwrap();
+            let legacy: LegacyModel = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(serde_json::to_value(&legacy).unwrap(), wire);
+            assert_eq!(
+                model.model_complexity(),
+                ModelComplexity::from_serializable(&legacy)
+            );
+            let restored: BlockDiagramRenderModel = serde_json::from_value(wire).unwrap();
+            assert_eq!(restored.blocks_flat.len(), model.blocks_flat.len());
+        }
     }
 
     fn blocks(model: &Value) -> Vec<Value> {
@@ -2810,6 +3190,71 @@ C<["Route"]>(left,down)
         assert_eq!(compat["edges"].as_array().unwrap().len(), typed.edges.len());
         assert_eq!(compat["edges"][0]["start"], json!(typed.edges[0].start));
         assert_eq!(compat["edges"][0]["end"], json!(typed.edges[0].end));
+    }
+
+    #[test]
+    fn block_completed_parent_observes_source_backed_live_metadata_updates() {
+        // Mermaid 12.1.0 blockDB registers and attaches the same first-declaration object.
+        // Later declarations merge only type/label; style/class actions update that object.
+        let source = "block\nblock:G\nA<[\"old\"]>(down):1\nend\nstyle A fill:red,stroke:blue\nclass A hot\nA<[\"middle\"]>(up):3\nA((\"new\")):4\n";
+        let typed = parse_block_model_for_render(source, &meta()).unwrap();
+        let value =
+            ManagedSemanticJson::from(render_model_to_compat_json(&typed, &meta()).unwrap());
+        let nested = &value["blocks"][0]["children"][0];
+        let flat = value["blocksFlat"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|block| block["id"] == "A")
+            .unwrap();
+        assert_eq!(nested, flat);
+        assert_eq!(nested["label"], json!("new"));
+        assert_eq!(nested["type"], json!("circle"));
+        assert_eq!(nested["classes"], json!(["hot"]));
+        assert_eq!(nested["styles"], json!(["fill:red", "stroke:blue"]));
+        assert_eq!(nested["widthInColumns"], json!(1));
+        assert_eq!(nested["directions"], json!(["down"]));
+        let group = typed
+            .blocks_flat
+            .iter()
+            .find(|block| block.id == "G")
+            .unwrap();
+        let child = typed.block(group.children[0]).unwrap();
+        assert_eq!(child.label, "new");
+        assert_eq!(child.block_type, "circle");
+        assert_eq!(child.width_in_columns, Some(1));
+        assert_eq!(child.directions, ["down"]);
+    }
+
+    #[test]
+    fn block_repeated_composite_preserves_first_children_and_columns() {
+        // blockDB replays a repeated group's document into the later declaration object,
+        // rather than replacing the first object's hierarchy in the canonical database.
+        let source = "block\nblock:G\ncolumns 2\nA\nend\nblock:G\ncolumns 3\nB\nend\n";
+        let typed = parse_block_model_for_render(source, &meta()).unwrap();
+        let value =
+            ManagedSemanticJson::from(render_model_to_compat_json(&typed, &meta()).unwrap());
+        let ids = typed
+            .blocks_flat
+            .iter()
+            .map(|block| block.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["root", "G", "A", "B"]);
+        let group = typed.block(typed.root().unwrap().children[0]).unwrap();
+        assert_eq!(group.id, "G");
+        assert_eq!(group.columns, Some(2));
+        assert_eq!(group.children.len(), 1);
+        assert_eq!(typed.block(group.children[0]).unwrap().id, "A");
+        assert_eq!(value["blocks"].as_array().unwrap().len(), 1);
+        assert_eq!(value["blocks"][0]["columns"], json!(2));
+        assert_eq!(value["blocks"][0]["children"][0]["id"], json!("A"));
+        assert!(
+            value["blocksFlat"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|block| block["id"] == "B")
+        );
     }
 
     #[test]
@@ -3002,8 +3447,8 @@ C<["Route"]>(left,down)
     fn block_recovery_keeps_confirmed_prefix_and_later_semantics() {
         let text = concat!(
             "block-beta\r\n",
-            "  A<[\"方向\"]>(right, sideways)\r\n",
-            "  后续[\"完成\"]\r\n",
+            "  A<[\"鏂瑰悜\"]>(right, sideways)\r\n",
+            "  鍚庣画[\"瀹屾垚\"]\r\n",
         );
         let invalid_start = text.find("sideways").unwrap();
         let invalid_span = SourceSpan::new(invalid_start, invalid_start + "sideways".len());
@@ -3022,7 +3467,7 @@ C<["Route"]>(left,down)
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
-        assert!(facts.symbols.iter().any(|symbol| symbol.name == "后续"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "鍚庣画"));
         assert_eq!(facts.diagnostics[0].span, Some(invalid_span));
     }
 
@@ -3113,9 +3558,11 @@ C<["Route"]>(left,down)
         const DEPTH: usize = 1200;
         let input = deep_block_chain(DEPTH);
 
-        let model = parse(&input);
+        // Legacy blocksFlat repeats descendants; its output size is a separate bounded probe.
+        const COMPAT_DEPTH: usize = 64;
+        let model = parse(&deep_block_chain(COMPAT_DEPTH));
         let blocks_flat = model["blocksFlat"].as_array().expect("blocksFlat array");
-        assert_eq!(blocks_flat.len(), DEPTH + 2);
+        assert_eq!(blocks_flat.len(), COMPAT_DEPTH + 2);
         assert_eq!(blocks_flat[0]["id"].as_str(), Some("root"));
         assert_eq!(
             blocks_flat

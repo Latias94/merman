@@ -476,7 +476,7 @@ impl ErDb {
         }];
         let mut replayed = 0usize;
         while let Some(frame) = frames.last_mut() {
-            if replayed % 128 == 0 {
+            if replayed.is_multiple_of(128) {
                 control.checkpoint()?;
             }
             replayed = replayed.saturating_add(1);
@@ -631,6 +631,7 @@ fn split_styles(raw: &str) -> Vec<String> {
 
 type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
 type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
+type ErParsedActions = std::result::Result<(ErActionArena, ErActionList), ErGrammarError>;
 
 struct ErSyntax {
     events: Vec<ErLexicalEvent>,
@@ -654,10 +655,7 @@ impl ErSyntax {
         self,
         code: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<(
-        EditorSemanticFacts,
-        std::result::Result<(ErActionArena, ErActionList), ErGrammarError>,
-    )> {
+    ) -> OperationControlResult<(EditorSemanticFacts, ErParsedActions)> {
         let mut facts = EditorSemanticFacts::new();
         let mut collector = ErEditorFactCollector::default();
         for (index, event) in self.events.iter().enumerate() {
@@ -2589,10 +2587,9 @@ mod tests {
         let fact_checkpoints = syntax.events.len().div_ceil(128) + 1;
         // Cancel during the third token batch, after inner grammar fragments have completed.
         control.cancel_after_checkpoints(fact_checkpoints + 2);
-        let cancelled = syntax
-            .into_editor_facts_and_actions(&source, &control)
-            .err()
-            .expect("token delivery observes cancellation");
+        let Err(cancelled) = syntax.into_editor_facts_and_actions(&source, &control) else {
+            panic!("token delivery observes cancellation");
+        };
         assert_eq!(control.checkpoint(), Err(cancelled));
     }
 }

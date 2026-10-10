@@ -1,9 +1,7 @@
 use crate::config::json_f64;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
-use merman_core::diagrams::treemap::{
-    TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
-};
+use merman_core::diagrams::treemap::TreemapDiagramRenderModel;
 use serde_json::Value;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
@@ -29,8 +27,9 @@ struct HierNode {
     y1: f64,
 }
 
-fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize>, depth: usize) {
-    let mut stack = vec![(node, parent, depth)];
+fn push_node(nodes: &mut Vec<HierNode>, model: &TreemapDiagramRenderModel) -> Result<()> {
+    let mut stack = vec![(&model.root, None, 0usize)];
+    let mut seen = vec![false; model.nodes.len()];
     while let Some((current, parent_idx, current_depth)) = stack.pop() {
         let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
         let idx = nodes.len();
@@ -56,11 +55,22 @@ fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize
         }
 
         if let Some(children) = current.children.as_ref() {
-            for child in children.iter().rev() {
-                stack.push((child, Some(idx), current_depth.saturating_add(1)));
+            for &child in children.iter().rev() {
+                let Some(node) = model.nodes.get(child) else {
+                    return Err(Error::InvalidModel {
+                        message: "treemap child ID is out of range".to_string(),
+                    });
+                };
+                if std::mem::replace(&mut seen[child], true) {
+                    return Err(Error::InvalidModel {
+                        message: "cyclic or repeated treemap child relationship".to_string(),
+                    });
+                }
+                stack.push((node, Some(idx), current_depth.saturating_add(1)));
             }
         }
     }
+    Ok(())
 }
 
 fn compute_sum(nodes: &mut [HierNode], idx: usize) -> f64 {
@@ -401,7 +411,7 @@ pub(crate) fn layout_treemap_diagram_typed(
     };
 
     let mut nodes: Vec<HierNode> = Vec::new();
-    push_node(&mut nodes, &model.root, None, 0);
+    push_node(&mut nodes, model)?;
     if nodes.is_empty() {
         return Err(Error::InvalidModel {
             message: "treemap root produced no nodes".to_string(),

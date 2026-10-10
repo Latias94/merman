@@ -1,34 +1,46 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
-use crate::{ParseMetadata, Result};
+use super::{
+    StateDocument, StateDocumentId, StateStatement, StateStatementClick, StateStatementRelation,
+    StateStatementState,
+};
+use crate::resources::ModelComplexity;
+use crate::{ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result};
+
+#[cfg(test)]
+thread_local! {
+    static STATE_PROJECTED_DOCUMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn reset_projected_document_count() {
+    STATE_PROJECTED_DOCUMENT_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(super) fn projected_document_count() -> usize {
+    STATE_PROJECTED_DOCUMENT_COUNT.get()
+}
 
 fn default_state_direction() -> String {
     "TB".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default)]
 pub struct StateDiagramRenderModel {
-    #[serde(default = "default_state_direction")]
+    /// Canonical statements and document relationships; nested JSON is an explicit projection.
+    pub document: StateDocument,
     pub direction: String,
-    #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
-    #[serde(default)]
     pub nodes: Vec<StateDiagramRenderNode>,
-    #[serde(default)]
     pub edges: Vec<StateDiagramRenderEdge>,
-    #[serde(default)]
     pub relations: Vec<StateDiagramRenderRelation>,
-    #[serde(default)]
     pub links: HashMap<String, StateDiagramRenderLinks>,
-    #[serde(default)]
     pub states: HashMap<String, StateDiagramRenderState>,
-    #[serde(default, rename = "styleClasses")]
     pub style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
 }
 
@@ -37,6 +49,513 @@ impl StateDiagramRenderModel {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StateModelFields<'a> {
+    direction: &'a str,
+    #[serde(rename = "accTitle")]
+    acc_title: &'a Option<String>,
+    #[serde(rename = "accDescr")]
+    acc_descr: &'a Option<String>,
+    nodes: &'a [StateDiagramRenderNode],
+    edges: &'a [StateDiagramRenderEdge],
+    relations: &'a [StateDiagramRenderRelation],
+    links: &'a HashMap<String, StateDiagramRenderLinks>,
+    states: StateRecords<'a>,
+    #[serde(rename = "styleClasses")]
+    style_classes: &'a IndexMap<String, StateDiagramRenderStyleClass>,
+}
+
+impl StateDiagramRenderModel {
+    fn fields(&self) -> StateModelFields<'_> {
+        StateModelFields {
+            direction: &self.direction,
+            acc_title: &self.acc_title,
+            acc_descr: &self.acc_descr,
+            nodes: &self.nodes,
+            edges: &self.edges,
+            relations: &self.relations,
+            links: &self.links,
+            states: StateRecords(Some(&self.states)),
+            style_classes: &self.style_classes,
+        }
+    }
+
+    /// Projects the historical typed-model wire shape with managed JSON ownership.
+    ///
+    /// Use the returned owner's iterative writer for documents deeper than generic serde allows.
+    pub fn to_json(&self) -> Result<ManagedSemanticJson> {
+        self.to_json_controlled(&OperationControl::new())
+            .expect("a private operation control cannot be cancelled")
+    }
+
+    /// Projects the typed wire shape while observing cancellation between document steps.
+    pub fn to_json_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
+        let states = match state_records_to_compat_json(self, control)? {
+            Ok(states) => states,
+            Err(error) => return Ok(Err(error)),
+        };
+        control.checkpoint()?;
+        let mut fields = self.fields();
+        fields.states = StateRecords(None);
+        let mut value = serde_json::to_value(fields).expect("state scalar fields serialize");
+        value
+            .as_object_mut()
+            .expect("state model is an object")
+            .insert("states".to_string(), states.into_unmanaged_value());
+        Ok(Ok(value.into()))
+    }
+
+    pub(super) fn serialized_container_depth(&self) -> usize {
+        // The historical typed-wire depth excludes its root container. Restore that container
+        // for serde's independent support boundary; no resource profile or limit is consulted.
+        self.model_complexity().nesting_depth.saturating_add(1)
+    }
+
+    pub(crate) fn model_complexity(&self) -> ModelComplexity {
+        let mut result = ModelComplexity::from_serializable(&self.fields());
+        let documents = self.document.complexities();
+        for state in self.states.values() {
+            if let Some(doc) = state.doc.and_then(|id| documents.get(id.0)).copied() {
+                result.items = result.items.saturating_add(doc.items);
+                result.text_bytes = result.text_bytes.saturating_add(doc.text_bytes);
+                // The old wire shape places a document array below root, states map and state.
+                result.nesting_depth = result.nesting_depth.max(2usize.saturating_add(doc.depth));
+            }
+        }
+        result
+    }
+}
+
+impl Serialize for StateDiagramRenderModel {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        if self.serialized_container_depth() > 128 {
+            return Err(serde::ser::Error::custom(
+                "semantic JSON exceeds generic serde's 128-container depth; use write_json",
+            ));
+        }
+        self.to_json()
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StateModelWire {
+    #[serde(default = "default_state_direction")]
+    direction: String,
+    #[serde(default, rename = "accTitle")]
+    acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    acc_descr: Option<String>,
+    #[serde(default)]
+    nodes: Vec<StateDiagramRenderNode>,
+    #[serde(default)]
+    edges: Vec<StateDiagramRenderEdge>,
+    #[serde(default)]
+    relations: Vec<StateDiagramRenderRelation>,
+    #[serde(default)]
+    links: HashMap<String, StateDiagramRenderLinks>,
+    #[serde(default)]
+    states: HashMap<String, StateRecordWire>,
+    #[serde(default, rename = "styleClasses")]
+    style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StateRecordFields<'a> {
+    id: &'a str,
+    #[serde(rename = "type")]
+    state_type: &'a str,
+    descriptions: &'a [String],
+    doc: Option<()>,
+    note: &'a Option<StateDiagramRenderNote>,
+    classes: &'a [String],
+    styles: &'a [String],
+    text_styles: &'a [String],
+    start: Option<bool>,
+}
+
+impl StateDiagramRenderState {
+    fn fields(&self) -> StateRecordFields<'_> {
+        StateRecordFields {
+            id: &self.id,
+            state_type: &self.state_type,
+            descriptions: &self.descriptions,
+            doc: None,
+            note: &self.note,
+            classes: &self.classes,
+            styles: &self.styles,
+            text_styles: &self.text_styles,
+            start: self.start,
+        }
+    }
+}
+
+struct StateRecords<'a>(Option<&'a HashMap<String, StateDiagramRenderState>>);
+
+impl Serialize for StateRecords<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let Some(states) = self.0 else {
+            return serializer.serialize_unit();
+        };
+        let mut map = serializer.serialize_map(Some(states.len()))?;
+        for (id, state) in states {
+            map.serialize_entry(id, &state.fields())?;
+        }
+        map.end()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StateRecordWire {
+    #[serde(default)]
+    id: String,
+    #[serde(default, rename = "type")]
+    state_type: String,
+    #[serde(default)]
+    descriptions: Vec<String>,
+    #[serde(default)]
+    doc: Option<ManagedSemanticJson>,
+    #[serde(default)]
+    note: Option<StateDiagramRenderNote>,
+    #[serde(default)]
+    classes: Vec<String>,
+    #[serde(default)]
+    styles: Vec<String>,
+    #[serde(default)]
+    text_styles: Vec<String>,
+    #[serde(default)]
+    start: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for StateDiagramRenderModel {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let wire = StateModelWire::deserialize(deserializer)?;
+        let mut document = StateDocument::default();
+        let mut states = HashMap::with_capacity(wire.states.len());
+        for (id, record) in wire.states {
+            let doc = record
+                .doc
+                .as_ref()
+                .map(|doc| document.import(doc.as_value()))
+                .transpose()
+                .map_err(serde::de::Error::custom)?;
+            states.insert(
+                id,
+                StateDiagramRenderState {
+                    id: record.id,
+                    state_type: record.state_type,
+                    descriptions: record.descriptions,
+                    doc,
+                    note: record.note,
+                    classes: record.classes,
+                    styles: record.styles,
+                    text_styles: record.text_styles,
+                    start: record.start,
+                },
+            );
+        }
+        Ok(Self {
+            document,
+            direction: wire.direction,
+            acc_title: wire.acc_title,
+            acc_descr: wire.acc_descr,
+            nodes: wire.nodes,
+            edges: wire.edges,
+            relations: wire.relations,
+            links: wire.links,
+            states,
+            style_classes: wire.style_classes,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct DocumentComplexity {
+    items: usize,
+    text_bytes: usize,
+    depth: usize,
+}
+
+fn json_complexity(value: &Value) -> DocumentComplexity {
+    let mut result = DocumentComplexity::default();
+    let mut stack = vec![(value, 0usize)];
+    while let Some((value, parent_depth)) = stack.pop() {
+        match value {
+            Value::Array(values) => {
+                let depth = parent_depth.saturating_add(1);
+                result.depth = result.depth.max(depth);
+                result.items = result.items.saturating_add(values.len());
+                stack.extend(values.iter().map(|value| (value, depth)));
+            }
+            Value::Object(values) => {
+                let depth = parent_depth.saturating_add(1);
+                result.depth = result.depth.max(depth);
+                result.items = result.items.saturating_add(values.len());
+                for (key, value) in values {
+                    result.text_bytes = result.text_bytes.saturating_add(key.len());
+                    stack.push((value, depth));
+                }
+            }
+            Value::String(value) => {
+                result.text_bytes = result.text_bytes.saturating_add(value.len())
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+impl StateDocument {
+    fn project(
+        &self,
+        root: StateDocumentId,
+        control: &OperationControl,
+    ) -> OperationControlResult<ManagedSemanticJson> {
+        struct Frame<'a> {
+            id: StateDocumentId,
+            index: usize,
+            values: Vec<ManagedSemanticJson>,
+            owner: Option<&'a StateStatement>,
+        }
+        let mut stack = vec![Frame {
+            id: root,
+            index: 0,
+            values: Vec::new(),
+            owner: None,
+        }];
+        let mut steps = 0usize;
+        loop {
+            if steps.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            steps = steps.saturating_add(1);
+            let frame = stack
+                .last_mut()
+                .expect("root projection frame exists until completion");
+            let statements = &self.documents[frame.id.0];
+            if let Some(stmt) = statements.get(frame.index) {
+                frame.index += 1;
+                if let StateStatement::State(state) = stmt
+                    && let Some(child) = state.doc
+                {
+                    stack.push(Frame {
+                        id: child,
+                        index: 0,
+                        values: Vec::new(),
+                        owner: Some(stmt),
+                    });
+                } else {
+                    frame
+                        .values
+                        .push(super::db::stmt_to_json_shallow(stmt, None));
+                }
+                continue;
+            }
+            let frame = stack.pop().expect("completed frame exists");
+            let doc: ManagedSemanticJson = Value::Array(
+                frame
+                    .values
+                    .into_iter()
+                    .map(ManagedSemanticJson::into_unmanaged_value)
+                    .collect(),
+            )
+            .into();
+            #[cfg(test)]
+            STATE_PROJECTED_DOCUMENT_COUNT.set(STATE_PROJECTED_DOCUMENT_COUNT.get() + 1);
+            if let Some(owner) = frame.owner {
+                let value = super::db::stmt_to_json_shallow(owner, Some(doc));
+                stack
+                    .last_mut()
+                    .expect("a nested document has a parent frame")
+                    .values
+                    .push(value);
+            } else {
+                control.checkpoint()?;
+                return Ok(doc);
+            }
+        }
+    }
+
+    fn complexities(&self) -> Vec<DocumentComplexity> {
+        let mut completed = vec![None; self.documents.len()];
+        for root in 0..self.documents.len() {
+            if completed[root].is_some() {
+                continue;
+            }
+            let mut stack = vec![(StateDocumentId(root), false)];
+            while let Some((id, visited)) = stack.pop() {
+                if completed[id.0].is_some() {
+                    continue;
+                }
+                if !visited {
+                    stack.push((id, true));
+                    for stmt in &self.documents[id.0] {
+                        if let StateStatement::State(state) = stmt
+                            && let Some(child) = state.doc
+                        {
+                            stack.push((child, false));
+                        }
+                    }
+                    continue;
+                }
+                let mut result = DocumentComplexity {
+                    items: self.documents[id.0].len(),
+                    text_bytes: 0,
+                    depth: 1,
+                };
+                for stmt in &self.documents[id.0] {
+                    let shallow = super::db::stmt_to_json_shallow(stmt, None);
+                    let own = json_complexity(shallow.as_value());
+                    result.items = result.items.saturating_add(own.items);
+                    result.text_bytes = result.text_bytes.saturating_add(own.text_bytes);
+                    result.depth = result.depth.max(1usize.saturating_add(own.depth));
+                    if let StateStatement::State(state) = stmt
+                        && let Some(child) = state.doc
+                    {
+                        let child: DocumentComplexity =
+                            completed[child.0].expect("child document completed first");
+                        result.items = result.items.saturating_add(child.items);
+                        result.text_bytes = result.text_bytes.saturating_add(child.text_bytes);
+                        result.depth = result.depth.max(2usize.saturating_add(child.depth));
+                    }
+                }
+                completed[id.0] = Some(result);
+            }
+        }
+        completed
+            .into_iter()
+            .map(|value| value.expect("all documents completed"))
+            .collect()
+    }
+
+    fn import(&mut self, value: &Value) -> std::result::Result<StateDocumentId, String> {
+        struct Frame<'a> {
+            values: &'a [Value],
+            index: usize,
+            statements: Vec<StateStatement>,
+            owner: Option<StateStatementState>,
+        }
+        let values = value.as_array().ok_or("state document must be an array")?;
+        let mut stack = vec![Frame {
+            values,
+            index: 0,
+            statements: Vec::new(),
+            owner: None,
+        }];
+        loop {
+            let frame = stack
+                .last_mut()
+                .expect("root import frame exists until completion");
+            if let Some(value) = frame.values.get(frame.index) {
+                frame.index += 1;
+                let stmt = state_statement_from_json(value)?;
+                if let StateStatement::State(state) = stmt {
+                    if let Some(children) = value.get("doc").filter(|value| !value.is_null()) {
+                        let values = children
+                            .as_array()
+                            .ok_or("state document must be an array")?;
+                        stack.push(Frame {
+                            values,
+                            index: 0,
+                            statements: Vec::new(),
+                            owner: Some(state),
+                        });
+                    } else {
+                        frame.statements.push(StateStatement::State(state));
+                    }
+                } else {
+                    frame.statements.push(stmt);
+                }
+                continue;
+            }
+            let frame = stack.pop().expect("completed import frame exists");
+            let id = self.push(frame.statements);
+            if let Some(mut state) = frame.owner {
+                state.doc = Some(id);
+                stack
+                    .last_mut()
+                    .expect("nested import has a parent")
+                    .statements
+                    .push(StateStatement::State(state));
+            } else {
+                return Ok(id);
+            }
+        }
+    }
+}
+
+fn state_statement_from_json(value: &Value) -> std::result::Result<StateStatement, String> {
+    fn string(value: &Value, key: &str) -> String {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    }
+    fn state(value: &Value) -> StateStatementState {
+        let mut state = StateStatementState::new(string(value, "id"));
+        state.ty = string(value, "type");
+        state.description = value
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        state.classes = value
+            .get("classes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+        state
+    }
+    if value.is_null() {
+        return Ok(StateStatement::Noop);
+    }
+    if let Some(text) = value.as_str() {
+        return Ok(StateStatement::AccTitle(text.to_string()));
+    }
+    Ok(match value.get("stmt").and_then(Value::as_str) {
+        Some("state") => StateStatement::State(state(value)),
+        Some("relation") => StateStatement::Relation(Box::new(StateStatementRelation {
+            state1: state(&value["state1"]),
+            state2: state(&value["state2"]),
+            description: value
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        })),
+        Some("classDef") => StateStatement::ClassDef {
+            id: string(value, "id"),
+            classes: string(value, "classes"),
+        },
+        Some("applyClass") => StateStatement::ApplyClass {
+            ids: string(value, "id"),
+            class_name: string(value, "styleClass"),
+        },
+        Some("style") => StateStatement::Style {
+            ids: string(value, "id"),
+            styles: string(value, "styleClass"),
+        },
+        Some("dir") => StateStatement::Direction(string(value, "value")),
+        Some("click") => StateStatement::Click(StateStatementClick {
+            id: string(value, "id"),
+            url: string(value, "url"),
+            tooltip: string(value, "tooltip"),
+        }),
+        _ => return Err("unsupported state document statement".to_string()),
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,26 +568,18 @@ pub struct StateDiagramRenderStyleClass {
     pub text_styles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default)]
 pub struct StateDiagramRenderState {
-    #[serde(default)]
     pub id: String,
-    #[serde(default, rename = "type")]
     pub state_type: String,
-    #[serde(default)]
     pub descriptions: Vec<String>,
-    #[serde(default)]
-    pub doc: Option<Value>,
-    #[serde(default)]
+    /// References this state's statements in the owning model's `document`.
+    /// Serialize the owning model to include the historical nested document arrays.
+    pub doc: Option<StateDocumentId>,
     pub note: Option<StateDiagramRenderNote>,
-    #[serde(default)]
     pub classes: Vec<String>,
-    #[serde(default)]
     pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
     pub text_styles: Vec<String>,
-    #[serde(default)]
     pub start: Option<bool>,
 }
 
@@ -176,23 +687,44 @@ pub(crate) fn render_model_to_compat_json(
     model: &StateDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
+    Ok(
+        render_model_to_compat_json_controlled(model, meta, &OperationControl::new())
+            .expect("a private operation control cannot be cancelled")?
+            .into_unmanaged_value(),
+    )
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &StateDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ManagedSemanticJson>> {
+    let states = match state_records_to_compat_json(model, control)? {
+        Ok(states) => states,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
     let look = meta
         .effective_config
         .as_value()
         .get("look")
         .cloned()
         .unwrap_or(Value::Null);
-    let nodes = model
-        .nodes
-        .iter()
-        .map(|node| state_node_to_compat_json(node, &look))
-        .collect();
-    let edges = model
-        .edges
-        .iter()
-        .map(|edge| state_edge_to_compat_json(edge, &look))
-        .collect();
-
+    let mut nodes = Vec::with_capacity(model.nodes.len());
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        nodes.push(state_node_to_compat_json(node, &look));
+    }
+    let mut edges = Vec::with_capacity(model.edges.len());
+    for (index, edge) in model.edges.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        edges.push(state_edge_to_compat_json(edge, &look));
+    }
+    control.checkpoint()?;
     let mut root = Map::with_capacity(13);
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     root.insert("nodes".to_string(), Value::Array(nodes));
@@ -208,62 +740,53 @@ pub(crate) fn render_model_to_compat_json(
     );
     root.insert("accTitle".to_string(), json!(&model.acc_title));
     root.insert("accDescr".to_string(), json!(&model.acc_descr));
-    root.insert(
-        "states".to_string(),
-        state_records_to_compat_json(&model.states),
-    );
+    root.insert("states".to_string(), states.into_unmanaged_value());
     root.insert("relations".to_string(), json!(&model.relations));
     root.insert("styleClasses".to_string(), json!(&model.style_classes));
     root.insert("links".to_string(), json!(&model.links));
-    Ok(Value::Object(root))
+    Ok(Ok(Value::Object(root).into()))
 }
 
-fn state_records_to_compat_json(states: &HashMap<String, StateDiagramRenderState>) -> Value {
-    let mut out = Map::with_capacity(states.len());
-    for (id, state) in states {
-        let doc = state
-            .doc
-            .as_ref()
-            .map(crate::config::clone_value_nonrecursive)
-            .unwrap_or(Value::Null);
-        let note = state
-            .note
-            .as_ref()
-            .map(|note| {
-                json!({
-                    "position": note.position,
-                    "text": note.text,
-                })
-            })
-            .unwrap_or(Value::Null);
-        let mut record = Map::with_capacity(9);
-        record.insert("id".to_string(), Value::String(state.id.clone()));
-        record.insert("type".to_string(), Value::String(state.state_type.clone()));
-        record.insert(
-            "descriptions".to_string(),
-            crate::compatibility_json::string_array_value(&state.descriptions),
-        );
-        record.insert("doc".to_string(), doc);
-        record.insert("note".to_string(), note);
-        record.insert(
-            "classes".to_string(),
-            crate::compatibility_json::string_array_value(&state.classes),
-        );
-        record.insert(
-            "styles".to_string(),
-            crate::compatibility_json::string_array_value(&state.styles),
-        );
-        record.insert(
-            "textStyles".to_string(),
-            crate::compatibility_json::string_array_value(&state.text_styles),
-        );
-        record.insert(
-            "start".to_string(),
-            state.start.map(Value::Bool).unwrap_or(Value::Null),
-        );
-        out.insert(id.clone(), Value::Object(record));
+fn state_records_to_compat_json(
+    model: &StateDiagramRenderModel,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ManagedSemanticJson>> {
+    let mut out = HashMap::with_capacity(model.states.len());
+    for (index, (id, state)) in model.states.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let doc = match state.doc {
+            Some(doc) => {
+                if model.document.get(doc).is_none() {
+                    return Ok(Err(crate::Error::diagram_parse_fallback(
+                        "stateDiagram",
+                        "State document id does not belong to this model",
+                    )));
+                }
+                Some(model.document.project(doc, control)?)
+            }
+            None => None,
+        };
+        let mut record =
+            serde_json::to_value(state.fields()).expect("state scalar fields serialize");
+        record
+            .as_object_mut()
+            .expect("state record is an object")
+            .insert(
+                "doc".to_string(),
+                doc.map(ManagedSemanticJson::into_unmanaged_value)
+                    .unwrap_or(Value::Null),
+            );
+        out.insert(id.clone(), ManagedSemanticJson::from(record));
     }
-    Value::Object(out)
+    control.checkpoint()?;
+    Ok(Ok(Value::Object(
+        out.into_iter()
+            .map(|(id, value)| (id, value.into_unmanaged_value()))
+            .collect(),
+    )
+    .into()))
 }
 
 fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Value {

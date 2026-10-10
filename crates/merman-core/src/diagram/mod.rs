@@ -655,6 +655,11 @@ macro_rules! impl_builtin_render_semantic {
     feature = "diagram-mindmap",
     feature = "diagram-architecture",
     feature = "diagram-gantt",
+    feature = "diagram-block",
+    feature = "diagram-state",
+    feature = "diagram-treemap",
+    feature = "diagram-ishikawa",
+    feature = "diagram-zenuml",
     feature = "diagram-wardley"
 ))]
 macro_rules! impl_builtin_render_semantic_controlled {
@@ -689,9 +694,10 @@ impl_builtin_render_semantic_controlled!(
     crate::diagrams::mindmap::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-state")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::state::StateDiagramRenderModel,
-    crate::diagrams::state::render_model_to_compat_json
+    crate::diagrams::state::render_model_to_compat_json,
+    crate::diagrams::state::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-sequence")]
 impl_builtin_render_semantic!(
@@ -699,9 +705,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::sequence::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-zenuml")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::zenuml::ZenumlDiagramRenderModel,
-    crate::diagrams::zenuml::render_model_to_compat_json
+    crate::diagrams::zenuml::render_model_to_compat_json,
+    crate::diagrams::zenuml::render_model_to_compat_json_controlled
 );
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl_builtin_render_semantic!(
@@ -786,14 +793,16 @@ impl_builtin_render_semantic!(
     crate::diagrams::info::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-treemap")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::treemap::TreemapDiagramRenderModel,
-    crate::diagrams::treemap::render_model_to_compat_json
+    crate::diagrams::treemap::render_model_to_compat_json,
+    crate::diagrams::treemap::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-block")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::block::BlockDiagramRenderModel,
-    crate::diagrams::block::render_model_to_compat_json
+    crate::diagrams::block::render_model_to_compat_json,
+    crate::diagrams::block::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-er")]
 impl_builtin_render_semantic!(
@@ -821,9 +830,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::tree_view::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-ishikawa")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
-    crate::diagrams::ishikawa::render_model_to_compat_json
+    crate::diagrams::ishikawa::render_model_to_compat_json,
+    crate::diagrams::ishikawa::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-event-modeling")]
 impl_builtin_render_semantic!(
