@@ -81,7 +81,7 @@ pub(crate) struct ParsePipeline<'a> {
     source: ParseSource<'a>,
 }
 
-/// Owns the configuration through detection, appearance selection, and final overlay resolution.
+/// Owns the configuration through detection, appearance selection, and paint input freezing.
 /// Snapshots remain local to the phases that need their values or mutation provenance.
 struct OperationConfigBuilder {
     effective: MermaidConfig,
@@ -128,12 +128,6 @@ impl OperationConfigBuilder {
             Some(checkpoint) => checkpoint.finish(&mut effective, control)?,
             None => None,
         };
-        let mut application = crate::config::ConfigOverlayApplication::default();
-        if let Some(changes) = &detector_changes {
-            for path in changes.overlay_claims() {
-                application.claim_path(std::sync::Arc::clone(path));
-            }
-        }
         control.checkpoint()?;
         let defaults = crate::generated::upstream_default_config();
         let decision = AppearanceDecision::resolve(
@@ -175,23 +169,16 @@ impl OperationConfigBuilder {
         // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
         if diagram_type == "flowchart-elk" {
             effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
-            application.claim_path(std::sync::Arc::from("layout"));
         }
-        application.set_detector_changes(detector_changes);
-        let before_overlay = effective.clone();
-        let application = match Self::apply_post_detection_config_overlay(
-            engine,
-            diagram_type,
-            &source,
-            &before_overlay,
-            &mut effective,
-            application,
-            control,
-        )? {
-            Ok(application) => application,
-            Err(error) => return Ok(Err(error)),
-        };
-        effective.set_overlay_provenance(application.finalize(&effective));
+        if let Some(family) = family::operation_family_id(diagram_type, &effective) {
+            effective.freeze_family_paint_inputs(
+                family.as_str(),
+                &engine.initialization_inputs,
+                &source,
+                detector_changes.as_ref(),
+                control,
+            )?;
+        }
         effective.freeze_theme_compatibility();
         effective.seal_detector_mutations();
         Ok(Ok(effective))
@@ -208,7 +195,7 @@ impl OperationConfigBuilder {
         // Registered source selection rebuilds variables from raw initialization inputs.
         // Ordinary source updates retain initialized derivations instead.
         let initial_variables = engine
-            .fallback_overlay_explicit_config
+            .initialization_inputs
             .as_value()
             .get("themeVariables")
             .filter(|value| theme::is_js_truthy(value))
@@ -224,55 +211,6 @@ impl OperationConfigBuilder {
             effective_config.deep_merge_explicit(source_config.as_value());
         }
         Ok(effective_config)
-    }
-
-    fn apply_post_detection_config_overlay(
-        engine: &Engine,
-        diagram_type: &str,
-        effective_source_config: &MermaidConfig,
-        config_before_overlay: &MermaidConfig,
-        effective_config: &mut MermaidConfig,
-        mut application: crate::config::ConfigOverlayApplication,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<crate::config::ConfigOverlayApplication>> {
-        let Some(family) = family::operation_family_id(diagram_type, effective_config) else {
-            return Ok(Ok(application));
-        };
-        let family = family.as_str();
-        if let Some(overlay) = &engine.post_detection_config_overlay {
-            overlay.apply_family_controlled_in_lane(
-                family,
-                &engine.site_config_overrides,
-                effective_source_config,
-                config_before_overlay,
-                effective_config,
-                &mut application,
-                crate::config::ConfigOverlayLane::Host,
-                control,
-            )?;
-        }
-        effective_config.freeze_family_paint_inputs(
-            family,
-            &engine.fallback_overlay_explicit_config,
-            effective_source_config,
-            config_before_overlay,
-            &application,
-            control,
-        )?;
-        #[cfg(test)]
-        if let Some(overlay) = &engine.fallback_post_detection_config_overlay {
-            overlay.apply_family_controlled_in_lane(
-                family,
-                &engine.fallback_overlay_explicit_config,
-                effective_source_config,
-                config_before_overlay,
-                effective_config,
-                &mut application,
-                crate::config::ConfigOverlayLane::Fallback,
-                control,
-            )?;
-        }
-        Ok(Ok(application))
     }
 }
 

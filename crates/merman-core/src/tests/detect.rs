@@ -1,7 +1,4 @@
-use crate::config::{
-    ConfigOverlayContribution, ConfigOverlayError, ConfigOverlayField, PostDetectionConfigOverlay,
-    ThemeParseBinding,
-};
+use crate::config::ThemeParseBinding;
 use crate::*;
 use futures::executor::block_on;
 use serde_json::{Value, json};
@@ -95,15 +92,6 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     assert!(known.effective_config.explicit_config_owns_path("layout"));
 }
 
-fn flowchart_overlay(path: &str, value: Value) -> PostDetectionConfigOverlay {
-    family_overlay(
-        "flowchart",
-        &format!("legacy.flowchart.{path}"),
-        path,
-        value,
-    )
-}
-
 #[test]
 fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_paths() {
     fn replace_config(_text: &str, config: &mut MermaidConfig) -> bool {
@@ -117,39 +105,24 @@ fn detector_replacement_preserves_values_without_claiming_unchanged_or_missing_p
         true
     }
 
-    let overlay = PostDetectionConfigOverlay::new()
-        .with_family_contribution(
-            "flowchart",
-            ConfigOverlayContribution::new(
-                "replacement-probe",
-                MermaidConfig::from_value(json!({
-                    "flowchart": { "rankSpacing": 901, "nodeSpacing": 902 },
-                    "themeVariables": { "primaryColor": "#111111", "previouslyMissing": "filled" },
-                })),
-            )
-            .unwrap(),
-        )
-        .unwrap();
     for source in ["probe", "---\nconfig:\n  theme: base\n---\nprobe"] {
-        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(overlay.clone());
+        let mut engine = Engine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         engine.registry_mut().add_fn("flowchart-v2", replace_config);
         let result = engine.parse_metadata_sync(source).unwrap().effective_config;
         assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(73));
-        assert_eq!(result.as_value()["flowchart"]["nodeSpacing"], json!(902));
+        assert_eq!(
+            result.as_value()["flowchart"]["nodeSpacing"],
+            crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"]
+        );
+        assert!(!result.explicit_config_owns_path("flowchart.nodeSpacing"));
         assert!(
             result.as_value()["themeVariables"]
                 .get("primaryColor")
                 .is_none()
         );
-        assert_eq!(
-            result.get_str("themeVariables.previouslyMissing"),
-            Some("filled")
-        );
+        assert_eq!(result.get_str("themeVariables.previouslyMissing"), None);
         assert!(!result.explicit_config_owns_path("flowchart.rankSpacing"));
-        assert!(result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
-        assert!(result.fallback_overlay_owns_path("themeVariables.previouslyMissing"));
-        assert!(!result.fallback_overlay_owns_path("themeVariables.primaryColor"));
     }
 }
 
@@ -163,17 +136,17 @@ fn detector_same_value_setter_on_replacement_retains_explicit_ownership() {
         true
     }
     for source in ["probe", "---\nconfig:\n  theme: base\n---\nprobe"] {
-        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(
-            flowchart_overlay("flowchart.nodeSpacing", json!(999)),
-        );
+        let mut engine = Engine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
             .add_fn("flowchart-v2", replace_then_assign);
         let result = engine.parse_metadata_sync(source).unwrap().effective_config;
-        assert_ne!(result.as_value()["flowchart"]["nodeSpacing"], json!(999));
+        assert_eq!(
+            result.as_value()["flowchart"]["nodeSpacing"],
+            crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"]
+        );
         assert!(result.explicit_config_owns_path("flowchart.nodeSpacing"));
-        assert!(!result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
     }
 }
 
@@ -189,28 +162,20 @@ fn nested_parse_replacement_does_not_promote_framework_writes_to_detector_assign
         true
     }
     for source in ["probe", "---\nconfig:\n  theme: dark\n---\nprobe"] {
-        let mut engine = Engine::new()
-            .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
-            .with_fallback_post_detection_config_overlay(flowchart_overlay(
-                "themeVariables.previouslyMissing",
-                json!("filled"),
-            ));
+        let mut engine =
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "base"})));
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
             .add_fn("flowchart-v2", replace_with_parsed_config);
         let result = engine.parse_metadata_sync(source).unwrap().effective_config;
-        assert_eq!(
-            result.get_str("themeVariables.previouslyMissing"),
-            Some("filled")
-        );
+        assert_eq!(result.get_str("themeVariables.previouslyMissing"), None);
         assert!(!result.explicit_config_owns_path("themeVariables.previouslyMissing"));
-        assert!(result.fallback_overlay_owns_path("themeVariables.previouslyMissing"));
     }
 }
 
 #[test]
-fn nested_detector_same_value_ownership_blocks_outer_fallback_after_replacement() {
+fn nested_detector_same_value_ownership_survives_outer_replacement() {
     fn assign_same_value(_text: &str, config: &mut MermaidConfig) -> bool {
         let value = config.as_value()["flowchart"]["nodeSpacing"].clone();
         config.set_value("flowchart.nodeSpacing", value);
@@ -233,23 +198,11 @@ fn nested_detector_same_value_ownership_blocks_outer_fallback_after_replacement(
 
     let expected =
         crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"].clone();
-    let overlay = PostDetectionConfigOverlay::new()
-        .with_family_contribution(
-            "flowchart",
-            ConfigOverlayContribution::new(
-                "nested-detector-ownership",
-                MermaidConfig::from_value(json!({
-                    "flowchart": {"nodeSpacing": 999, "rankSpacing": 777},
-                })),
-            )
-            .unwrap(),
-        )
-        .unwrap();
     for source in [
         "outer-probe",
         "---\nconfig:\n  theme: base\n---\nouter-probe",
     ] {
-        let mut engine = Engine::new().with_fallback_post_detection_config_overlay(overlay.clone());
+        let mut engine = Engine::new();
         *engine.registry_mut() = DetectorRegistry::new();
         engine
             .registry_mut()
@@ -257,9 +210,11 @@ fn nested_detector_same_value_ownership_blocks_outer_fallback_after_replacement(
         let result = engine.parse_metadata_sync(source).unwrap().effective_config;
         assert_eq!(result.as_value()["flowchart"]["nodeSpacing"], expected);
         assert!(result.explicit_config_owns_path("flowchart.nodeSpacing"));
-        assert!(!result.fallback_overlay_owns_path("flowchart.nodeSpacing"));
-        assert_eq!(result.as_value()["flowchart"]["rankSpacing"], json!(777));
-        assert!(result.fallback_overlay_owns_path("flowchart.rankSpacing"));
+        assert_eq!(
+            result.as_value()["flowchart"]["rankSpacing"],
+            crate::generated::upstream_default_config().as_value()["flowchart"]["rankSpacing"]
+        );
+        assert!(!result.explicit_config_owns_path("flowchart.rankSpacing"));
     }
 }
 
@@ -299,12 +254,8 @@ fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
             .effective_config
             .get_str("themeVariables.mainBkg")
     );
-    let mut engine = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
-        .with_fallback_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.mainBkg",
-            json!("#abcdef"),
-        ));
+    let mut engine =
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
     *engine.registry_mut() = DetectorRegistry::new();
     engine
         .registry_mut()
@@ -318,7 +269,6 @@ fn nested_detector_same_value_theme_owner_survives_outer_rematerialization() {
             .get_str("themeVariables.mainBkg")
     );
     assert!(result.explicit_config_owns_path("themeVariables.mainBkg"));
-    assert!(!result.fallback_overlay_owns_path("themeVariables.mainBkg"));
 }
 
 #[test]
@@ -352,157 +302,81 @@ fn replacement_transfers_explicit_metadata_without_resurrecting_site_owners() {
     }
 }
 
-fn family_overlay(
-    family: &str,
-    contribution_id: &str,
-    path: &str,
-    value: Value,
-) -> PostDetectionConfigOverlay {
-    let mut patch = MermaidConfig::empty_object();
-    patch.set_value(path, value);
-    PostDetectionConfigOverlay::new()
-        .with_family_contribution(
-            family,
-            ConfigOverlayContribution::new(contribution_id, patch).unwrap(),
-        )
-        .unwrap()
-}
-
-#[test]
-fn post_detection_overlay_is_family_local_for_detected_and_known_type_parses() {
-    let overlay = flowchart_overlay("flowchart.nodeSpacing", json!(91));
-    let engine = Engine::new().with_post_detection_config_overlay(overlay);
-
-    let detected = engine
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("detect flowchart");
-    let known = engine
-        .parse_metadata_with_type_sync("flowchart-v2", "flowchart TD\nA-->B")
-        .expect("parse known flowchart");
-    let sequence = engine
-        .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hi")
-        .expect("detect sequence");
-
-    assert_eq!(
-        detected.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
-    );
-    assert_eq!(
-        known.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
-    );
-    assert!(
-        detected
-            .config_overlay_provenance()
-            .contains("legacy.flowchart.flowchart.nodeSpacing")
-    );
-    assert_eq!(
-        detected.config_overlay_provenance(),
-        known.config_overlay_provenance()
-    );
-    assert_ne!(
-        sequence.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
-    );
-    assert!(sequence.config_overlay_provenance().is_empty());
-}
-
-fn engine_with_only_flowchart_detector(
-    detector: fn(&str, &mut MermaidConfig) -> bool,
-    overlay: PostDetectionConfigOverlay,
-) -> Engine {
-    let mut engine = Engine::new().with_post_detection_config_overlay(overlay);
+fn engine_with_only_flowchart_detector(detector: fn(&str, &mut MermaidConfig) -> bool) -> Engine {
+    let mut engine = Engine::new();
     *engine.registry_mut() = DetectorRegistry::new();
     engine.registry_mut().add_fn("flowchart-v2", detector);
     engine
 }
 
 #[test]
-fn empty_detector_deep_merge_does_not_block_family_overlay() {
-    let metadata = engine_with_only_flowchart_detector(
-        test_detector_deep_merges_empty_patch,
-        flowchart_overlay("flowchart.nodeSpacing", json!(91)),
-    )
-    .parse_metadata_sync("custom diagram")
-    .expect("parse through custom flowchart detector");
+fn empty_detector_deep_merge_does_not_claim_untouched_config() {
+    let metadata = engine_with_only_flowchart_detector(test_detector_deep_merges_empty_patch)
+        .parse_metadata_sync("custom diagram")
+        .expect("parse through custom flowchart detector");
 
     assert_eq!(
         metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
+        crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"]
+    );
+    assert!(
+        !metadata
+            .effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
     );
 }
 
 #[test]
-fn unrelated_nested_detector_deep_merge_does_not_block_family_overlay() {
-    let metadata = engine_with_only_flowchart_detector(
-        test_detector_deep_merges_unrelated_nested_patch,
-        flowchart_overlay("flowchart.nodeSpacing", json!(91)),
-    )
-    .parse_metadata_sync("custom diagram")
-    .expect("parse through custom flowchart detector");
+fn unrelated_nested_detector_deep_merge_claims_only_the_written_path() {
+    let metadata =
+        engine_with_only_flowchart_detector(test_detector_deep_merges_unrelated_nested_patch)
+            .parse_metadata_sync("custom diagram")
+            .expect("parse through custom flowchart detector");
 
     assert_eq!(
         metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
+        crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"]
     );
     assert_eq!(
         metadata.effective_config.as_value()["detectorState"]["nested"]["selected"],
         json!(true)
     );
+    assert!(
+        !metadata
+            .effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
+    );
+    assert!(
+        metadata
+            .effective_config
+            .explicit_config_owns_path("detectorState.nested.selected")
+    );
 }
 
 #[test]
-fn ignored_detector_deep_merge_type_conflict_does_not_block_family_overlay() {
-    let metadata = engine_with_only_flowchart_detector(
-        test_detector_deep_merges_ignored_type_conflict,
-        flowchart_overlay("flowchart.nodeSpacing", json!(91)),
-    )
-    .parse_metadata_sync("custom diagram")
-    .expect("parse through custom flowchart detector");
+fn ignored_detector_deep_merge_type_conflict_does_not_claim_config() {
+    let metadata =
+        engine_with_only_flowchart_detector(test_detector_deep_merges_ignored_type_conflict)
+            .parse_metadata_sync("custom diagram")
+            .expect("parse through custom flowchart detector");
 
     assert_eq!(
         metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91)
+        crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"]
+    );
+    assert!(
+        !metadata
+            .effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
     );
 }
 
 #[test]
 fn depth_boundary_detector_deep_merge_only_owns_the_touched_path() {
-    let overlay = PostDetectionConfigOverlay::new()
-        .with_family_contribution(
-            "flowchart",
-            ConfigOverlayContribution::new(
-                "host.flowchart.subgraph-title-top",
-                MermaidConfig::from_value(json!({
-                    "flowchart": {
-                        "subGraphTitleMargin": {
-                            "top": 42
-                        }
-                    }
-                })),
-            )
-            .unwrap(),
-        )
-        .unwrap()
-        .with_family_contribution(
-            "flowchart",
-            ConfigOverlayContribution::new(
-                "host.flowchart.node-spacing",
-                MermaidConfig::from_value(json!({
-                    "flowchart": {
-                        "nodeSpacing": 91
-                    }
-                })),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    let metadata = engine_with_only_flowchart_detector(
-        test_detector_deep_merges_depth_boundary_value,
-        overlay,
-    )
-    .parse_metadata_sync("custom diagram")
-    .expect("parse through custom flowchart detector");
+    let metadata =
+        engine_with_only_flowchart_detector(test_detector_deep_merges_depth_boundary_value)
+            .parse_metadata_sync("custom diagram")
+            .expect("parse through custom flowchart detector");
 
     assert_eq!(
         metadata.effective_config.as_value()["flowchart"]["subGraphTitleMargin"]["top"],
@@ -511,39 +385,53 @@ fn depth_boundary_detector_deep_merge_only_owns_the_touched_path() {
     );
     assert_eq!(
         metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(91),
+        crate::generated::upstream_default_config().as_value()["flowchart"]["nodeSpacing"],
         "the depth-boundary mutation must not claim an unrelated sibling"
+    );
+    assert!(
+        !metadata
+            .effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
+    );
+    assert!(
+        metadata
+            .effective_config
+            .explicit_config_owns_path("flowchart.subGraphTitleMargin.top")
     );
 }
 
 #[test]
-fn explicit_site_and_source_config_own_overlay_paths() {
-    let overlay = flowchart_overlay("flowchart.nodeSpacing", json!(91));
-    let site_engine = Engine::new()
-        .with_post_detection_config_overlay(overlay.clone())
-        .with_site_config(MermaidConfig::from_value(json!({
-            "flowchart": {"nodeSpacing": 72}
-        })));
+fn explicit_site_and_source_config_own_surviving_paths() {
+    let site_engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "flowchart": {"nodeSpacing": 72}
+    })));
     let site = site_engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse site override");
+    assert!(
+        site.effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
+    );
     assert_eq!(
         site.effective_config.as_value()["flowchart"]["nodeSpacing"],
         json!(72)
     );
-    assert!(site.config_overlay_provenance().is_empty());
 
-    let source_engine = Engine::new().with_post_detection_config_overlay(overlay);
+    let source_engine = Engine::new();
     let source = source_engine
         .parse_metadata_sync(
             "%%{init: {\"flowchart\": {\"nodeSpacing\": 33}}}%%\nflowchart TD\nA-->B",
         )
         .expect("parse source override");
+    assert!(
+        source
+            .effective_config
+            .explicit_config_owns_path("flowchart.nodeSpacing")
+    );
     assert_eq!(
         source.effective_config.as_value()["flowchart"]["nodeSpacing"],
         json!(33)
     );
-    assert!(source.config_overlay_provenance().is_empty());
 }
 
 fn theme_compatibility_config() -> MermaidConfig {
@@ -605,7 +493,7 @@ fn blocked(config: &MermaidConfig, input: crate::__private::GitGraphPaintInput) 
 }
 
 #[test]
-fn post_detection_defaults_capture_six_raw_paths_without_a_fallback_overlay() {
+fn family_paint_inputs_capture_six_raw_paths() {
     use crate::__private::install_theme_compatibility;
     for &(explicit_input, explicit_path) in NODE_PAINT_INPUTS {
         let mut compatibility = MermaidConfig::from_value(json!({"theme": "base"}));
@@ -644,7 +532,7 @@ fn post_detection_defaults_capture_six_raw_paths_without_a_fallback_overlay() {
 }
 
 #[test]
-fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection() {
+fn family_paint_inputs_keep_authority_across_secure_source_theme_reselection() {
     use crate::__private::install_theme_compatibility;
     let plan = node_default_plan(json!({"theme": "default"}));
     let source = "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
@@ -679,7 +567,7 @@ fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection(
 }
 
 #[test]
-fn post_detection_defaults_distinguish_missing_decisions_and_frozen_mutation() {
+fn family_paint_inputs_distinguish_missing_decisions_and_frozen_mutation() {
     use crate::__private::install_theme_compatibility;
     let input = crate::__private::GitGraphPaintInput::PrimaryColor;
     let plan = node_default_plan(json!({}));
@@ -700,43 +588,25 @@ fn post_detection_defaults_distinguish_missing_decisions_and_frozen_mutation() {
 }
 
 #[test]
-fn post_detection_defaults_capture_same_value_host_claims_before_fallback_writes() {
-    use crate::__private::install_theme_compatibility;
+fn family_paint_inputs_capture_same_value_detector_claims() {
+    use crate::__private::{GitGraphPaintInput, install_theme_compatibility};
+    fn claim_background(_text: &str, config: &mut MermaidConfig) -> bool {
+        let value = config.as_value()["themeVariables"]["mainBkg"].clone();
+        config.set_value("themeVariables.mainBkg", value);
+        true
+    }
     let plan = node_default_plan(json!({"theme": "base"}));
-    let baseline = install_theme_compatibility(Engine::new(), &plan)
-        .parse_metadata_sync("gitGraph\ncommit")
-        .unwrap();
-    let host_path = "themeVariables.mainBkg";
-    let fallback_path = "themeVariables.tagLabelBackground";
-    let host = family_overlay(
-        "gitGraph",
-        "host.same",
-        host_path,
-        baseline.effective_config.as_value()["themeVariables"]["mainBkg"].clone(),
-    );
-    let fallback = family_overlay("gitGraph", "fallback.tag", fallback_path, json!("#123456"));
-    let parsed = install_theme_compatibility(Engine::new(), &plan)
-        .with_post_detection_config_overlay(host)
-        .with_fallback_post_detection_config_overlay(fallback)
-        .parse_metadata_sync("gitGraph\ncommit")
-        .unwrap();
+    let mut engine = install_theme_compatibility(Engine::new(), &plan);
+    *engine.registry_mut() = DetectorRegistry::new();
+    engine.registry_mut().add_fn("gitGraph", claim_background);
+    let parsed = engine.parse_metadata_sync("custom graph").unwrap();
     assert_eq!(
-        blocked(
-            &parsed.effective_config,
-            crate::__private::GitGraphPaintInput::MainBackground
-        ),
+        blocked(&parsed.effective_config, GitGraphPaintInput::MainBackground),
         Some(true)
     );
     assert_eq!(
-        blocked(
-            &parsed.effective_config,
-            crate::__private::GitGraphPaintInput::TagBackground
-        ),
+        blocked(&parsed.effective_config, GitGraphPaintInput::TagBackground),
         Some(false)
-    );
-    assert_eq!(
-        parsed.effective_config.get_str(fallback_path),
-        Some("#123456")
     );
 }
 
@@ -799,11 +669,6 @@ fn effective_config_tracks_only_high_priority_explicit_owners() {
         .with_site_config(MermaidConfig::from_value(json!({
             "flowchart": {"nodeSpacing": 50}
         })))
-        .with_post_detection_config_overlay(flowchart_overlay("flowchart.diagramPadding", json!(8)))
-        .with_fallback_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.lineColor",
-            json!("#123456"),
-        ))
         .parse_metadata_sync(
             "%%{init: {\"flowchart\": {\"rankSpacing\": 50}}}%%\nflowchart-elk TD\nA-->B",
         )
@@ -814,7 +679,6 @@ fn effective_config_tracks_only_high_priority_explicit_owners() {
     for path in [
         "flowchart.nodeSpacing",
         "flowchart.rankSpacing",
-        "flowchart.diagramPadding",
         "layout",
         "flowchart",
         "flowchart.nodeSpacing.unmaterializedDescendant",
@@ -1128,14 +992,14 @@ fn scoped_same_value_appearance_is_authored_but_secure_source_is_not() {
 }
 
 #[test]
-fn scoped_theme_derivations_do_not_become_detector_overlay_claims() {
-    let engine = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})))
-        .with_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.mainBkg",
-            json!("#abcdef"),
-        ));
-    let source = "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B";
+fn scoped_theme_derivations_do_not_become_raw_paint_authority() {
+    use crate::__private::{GitGraphPaintInput, install_theme_compatibility};
+    let plan = node_default_plan(json!({"theme": "base"}));
+    let engine = install_theme_compatibility(
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "dark"}))),
+        &plan,
+    );
+    let source = "%%{init: {\"gitGraph\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
     let parsed = engine.parse_metadata_sync(source).unwrap();
     assert_eq!(
         parsed
@@ -1145,9 +1009,16 @@ fn scoped_theme_derivations_do_not_become_detector_overlay_claims() {
     );
     assert_eq!(
         parsed.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#abcdef")
+        Some("#123456")
     );
-    assert!(!parsed.config_overlay_provenance().is_empty());
+    assert_eq!(
+        blocked(&parsed.effective_config, GitGraphPaintInput::PrimaryColor),
+        Some(true)
+    );
+    assert_eq!(
+        blocked(&parsed.effective_config, GitGraphPaintInput::MainBackground),
+        Some(false)
+    );
 }
 
 #[test]
@@ -1163,11 +1034,8 @@ fn scoped_theme_rebuild_preserves_same_value_detector_assignments() {
     }
 
     for detector in [claim_initialized_background, claim_initialized_root] {
-        let engine = engine_with_only_flowchart_detector(
-            detector,
-            flowchart_overlay("themeVariables.mainBkg", json!("#abcdef")),
-        )
-        .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
+        let engine = engine_with_only_flowchart_detector(detector)
+            .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
         let initialized = engine.parse_metadata_sync("custom diagram").unwrap();
         let source = engine.parse_metadata_sync(
             "%%{init: {\"flowchart\": {\"theme\": \"base\"}, \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ncustom diagram",
@@ -1190,7 +1058,6 @@ fn scoped_theme_rebuild_preserves_same_value_detector_assignments() {
                 .effective_config
                 .explicit_config_owns_path("themeVariables.mainBkg")
         );
-        assert!(source.config_overlay_provenance().is_empty());
     }
 }
 
@@ -1224,16 +1091,11 @@ fn scoped_null_keeps_initialized_variables_and_raw_source_ownership() {
 }
 
 #[test]
-fn fully_filtered_source_config_does_not_change_post_detection_overlay_semantics() {
-    let engine = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({
-            "theme": "base",
-            "secure": ["secure", "securityLevel", "themeVariables"]
-        })))
-        .with_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.primaryColor",
-            json!("#123456"),
-        ));
+fn fully_filtered_source_config_does_not_change_effective_config() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "base",
+        "secure": ["secure", "securityLevel", "themeVariables"]
+    })));
     let without_source = engine
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse without source config");
@@ -1247,11 +1109,6 @@ fn fully_filtered_source_config_does_not_change_post_detection_overlay_semantics
         filtered_source.effective_config.as_value(),
         without_source.effective_config.as_value(),
         "a source config removed by the secure policy must be semantically invisible"
-    );
-    assert_eq!(
-        filtered_source.config_overlay_provenance(),
-        without_source.config_overlay_provenance(),
-        "a filtered source config must not change overlay ownership"
     );
 }
 
@@ -1275,23 +1132,6 @@ fn registered_source_theme_uses_raw_truthy_initial_theme_variables() {
         Some("#fff4dd"),
         "truthy scalar initialize input must make assignWithDepth ignore source themeVariables"
     );
-}
-
-#[test]
-fn theme_variable_derived_ownership_ignores_fallback_primary_color() {
-    let parsed = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({ "theme": "base" })))
-        .with_fallback_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.primaryColor",
-            json!("#fff4dd"),
-        ))
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse fallback base primary color");
-
-    assert!(!crate::__private::config_path_overrides_typed_default(
-        &parsed.effective_config,
-        "themeVariables.mainBkg"
-    ));
 }
 
 #[test]
@@ -1556,197 +1396,6 @@ fn dark_mode_counts_once_until_both_physical_paths_are_shadowed() {
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse both dark-mode overrides");
     assert_eq!(both.mermaid_compatibility_residual_count(), 2);
-}
-
-#[test]
-fn explicit_mermaid_compatibility_outranks_legacy_fallback_overlay() {
-    let parsed = Engine::new()
-        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
-            "themeVariables": {"useGradient": true}
-        }))))
-        .with_fallback_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.useGradient",
-            json!(false),
-        ))
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse explicit Mermaid compatibility over fallback overlay");
-
-    assert_eq!(
-        parsed.effective_config.as_value()["themeVariables"]["useGradient"],
-        json!(true)
-    );
-    assert_eq!(parsed.mermaid_compatibility_residual_count(), 1);
-    assert!(parsed.config_overlay_provenance().is_empty());
-}
-
-#[test]
-fn host_overlay_outranks_and_shadows_mermaid_compatibility() {
-    let parsed = Engine::new()
-        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
-            "themeVariables": {"useGradient": true}
-        }))))
-        .with_post_detection_config_overlay(flowchart_overlay(
-            "themeVariables.useGradient",
-            json!(false),
-        ))
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse host overlay over Mermaid compatibility");
-
-    assert_eq!(
-        parsed.effective_config.as_value()["themeVariables"]["useGradient"],
-        json!(false)
-    );
-    assert_eq!(parsed.mermaid_compatibility_residual_count(), 0);
-    assert!(
-        parsed
-            .config_overlay_provenance()
-            .contains("legacy.flowchart.themeVariables.useGradient")
-    );
-}
-
-#[test]
-fn post_detection_overlay_rejects_render_family_selection_paths() {
-    for path in ["layout", "flowchart.defaultRenderer"] {
-        let mut patch = MermaidConfig::empty_object();
-        patch.set_value(path, json!("elk"));
-        assert_eq!(
-            ConfigOverlayContribution::new(format!("invalid.{path}"), patch).unwrap_err(),
-            ConfigOverlayError::InvalidValue {
-                field: ConfigOverlayField::AssignmentPath
-            }
-        );
-    }
-}
-
-#[test]
-fn host_overlay_has_priority_without_replacing_theme_fallback() {
-    let host = family_overlay(
-        "flowchart",
-        "host.flowchart.node-spacing",
-        "flowchart.nodeSpacing",
-        json!(50),
-    );
-    let fallback = family_overlay(
-        "flowchart",
-        "legacy.flowchart.node-spacing",
-        "flowchart.nodeSpacing",
-        json!(91),
-    );
-    let metadata = Engine::new()
-        .with_post_detection_config_overlay(host)
-        .with_fallback_post_detection_config_overlay(fallback)
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse flowchart with layered overlays");
-
-    assert_eq!(
-        metadata.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(50)
-    );
-    assert!(
-        metadata
-            .config_overlay_provenance()
-            .contains("host.flowchart.node-spacing")
-    );
-    assert!(
-        !metadata
-            .config_overlay_provenance()
-            .contains("legacy.flowchart.node-spacing")
-    );
-}
-
-#[test]
-fn overlay_provenance_keeps_host_and_fallback_owners_distinct() {
-    let shared_id = "merman.legacy-family-theme.v1.flowchart.node-spacing";
-    let host = family_overlay("flowchart", shared_id, "flowchart.nodeSpacing", json!(50));
-    let fallback = family_overlay("flowchart", shared_id, "flowchart.rankSpacing", json!(91));
-    let metadata = Engine::new()
-        .with_post_detection_config_overlay(host)
-        .with_fallback_post_detection_config_overlay(fallback)
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse flowchart with colliding overlay ids");
-    let provenance = metadata.config_overlay_provenance();
-
-    assert_eq!(
-        provenance.contribution_ids().collect::<Vec<_>>(),
-        vec![shared_id, shared_id]
-    );
-    assert_eq!(
-        provenance.fallback_contribution_ids().collect::<Vec<_>>(),
-        vec![shared_id]
-    );
-}
-
-#[test]
-fn host_only_overlay_id_is_never_reported_as_fallback_provenance() {
-    let shared_id = "merman.legacy-family-theme.v1.flowchart.node-spacing";
-    let metadata = Engine::new()
-        .with_post_detection_config_overlay(family_overlay(
-            "flowchart",
-            shared_id,
-            "flowchart.nodeSpacing",
-            json!(50),
-        ))
-        .parse_metadata_sync("flowchart TD\nA-->B")
-        .expect("parse flowchart with host-owned compatibility-shaped id");
-    let provenance = metadata.config_overlay_provenance();
-
-    assert!(provenance.contains(shared_id));
-    assert!(provenance.fallback_contribution_ids().next().is_none());
-}
-
-#[test]
-fn post_detection_overlay_uses_the_configured_flowchart_render_family() {
-    let overlay = PostDetectionConfigOverlay::new()
-        .with_family_contribution(
-            "flowchart",
-            ConfigOverlayContribution::new(
-                "legacy.flowchart.spacing",
-                MermaidConfig::from_value(json!({"flowchart": {"nodeSpacing": 41}})),
-            )
-            .unwrap(),
-        )
-        .unwrap()
-        .with_family_contribution(
-            "swimlane",
-            ConfigOverlayContribution::new(
-                "legacy.swimlane.spacing",
-                MermaidConfig::from_value(json!({"flowchart": {"nodeSpacing": 81}})),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    let engine = Engine::new().with_fallback_post_detection_config_overlay(overlay);
-
-    let configured_swimlane = engine
-        .parse_metadata_sync("%%{init: {\"layout\": \"swimlane\"}}%%\nflowchart TD\nA-->B")
-        .expect("parse flowchart configured for swimlane layout");
-    assert_eq!(
-        configured_swimlane.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(81)
-    );
-    assert!(
-        configured_swimlane
-            .config_overlay_provenance()
-            .contains("legacy.swimlane.spacing")
-    );
-
-    let configured_flowchart = engine
-        .parse_metadata_sync("%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B")
-        .expect("parse swimlane configured for flowchart layout");
-    assert_eq!(
-        configured_flowchart.effective_config.as_value()["flowchart"]["nodeSpacing"],
-        json!(41)
-    );
-    assert!(
-        configured_flowchart
-            .config_overlay_provenance()
-            .contains("legacy.flowchart.spacing")
-    );
-    assert!(
-        !configured_flowchart
-            .config_overlay_provenance()
-            .contains("legacy.swimlane.spacing")
-    );
 }
 
 #[test]

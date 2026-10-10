@@ -51,9 +51,8 @@ pub mod utils;
 mod yaml_config;
 
 pub use config::MermaidConfig;
-use config::PostDetectionConfigOverlay;
 #[cfg(test)]
-use config::{ConfigOverlayProvenance, ThemeParseBinding};
+use config::ThemeParseBinding;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
@@ -178,10 +177,6 @@ pub mod __private {
             plan.recipe.0.clone(),
         ));
         engine.rebuild_site_config();
-        #[cfg(test)]
-        {
-            engine.fallback_post_detection_config_overlay = None;
-        }
         engine
     }
 
@@ -578,13 +573,6 @@ pub struct ParseMetadata {
 }
 
 impl ParseMetadata {
-    /// Returns the post-detection compatibility contributions that survived higher-priority config
-    /// layers for this parse operation.
-    #[cfg(test)]
-    pub(crate) fn config_overlay_provenance(&self) -> &ConfigOverlayProvenance {
-        self.effective_config.overlay_provenance()
-    }
-
     /// Returns the compiled theme recipe bound to this parsed artifact, when present.
     #[cfg(test)]
     pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
@@ -610,12 +598,7 @@ pub struct Engine {
     site_config: MermaidConfig,
     site_config_overrides: MermaidConfig,
     theme_compatibility_config: Option<MermaidConfig>,
-    fallback_overlay_explicit_config: MermaidConfig,
-    // Keep the overlay graph finite by giving each owner exactly one bounded lane. The host lane
-    // is evaluated first; the theme compatibility lane can only fill paths the host did not own.
-    post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
-    #[cfg(test)]
-    fallback_post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
+    initialization_inputs: MermaidConfig,
     default_effective_config: std::result::Result<MermaidConfig, theme::ThemeResolutionError>,
     runtime_policy: runtime::RuntimePolicy,
 }
@@ -632,10 +615,7 @@ impl Default for Engine {
             site_config,
             site_config_overrides: MermaidConfig::empty_object(),
             theme_compatibility_config: None,
-            fallback_overlay_explicit_config: MermaidConfig::empty_object(),
-            post_detection_config_overlay: None,
-            #[cfg(test)]
-            fallback_post_detection_config_overlay: None,
+            initialization_inputs: MermaidConfig::empty_object(),
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -735,28 +715,6 @@ impl Engine {
         self
     }
 
-    /// Replaces the high-priority host-owned overlay lane applied after diagram detection.
-    #[cfg(test)]
-    pub(crate) fn with_post_detection_config_overlay(
-        mut self,
-        overlay: PostDetectionConfigOverlay,
-    ) -> Self {
-        self.post_detection_config_overlay =
-            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
-        self
-    }
-
-    /// Replaces the fallback overlay lane without changing the host-owned lane.
-    #[cfg(test)]
-    pub(crate) fn with_fallback_post_detection_config_overlay(
-        mut self,
-        overlay: PostDetectionConfigOverlay,
-    ) -> Self {
-        self.fallback_post_detection_config_overlay =
-            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
-        self
-    }
-
     /// Replaces the complete site-config environment while preserving custom registries.
     ///
     /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
@@ -772,16 +730,16 @@ impl Engine {
 
     fn rebuild_site_config(&mut self) {
         let mut site_config = generated::default_site_config();
-        let mut fallback_overlay_explicit_config = MermaidConfig::empty_object();
+        let mut initialization_inputs = MermaidConfig::empty_object();
         if let Some(theme_config) = self.theme_compatibility_config.clone() {
-            fallback_overlay_explicit_config.deep_merge(theme_config.as_value());
+            initialization_inputs.deep_merge(theme_config.as_value());
             merge_theme_compatibility_config(&mut site_config, theme_config);
         }
-        fallback_overlay_explicit_config.deep_merge(self.site_config_overrides.as_value());
+        initialization_inputs.deep_merge(self.site_config_overrides.as_value());
         merge_site_config_override(&mut site_config, self.site_config_overrides.clone());
         self.default_effective_config = build_default_effective_config(&site_config);
         self.site_config = site_config;
-        self.fallback_overlay_explicit_config = fallback_overlay_explicit_config;
+        self.initialization_inputs = initialization_inputs;
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

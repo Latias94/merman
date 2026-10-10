@@ -1,14 +1,4 @@
-mod overlay;
-
-pub(crate) use overlay::ConfigOverlayApplication;
-#[cfg(test)]
-pub(crate) use overlay::ConfigOverlayContribution;
-#[cfg(test)]
-pub(crate) use overlay::ConfigOverlayError;
-#[cfg(test)]
-pub(crate) use overlay::ConfigOverlayField;
-pub(crate) use overlay::ConfigOverlayLane;
-pub(crate) use overlay::{ConfigOverlayProvenance, PostDetectionConfigOverlay};
+mod paint_inputs;
 
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
@@ -96,7 +86,6 @@ pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
 #[derive(Clone)]
 pub struct MermaidConfig {
     value: Arc<Value>,
-    overlay_provenance: ConfigOverlayProvenance,
     theme_compatibility: Option<ThemeCompatibilityState>,
     explicit_config_paths: Arc<BTreeSet<Arc<str>>>,
     mutation_paths: Arc<BTreeMap<Arc<str>, MutationStamp>>,
@@ -177,7 +166,7 @@ impl DetectorConfigChanges {
         &self.explicit_paths
     }
 
-    pub(crate) fn overlay_claims(&self) -> impl Iterator<Item = &Arc<str>> {
+    pub(crate) fn claimed_paths(&self) -> impl Iterator<Item = &Arc<str>> {
         // Completed nested operations seal their setter events, but replacement still transfers
         // their explicit owners. Ordinary initialized config must not become detector claims.
         self.explicit_paths
@@ -302,7 +291,7 @@ impl DetectorConfigChanges {
         }
         // Rebuild both newly assigned and transferred explicit values, even when they matched
         // the old initialized theme. Sealed nested assignments are owners, not new events.
-        for path in self.overlay_claims() {
+        for path in self.claimed_paths() {
             control.checkpoint()?;
             target.shadow_theme_compatibility_path(path);
             target.record_mutation(path, false);
@@ -463,7 +452,6 @@ impl ThemeParseBinding {
         );
         MermaidConfig {
             value: self.compatibility_config,
-            overlay_provenance: ConfigOverlayProvenance::default(),
             theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
@@ -801,7 +789,6 @@ impl MermaidConfig {
     pub fn from_value(value: Value) -> Self {
         Self {
             value: Arc::new(value),
-            overlay_provenance: ConfigOverlayProvenance::default(),
             theme_compatibility: None,
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
@@ -840,15 +827,6 @@ impl MermaidConfig {
             self.theme_compatibility,
             Some(ThemeCompatibilityState::Tracking(_))
         )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn overlay_provenance(&self) -> &ConfigOverlayProvenance {
-        &self.overlay_provenance
-    }
-
-    pub(crate) fn set_overlay_provenance(&mut self, provenance: ConfigOverlayProvenance) {
-        self.overlay_provenance = provenance;
     }
 
     pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
@@ -997,22 +975,6 @@ impl MermaidConfig {
             ))
             .next()
             .is_some_and(|candidate| candidate.starts_with(&prefix))
-    }
-
-    #[cfg(test)]
-    /// Reports whether a surviving compatibility fallback assignment owns this exact path.
-    ///
-    /// Fallback ownership is deliberately kept separate from typed/default ownership: the
-    /// assignment may be consumed by a legacy-compatible terminal writer, but it must not be
-    /// reported as a typed theme winner.
-    pub(crate) fn fallback_overlay_owns_path(&self, dotted_path: &str) -> bool {
-        self.overlay_provenance
-            .fallback_contributions()
-            .any(|contribution| {
-                contribution
-                    .surviving_assignment_paths()
-                    .any(|path| path == dotted_path)
-            })
     }
 
     pub(crate) fn config_path_overrides_typed_default(&self, dotted_path: &str) -> bool {
