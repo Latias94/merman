@@ -915,8 +915,10 @@ fn draw_diamond_node(
     } else {
         ('/', '\\')
     };
-    set_node_border(canvas, layout.x, layout.y + 1, top_left_slope, layout.style)?;
-    set_node_border(canvas, right, layout.y + 1, top_right_slope, layout.style)?;
+    if layout.y + 1 < center_y {
+        set_node_border(canvas, layout.x, layout.y + 1, top_left_slope, layout.style)?;
+        set_node_border(canvas, right, layout.y + 1, top_right_slope, layout.style)?;
+    }
     set_node_border(canvas, layout.x, center_y, '<', layout.style)?;
     set_node_border(canvas, right, center_y, '>', layout.style)?;
     let (bottom_left_slope, bottom_right_slope) = if charset.unicode {
@@ -924,14 +926,16 @@ fn draw_diamond_node(
     } else {
         ('\\', '/')
     };
-    set_node_border(
-        canvas,
-        layout.x,
-        bottom - 1,
-        bottom_left_slope,
-        layout.style,
-    )?;
-    set_node_border(canvas, right, bottom - 1, bottom_right_slope, layout.style)?;
+    if bottom - 1 > center_y {
+        set_node_border(
+            canvas,
+            layout.x,
+            bottom - 1,
+            bottom_left_slope,
+            layout.style,
+        )?;
+        set_node_border(canvas, right, bottom - 1, bottom_right_slope, layout.style)?;
+    }
     set_node_border(
         canvas,
         layout.x,
@@ -970,7 +974,7 @@ fn draw_subroutine_node(
             set_node_border(canvas, left_inner, y, charset.vertical, layout.style)?;
             set_node_border(canvas, right_inner, y, charset.vertical, layout.style)?;
         }
-        let text_y = layout.y + 1 + layout_policy.node_border_padding;
+        let text_y = layout.y + 1 + layout_policy.node_padding_y;
         for x in (left_inner + 1)..right_inner {
             canvas.set(x, text_y, ' ')?;
         }
@@ -991,7 +995,7 @@ fn draw_cylinder_node(
             set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style)?;
         }
     }
-    let text_y = layout.y + 1 + layout_policy.node_border_padding;
+    let text_y = layout.y + 1 + layout_policy.node_padding_y;
     for x in (layout.x + 1)..layout.right() {
         canvas.set(x, text_y, ' ')?;
     }

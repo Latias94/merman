@@ -183,7 +183,13 @@ fn ascii_options_from_json(
         render_options.color_theme = theme;
     }
     if let Some(padding) = ascii.box_border_padding {
-        render_options.box_border_padding = padding;
+        render_options = render_options.with_node_padding(padding);
+    }
+    if let Some(padding) = ascii.node_padding_x {
+        render_options = render_options.with_node_padding_x(padding);
+    }
+    if let Some(padding) = ascii.node_padding_y {
+        render_options = render_options.with_node_padding_y(padding);
     }
     if let Some(padding) = ascii.graph_padding_x {
         render_options = render_options.with_graph_padding_x(padding);
@@ -851,6 +857,28 @@ mod tests {
         assert_eq!(compiled.sequence_participant_spacing, 6);
         assert_eq!(compiled.sequence_message_spacing, 7);
         assert_eq!(compiled.sequence_self_message_width, 8);
+    }
+
+    #[test]
+    fn node_axis_padding_accepts_both_json_spellings_and_preserves_zero() {
+        for json in [
+            br#"{ "ascii": { "boxBorderPadding": 3, "node_padding_x": 2, "nodePaddingY": 0 } }"#
+                .as_slice(),
+            br#"{ "ascii": { "box_border_padding": 3, "nodePaddingX": 2, "node_padding_y": 0 } }"#
+                .as_slice(),
+        ] {
+            let options = crate::common::parse_options(json).expect("parse node padding aliases");
+            let compiled = ascii_options_from_json(&options).expect("zero padding compiles");
+            assert_eq!(compiled.box_border_padding, 3);
+            assert_eq!(compiled.node_padding_x, Some(2));
+            assert_eq!(compiled.node_padding_y, Some(0));
+        }
+        let options = crate::common::parse_options(br#"{ "ascii": { "boxBorderPadding": 0 } }"#)
+            .expect("parse legacy scalar padding");
+        let compiled = ascii_options_from_json(&options).expect("legacy zero padding compiles");
+        assert_eq!(compiled.box_border_padding, 0);
+        assert_eq!(compiled.node_padding_x, None);
+        assert_eq!(compiled.node_padding_y, None);
     }
 
     #[test]

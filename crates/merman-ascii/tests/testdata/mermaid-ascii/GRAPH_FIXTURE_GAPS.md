@@ -8,8 +8,9 @@ gap inventory live in `tests/graph_fixture.rs`.
 ## Current Status
 
 - Copied corpus: 79 fixtures from the pinned `mermaid-ascii` source boundary.
-- Exact-output subset: 40 fixtures, derived as `GRAPH_FIXTURE_CORPUS - GRAPH_FIXTURE_GAPS`.
-- Named intentional differences: 39 fixtures.
+- Exact-output subset: 33 fixtures, derived as the corpus minus named gaps and corrections.
+- Strict corrected-output subset: 7 fixtures, listed in `GRAPH_FIXTURE_CORRECTIONS`.
+- Named intentional layout differences: 39 fixtures.
 - Every exact fixture must still match byte-for-byte.
 - Every named gap must still render successfully and retain every non-marker visible text token
   from the copied output; parser-backed semantic tests own topology, endpoint, direction, and
@@ -32,6 +33,29 @@ silent semantic loss are regressions, not acceptable gaps.
   Merman follows the pinned Mermaid source instead.
 - Labels and junctions are placed through planner-owned occupancy, so spacing can differ when the
   copied output relied on post-render overlays.
+
+## Named Corrected Oracles
+
+Seven copied ASCII outputs erase a compound frame at a legal edge crossing: horizontal routes
+replace a vertical frame segment with `-`, or vertical routes replace a horizontal segment with
+`|`. A crossing must preserve both directions as `+`. Merman's independent corrected snapshots
+live in `tests/graph_fixture/corrected-fixtures/ascii/`; the copied files and their provenance
+remain unchanged. These cases are strict output oracles, not tolerated layout gaps:
+
+- `subgraph_mixed_nodes.txt`
+- `subgraph_nested_with_external.txt`
+- `subgraph_standalone_labeled_node.txt`
+- `subgraph_td_multiple_paddingy.txt`
+- `subgraph_td_multiple.txt`
+- `subgraph_three_separate.txt`
+- `subgraph_two_separate.txt`
+
+The corrected subset uses the original fixture options, including `(3, 3)` graph padding for
+`subgraph_td_multiple_paddingy.txt`. Its test compares bytes exactly, preserves visible text
+counts, and checks closed group frames, all four group and node corners, unique authored labels,
+first-parent node ownership, full node containment, full nested-group containment, and a distinct
+arrowhead entering the declared target for every edge. It also
+requires an actual route/frame crossing so a named disposition cannot silently become obsolete.
 
 ## Named Gaps
 
@@ -83,6 +107,8 @@ Unicode:
 ## Executable Evidence
 
 - `graph_fixture_exact_subset_matches_upstream` protects the remaining byte oracle.
+- `graph_fixture_named_corrections_preserve_closed_compound_frames` protects strict corrected
+  snapshots and frame/node geometry independently of copied output.
 - `graph_fixture_named_gaps_preserve_visible_text_and_render` prevents named differences from
   hiding render failures or authored visible-text loss.
 - `flowchart_local_semantic_fixture_covers_ampersand_fanin_and_fanout` covers ampersand topology.

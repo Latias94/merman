@@ -431,6 +431,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            let Some(plan) = plan.resolve_node_attachments(&from, &to, charset, resources)? else {
+                continue;
+            };
             let plan = plan
                 .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
                 .with_style(edge.style);
@@ -454,7 +457,8 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 feature: "routes crossing reserved graph geometry",
             });
         };
-        let plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
+        let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
+        occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
         let start = plan.terminal_candidate(MarkerEndpoint::Start, graph.diagram_type())?;
         let end = plan.terminal_candidate(MarkerEndpoint::End, graph.diagram_type())?;
         let prepared = PreparedRoute { plan, owner };

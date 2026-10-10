@@ -26,7 +26,11 @@ pub(in crate::graph::routing) fn allocate_marker_berths(
         for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
             let candidates = route
                 .plan
-                .marker_candidates(endpoint, diagram_type, resources)?;
+                .marker_candidates(endpoint, diagram_type, resources)?
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type,
+                    feature: "endpoint markers without a straight terminal berth",
+                })?;
             if !candidates.is_empty() {
                 for candidate in candidates
                     .iter()

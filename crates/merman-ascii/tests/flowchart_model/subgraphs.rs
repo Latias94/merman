@@ -656,7 +656,7 @@ fn flowchart_parser_nested_subgraph_direction_override_keeps_child_group_as_a_mo
             "|         |       | |\n",
             "| +---+   | +---+ | |\n",
             "| |   |   | |   | | |\n",
-            "| | A |---->| B | | |\n",
+            "| | A |---+>| B | | |\n",
             "| |   |   | |   | | |\n",
             "| +---+   | +---+ | |\n",
             "|         |   |   | |\n",

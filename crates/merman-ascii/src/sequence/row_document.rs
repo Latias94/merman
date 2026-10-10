@@ -240,10 +240,12 @@ fn finish_sequence_lines(
     }
 
     let deferred = crate::safe_text::DeferredTextRegistry::new();
+    // Prepared row widths have already been admitted. Color encoding must preserve that
+    // geometry, including trailing blank cells retained by control-frame materialization.
     crate::canvas::finish_styled_line_iter_with_deferred_resources_with_execution(
         lines.iter(),
         options,
-        true,
+        false,
         resources,
         &deferred,
         checkpoints.execution(),
@@ -568,7 +570,7 @@ mod tests {
             policy,
         );
         first
-            .try_push_role_text("A<&", AsciiColorRole::Text)
+            .try_push_role_text("A<&   ", AsciiColorRole::Text)
             .expect("styled line should fit");
         let mut second = SequenceLine::with_resource_policy(
             options.sequence_layout().terminal_width_profile,

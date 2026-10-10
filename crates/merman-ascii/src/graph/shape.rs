@@ -418,11 +418,12 @@ impl GraphNodeShapeSemantics {
         policy: &GraphLayoutPolicy,
         resources: &ResourceContext,
     ) -> Result<GraphNodeShapeSize> {
-        let border_padding = resources.checked_grid_mul(policy.node_border_padding, 2)?;
-        let framed_width = resources
-            .checked_grid_add(resources.checked_grid_add(label_width, border_padding)?, 2)?;
+        let padding_x = resources.checked_grid_mul(policy.node_padding_x, 2)?;
+        let padding_y = resources.checked_grid_mul(policy.node_padding_y, 2)?;
+        let framed_width =
+            resources.checked_grid_add(resources.checked_grid_add(label_width, padding_x)?, 2)?;
         let framed_height = resources.checked_grid_add(
-            resources.checked_grid_add(label_content_height, border_padding)?,
+            resources.checked_grid_add(label_content_height, padding_y)?,
             2,
         )?;
 
@@ -496,7 +497,24 @@ impl GraphNodeShapeSemantics {
         Ok(size)
     }
 
-    pub(super) fn uses_external_self_loop_connector(self) -> bool {
+    pub(super) fn allows_route_contact(
+        self,
+        node: &super::layout::NodeLayout,
+        contact: super::layout::CanvasCoord,
+    ) -> bool {
+        match self.shape {
+            GraphNodeShape::Diamond | GraphNodeShape::Choice => {
+                if contact.x == node.x || contact.x == node.right() {
+                    contact.y == node.center_y()
+                } else {
+                    contact.x == node.center_x()
+                }
+            }
+            _ => true,
+        }
+    }
+
+    pub(super) fn uses_route_connector(self) -> bool {
         !matches!(
             self.shape,
             GraphNodeShape::Diamond | GraphNodeShape::Choice | GraphNodeShape::Text
@@ -723,9 +741,9 @@ mod tests {
         let choice = GraphNodeShapeSemantics::new(GraphNodeShape::Choice);
         let state_start = GraphNodeShapeSemantics::new(GraphNodeShape::StateStart);
 
-        assert!(rect.uses_external_self_loop_connector());
-        assert!(!diamond.uses_external_self_loop_connector());
-        assert!(!choice.uses_external_self_loop_connector());
+        assert!(rect.uses_route_connector());
+        assert!(!diamond.uses_route_connector());
+        assert!(!choice.uses_route_connector());
 
         assert!(!rect.uses_drop_then_turn_bent_route());
         assert!(!diamond.uses_drop_then_turn_bent_route());

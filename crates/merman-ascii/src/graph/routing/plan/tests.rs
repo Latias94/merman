@@ -90,7 +90,8 @@ fn marker_candidates_carry_the_contiguous_route_local_terminal_tail() {
 
     let candidates = plan
         .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
-        .unwrap();
+        .unwrap()
+        .expect("straight terminal should have marker candidates");
 
     assert_eq!(candidates.len(), 3);
     assert!(candidates[0].terminal_tail().is_empty());
@@ -101,6 +102,39 @@ fn marker_candidates_carry_the_contiguous_route_local_terminal_tail() {
     );
     assert!(candidates[1].follows_terminal_predecessor(candidates[0]));
     assert!(candidates[2].follows_terminal_predecessor(candidates[1]));
+}
+
+#[test]
+fn marker_candidates_reject_a_primary_bend_without_confusing_open_markers() {
+    let plan = RoutePlan::new(
+        vec![
+            cell(0, 0, '-', PlannedRouteCellKind::RouteCell),
+            cell(1, 0, '+', PlannedRouteCellKind::RouteCell),
+            cell(1, 1, '|', PlannedRouteCellKind::RouteCell),
+        ],
+        Vec::new(),
+        MarkerAnchors::new(
+            MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Left),
+            MarkerAnchor::new(PlannedCellId::new(1), StepDirection::Right),
+        ),
+    );
+    let mut resources = unbounded_route_resources();
+    assert!(
+        plan.marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+            .unwrap()
+            .expect("open endpoint needs no marker berth")
+            .is_empty()
+    );
+
+    let plan = plan
+        .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+        .unwrap();
+    assert!(
+        plan.marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+            .unwrap()
+            .is_none(),
+        "a bend must reject the route candidate instead of silently losing its marker"
+    );
 }
 
 #[test]
@@ -115,7 +149,8 @@ fn self_loop_marker_candidates_stop_before_the_terminal_corner() {
 
     let candidates = plan
         .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
-        .unwrap();
+        .unwrap()
+        .expect("straight terminal should have marker candidates");
 
     assert_eq!(candidates.len(), 1);
     assert!(candidates[0].is_primary());
@@ -732,7 +767,7 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     assert_eq!(plan, expected);
     assert_eq!(
         plan.labels.first().map(|label| label.placement),
-        Some(RoutedLabelPlacement::new(21, 10, 5))
+        Some(RoutedLabelPlacement::new(36, 10, 5))
     );
 }
 
@@ -785,7 +820,7 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     assert_eq!(plan, expected);
     assert_eq!(
         plan.labels.first().map(|label| label.placement),
-        Some(RoutedLabelPlacement::new(18, 10, 5))
+        Some(RoutedLabelPlacement::new(27, 10, 5))
     );
 }
 

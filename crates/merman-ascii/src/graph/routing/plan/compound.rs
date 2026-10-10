@@ -234,7 +234,7 @@ fn plan_axis_aligned_route(
     let line = super::super::cell::edge_line_char(edge, charset, orientation);
     let mut cells = PlannedRouteCells::new();
     let start_cell = cells.try_push(resources, || boundary_cell(start.x, start.y, line))?;
-    let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(direction));
+    let start_anchor = MarkerAnchor::new(start_cell, direction.opposite());
     let mut end_anchor = MarkerAnchor::new(start_cell, direction);
     match direction {
         StepDirection::Right => {
@@ -276,15 +276,6 @@ fn plan_axis_aligned_route(
         labels,
         MarkerAnchors::new(start_anchor, end_anchor),
     )))
-}
-
-fn opposite_direction(direction: StepDirection) -> StepDirection {
-    match direction {
-        StepDirection::Up => StepDirection::Down,
-        StepDirection::Down => StepDirection::Up,
-        StepDirection::Left => StepDirection::Right,
-        StepDirection::Right => StepDirection::Left,
-    }
 }
 
 pub(super) fn plan_compound_endpoint_route_with_resources(

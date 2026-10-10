@@ -1308,6 +1308,21 @@ fn resolve_text_output_options(
             TextWidthProfile::Cjk => merman::ascii::TerminalWidthProfile::Cjk,
         };
     }
+    if let Some(padding) = args.ascii_node_padding {
+        options = options.with_node_padding(padding);
+    }
+    if let Some(padding) = args.ascii_node_padding_x {
+        options = options.with_node_padding_x(padding);
+    }
+    if let Some(padding) = args.ascii_node_padding_y {
+        options = options.with_node_padding_y(padding);
+    }
+    if let Some(padding) = args.ascii_graph_padding_x {
+        options = options.with_graph_padding_x(padding);
+    }
+    if let Some(padding) = args.ascii_graph_padding_y {
+        options = options.with_graph_padding_y(padding);
+    }
     if let Some(width) = args.ascii_flowchart_wrap_width {
         options = options.with_flowchart_node_label_wrap_width(width);
     }
@@ -1894,6 +1909,11 @@ fn text_options_are_configured(options: &TextOutputCliArgs) -> bool {
     options.sequence_mirror_actors
         || options.ascii_charset.is_some()
         || options.ascii_width_profile.is_some()
+        || options.ascii_node_padding.is_some()
+        || options.ascii_node_padding_x.is_some()
+        || options.ascii_node_padding_y.is_some()
+        || options.ascii_graph_padding_x.is_some()
+        || options.ascii_graph_padding_y.is_some()
         || options.ascii_flowchart_wrap_width.is_some()
         || options.ascii_direction.is_some()
         || options.ascii_color.is_some()
@@ -2237,6 +2257,72 @@ mod tests {
             resolved.terminal_width_profile,
             merman::ascii::TerminalWidthProfile::Cjk
         );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn cli_node_padding_and_graph_spacing_resolve_independently() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "render",
+            "-",
+            "-f",
+            "unicode",
+            "--ascii-layout-profile",
+            "compact",
+            "--ascii-node-padding-y",
+            "0",
+            "--ascii-node-padding",
+            "2",
+            "--ascii-node-padding-x",
+            "3",
+            "--ascii-graph-padding-x",
+            "5",
+            "--ascii-graph-padding-y",
+            "0",
+        ])
+        .expect("CLI accepts independent zero padding");
+        let ResolvedInvocation::Render(render) =
+            resolve(cli, &facts(false)).expect("resolve graph spacing")
+        else {
+            panic!("expected render invocation");
+        };
+        let options = match render.output {
+            ResolvedOutput::Text { options, .. } => options,
+            #[cfg(any(feature = "svg", feature = "png", feature = "jpeg", feature = "pdf"))]
+            _ => panic!("expected text options"),
+        };
+        assert_eq!(
+            options.layout_profile,
+            merman::ascii::AsciiLayoutProfile::Compact
+        );
+        assert_eq!(options.box_border_padding, 2);
+        assert_eq!(options.node_padding_x, Some(3));
+        assert_eq!(options.node_padding_y, Some(0));
+        assert_eq!(options.graph_padding_x, 5);
+        assert_eq!(options.graph_padding_y, 0);
+    }
+
+    #[cfg(all(feature = "ascii", feature = "svg"))]
+    #[test]
+    fn graph_spacing_flags_require_text_output() {
+        for flag in [
+            "--ascii-node-padding",
+            "--ascii-node-padding-x",
+            "--ascii-node-padding-y",
+            "--ascii-graph-padding-x",
+            "--ascii-graph-padding-y",
+        ] {
+            let cli = Cli::try_parse_from(["merman-cli", "render", "-", "-f", "svg", flag, "0"])
+                .expect("parse explicit zero spacing");
+            let error = resolve(cli, &facts(false)).expect_err("SVG cannot ignore text spacing");
+            assert!(
+                error
+                    .to_string()
+                    .contains("text output options require --format ascii or --format unicode"),
+                "{flag}: {error}"
+            );
+        }
     }
 
     #[cfg(feature = "ascii")]

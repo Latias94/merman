@@ -1,5 +1,5 @@
 use super::super::charset::GraphCharset;
-use super::super::layout::CanvasCoord;
+use super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::model::{GraphEdgeMarker, GraphEdgeStroke, GraphEdgeStyle};
 use super::label::{
     RoutedLabelDescriptor, RoutedLabelPlacement, routed_label_placement_for_descriptor,
@@ -11,7 +11,10 @@ use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
+mod attachment;
 mod boundary;
+use attachment::NodeAttachment;
+pub(super) use attachment::NodeAttachments;
 mod candidates;
 mod compound;
 mod edges;
@@ -35,6 +38,7 @@ pub(super) struct RoutePlan {
     pub(super) style: GraphEdgeStyle,
     pub(super) diagram_type: &'static str,
     anchors: MarkerAnchors,
+    pub(super) attachments: Option<NodeAttachments>,
     start_marker: GraphEdgeMarker,
     end_marker: GraphEdgeMarker,
     suppressed_cells: HashSet<PlannedCellId>,
@@ -152,11 +156,75 @@ impl RoutePlan {
             style: GraphEdgeStyle::default(),
             diagram_type: "flowchart",
             anchors,
+            attachments: None,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
             suppressed_cells: HashSet::default(),
             min_canvas_extent: CanvasExtent::default(),
         }
+    }
+
+    pub(super) fn resolve_node_attachments(
+        mut self,
+        from: &NodeLayout,
+        to: &NodeLayout,
+        charset: &GraphCharset,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        let start_coord = self.marker_coord(self.anchors.start, self.diagram_type)?;
+        let end_coord = self.marker_coord(self.anchors.end, self.diagram_type)?;
+        let Some(start) = NodeAttachment::resolve(
+            from,
+            start_coord,
+            self.anchors.start.point_direction,
+            charset,
+        ) else {
+            return Ok(None);
+        };
+        let Some(end) =
+            NodeAttachment::resolve(to, end_coord, self.anchors.end.point_direction, charset)
+        else {
+            return Ok(None);
+        };
+        self.attachments = Some(NodeAttachments { start, end });
+        // All producers use the same shape contact. Nonrectangular vertices retain their
+        // border glyph; marker anchors stay on the first straight exterior cell.
+        for index in 0..self.cells.len() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            if self.cells[index].coord != start.contact
+                || self.cells[index].kind != PlannedRouteCellKind::EdgeLine
+            {
+                continue;
+            }
+            if let Some(connector) = start.connector {
+                self.cells[index].ch = connector;
+                continue;
+            }
+            if self.anchors.start.cell.index() == index {
+                let neighbor = marker_relocation_step(
+                    start.contact,
+                    self.anchors.start.point_direction,
+                    resources,
+                )?;
+                resources.charge_layout_work(self.cells.len())?;
+                let Some(neighbor_index) = self
+                    .cells
+                    .iter()
+                    .position(|cell| Some(cell.coord) == neighbor)
+                else {
+                    return Ok(None);
+                };
+                self.anchors.start.cell = PlannedCellId(neighbor_index);
+            }
+            self.suppressed_cells
+                .try_reserve(1)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            self.suppressed_cells.insert(PlannedCellId(index));
+        }
+        Ok(Some(self))
     }
 
     #[cfg(test)]
@@ -314,13 +382,13 @@ impl RoutePlan {
         endpoint: MarkerEndpoint,
         diagram_type: &'static str,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<MarkerCandidate>> {
+    ) -> Result<Option<Vec<MarkerCandidate>>> {
         let (marker, anchor) = match endpoint {
             MarkerEndpoint::Start => (self.start_marker, self.anchors.start),
             MarkerEndpoint::End => (self.end_marker, self.anchors.end),
         };
         if marker == GraphEdgeMarker::Open {
-            return Ok(Vec::new());
+            return Ok(Some(Vec::new()));
         }
 
         let primary_candidate = self.terminal_candidate(endpoint, diagram_type)?;
@@ -338,6 +406,14 @@ impl RoutePlan {
                 .entry(cell.coord)
                 .and_modify(|existing| *existing = None)
                 .or_insert(Some(PlannedCellId(index)));
+        }
+
+        if marker_candidate_has_perpendicular_neighbor(
+            primary.coord,
+            anchor.point_direction,
+            &coordinate_index,
+        ) {
+            return Ok(None);
         }
 
         let mut candidates = Vec::new();
@@ -401,7 +477,7 @@ impl RoutePlan {
             predecessor = candidate;
         }
 
-        Ok(candidates)
+        Ok(Some(candidates))
     }
 
     pub(super) fn terminal_candidate(
@@ -539,6 +615,7 @@ impl RoutePlan {
             style: GraphEdgeStyle::default(),
             diagram_type: "flowchart",
             anchors,
+            attachments: None,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
             suppressed_cells: HashSet::default(),

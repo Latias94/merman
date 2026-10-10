@@ -153,6 +153,11 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-c
 unicode\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-width-profile -d 'Display-width convention used for terminal text measurement' -r -f -a "unicode\t''
 cjk\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-node-padding -d 'Padding inside Flowchart, Swimlane, and State node frames on both axes (zero is allowed)' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-node-padding-x -d 'Horizontal node padding in columns; overrides --ascii-node-padding for this axis' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-node-padding-y -d 'Vertical node padding in rows; overrides --ascii-node-padding for this axis' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-graph-padding-x -d 'Preferred graph column gap; required label, route, and group clearance can increase it' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-graph-padding-y -d 'Preferred graph row gap; required label, route, and group clearance can increase it' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-flowchart-node-label-wrap-width -d 'Flowchart node-label wrap width in terminal display cells' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-direction -d 'Override the default graph direction when Mermaid input omits one' -r -f -a "left-right\t''
 top-down\t''"

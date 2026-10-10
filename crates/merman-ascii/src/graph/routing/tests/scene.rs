@@ -42,11 +42,26 @@ fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
     })
     .expect("boundary route should plan");
     let label = plan.labels.first().expect("boundary route should label");
-    let (required_width, _) = label.placement.canvas_extent();
+    assert_eq!(
+        label.placement.width(),
+        "boundary label with enough width".len()
+    );
 
     let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
         .expect("boundary scene should render");
     let (edge_width, _) = scene.canvas_extent();
+    let required_width = scene
+        .routes
+        .iter()
+        .flat_map(|route| &route.plan.labels)
+        .map(|label| {
+            label
+                .placement
+                .canvas_extent_for_lines(label.line_count())
+                .0
+        })
+        .max()
+        .expect("prepared boundary label should exist");
 
     assert!(
         edge_width >= required_width,

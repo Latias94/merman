@@ -12,6 +12,9 @@ mod direction;
 mod members;
 mod placement;
 mod side_constraints;
+mod spacing;
+
+pub(super) use spacing::reserve_compound_axis_spacing;
 
 use self::bounds::RawBounds;
 use self::members::{
@@ -44,8 +47,9 @@ pub(super) fn subgraph_offsets(
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<(usize, usize)> {
-    bounds::subgraph_offsets(graph, layouts, topology, policy, resources)
+    bounds::subgraph_offsets(graph, layouts, topology, policy, resources, execution)
 }
 
 pub(super) fn layout_groups(

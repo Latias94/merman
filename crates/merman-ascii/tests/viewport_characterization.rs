@@ -5,12 +5,15 @@ use merman_ascii::{
     AsciiProjection, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
     AsciiViewportPolicy, OverflowPolicy, TerminalWidthProfile,
 };
+use merman_core::RenderSemanticModel;
 use merman_core::resources::ResourceProfile;
 use support::{
     assert_rectangular_terminal_grid, assert_rectangular_terminal_grid_with_profile,
     local_semantic_input, parse_model, render_model, render_model_report,
     render_model_with_resources, terminal_extent, terminal_extent_with_profile,
 };
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 const WIDTH_MATRIX: [usize; 4] = [60, 80, 100, 120];
 const ENCODING_MATRIX: [(AsciiColorMode, AsciiOutputEncoding); 5] = [
@@ -111,6 +114,105 @@ fn blank_cell_metrics(rendered: &str) -> (usize, usize) {
         .max()
         .unwrap_or_default();
     (blank_cells, longest_run)
+}
+
+fn terminal_glyph_at_column(
+    row: &str,
+    column: usize,
+    profile: TerminalWidthProfile,
+) -> Option<&str> {
+    let mut offset = 0;
+    for glyph in row.graphemes(true) {
+        if offset == column {
+            return Some(glyph);
+        }
+        offset += match profile {
+            TerminalWidthProfile::Unicode => UnicodeWidthStr::width(glyph),
+            TerminalWidthProfile::Cjk => UnicodeWidthStr::width_cjk(glyph),
+            _ => panic!("test requires a known terminal width profile"),
+        };
+    }
+    None
+}
+
+fn assert_sequence_message_lifelines(
+    model: &RenderSemanticModel,
+    rendered: &str,
+    profile: TerminalWidthProfile,
+) {
+    let RenderSemanticModel::Sequence(sequence) = model else {
+        return;
+    };
+    let header = rendered
+        .lines()
+        .next()
+        .expect("sequence must retain participant boxes");
+    let centers = if header.contains('┌') {
+        rendered
+            .lines()
+            .nth(2)
+            .unwrap()
+            .chars()
+            .enumerate()
+            .filter_map(|(column, glyph)| (glyph == '┬').then_some(column))
+            .collect::<Vec<_>>()
+    } else {
+        let corners = header
+            .chars()
+            .enumerate()
+            .filter_map(|(column, glyph)| (glyph == '+').then_some(column))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            corners.len(),
+            sequence.actor_order.len() * 2,
+            "every actor must retain a box"
+        );
+        corners
+            .chunks_exact(2)
+            .map(|bounds| bounds[0] + (bounds[1] - bounds[0]).div_ceil(2))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        centers.len(),
+        sequence.actor_order.len(),
+        "every actor must retain its header junction"
+    );
+    for message in sequence
+        .messages
+        .iter()
+        .filter(|message| message.signal_semantics().is_some())
+    {
+        let label = message.message_text();
+        assert!(
+            !label.is_empty() && !message.wrap,
+            "this corpus contains complete unwrapped signal labels"
+        );
+        let expected_count = sequence
+            .messages
+            .iter()
+            .filter(|other| other.signal_semantics().is_some() && other.message_text() == label)
+            .count();
+        let rows = rendered
+            .lines()
+            .filter(|row| row.contains(label))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows.len(),
+            expected_count,
+            "the full authored message {label:?} must retain its multiplicity:\n{rendered}"
+        );
+        for row in rows {
+            for center in &centers {
+                assert!(
+                    matches!(
+                        terminal_glyph_at_column(row, *center, profile),
+                        Some("|" | "#" | "│" | "┃")
+                    ),
+                    "message {label:?} must retain every actor's lifeline at column {center}:\n{rendered}"
+                );
+            }
+        }
+    }
 }
 
 fn assert_issue_53_semantics(rendered: &str) {
@@ -250,16 +352,43 @@ fn sequence_compact_candidate_reduces_width_area_and_blank_cells() {
     let (canonical_blank_cells, canonical_longest_blank_run) = blank_cell_metrics(&canonical);
     let (compact_blank_cells, compact_longest_blank_run) = blank_cell_metrics(&compact);
 
-    assert_eq!(canonical_extent, (82, 58));
-    assert_eq!(compact_extent, (78, 58));
-    assert_eq!(canonical_blank_cells, 3_227);
-    assert_eq!(compact_blank_cells, 2_982);
-    assert_eq!(canonical_longest_blank_run, 20);
-    assert_eq!(compact_longest_blank_run, 21);
+    assert_eq!(canonical_extent, (107, 58));
+    assert_eq!(compact_extent, (105, 58));
+    assert_eq!(canonical_blank_cells, 4_681);
+    assert_eq!(compact_blank_cells, 4_567);
+    assert_eq!(canonical_longest_blank_run, 41);
+    assert_eq!(compact_longest_blank_run, 41);
+    assert_sequence_message_lifelines(&model, &canonical, TerminalWidthProfile::Unicode);
+    assert_sequence_message_lifelines(&model, &compact, TerminalWidthProfile::Unicode);
     assert!(compact_extent.0 < canonical_extent.0);
     assert_eq!(compact_extent.1, canonical_extent.1);
     assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
     assert!(compact_blank_cells < canonical_blank_cells);
+}
+
+#[test]
+fn compact_sequence_preserves_the_message_geometry_lower_bound() {
+    let model = parse_model(
+        "sequenceDiagram\nparticipant A\nparticipant B\nparticipant C\nA->>B: find user by email\nB->>C: validate session token",
+    );
+    for options in option_matrix() {
+        let canonical =
+            render_model(&model, &options).expect("canonical constrained messages must render");
+        let compact = render_model(
+            &model,
+            &options.with_layout_profile(AsciiLayoutProfile::Compact),
+        )
+        .expect("compact constrained messages must render");
+        assert_eq!(
+            terminal_extent_with_profile(&canonical, options.terminal_width_profile),
+            (51, 10)
+        );
+        assert_eq!(
+            compact, canonical,
+            "message clearance already fixes both intervals; Compact must preserve the same valid geometry"
+        );
+        assert_sequence_message_lifelines(&model, &compact, options.terminal_width_profile);
+    }
 }
 
 #[test]
@@ -297,6 +426,11 @@ fn flowchart_and_sequence_encoding_matrix_preserves_plain_geometry() {
                             panic!("plain {fixture} render failed for {plain_options:?}: {error}")
                         });
 
+                assert_sequence_message_lifelines(
+                    &model,
+                    &plain.text,
+                    plain_options.terminal_width_profile,
+                );
                 for field in required_fields {
                     assert!(
                         plain.text.contains(field),
@@ -372,6 +506,11 @@ fn flowchart_and_sequence_width_policy_matrix_is_typed_and_complete() {
                             )
                         });
 
+                assert_sequence_message_lifelines(
+                    &model,
+                    &baseline.text,
+                    plain_options.terminal_width_profile,
+                );
                 for max_width in WIDTH_MATRIX {
                     let overflowed = baseline.primary_extent.width > max_width;
                     for (color_mode, encoding) in [
@@ -614,8 +753,8 @@ fn compact_sequence_corpus_preserves_lifecycle_controls_and_terminal_extents() {
                 "window.destroy()",
                 "Panel reopens",
             ],
-            canonical_extent: (82, 58),
-            compact_extent: (78, 58),
+            canonical_extent: (107, 58),
+            compact_extent: (105, 58),
         },
     ];
     let profiles = [
@@ -656,14 +795,20 @@ fn compact_sequence_corpus_preserves_lifecycle_controls_and_terminal_extents() {
                 "compact {} extent changed for {compact_options:?}",
                 case.fixture
             );
-            assert!(compact_extent.0 < canonical_extent.0, "{}", case.fixture);
+            assert!(compact_extent.0 <= canonical_extent.0, "{}", case.fixture);
             assert_eq!(compact_extent.1, canonical_extent.1, "{}", case.fixture);
             assert!(
-                compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1,
+                compact_extent.0 * compact_extent.1 <= canonical_extent.0 * canonical_extent.1,
                 "{}",
                 case.fixture
             );
 
+            assert_sequence_message_lifelines(&model, &canonical, options.terminal_width_profile);
+            assert_sequence_message_lifelines(
+                &model,
+                &compact,
+                compact_options.terminal_width_profile,
+            );
             for field in case.required_fields {
                 assert!(
                     canonical.contains(field),

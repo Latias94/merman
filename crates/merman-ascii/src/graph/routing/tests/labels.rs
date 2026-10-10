@@ -212,3 +212,40 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
         .collect::<Vec<_>>();
     assert!(!footprints[0].intersects(footprints[1]));
 }
+
+#[test]
+fn independent_labels_require_one_reading_column_on_overlapping_rows() {
+    let options = AsciiRenderOptions::ascii();
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    let mut routes = vec![
+        PreparedRoute::for_test(
+            RoutePlan::new_without_markers_for_test(
+                vec![planned_cell(0, 4, '-', PlannedRouteCellKind::EdgeLine)],
+                vec![PlannedRouteLabel::new(
+                    RoutedLabelText::new("submit").unwrap(),
+                    RoutedLabelPlacement::new(1, 2, 6),
+                )],
+            ),
+            0,
+        ),
+        PreparedRoute::for_test(
+            RoutePlan::new_without_markers_for_test(
+                vec![planned_cell(0, 6, '-', PlannedRouteCellKind::EdgeLine)],
+                vec![PlannedRouteLabel::new(
+                    RoutedLabelText::new("changes requested").unwrap(),
+                    RoutedLabelPlacement::new(7, 2, 17),
+                )],
+            ),
+            1,
+        ),
+    ];
+    let mut resources = unbounded_resources();
+    allocate_test_label_placements(&mut routes, &graph_layout, &mut resources).unwrap();
+    let first = &routes[0].plan.labels[0];
+    let second = &routes[1].plan.labels[0];
+    assert!(
+        first.placement.y() != second.placement.y()
+            || first.placement.x() + first.placement.width() < second.placement.x()
+            || second.placement.x() + second.placement.width() < first.placement.x()
+    );
+}

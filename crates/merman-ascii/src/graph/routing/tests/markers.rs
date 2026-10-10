@@ -119,7 +119,8 @@ fn relocated_marker_suppresses_a_three_cell_mixed_body_tail() {
     let mut resources = unbounded_resources();
     let candidates = plan
         .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
-        .unwrap();
+        .unwrap()
+        .expect("straight terminal should have marker candidates");
     let candidate = candidates[3];
 
     plan.materialize_marker_at(MarkerEndpoint::End, candidate, &charset, "flowchart")
