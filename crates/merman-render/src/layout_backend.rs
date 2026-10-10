@@ -55,12 +55,11 @@ impl ElkRootAlgorithm {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct GraphLayoutSelection<'a> {
-    pub requested: &'a str,
+pub(crate) struct GraphLayoutSelection {
     pub backend: GraphLayoutBackend,
 }
 
-impl GraphLayoutSelection<'_> {
+impl GraphLayoutSelection {
     pub(crate) fn required_capability(self) -> Option<crate::RenderCapability> {
         match self.backend {
             GraphLayoutBackend::Dagre => None,
@@ -82,7 +81,7 @@ impl GraphLayoutSelection<'_> {
 }
 
 /// Select a registered loader before validating the family's layout data.
-pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection<'_> {
+pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection {
     let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
     let backend =
         if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(requested).is_some() {
@@ -92,7 +91,7 @@ pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection<'_> {
         } else {
             GraphLayoutBackend::Dagre
         };
-    GraphLayoutSelection { requested, backend }
+    GraphLayoutSelection { backend }
 }
 
 #[cfg(test)]
@@ -145,7 +144,6 @@ mod tests {
         ] {
             let config = json!({"layout": requested});
             let selected = resolve_graph_layout(&config);
-            assert_eq!(selected.requested, requested);
             let expected = if registered_elk && cfg!(feature = "layout-elk") {
                 GraphLayoutBackend::Elk
             } else {

@@ -162,11 +162,6 @@ impl PreparedTextTerminalLabelReceipt {
     pub fn native_terminal_proof_is_incomplete(&self) -> bool {
         self.provenance == PreparedTextLabelProvenance::Native && self.faces.len() > 1
     }
-
-    #[cfg(test)]
-    pub(crate) const fn identity_digest(&self) -> &[u8; 32] {
-        &self.identity_digest
-    }
 }
 
 /// Renderer-owned receipt binding a tokenized SVG artifact to its prepared-text ledger.

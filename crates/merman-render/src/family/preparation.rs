@@ -21,7 +21,6 @@ fn prepare_pair<S, L>(
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     render_context: diagrams::flowchart::FlowchartRenderContext,
-    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
     effective_config: &merman_core::MermaidConfig,
@@ -58,7 +57,6 @@ fn prepare_flowchart_artifact<L>(
         crate::flowchart::FlowchartBaseTypographyPlan::resolve(resolved_theme, effective_config);
     let svg_label_sidecar = svg_label_preparation.0.then(|| {
         crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
-            prepared_text_layout,
             resolved_theme,
             Arc::clone(&work_meter),
         )
@@ -80,9 +78,6 @@ fn prepare_flowchart_artifact<L>(
         return Err(error.into());
     }
     if let Some(error) = svg_label_sidecar.prepared_resource_error().cloned() {
-        return Err(error.into());
-    }
-    if let Some(error) = svg_label_sidecar.prepared_error().cloned() {
         return Err(error.into());
     }
     let uses_elk = match layout_view(&layout) {
@@ -395,17 +390,7 @@ fn prepare_state_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let label_sidecar = crate::state::StateLabelSidecarBuilder::new_with_work_meter(
-        execution.prepared_text_layout(),
-        execution.work_meter(),
-    );
-    if meta
-        .title
-        .as_deref()
-        .is_some_and(|title| !title.trim().is_empty())
-    {
-        label_sidecar.reject_unsupported("state_diagram_title_bbox_y");
-    }
+    let label_sidecar = crate::state::StateLabelSidecarBuilder::default();
     let layout = crate::state::layout_state_diagram_typed_with_work_meter(
         &model,
         meta.effective_config.as_value(),
@@ -416,12 +401,6 @@ fn prepare_state_family(
         execution,
     )?;
     let label_sidecar = label_sidecar.finish();
-    if let Some(error) = label_sidecar.prepared_resource_error().cloned() {
-        return Err(error.into());
-    }
-    if let Some(error) = label_sidecar.prepared_error().cloned() {
-        return Err(error.into());
-    }
     Ok(BuiltinFamilyArtifact::State(Box::new(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -451,7 +430,6 @@ fn prepare_flowchart_family(
             Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                 model,
                 render_context,
-                execution.prepared_text_layout(),
                 execution.resolved_theme(),
                 execution.math_backend(),
                 &meta.effective_config,
@@ -485,7 +463,6 @@ fn prepare_flowchart_family(
                 prepare_flowchart_artifact(
                     model,
                     render_context,
-                    execution.prepared_text_layout(),
                     execution.resolved_theme(),
                     execution.math_backend(),
                     &meta.effective_config,
@@ -1453,7 +1430,6 @@ pub(super) fn prepare_non_class_render(
                     title,
                     &meta.effective_config,
                     execution.resolved_theme(),
-                    execution.prepared_text_layout(),
                     execution.text_measurer(),
                     execution.math_backend(),
                     execution.work_meter(),
@@ -1580,7 +1556,6 @@ pub(super) fn prepare_non_class_render(
             let flow = prepare_flowchart_artifact(
                 flowchart,
                 render_context,
-                execution.prepared_text_layout(),
                 execution.resolved_theme(),
                 execution.math_backend(),
                 &config,

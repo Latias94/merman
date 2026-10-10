@@ -454,11 +454,8 @@ fn theme_binding() -> ThemeParseBinding {
 }
 
 fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {
-    crate::__private::ThemeCompatibilityPlan::try_without_family_overlays(
-        [0x5a; 32],
-        MermaidConfig::from_value(config),
-    )
-    .unwrap()
+    crate::__private::ThemeCompatibilityPlan::try_new([0x5a; 32], MermaidConfig::from_value(config))
+        .unwrap()
 }
 
 const NODE_PAINT_INPUTS: &[(crate::__private::GitGraphPaintInput, &str)] = &[

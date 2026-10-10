@@ -42,6 +42,7 @@ struct RawPreparedMathLabel {
 }
 
 impl RawPreparedMathLabel {
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
         let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
         Self::with_max_line_height(html, metrics, max_line_height_px, None)
@@ -270,6 +271,7 @@ impl MathPreparationOutcome {
         }
     }
 
+    #[cfg(test)]
     pub(crate) const fn unavailable_reason(&self) -> Option<MathPreparationUnavailable> {
         match self {
             Self::Prepared(_) => None,
@@ -282,6 +284,7 @@ impl MathPreparationOutcome {
 pub(crate) enum ConfiguredMathBackend {
     #[cfg(feature = "math")]
     CompiledRatex,
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     External(Arc<dyn MathRenderer + Send + Sync>),
 }
 
@@ -291,6 +294,7 @@ impl ConfiguredMathBackend {
         Self::CompiledRatex
     }
 
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(crate) fn external(renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         Self::External(renderer)
     }
@@ -308,10 +312,11 @@ impl ConfiguredMathBackend {
 
     /// Compatibility view used only by legacy, non-prepared projection paths.
     pub(crate) fn renderer(&self) -> &(dyn MathRenderer + Send + Sync) {
-        match self {
+        match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => &super::RatexMathRenderer,
-            Self::External(renderer) => renderer.as_ref(),
+            #[cfg(any(test, merman_internal_theme_acceptance))]
+            Self::External(ref renderer) => renderer.as_ref(),
         }
     }
 
@@ -321,7 +326,7 @@ impl ConfiguredMathBackend {
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<MathPreparationOutcome, OperationWorkError> {
         work_meter.preflight_prepared_text_retained_bytes(request.owner_retained_bytes)?;
-        match self {
+        match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => {
                 let classification = classify_math_label(request.text, Some(work_meter.as_ref()))?;
@@ -337,7 +342,8 @@ impl ConfiguredMathBackend {
                 }
                 prepare_compiled_ratex(request, classification, work_meter)
             }
-            Self::External(renderer) => {
+            #[cfg(any(test, merman_internal_theme_acceptance))]
+            Self::External(ref renderer) => {
                 if !charge_external_math_source(request.text, work_meter.as_ref())? {
                     return Ok(MathPreparationOutcome::Unavailable(
                         MathPreparationUnavailable::NotMath,
@@ -356,10 +362,11 @@ impl ConfiguredMathBackend {
 
 impl fmt::Debug for ConfiguredMathBackend {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        match *self {
             #[cfg(feature = "math")]
             Self::CompiledRatex => formatter.write_str("ConfiguredMathBackend::CompiledRatex"),
-            Self::External(renderer) => formatter
+            #[cfg(any(test, merman_internal_theme_acceptance))]
+            Self::External(ref renderer) => formatter
                 .debug_tuple("ConfiguredMathBackend::External")
                 .field(renderer)
                 .finish(),
@@ -478,6 +485,7 @@ fn classify_math_label(
     })
 }
 
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn charge_external_math_source(
     text: &str,
     work_meter: &OperationWorkMeter,
@@ -493,6 +501,7 @@ fn charge_external_math_source(
     Ok(saw_math)
 }
 
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn prepare_external(
     renderer: &(dyn MathRenderer + Send + Sync),
     request: PrepareMathLabelRequest<'_>,

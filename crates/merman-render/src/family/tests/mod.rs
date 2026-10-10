@@ -8613,11 +8613,9 @@ fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
             "themeVariables": {"darkMode": false}
         })),
     ] {
-        let plan = ThemeCompatibilityPlan::try_without_family_overlays(
-            *theme.recipe_fingerprint().as_bytes(),
-            compatibility,
-        )
-        .expect("bounded compatibility config");
+        let plan =
+            ThemeCompatibilityPlan::try_new(*theme.recipe_fingerprint().as_bytes(), compatibility)
+                .expect("bounded compatibility config");
         let parsed = install_theme_compatibility(Engine::new(), &plan)
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\n",

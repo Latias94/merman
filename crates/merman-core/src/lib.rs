@@ -139,7 +139,7 @@ pub mod __private {
 
     impl ThemeCompatibilityPlan {
         /// Builds a bounded parse recipe from compiled Mermaid compatibility input.
-        pub fn try_without_family_overlays(
+        pub fn try_new(
             recipe_identity: [u8; 32],
             compatibility_config: MermaidConfig,
         ) -> Result<Self, ThemeCompatibilityPlanError> {

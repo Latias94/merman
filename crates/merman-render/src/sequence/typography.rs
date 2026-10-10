@@ -4,11 +4,10 @@ use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet,
-    ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeTextStyle, ThemeTypographyProperty,
-    ThemeVariant,
+    ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
-use crate::text::{ParsedCssFontStack, TextStyle, parse_css_font_stack, resolve_css_font_weight};
+use crate::text::{TextStyle, parse_css_font_stack};
 
 const DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES: [ThemeTypographyProperty; 4] = [
     ThemeTypographyProperty::FontStack,
@@ -58,7 +57,6 @@ impl SequenceTypographyRole {
 struct SequenceBaseTypography {
     configured_font_family_css: String,
     font_family_css: String,
-    font_stack: ParsedCssFontStack,
     font_size_px: f64,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
 }
@@ -124,12 +122,9 @@ impl SequenceBaseTypography {
             }
         }
 
-        let font_stack = parse_css_font_stack(&font_family_css)
-            .expect("normalized Sequence font-family CSS must remain parseable");
         Self {
             configured_font_family_css: configured_font_family,
             font_family_css,
-            font_stack,
             font_size_px,
             typed_properties,
         }
@@ -235,8 +230,6 @@ pub(crate) struct SequenceResolvedTypography {
     role: SequenceTypographyRole,
     measurement_style: TextStyle,
     terminal_text_style: TextStyle,
-    prepared_typography: ThemeTextStyle,
-    font_stack: ParsedCssFontStack,
     resolved_style: Option<ResolvedThemeStyle>,
     text_effect: super::SequencePreparedTextEffect,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
@@ -327,9 +320,8 @@ impl SequenceResolvedTypography {
             } else {
                 &base_typography.font_family_css
             };
-        let (terminal_text_style, font_stack) =
+        let terminal_text_style =
             cssom_effective_text_style(&measurement_style, inherited_font_family);
-        let prepared_typography = prepared_typography(&terminal_text_style, &font_stack);
         let text_effect = if role == SequenceTypographyRole::Message {
             super::SequencePreparedTextEffect::default()
         } else {
@@ -343,8 +335,6 @@ impl SequenceResolvedTypography {
             role,
             measurement_style,
             terminal_text_style,
-            prepared_typography,
-            font_stack,
             resolved_style,
             text_effect,
             typed_properties,
@@ -361,14 +351,6 @@ impl SequenceResolvedTypography {
 
     pub(crate) const fn terminal_text_style(&self) -> &TextStyle {
         &self.terminal_text_style
-    }
-
-    pub(crate) const fn prepared_typography(&self) -> &ThemeTextStyle {
-        &self.prepared_typography
-    }
-
-    pub(crate) const fn font_stack(&self) -> &ParsedCssFontStack {
-        &self.font_stack
     }
 
     pub(crate) const fn resolved_style(&self) -> Option<&ResolvedThemeStyle> {
@@ -589,10 +571,6 @@ impl SequenceTypographyPlan {
         std::sync::Arc::clone(&self.compat)
     }
 
-    pub(crate) const fn inherited_font_stack(&self) -> &ParsedCssFontStack {
-        &self.base_typography.font_stack
-    }
-
     pub(crate) fn base_font_family_css(&self) -> &str {
         &self.base_typography.font_family_css
     }
@@ -608,13 +586,6 @@ impl SequenceTypographyPlan {
             font_weight: None,
             font_style: None,
         }
-    }
-
-    pub(crate) fn base_prepared_typography(&self) -> ThemeTextStyle {
-        ThemeTextStyle::default()
-            .with_font_stack(self.base_typography.font_stack.font_stack().clone())
-            .with_font_size_px(self.base_typography.font_size_px as f32)
-            .expect("resolved Sequence base font size remains positive and finite")
     }
 
     pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
@@ -716,43 +687,17 @@ fn apply_direct_property(
 fn cssom_effective_text_style(
     measurement_style: &TextStyle,
     inherited_font_family: &str,
-) -> (TextStyle, ParsedCssFontStack) {
+) -> TextStyle {
     let mut terminal_text_style = measurement_style.clone();
     if let Some(font_family) = super::sequence_inline_font_family(measurement_style)
-        && let Some(font_stack) = parse_css_font_stack(&font_family)
+        && parse_css_font_stack(&font_family).is_some()
     {
         terminal_text_style.font_family = Some(font_family);
-        return (terminal_text_style, font_stack);
+        return terminal_text_style;
     }
 
-    let font_stack = parse_css_font_stack(inherited_font_family)
-        .expect("normalized Mermaid font-family CSS must remain parseable");
     terminal_text_style.font_family = Some(inherited_font_family.to_string());
-    (terminal_text_style, font_stack)
-}
-
-fn prepared_typography(text_style: &TextStyle, font_stack: &ParsedCssFontStack) -> ThemeTextStyle {
-    let mut prepared = ThemeTextStyle::default().with_font_stack(font_stack.font_stack().clone());
-    prepared = prepared
-        .with_font_size_px(text_style.font_size.max(1.0) as f32)
-        .expect("Sequence role font size is normalized before prepared-text admission");
-    if let Some(weight) = text_style
-        .font_weight
-        .as_deref()
-        .and_then(|weight| resolve_css_font_weight(weight, 400))
-    {
-        prepared = prepared
-            .with_font_weight(weight)
-            .expect("resolved CSS font weight is inside the typed domain");
-    }
-    if let Some(style) = text_style.font_style.as_deref() {
-        prepared = prepared.with_font_style(match style.trim().to_ascii_lowercase().as_str() {
-            "italic" => crate::diagram_theme::FontStyle::Italic,
-            "oblique" => crate::diagram_theme::FontStyle::Oblique,
-            _ => crate::diagram_theme::FontStyle::Normal,
-        });
-    }
-    prepared
+    terminal_text_style
 }
 
 fn append_typography_declarations(style: &mut String, typography: &TextStyle) {
@@ -797,7 +742,7 @@ mod tests {
             ..TextStyle::default()
         };
 
-        let (terminal_style, stack) =
+        let terminal_style =
             cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
 
         assert_eq!(
@@ -808,7 +753,6 @@ mod tests {
             terminal_style.font_family.as_deref(),
             Some("Theme Sans,sans-serif")
         );
-        assert_eq!(stack.families(), ["Theme Sans", "sans-serif"]);
     }
 
     #[test]
@@ -817,13 +761,12 @@ mod tests {
             font_family: Some("\"Quoted; Family".to_string()),
             ..TextStyle::default()
         };
-        let (terminal_style, stack) =
+        let terminal_style =
             cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
         assert_eq!(
             terminal_style.font_family.as_deref(),
             Some("Theme Sans,sans-serif")
         );
-        assert_eq!(stack.families(), ["Theme Sans", "sans-serif"]);
     }
 
     #[test]
@@ -833,13 +776,12 @@ mod tests {
             ..TextStyle::default()
         };
 
-        let (terminal_style, stack) =
+        let terminal_style =
             cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
 
         assert_eq!(
             terminal_style.font_family.as_deref(),
             Some("Root Sans, serif")
         );
-        assert_eq!(stack.families(), ["Root Sans", "serif"]);
     }
 }

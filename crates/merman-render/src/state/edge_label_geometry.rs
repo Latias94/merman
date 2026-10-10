@@ -3,9 +3,7 @@
 use std::sync::Arc;
 
 use crate::entities::decode_mermaid_entities_for_render_text;
-use crate::text::{
-    PreparedText, PreparedTextVerticalExtents, TextLayoutError, TextMetrics, WrapMode,
-};
+use crate::text::{TextMetrics, WrapMode};
 
 use super::StateLabelMeasurement;
 use super::label_artifact::{StateLabelMetricsRequest, StateLabelOwner, StateLabelSourceKind};
@@ -20,26 +18,6 @@ fn native_padding_px(owner: StateLabelOwner<'_>) -> f64 {
         | StateLabelOwner::NodeDescription(_)
         | StateLabelOwner::ClusterTitle(_) => 0.0,
     }
-}
-
-fn prepared_line_ink_extents_from_centered_anchor(
-    computed_length_px: f64,
-    bbox_x: (f64, f64),
-) -> Option<(f64, f64)> {
-    if !computed_length_px.is_finite()
-        || !bbox_x.0.is_finite()
-        || !bbox_x.1.is_finite()
-        || computed_length_px < 0.0
-        || bbox_x.0 < 0.0
-        || bbox_x.1 < 0.0
-    {
-        return None;
-    }
-    let half_advance_px = computed_length_px / 2.0;
-    let left_from_anchor_px = bbox_x.0 + half_advance_px;
-    let right_from_anchor_px = (bbox_x.1 - half_advance_px).max(0.0);
-    (left_from_anchor_px.is_finite() && right_from_anchor_px.is_finite())
-        .then_some((left_from_anchor_px, right_from_anchor_px))
 }
 
 fn symmetric_edge_width_px(
@@ -107,8 +85,8 @@ fn measured_wrapped_lines(request: StateLabelMetricsRequest<'_>) -> Vec<String> 
 
 /// Operation-local geometry shared by State native-text layout and terminal SVG emission.
 ///
-/// Baselines are retained in SVG user-space pixels relative to the top of the layout box. Prepared
-/// labels derive them from shaped glyph extents. Ordinary labels retain the wrapped rows and the
+/// Baselines are retained in SVG user-space pixels relative to the top of the layout box.
+/// Labels retain the wrapped rows and the
 /// operation-selected SVG bbox profile after their first layout measurement, so the writer does not
 /// segment the semantic label independently.
 #[derive(Debug, Clone, PartialEq)]
@@ -121,7 +99,6 @@ pub(crate) struct StateNativeLabelGeometry {
     line_height_px: f64,
     line_count: usize,
     measured_lines: Option<Arc<[Box<str>]>>,
-    prepared_ink_extents: Option<PreparedTextVerticalExtents>,
 }
 
 impl StateNativeLabelGeometry {
@@ -218,69 +195,6 @@ impl StateNativeLabelGeometry {
                     .collect::<Vec<_>>()
                     .into(),
             ),
-            prepared_ink_extents: None,
-        })
-    }
-
-    pub(super) fn from_prepared(
-        owner: StateLabelOwner<'_>,
-        prepared: &PreparedText,
-    ) -> Result<Self, TextLayoutError> {
-        let metrics = prepared.metrics();
-        if metrics.line_count == 0 {
-            return Err(TextLayoutError::InvalidPreparedText);
-        }
-        let ink_extents = prepared.vertical_extents();
-        let mut ink_left_from_anchor_px = 0.0_f64;
-        let mut ink_right_from_anchor_px = 0.0_f64;
-        let mut maximum_half_advance_px = 0.0_f64;
-        for line in prepared.lines() {
-            let half_advance_px = line.computed_length_px() / 2.0;
-            let (left_from_anchor_px, right_from_anchor_px) =
-                prepared_line_ink_extents_from_centered_anchor(
-                    line.computed_length_px(),
-                    line.bbox_x(),
-                )
-                .ok_or(TextLayoutError::InvalidPreparedText)?;
-            ink_left_from_anchor_px = ink_left_from_anchor_px.max(left_from_anchor_px);
-            ink_right_from_anchor_px = ink_right_from_anchor_px.max(right_from_anchor_px);
-            maximum_half_advance_px = maximum_half_advance_px.max(half_advance_px);
-        }
-
-        let padding_px = native_padding_px(owner);
-        let width_px = match owner {
-            StateLabelOwner::Edge(_) => symmetric_edge_width_px(
-                ink_left_from_anchor_px,
-                ink_right_from_anchor_px,
-                maximum_half_advance_px,
-            )
-            .ok_or(TextLayoutError::InvalidPreparedText)?,
-            StateLabelOwner::Node(_)
-            | StateLabelOwner::NodeTitle(_)
-            | StateLabelOwner::NodeDescription(_)
-            | StateLabelOwner::ClusterTitle(_) => metrics.width,
-        };
-        let height_px = ink_extents.height_px() + padding_px * 2.0;
-        let first_baseline_y_px = padding_px - ink_extents.top_px();
-        if !width_px.is_finite()
-            || !height_px.is_finite()
-            || !first_baseline_y_px.is_finite()
-            || width_px < 0.0
-            || height_px < 0.0
-        {
-            return Err(TextLayoutError::InvalidPreparedText);
-        }
-
-        Ok(Self {
-            width_px,
-            height_px,
-            ink_left_from_anchor_px,
-            ink_right_from_anchor_px,
-            first_baseline_y_px,
-            line_height_px: prepared.line_height_px(),
-            line_count: metrics.line_count,
-            measured_lines: None,
-            prepared_ink_extents: Some(ink_extents),
         })
     }
 
@@ -290,16 +204,6 @@ impl StateNativeLabelGeometry {
 
     pub(crate) const fn height_px(&self) -> f64 {
         self.height_px
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn ink_left_from_anchor_px(&self) -> f64 {
-        self.ink_left_from_anchor_px
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn ink_right_from_anchor_px(&self) -> f64 {
-        self.ink_right_from_anchor_px
     }
 
     pub(crate) const fn line_count(&self) -> usize {
@@ -326,45 +230,5 @@ impl StateNativeLabelGeometry {
             height: self.height_px,
             line_count: self.line_count,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn prepared_center_anchor_converts_adversarial_advance_and_bbox_without_losing_overhang() {
-        let projection = crate::text::TextProjection::new_family_normalized(
-            "Skew",
-            crate::diagram_theme::TextTransform::None,
-        )
-        .expect("bounded prepared projection");
-        let line = crate::text::PreparedTextLine::new(
-            "Skew",
-            crate::text::TextByteRange::new(0, 4),
-            10.0,
-            (0.0, 20.0),
-            PreparedTextVerticalExtents::new(-8.0, 2.0).expect("bounded prepared vertical extents"),
-        )
-        .expect("bounded adversarial prepared line");
-        let prepared = PreparedText::new(projection, [line], 12.0, None)
-            .expect("admit adversarial prepared geometry");
-        let geometry =
-            StateNativeLabelGeometry::from_prepared(StateLabelOwner::Edge("edge"), &prepared)
-                .expect("State edge geometry must retain asymmetric prepared ink");
-
-        assert_eq!(geometry.ink_left_from_anchor_px(), 5.0);
-        assert_eq!(geometry.ink_right_from_anchor_px(), 15.0);
-        let width = geometry.width_px();
-        assert_eq!(width, 34.0);
-        let left_padding = width / 2.0 - geometry.ink_left_from_anchor_px();
-        let right_padding = width / 2.0 - geometry.ink_right_from_anchor_px();
-        assert!(left_padding >= STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX);
-        assert!(right_padding >= STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX);
-        assert_eq!(
-            left_padding.min(right_padding),
-            STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX
-        );
     }
 }

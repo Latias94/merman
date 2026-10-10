@@ -575,7 +575,6 @@ pub(crate) struct ResolvedThemeAdmission {
 pub(crate) fn resolve_theme_admission(
     admission: &ThemeAdmissionPolicy,
     font_sources: &FontSourcePolicy,
-    measurement_fallbacks: &HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
     requirements: &ThemeRequirements,
     catalog: &FontCatalog,
@@ -599,11 +598,7 @@ pub(crate) fn resolve_theme_admission(
         host_allowed_capabilities: requirements.required_capabilities.clone(),
         host_allowed_text_capabilities: requirements.required_text_capabilities.clone(),
         font_sources: font_sources.restrict_to(catalog.available_sources())?,
-        measurement_fallbacks: if catalog.requires_prepared_text_layout() {
-            measurement_fallbacks.clone()
-        } else {
-            HostMeasurementFallbackPolicy::default()
-        },
+        measurement_fallbacks: HostMeasurementFallbackPolicy::default(),
         portability,
         trusted_lanes: admission.trusted_lanes.clone(),
     })
@@ -743,7 +738,6 @@ mod tests {
         resolve_theme_admission(
             admission,
             &FontSourcePolicy::default(),
-            &fallback_policy(&[HostMeasurementFallback::AcceptHostDependent]),
             ThemePortabilityRequirement::BestEffort,
             requirements,
             &catalog,
@@ -849,7 +843,6 @@ mod tests {
         let resolved = resolve_theme_admission(
             &ThemeAdmissionPolicy::permissive(),
             &FontSourcePolicy::default(),
-            &fallback_policy(HostMeasurementFallback::ALL),
             ThemePortabilityRequirement::BestEffort,
             &ThemeRequirements::default(),
             &FontCatalog::system_fonts(),
@@ -957,7 +950,6 @@ mod tests {
             resolve_theme_admission(
                 &policy,
                 &FontSourcePolicy::embedded_only(),
-                &HostMeasurementFallbackPolicy::default(),
                 ThemePortabilityRequirement::RequirePortable,
                 &denied_source,
                 &system_catalog,

@@ -44,7 +44,6 @@ fn render_state_diagram_svg_with_plan(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    label_sidecar.validate_for_render(model, layout)?;
     let timing = options.timing();
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
@@ -1162,7 +1161,6 @@ fn render_state_cluster(
         .copied()
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
-    let prepared_title = ctx.label_sidecar.cluster_title(cluster_id);
     let measured_title = ctx
         .label_sidecar
         .measured_native_geometry(crate::state::StateLabelOwner::ClusterTitle(cluster_id));
@@ -1272,34 +1270,26 @@ fn render_state_cluster(
     };
 
     if ctx.html_labels {
-        let prepared_token_attr = state_prepared_html_label_token_attr(prepared_title);
         let label_div_style = format!(
             "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
             title_div_prefix
         );
         let _ = write!(
             out,
-            r#"<g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"#,
+            r#"<g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"#,
             outer_shape,
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
-            prepared_token_attr,
             fmt(cluster.title_label.width.max(0.0)),
             fmt(title_height),
             escape_attr(&label_div_style),
-            prepared_title
-                .map(|prepared| state_prepared_node_label_html_with_style(
-                    prepared,
-                    (!title_style.is_empty()).then_some(title_style)
-                ))
-                .unwrap_or_else(|| state_node_label_plain_html(&title)),
+            state_node_label_plain_html(&title),
             inner_shape
         );
     } else {
         let title_dom = state_native_svg_text_label(
             &title,
-            prepared_title,
             measured_title,
             false,
             (!title_style.is_empty()).then_some(title_style),
@@ -1399,7 +1389,7 @@ mod tests {
             let config =
                 serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
             let plan = crate::state::StateStylePlan::resolve_unthemed(model, &config);
-            let labels = crate::state::StateLabelSidecarBuilder::new(None).finish();
+            let labels = crate::state::StateLabelSidecarBuilder::default().finish();
             let effects = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
             crate::svg::with_test_svg_execution(
                 crate::DiagramFamilyId::STATE,

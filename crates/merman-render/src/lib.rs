@@ -841,12 +841,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl From<crate::text::TextLayoutError> for Error {
-    fn from(error: crate::text::TextLayoutError) -> Self {
-        Self::TextLayout(crate::text::TextLayoutFailure::from(&error))
-    }
-}
-
 impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {
         Self::InvalidModel {
@@ -1068,10 +1062,6 @@ impl<'a> LayoutExecution<'a> {
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
         &self.text_measurer
-    }
-
-    pub(crate) fn prepared_text_layout(&self) -> Option<&crate::text::PreparedTextLayout> {
-        self.family.session().prepared_text_layout()
     }
 
     pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {

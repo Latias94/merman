@@ -790,19 +790,6 @@ pub(super) fn state_node_label_html_with_style(
     )
 }
 
-pub(super) fn state_prepared_node_label_html_with_style(
-    prepared: &crate::state::PreparedStateLabel,
-    span_style: Option<&str>,
-) -> String {
-    let style = prepared.merge_emission_font_style(span_style);
-    let style_attr = format!(r#" style="{}""#, escape_xml_display(&style));
-    format!(
-        r#"<span{} class="nodeLabel markdown-node-label"><p>{}</p></span>"#,
-        style_attr,
-        state_prepared_html_lines(prepared),
-    )
-}
-
 fn state_escape_amp_preserving_entities(raw: &str) -> String {
     crate::xml::normalize_html_entities_for_xml(raw).into_owned()
 }
@@ -883,56 +870,8 @@ pub(super) fn state_node_label_plain_html(raw: &str) -> String {
     )
 }
 
-pub(super) fn state_prepared_node_label_plain_html(
-    prepared: &crate::state::PreparedStateLabel,
-) -> String {
-    let style = prepared.merge_emission_font_style(None);
-    format!(
-        r#"<span class="nodeLabel" style="{}"><p>{}</p></span>"#,
-        escape_xml_display(&style),
-        state_prepared_html_lines(prepared),
-    )
-}
-
 pub(super) fn state_edge_label_html(raw: &str) -> String {
     crate::state::state_edge_label_xhtml(raw)
-}
-
-pub(super) fn state_prepared_edge_label_html(
-    prepared: &crate::state::PreparedStateLabel,
-) -> String {
-    let style = prepared.merge_emission_font_style(None);
-    format!(
-        r#"<p style="{}">{}</p>"#,
-        escape_xml_display(&style),
-        state_prepared_html_lines(prepared)
-    )
-}
-
-pub(super) fn state_prepared_html_label_token_attr(
-    prepared: Option<&crate::state::PreparedStateLabel>,
-) -> String {
-    prepared
-        .and_then(crate::state::PreparedStateLabel::label_id_for_emission)
-        .map(|id| {
-            format!(
-                r#" {}="{}""#,
-                crate::svg::fallback::PREPARED_TEXT_LABEL_DATA_ATTR,
-                escape_attr(&id.as_svg_id())
-            )
-        })
-        .unwrap_or_default()
-}
-
-pub(super) fn state_prepared_html_lines(prepared: &crate::state::PreparedStateLabel) -> String {
-    let mut out = String::new();
-    for (index, line) in prepared.wrapped_lines().enumerate() {
-        if index > 0 {
-            out.push_str("<br />");
-        }
-        let _ = write!(&mut out, "{}", escape_xml_display(line));
-    }
-    out
 }
 
 fn state_svg_text_style_attr(style_attr: &str) -> String {
@@ -970,25 +909,7 @@ pub(super) fn state_svg_text_label(
 ) -> String {
     let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
     let normalized = state_normalize_br_tags(decoded.as_ref());
-    state_svg_text_label_lines(normalized.split('\n'), center_text, style_attr, None)
-}
-
-pub(crate) fn state_prepared_svg_text_label(
-    prepared: &crate::state::PreparedStateLabel,
-    center_text: bool,
-    style_attr: Option<&str>,
-) -> String {
-    let geometry = prepared
-        .native_geometry()
-        .expect("native prepared State labels retain terminal geometry");
-    let style_attr = prepared.merge_emission_font_style(style_attr);
-    state_native_svg_text_label_lines(
-        prepared.wrapped_lines(),
-        geometry,
-        center_text,
-        Some(&style_attr),
-        prepared.label_id_for_emission(),
-    )
+    state_svg_text_label_lines(normalized.split('\n'), center_text, style_attr)
 }
 
 pub(crate) fn state_measured_svg_text_label(
@@ -1003,20 +924,16 @@ pub(crate) fn state_measured_svg_text_label(
         geometry,
         center_text,
         style_attr,
-        None,
     )
 }
 
 pub(crate) fn state_native_svg_text_label(
     raw: &str,
-    prepared: Option<&crate::state::PreparedStateLabel>,
     measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
-    if let Some(prepared) = prepared {
-        state_prepared_svg_text_label(prepared, center_text, style_attr)
-    } else if let Some(geometry) = measured_geometry {
+    if let Some(geometry) = measured_geometry {
         state_measured_svg_text_label(geometry, center_text, style_attr)
     } else {
         state_svg_text_label(raw, center_text, style_attr)
@@ -1028,7 +945,6 @@ fn state_native_svg_text_label_lines<'a>(
     geometry: &crate::state::StateNativeLabelGeometry,
     center_text: bool,
     style_attr: Option<&str>,
-    label_id: Option<crate::text::PreparedTextLabelId>,
 ) -> String {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
@@ -1040,10 +956,7 @@ fn state_native_svg_text_label_lines<'a>(
         .filter(|style| !style.is_empty())
         .map(|style| format!(r#" style="{}""#, escape_attr(&style)))
         .unwrap_or_default();
-    let label_id_attr = label_id
-        .map(|id| format!(r#" id="{id}""#))
-        .unwrap_or_default();
-    let mut out = format!(r#"<text{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    let mut out = format!(r#"<text{text_anchor}{svg_style_attr}>"#);
     let mut line_count = 0usize;
     for (line_index, line) in lines.into_iter().enumerate() {
         let baseline_y_px = geometry
@@ -1067,7 +980,6 @@ fn state_svg_text_label_lines<'a>(
     lines: impl IntoIterator<Item = &'a str>,
     center_text: bool,
     style_attr: Option<&str>,
-    label_id: Option<crate::text::PreparedTextLabelId>,
 ) -> String {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
@@ -1079,11 +991,8 @@ fn state_svg_text_label_lines<'a>(
         .filter(|s| !s.is_empty())
         .map(|s| format!(r#" style="{}""#, escape_attr(&s)))
         .unwrap_or_default();
-    let label_id_attr = label_id
-        .map(|id| format!(r#" id="{id}""#))
-        .unwrap_or_default();
 
-    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}>"#);
     for (idx, line) in lines.into_iter().enumerate() {
         let y = idx as f64 * 1.1 - 0.1;
         let _ = write!(
@@ -1240,7 +1149,7 @@ mod tests {
     }
 
     #[test]
-    fn state_svg_text_applies_the_prepared_style_to_each_line() {
+    fn state_svg_text_applies_the_resolved_style_to_each_line() {
         let svg = state_svg_text_label(
             "first\nsecond",
             false,

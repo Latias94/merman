@@ -197,7 +197,6 @@ mod tests {
             None,
             &merman_core::MermaidConfig::default(),
             None,
-            None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,
             std::sync::Arc::clone(&work),

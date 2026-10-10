@@ -189,12 +189,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         super::emission::FlowchartNodeLabelEmissionReceipt::verified()
             .with_font_weight_reach(typography_applicable, weight_verified)
             .with_background_area(width > 0.0 && height > 0.0)
-            .with_prepared_typography_reach(
-                typography_applicable,
-                prepared_svg_label.as_ref().is_some_and(
-                    crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
-                ),
-            )
+            .with_prepared_typography_reach(typography_applicable, false)
             .with_label_fill_reach(typography_applicable, true)
             .with_html_typography_statuses(html_font_stack, html_font_size)
             .with_text_paint_facts(ctx.text_surface_paint.generic_text.requested().then(|| {
@@ -602,12 +597,7 @@ fn render_flowchart_node_label_with_wrapper(
             typography_applicable,
             html_weight_verified && label_weight_is_verified(ctx, label, None, &[], &[]),
         )
-        .with_prepared_typography_reach(
-            typography_applicable,
-            prepared_svg_label.as_ref().is_some_and(
-                crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
-            ),
-        )
+        .with_prepared_typography_reach(typography_applicable, false)
         .with_label_fill_reach(typography_applicable, true)
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
         .with_text_paint_facts(text_paint_facts)

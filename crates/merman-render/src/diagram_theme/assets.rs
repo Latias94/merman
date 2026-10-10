@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 
 use super::admission::{FontEmbeddingRequirement, FontSource, ThemeAdmissionError};
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
-use super::typography::FontStack;
 
 const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
 
@@ -182,10 +181,10 @@ impl FontCatalogSpec {
         self
     }
 
-    /// Validates and canonicalizes this catalog under host-owned resource ceilings.
+    /// Checks custom font input under host-owned ceilings before rejecting unsupported assets.
     ///
-    /// Later theme compilers use the same operation; constructing a spec never grants a larger
-    /// budget than the policy selected by the host.
+    /// Embedded theme fonts are unavailable. Input limits and source validation still run first;
+    /// constructing a spec never grants a larger budget than the policy selected by the host.
     pub fn compile(self, resources: &ThemeResourcePolicy) -> Result<FontCatalog, FontCatalogError> {
         compile_font_catalog(self, resources)
     }
@@ -245,7 +244,6 @@ pub struct FontAsset {
     canonical_container: FontContainer,
     canonical_bytes: Arc<[u8]>,
     fingerprint: FontAssetFingerprint,
-    admission_receipt: FontAssetAdmissionReceipt,
 }
 
 impl FontAsset {
@@ -285,32 +283,6 @@ impl fmt::Debug for FontAsset {
             .field("fingerprint", &self.fingerprint)
             .finish()
     }
-}
-
-/// Compile-time facts that cannot be recovered from the retained canonical font bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FontAssetAdmissionReceipt {
-    compressed_bytes: Option<usize>,
-    expansion_source_bytes: usize,
-}
-
-impl FontAssetAdmissionReceipt {
-    fn validate(
-        self,
-        canonical_bytes: &[u8],
-        resources: &ThemeResourcePolicy,
-    ) -> Result<(), ThemeResourceLimitExceeded> {
-        if let Some(compressed_bytes) = self.compressed_bytes {
-            resources.check_font_asset_compressed_bytes(compressed_bytes)?;
-        }
-        resources.check_font_asset_decoded_bytes(canonical_bytes.len())?;
-        resources.check_font_decoded_expansion(self.expansion_source_bytes, canonical_bytes.len())
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct FontCatalogAdmissionReceipt {
-    deduplicated_decoded_bytes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -390,22 +362,8 @@ impl FontFamilyAlias {
     }
 }
 
-#[derive(Debug)]
-struct FontCatalogInner {
-    assets: Vec<FontAsset>,
-    faces: Vec<FontFaceMetadata>,
-    aliases: Vec<FontFamilyAlias>,
-    generic_families: BTreeMap<GenericFontFamily, String>,
-    named_family_names: BTreeMap<String, String>,
-    resolved_family_names: BTreeMap<String, String>,
-    available_sources: BTreeSet<FontSource>,
-    embedding: FontEmbeddingRequirement,
-    fingerprint: FontCatalogFingerprint,
-    admission_receipt: FontCatalogAdmissionReceipt,
-}
-
 #[derive(Debug, Clone)]
-pub struct FontCatalog(Arc<FontCatalogInner>);
+pub struct FontCatalog(FontCatalogFingerprint);
 
 impl FontCatalog {
     /// Creates the asset-free catalog used when text may resolve through host system fonts.
@@ -415,101 +373,37 @@ impl FontCatalog {
     pub fn system_fonts() -> Self {
         let mut hasher = Sha256::new();
         update_len_prefixed(&mut hasher, FONT_CATALOG_FINGERPRINT_DOMAIN);
-        // Preserve the canonical identity of the unchanged asset-free catalog. The former public
-        // constructor name described an assurance claim, not different catalog content.
+        // Preserve the established canonical identity of the asset-free system-font mode.
         update_len_prefixed(&mut hasher, b"default-parity");
-        Self(Arc::new(FontCatalogInner {
-            assets: Vec::new(),
-            faces: Vec::new(),
-            aliases: Vec::new(),
-            generic_families: BTreeMap::new(),
-            named_family_names: BTreeMap::new(),
-            resolved_family_names: BTreeMap::new(),
-            available_sources: [FontSource::System].into_iter().collect(),
-            embedding: FontEmbeddingRequirement::NoEmbedding,
-            fingerprint: FontCatalogFingerprint(hasher.finalize().into()),
-            admission_receipt: FontCatalogAdmissionReceipt::default(),
-        }))
+        Self(FontCatalogFingerprint(hasher.finalize().into()))
     }
 
     pub fn assets(&self) -> &[FontAsset] {
-        &self.0.assets
+        &[]
     }
 
     pub fn faces(&self) -> &[FontFaceMetadata] {
-        &self.0.faces
+        &[]
     }
 
     pub fn aliases(&self) -> &[FontFamilyAlias] {
-        &self.0.aliases
+        &[]
     }
 
-    pub fn generic_family(&self, family: GenericFontFamily) -> Option<&str> {
-        self.0.generic_families.get(&family).map(String::as_str)
+    pub fn generic_family(&self, _family: GenericFontFamily) -> Option<&str> {
+        None
     }
 
     pub fn available_sources(&self) -> impl ExactSizeIterator<Item = FontSource> + '_ {
-        self.0.available_sources.iter().copied()
+        std::iter::once(FontSource::System)
     }
 
     pub fn embedding_requirement(&self) -> FontEmbeddingRequirement {
-        self.0.embedding
+        FontEmbeddingRequirement::NoEmbedding
     }
 
     pub fn fingerprint(&self) -> FontCatalogFingerprint {
-        self.0.fingerprint
-    }
-
-    pub(crate) fn requires_prepared_text_layout(&self) -> bool {
-        !self.0.assets.is_empty()
-    }
-
-    pub(crate) fn validate_retained_resources(
-        &self,
-        resources: &ThemeResourcePolicy,
-    ) -> Result<(), ThemeResourceLimitExceeded> {
-        resources.check_font_asset_count(self.0.assets.len())?;
-        for asset in &self.0.assets {
-            asset
-                .admission_receipt
-                .validate(&asset.canonical_bytes, resources)?;
-        }
-        resources.check_font_catalog_decoded_bytes(
-            self.0.admission_receipt.deduplicated_decoded_bytes,
-        )?;
-        resources.check_font_face_count(self.0.faces.len())?;
-        resources
-            .check_font_table_count(self.0.faces.iter().map(FontFaceMetadata::table_count).sum())?;
-        resources.check_font_alias_count(self.0.aliases.len() + self.0.generic_families.len())
-    }
-
-    pub(crate) fn canonical_family_name(&self, requested: &str) -> Option<&str> {
         self.0
-            .resolved_family_names
-            .get(&normalize_family_key(requested))
-            .map(String::as_str)
-    }
-
-    pub(crate) fn canonical_named_family_name(&self, requested: &str) -> Option<&str> {
-        self.0
-            .named_family_names
-            .get(&normalize_family_key(requested))
-            .map(String::as_str)
-    }
-
-    pub(crate) fn admit_font_stack(&self, requested: &FontStack) -> Option<FontStack> {
-        let mut admitted = Vec::new();
-        let mut admitted_keys = BTreeSet::new();
-        for family in requested.families() {
-            let Some(canonical) = self.canonical_family_name(family) else {
-                continue;
-            };
-            let key = normalize_family_key(canonical);
-            if admitted_keys.insert(key) {
-                admitted.push(canonical.to_string());
-            }
-        }
-        FontStack::new(admitted).ok()
     }
 }
 
@@ -563,10 +457,6 @@ pub(super) fn detect_font_container(bytes: &[u8]) -> Option<FontContainer> {
         b"wOF2" => Some(FontContainer::Woff2),
         _ => None,
     }
-}
-
-fn normalize_family_key(name: &str) -> String {
-    name.trim().to_lowercase()
 }
 
 fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
@@ -753,9 +643,16 @@ mod tests {
     fn system_font_catalog_retains_no_custom_bytes() {
         let catalog = FontCatalog::system_fonts();
 
-        assert!(!catalog.requires_prepared_text_layout());
         assert!(catalog.assets().is_empty());
         assert!(catalog.faces().is_empty());
+        assert!(catalog.aliases().is_empty());
+        for generic in GenericFontFamily::ALL {
+            assert_eq!(catalog.generic_family(*generic), None);
+        }
+        assert_eq!(
+            catalog.embedding_requirement(),
+            FontEmbeddingRequirement::NoEmbedding
+        );
         assert_eq!(
             catalog.fingerprint().to_hex(),
             "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa"

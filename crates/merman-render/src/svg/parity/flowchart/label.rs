@@ -453,59 +453,24 @@ pub(crate) fn write_flowchart_svg_label_plan_with_style(
     extra_style: Option<&str>,
 ) {
     let lines = plan.wrapped_lines();
-    let label_id = plan.prepared_text_label_id();
     let style = plan
         .merge_emission_font_style(include_style.then_some(""))
         .map(|style| append_svg_label_style(style, extra_style));
     if let Some(style) = style.as_deref() {
-        if let Some(label_id) = label_id {
-            crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
-                out,
-                &lines,
-                style,
-                false,
-                label_id,
-                plan.emitted_admitted_typography(),
-                plan.line_height_em(),
-                plan.font_weight(),
-            );
-        } else {
-            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-                out,
-                &lines,
-                style,
-                false,
-                plan.font_weight(),
-            );
-        }
-    } else if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
-        if let Some(label_id) = label_id {
-            crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
-                out,
-                &lines,
-                extra_style,
-                false,
-                label_id,
-                false,
-                plan.line_height_em(),
-                plan.font_weight(),
-            );
-        } else {
-            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-                out,
-                &lines,
-                extra_style,
-                false,
-                plan.font_weight(),
-            );
-        }
-    } else if let Some(label_id) = label_id {
-        crate::svg::parity::label::write_prepared_svg_text_source_word_lines(
+        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
             out,
             &lines,
-            include_style,
+            style,
             false,
-            label_id,
+            plan.font_weight(),
+        );
+    } else if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
+        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+            out,
+            &lines,
+            extra_style,
+            false,
+            plan.font_weight(),
         );
     } else {
         write_flowchart_svg_source_word_lines(out, &lines, include_style);
@@ -529,30 +494,16 @@ pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
     style: &str,
 ) {
     let lines = plan.wrapped_lines();
-    let label_id = plan.prepared_text_label_id();
-    let admitted_style = plan.merge_emission_font_style(Some(style));
-    let inherits_admitted_font = plan.emitted_admitted_typography();
-    let style = admitted_style.unwrap_or_else(|| style.to_string());
-    if let Some(label_id) = label_id {
-        crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
-            out,
-            &lines,
-            &style,
-            true,
-            label_id,
-            inherits_admitted_font,
-            plan.line_height_em(),
-            plan.font_weight(),
-        );
-    } else {
-        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-            out,
-            &lines,
-            &style,
-            true,
-            plan.font_weight(),
-        );
-    }
+    let style = plan
+        .merge_emission_font_style(Some(style))
+        .unwrap_or_else(|| style.to_string());
+    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+        out,
+        &lines,
+        &style,
+        true,
+        plan.font_weight(),
+    );
 }
 
 #[cfg(test)]

@@ -1074,7 +1074,6 @@ impl ResolvedFamilyStylePlan {
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
         effective_config: &merman_core::MermaidConfig,
         title: Option<&str>,
-        prepared_text_available: bool,
         effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
@@ -1085,7 +1084,6 @@ impl ResolvedFamilyStylePlan {
             self.resolved_theme.as_deref(),
             effective_theme_resource_policy,
             title,
-            prepared_text_available,
             work_meter,
         )?;
         self.theme_evidence = theme_evidence;
@@ -1426,7 +1424,6 @@ impl FamilyRenderContext {
             model,
             effective_config,
             title,
-            self.session.prepared_text_layout().is_some(),
             effective_theme_resource_policy,
             self.session.work_meter().as_ref(),
         )
@@ -2714,62 +2711,6 @@ impl BuiltinFamilyArtifact {
         }
     }
 
-    fn prepared_text_label_ledger(&self) -> PreparedTextEvidenceLease {
-        let (entries, retained_reservations) = match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow { flow, .. } => {
-                let sidecar = flow.svg_label_sidecar();
-                (
-                    sidecar
-                        .prepared_text_label_ledger()
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    sidecar.take_prepared_text_retained_reservations(),
-                )
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(artifact) => {
-                let sidecar = artifact.svg_label_sidecar();
-                (
-                    sidecar
-                        .prepared_text_label_ledger()
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    sidecar.take_prepared_text_retained_reservations(),
-                )
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Swimlane(artifact) => {
-                let sidecar = artifact.svg_label_sidecar();
-                (
-                    sidecar
-                        .prepared_text_label_ledger()
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    sidecar.take_prepared_text_retained_reservations(),
-                )
-            }
-            #[cfg(feature = "diagram-state")]
-            Self::State(artifact) => {
-                let sidecar = artifact.label_sidecar();
-                (
-                    sidecar
-                        .prepared_text_label_ledger()
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    sidecar.take_prepared_text_retained_reservations(),
-                )
-            }
-            #[cfg(feature = "diagram-sequence")]
-            Self::Sequence(artifact) => (
-                artifact.layout.prepared_text_label_ledger(),
-                artifact.layout.take_prepared_text_retained_reservations(),
-            ),
-            _ => (Vec::new(), Vec::new()),
-        };
-        PreparedTextEvidenceLease::new(entries, retained_reservations)
-    }
-
     fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
         match self {
             #[cfg(feature = "diagram-agentflow")]
@@ -3899,7 +3840,7 @@ impl FamilyRenderArtifact {
             )),
             _ => None,
         };
-        let prepared_text_ledger = self.family.prepared_text_label_ledger();
+        let prepared_text_ledger = PreparedTextEvidenceLease::default();
         let prepared_math_evidence = self.family.prepared_math_evidence();
         let Self {
             metadata,
@@ -4130,9 +4071,6 @@ fn prepare_with_svg_label_preparation(
     svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     session.checkpoint(OperationPhase::Layout)?;
-    if let Some(error) = session.text_layout_error().cloned() {
-        return Err(error.into());
-    }
     let plan = plan_render(&parsed, &session)?;
     plan.ensure_available()?;
     let required_capabilities = plan.required_capabilities().to_vec();

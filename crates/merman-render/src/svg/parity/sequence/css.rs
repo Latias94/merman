@@ -417,7 +417,6 @@ mod tests {
             None,
             &merman_core::MermaidConfig::from_value(config.clone()),
             resolved.as_ref(),
-            None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,
             meter,

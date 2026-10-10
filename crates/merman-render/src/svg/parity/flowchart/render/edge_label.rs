@@ -11,7 +11,6 @@ type FlowchartEdgeLabelEmissionReceipt =
 fn edge_label_emission_receipt(
     source_typography_verified: bool,
     typography_applicable: bool,
-    prepared: Option<&crate::flowchart::FlowchartSvgLabelRenderPlan<'_>>,
 ) -> FlowchartEdgeLabelEmissionReceipt {
     let receipt = if source_typography_verified {
         FlowchartEdgeLabelEmissionReceipt::verified()
@@ -19,12 +18,7 @@ fn edge_label_emission_receipt(
         FlowchartEdgeLabelEmissionReceipt::unverified()
     };
     receipt
-        .with_prepared_typography_reach(
-            typography_applicable,
-            prepared.is_some_and(
-                crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
-            ),
-        )
+        .with_prepared_typography_reach(typography_applicable, false)
         // Ordinary SVG Markdown writes no compiled label style. HTML and prepared SVG
         // writers transport the source foreground with the same label-style receipt.
         .with_label_fill_reach(typography_applicable, source_typography_verified)
@@ -451,32 +445,29 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                                  sanitized_xhtml: Option<&str>,
                                  visible: bool,
                                  background_area: bool| {
-        let receipt = edge_label_emission_receipt(
-            source_typography_verified,
-            typography_applicable,
-            prepared_svg_label.as_ref(),
-        )
-        .with_effect_reach(
-            typography_applicable,
-            label_effect_emitted.get()
-                || (visible
-                    && ctx
-                        .label_effects
-                        .get()
-                        .is_some_and(|plan| plan.html_edge_is_cleared(key))),
-        )
-        .with_font_weight_reach(
-            typography_applicable,
-            visible
-                && weight_terminal_verified(
-                    ctx,
-                    weights,
-                    label_text,
-                    label_type,
-                    sanitized_xhtml,
-                    false,
-                ),
-        );
+        let receipt =
+            edge_label_emission_receipt(source_typography_verified, typography_applicable)
+                .with_effect_reach(
+                    typography_applicable,
+                    label_effect_emitted.get()
+                        || (visible
+                            && ctx
+                                .label_effects
+                                .get()
+                                .is_some_and(|plan| plan.html_edge_is_cleared(key))),
+                )
+                .with_font_weight_reach(
+                    typography_applicable,
+                    visible
+                        && weight_terminal_verified(
+                            ctx,
+                            weights,
+                            label_text,
+                            label_type,
+                            sanitized_xhtml,
+                            false,
+                        ),
+                );
         ctx.text_surface_paint.background.record_terminal(
             background_area,
             background_area && !background_padding_unverified,
@@ -1032,23 +1023,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         |source_typography_verified,
          prepared: Option<&crate::flowchart::FlowchartSvgLabelRenderPlan<'_>>,
          sanitized_xhtml: Option<&str>| {
-            let receipt = edge_label_emission_receipt(
-                source_typography_verified,
-                typography_applicable,
-                prepared,
-            )
-            .with_font_weight_reach(
-                typography_applicable,
-                (prepared.is_some() || sanitized_xhtml.is_some())
-                    && weight_terminal_verified(
-                        ctx,
-                        weights,
-                        label_text,
-                        label_type,
-                        sanitized_xhtml,
-                        true,
-                    ),
-            );
+            let receipt =
+                edge_label_emission_receipt(source_typography_verified, typography_applicable)
+                    .with_font_weight_reach(
+                        typography_applicable,
+                        (prepared.is_some() || sanitized_xhtml.is_some())
+                            && weight_terminal_verified(
+                                ctx,
+                                weights,
+                                label_text,
+                                label_type,
+                                sanitized_xhtml,
+                                true,
+                            ),
+                    );
             record_edge_label_emission(
                 ctx,
                 edge.id.as_str(),
@@ -1266,7 +1254,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         for source_style_emitted in [false, true] {
-            let receipt = edge_label_emission_receipt(source_style_emitted, true, None);
+            let receipt = edge_label_emission_receipt(source_style_emitted, true);
             let source = compiled.emitted_source_label_foreground_status(receipt);
             assert_eq!(
                 source,

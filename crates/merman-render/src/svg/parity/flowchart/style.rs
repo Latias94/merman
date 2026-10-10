@@ -521,16 +521,10 @@ impl FlowchartCompiledStyles {
         base: &'a crate::text::TextStyle,
     ) -> crate::flowchart::FlowchartTextStyleResolution<'a> {
         let mut style = std::borrow::Cow::Borrowed(base);
-        let mut prepared_text_overrides =
-            crate::text::PreparedTextCssTypographyOverrides::default();
         let mut terminal_foreground = None;
         for declaration in &self.label_sources {
             crate::flowchart::flowchart_apply_text_style_decl(
                 &mut style,
-                declaration.prepared.property(),
-                declaration.prepared.value(),
-            );
-            prepared_text_overrides.observe_declaration(
                 declaration.prepared.property(),
                 declaration.prepared.value(),
             );
@@ -543,7 +537,6 @@ impl FlowchartCompiledStyles {
         }
         crate::flowchart::FlowchartTextStyleResolution {
             style,
-            prepared_text_overrides,
             terminal_foreground,
         }
     }

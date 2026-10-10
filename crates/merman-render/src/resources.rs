@@ -882,6 +882,7 @@ pub(crate) struct PreparedTextRetainedReservation {
 }
 
 impl PreparedTextRetainedReservation {
+    #[cfg(test)]
     pub(crate) const fn retained_bytes(&self) -> usize {
         self.retained_bytes
     }

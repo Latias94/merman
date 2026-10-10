@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use super::admission::{TextLayoutCapability, ThemeCapability};
+use super::admission::ThemeCapability;
 use super::application::root_theme_requirements;
 use super::assets::{FontCatalog, FontCatalogError};
 use super::mechanisms::{
@@ -70,12 +70,10 @@ impl DiagramThemeCompiler {
             None => FontCatalog::system_fonts(),
         };
         let inferred_capabilities = infer_required_capabilities(&spec);
-        let inferred_text_capabilities = infer_required_text_capabilities(&spec, &catalog);
         let effective_requirements = spec
             .requirements()
             .clone()
-            .with_required_capabilities(inferred_capabilities)
-            .with_required_text_capabilities(inferred_text_capabilities);
+            .with_required_capabilities(inferred_capabilities);
         let spec = Arc::new(spec);
         let mermaid_config = super::mermaid_compatibility::compile(&spec);
         let family_programs = Arc::new(super::family_program::FamilyThemeProgramCache::new(
@@ -84,11 +82,8 @@ impl DiagramThemeCompiler {
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
         let parse_compatibility =
-            merman_core::__private::ThemeCompatibilityPlan::try_without_family_overlays(
-                fingerprint,
-                mermaid_config,
-            )
-            .expect("compiled Mermaid compatibility must satisfy the core plan contract");
+            merman_core::__private::ThemeCompatibilityPlan::try_new(fingerprint, mermaid_config)
+                .expect("compiled Mermaid compatibility must satisfy the core plan contract");
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),
@@ -254,23 +249,6 @@ fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapabil
             .graph(effect_id)
             .expect("validated effect reference must resolve");
         collect_effect_graph_capabilities(graph, &mut required);
-    }
-    required
-}
-
-fn infer_required_text_capabilities(
-    _spec: &DiagramThemeSpec,
-    catalog: &FontCatalog,
-) -> BTreeSet<TextLayoutCapability> {
-    let mut required = BTreeSet::new();
-    if catalog.requires_prepared_text_layout() {
-        // A custom catalog is an explicit geometry input. It cannot be consumed by the legacy
-        // system-font measurer, so the prepared lane must attest its catalog and shaping support.
-        required.extend([
-            TextLayoutCapability::CatalogBinding,
-            TextLayoutCapability::UnicodeClusterFallback,
-            TextLayoutCapability::OpenTypeShaping,
-        ]);
     }
     required
 }
@@ -607,6 +585,32 @@ mod tests {
                 "invalid ordinal {ordinal:?} must not reach rendering"
             );
         }
+    }
+
+    #[test]
+    fn explicit_text_layout_requirements_survive_system_catalog_compilation() {
+        use crate::diagram_theme::{TextLayoutCapability, ThemeRequirements};
+
+        let compiler = DiagramThemeCompiler::new();
+        let default = compiler.compile(DiagramThemeSpec::new()).unwrap();
+        assert_eq!(default.report().required_text_capabilities().len(), 0);
+
+        let explicit = compiler
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_requirements(ThemeRequirements::new().with_required_text_capabilities(
+                        TextLayoutCapability::ALL.iter().copied(),
+                    )),
+            )
+            .unwrap();
+        assert_eq!(
+            explicit
+                .report()
+                .required_text_capabilities()
+                .collect::<Vec<_>>(),
+            TextLayoutCapability::ALL
+        );
+        assert_ne!(default.recipe_fingerprint(), explicit.recipe_fingerprint());
     }
 
     #[test]

@@ -12,9 +12,9 @@ use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 
 use crate::text::{
-    DeterministicTextMeasurer, PreparedTextLayout, PreparedTextLayoutReport, TextLayoutError,
-    TextLayoutFailure, TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
-    estimate_text_width_em, is_html_collapsible_ascii_whitespace,
+    DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
+    TextMetrics, TextStyle, WrapMode, append_text_width_em, estimate_text_width_em,
+    is_html_collapsible_ascii_whitespace,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::__private::ThemeCompatibilityRecipe;
@@ -1952,8 +1952,6 @@ impl RenderEnvironment {
     fn resolve_environment_session_resources(
         &self,
     ) -> Result<ResolvedSessionThemeResources, RenderEnvironmentError> {
-        self.font_catalog
-            .validate_retained_resources(&self.theme_resource_ceiling)?;
         Ok(ResolvedSessionThemeResources::new(
             SessionThemeResources::Environment {
                 font_catalog: self.font_catalog.clone(),
@@ -1970,7 +1968,6 @@ impl RenderEnvironment {
         let admission = theme.resolve_runtime_admission(
             &self.theme_admission_policy,
             &self.font_source_policy,
-            &self.theme_measurement_fallbacks,
             self.theme_portability,
         )?;
         let effective_theme_resource_policy =
@@ -2014,8 +2011,6 @@ impl RenderEnvironment {
             text_measurement: self.text_measurement.clone(),
             // Embedded catalogs are rejected before session construction. System fonts
             // retain the ordinary measurement lane without a catalog preparation result.
-            prepared_text_layout: None,
-            text_layout_error: None,
             measurement_recorder: Box::default(),
             capability_policy: self.capability_policy,
             math_backend: self.math_backend.clone(),
@@ -2159,8 +2154,6 @@ impl ResolvedSessionThemeResources {
 /// Opaque operation session. Family code receives only the narrow projection it needs.
 pub struct RenderSession {
     text_measurement: TextMeasurementPolicy,
-    prepared_text_layout: Option<PreparedTextLayout>,
-    text_layout_error: Option<TextLayoutError>,
     // Keep movable family artifacts compact for bounded worker stacks.
     measurement_recorder: Box<TextMeasurementRecorder>,
     capability_policy: RenderCapabilityPolicy,
@@ -2201,16 +2194,6 @@ impl RenderSession {
             work_meter: self.work_meter.as_ref(),
             controlled_operation_phase,
         }
-    }
-
-    /// Returns the immutable layout session prepared against this operation's retained catalog.
-    pub(crate) fn prepared_text_layout(&self) -> Option<&PreparedTextLayout> {
-        self.prepared_text_layout.as_ref()
-    }
-
-    /// Returns a bounded preparation failure, if a custom catalog could not be attested.
-    pub(crate) fn text_layout_error(&self) -> Option<&TextLayoutError> {
-        self.text_layout_error.as_ref()
     }
 
     pub fn text_measurement_route(&self, phase: TextMeasurementPhase) -> TextMeasurementRoute {
@@ -2382,11 +2365,8 @@ impl RenderSession {
             portability_requirement: self.portability_requirement,
             font_catalog_fingerprint: self.font_catalog().fingerprint(),
             font_source_policy: self.font_source_policy().clone(),
-            prepared_text_layout: self
-                .prepared_text_layout
-                .as_ref()
-                .map(PreparedTextLayout::report),
-            text_layout_failure: self.text_layout_error.as_ref().map(TextLayoutFailure::from),
+            prepared_text_layout: None,
+            text_layout_failure: None,
             trusted_theme_lanes: self.trusted_theme_lanes.clone(),
             used_trusted_theme_lanes: self.used_trusted_theme_lanes(),
         }
@@ -3984,8 +3964,8 @@ mod tests {
         assert_eq!(session.resource_policy(), limits);
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
-        assert!(session.prepared_text_layout().is_none());
-        assert!(session.text_layout_error().is_none());
+        assert!(session.report().prepared_text_layout().is_none());
+        assert!(session.report().text_layout_failure().is_none());
         assert_eq!(session.report().operation_context().seed(), 0);
     }
 

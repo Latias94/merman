@@ -45,20 +45,11 @@ pub(crate) use metrics::{
 };
 
 #[cfg(test)]
-pub(crate) use prepared::TextByteRange;
-pub(crate) use prepared::{
-    CatalogAdmittedTextStyle, ParsedCssFontStack, PendingPreparedTextLabelLedgerEntry,
-    PreparedText, PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLayout,
-    PreparedTextLine, PreparedTextVerticalExtents, TextLayoutError, TextProjection,
-    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
-    resolve_css_font_weight, text_projection_layout_error,
-};
-
+pub(crate) use prepared::PreparedTextLabelFamily;
 pub(crate) use prepared::{
     PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
 };
-
-pub(crate) use prepared::{PrepareTextRequest, PreparedTextWrap};
+pub(crate) use prepared::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
 pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 pub(crate) use visible_style::VisibleTextStyleFacts;
 

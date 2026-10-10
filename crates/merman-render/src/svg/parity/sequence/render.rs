@@ -653,7 +653,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             frame_receipt,
         ),
     );
-    let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
+    let svg = out.finish()?;
     typography_receipt.record_terminal_svg(
         &svg,
         diagram_id.semantic_str(),

@@ -1006,28 +1006,6 @@ impl ThemeResourcePolicy {
         )
     }
 
-    pub(crate) fn check_font_face_count(
-        &self,
-        actual: usize,
-    ) -> Result<(), ThemeResourceLimitExceeded> {
-        self.check_limit_with_hard_cap(
-            ThemeResourceLimitId::MaxFontFaces,
-            ThemeResourceLimitId::FontFacesHardCap,
-            actual,
-        )
-    }
-
-    pub(crate) fn check_font_table_count(
-        &self,
-        actual: usize,
-    ) -> Result<(), ThemeResourceLimitExceeded> {
-        self.check_limit_with_hard_cap(
-            ThemeResourceLimitId::MaxFontTables,
-            ThemeResourceLimitId::FontTablesHardCap,
-            actual,
-        )
-    }
-
     pub(crate) fn check_font_alias_count(
         &self,
         actual: usize,
@@ -1035,28 +1013,6 @@ impl ThemeResourcePolicy {
         self.check_limit_with_hard_cap(
             ThemeResourceLimitId::MaxFontAliases,
             ThemeResourceLimitId::FontAliasesHardCap,
-            actual,
-        )
-    }
-
-    pub(crate) fn check_font_decoded_expansion(
-        &self,
-        compressed: usize,
-        decoded: usize,
-    ) -> Result<(), ThemeResourceLimitExceeded> {
-        let actual = if decoded == 0 {
-            0
-        } else if compressed == 0 {
-            usize::MAX
-        } else {
-            decoded
-                .saturating_add(compressed.saturating_sub(1))
-                .checked_div(compressed)
-                .unwrap_or(usize::MAX)
-        };
-        self.check_limit_with_hard_cap(
-            ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
-            ThemeResourceLimitId::FontDecodedExpansionRatioHardCap,
             actual,
         )
     }
@@ -1419,16 +1375,28 @@ mod tests {
                 .check_font_asset_count(MAX_FONT_ASSETS_HARD_CAP + 1)
                 .unwrap_err(),
             policy
-                .check_font_face_count(MAX_FONT_FACES_HARD_CAP + 1)
+                .check_limit_with_hard_cap(
+                    ThemeResourceLimitId::MaxFontFaces,
+                    ThemeResourceLimitId::FontFacesHardCap,
+                    MAX_FONT_FACES_HARD_CAP + 1,
+                )
                 .unwrap_err(),
             policy
-                .check_font_table_count(MAX_FONT_TABLES_HARD_CAP + 1)
+                .check_limit_with_hard_cap(
+                    ThemeResourceLimitId::MaxFontTables,
+                    ThemeResourceLimitId::FontTablesHardCap,
+                    MAX_FONT_TABLES_HARD_CAP + 1,
+                )
                 .unwrap_err(),
             policy
                 .check_font_alias_count(MAX_FONT_ALIASES_HARD_CAP + 1)
                 .unwrap_err(),
             policy
-                .check_font_decoded_expansion(1, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP + 1)
+                .check_limit_with_hard_cap(
+                    ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
+                    ThemeResourceLimitId::FontDecodedExpansionRatioHardCap,
+                    MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP + 1,
+                )
                 .unwrap_err(),
             policy
                 .check_effect_graph_count(MAX_EFFECT_GRAPHS_HARD_CAP + 1)

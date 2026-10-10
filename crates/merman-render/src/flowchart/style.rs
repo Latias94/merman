@@ -1,4 +1,4 @@
-use crate::text::{PreparedTextCssTypographyOverrides, TextMetrics, TextStyle};
+use crate::text::{TextMetrics, TextStyle};
 use indexmap::IndexMap;
 use std::borrow::Cow;
 
@@ -107,9 +107,6 @@ pub(crate) fn flowchart_apply_text_style_decl(
 #[derive(Debug)]
 pub(crate) struct FlowchartTextStyleResolution<'a> {
     pub(crate) style: Cow<'a, TextStyle>,
-    /// Source-owned typography declarations whose final values must be admitted together for
-    /// prepared measurement and SVG emission.
-    pub(crate) prepared_text_overrides: PreparedTextCssTypographyOverrides,
     pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
 }
 
@@ -199,7 +196,6 @@ impl<'a> FlowchartTextStyleResolution<'a> {
     pub(crate) fn borrowed(style: &'a TextStyle) -> Self {
         Self {
             style: Cow::Borrowed(style),
-            prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
             terminal_foreground: None,
         }
     }
@@ -244,9 +240,6 @@ impl<'a> FlowchartTextStyleResolver<'a> {
             return;
         }
         flowchart_apply_text_style_decl(&mut self.resolution.style, key, value);
-        self.resolution
-            .prepared_text_overrides
-            .observe_declaration(key, value);
         if key.trim() == "color" {
             FlowchartTerminalForeground::observe(
                 &mut self.resolution.terminal_foreground,
@@ -1009,15 +1002,10 @@ mod tests {
 
         assert_eq!(resolution.font_size, 30.0);
         assert_eq!(resolution.font_family.as_deref(), Some("Excalifont"));
-        assert_eq!(resolution.prepared_text_overrides.font_size(), Some("30px"));
-        assert_eq!(
-            resolution.prepared_text_overrides.font_family(),
-            Some("Excalifont")
-        );
     }
 
     #[test]
-    fn text_style_resolution_preserves_same_value_source_font_provenance() {
+    fn text_style_resolution_applies_source_size_when_family_matches_the_base() {
         let base = TextStyle {
             font_family: Some("Excalifont".to_string()),
             ..TextStyle::default()
@@ -1036,11 +1024,7 @@ mod tests {
         );
 
         assert_eq!(resolution.font_family.as_deref(), Some("Excalifont"));
-        assert_eq!(
-            resolution.prepared_text_overrides.font_family(),
-            Some("Excalifont")
-        );
-        assert_eq!(resolution.prepared_text_overrides.font_size(), Some("18px"));
+        assert_eq!(resolution.font_size, 18.0);
     }
 
     #[test]
@@ -1064,29 +1048,6 @@ mod tests {
 
         assert_eq!(resolution.font_size, 26.0);
         assert_eq!(resolution.font_family, None);
-        assert!(resolution.prepared_text_overrides.is_empty());
-    }
-
-    #[test]
-    fn text_style_resolution_carries_all_measurement_affecting_source_typography() {
-        let base = TextStyle::default();
-        let class_defs = IndexMap::from([(
-            "wide".to_string(),
-            vec![
-                "line-height:2,letter-spacing:3px,word-spacing:4px,text-transform:uppercase"
-                    .to_string(),
-            ],
-        )]);
-        let resolution =
-            flowchart_text_style_resolver_for_class_names(&base, &class_defs, ["wide"], &[])
-                .finish();
-
-        let mut expected = PreparedTextCssTypographyOverrides::default();
-        expected.observe_declaration("line-height", "2");
-        expected.observe_declaration("letter-spacing", "3px");
-        expected.observe_declaration("word-spacing", "4px");
-        expected.observe_declaration("text-transform", "uppercase");
-        assert_eq!(resolution.prepared_text_overrides, expected);
     }
 
     #[test]
@@ -1106,10 +1067,6 @@ mod tests {
         );
 
         assert_eq!(resolution.font_family.as_deref(), Some("\"Xiaolai SC\""));
-        assert_eq!(
-            resolution.prepared_text_overrides.font_family(),
-            Some("\"Xiaolai SC\"")
-        );
         assert_eq!(resolution.font_weight.as_deref(), Some("bolder"));
     }
 }

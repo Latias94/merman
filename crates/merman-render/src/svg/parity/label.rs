@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::svg::parity::util::escape_xml_serialized_text_into;
-use crate::text::PreparedTextLabelId;
 
 #[derive(Clone, Copy)]
 enum SvgTextEntityMode {
@@ -99,9 +98,6 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
         include_style.then_some(""),
         center_text,
         None,
-        true,
-        1.1,
-        None,
     );
 }
 
@@ -112,88 +108,33 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     center_text: bool,
     font_weight: Option<u16>,
 ) {
-    write_svg_text_source_word_lines_impl(
-        out,
-        lines,
-        Some(style),
-        center_text,
-        None,
-        true,
-        1.1,
-        font_weight,
-    );
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, font_weight);
 }
 
-pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<String>],
-    include_style: bool,
-    center_text: bool,
-    label_id: PreparedTextLabelId,
-) {
-    write_svg_text_source_word_lines_impl(
-        out,
-        lines,
-        include_style.then_some(""),
-        center_text,
-        Some(label_id),
-        true,
-        1.1,
-        None,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<String>],
-    style: &str,
-    center_text: bool,
-    label_id: PreparedTextLabelId,
-    inherit_font_style: bool,
-    line_height_em: f64,
-    font_weight: Option<u16>,
-) {
-    write_svg_text_source_word_lines_impl(
-        out,
-        lines,
-        Some(style),
-        center_text,
-        Some(label_id),
-        !inherit_font_style,
-        line_height_em,
-        font_weight,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
 fn write_svg_text_source_word_lines_impl(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
     style: Option<&str>,
     center_text: bool,
-    label_id: Option<PreparedTextLabelId>,
-    reset_inner_font_style: bool,
-    line_height_em: f64,
     font_weight: Option<u16>,
 ) {
-    open_svg_text(out, style, center_text, label_id);
+    open_svg_text(out, style, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_tspan(out, center_text, true, line_height_em);
+        write_empty_tspan(out, center_text, true, 1.1);
         out.push_str("</text>");
         return;
     }
 
     for (line_index, words) in lines.iter().enumerate() {
-        open_tspan(out, line_index, center_text, true, line_height_em, false);
+        open_tspan(out, line_index, center_text, true, 1.1, false);
         for (word_index, word) in words.iter().enumerate() {
             write_svg_text_inner_word(
                 out,
                 word_index,
                 word,
                 SvgTextEntityMode::CreateTextSource,
-                reset_inner_font_style,
+                true,
                 font_weight,
             );
         }
@@ -207,15 +148,11 @@ fn open_svg_text<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     style: Option<&'a str>,
     center_text: bool,
-    label_id: Option<PreparedTextLabelId>,
 ) -> Option<&'a str> {
     out.push_str(r#"<text y="-10.1""#);
     let emitted_style = super::util::write_style_attribute(out, style);
     if center_text {
         out.push_str(r#" text-anchor="middle""#);
-    }
-    if let Some(label_id) = label_id {
-        let _ = write!(out, r#" id="{label_id}""#);
     }
     out.push('>');
     emitted_style
@@ -307,7 +244,7 @@ fn write_svg_text_impl<'a>(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) -> Option<&'a str> {
-    let emitted_style = open_svg_text(out, style, center_text, None);
+    let emitted_style = open_svg_text(out, style, center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {
@@ -418,7 +355,7 @@ fn write_svg_text_markdown_lines_with_style<'a>(
     entity_mode: SvgTextEntityMode,
     row_style: Option<SvgTextRowStyle<'_>>,
 ) -> Option<&'a str> {
-    let emitted_style = open_svg_text(out, style, center_text, None);
+    let emitted_style = open_svg_text(out, style, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class, 1.1);
@@ -637,38 +574,6 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
     );
 }
 
-/// Emit a node's wrapped Markdown label with the same explicit font style used for measurement.
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    css: &str,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-) {
-    let mut lines = markdown_to_wrapped_svg_word_lines(
-        measurer,
-        normalized_markdown_label(markdown),
-        style,
-        max_width_px,
-    );
-    if style.font_weight.as_deref() == Some("bold") {
-        for line in &mut lines {
-            for (_, is_strong, _) in line {
-                *is_strong = true;
-            }
-        }
-    }
-    write_svg_text_markdown_lines(
-        out,
-        &lines,
-        Some(css),
-        false,
-        true,
-        SvgTextEntityMode::CreateTextSource,
-    );
-}
-
 pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
@@ -697,8 +602,8 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
 #[cfg(test)]
 mod tests {
     use super::{
-        write_prepared_svg_text_source_word_lines_with_style, write_svg_text_centered,
-        write_svg_text_source_word_lines, write_svg_text_source_word_lines_with_style,
+        write_svg_text_centered, write_svg_text_source_word_lines,
+        write_svg_text_source_word_lines_with_style,
     };
 
     #[test]
@@ -788,32 +693,6 @@ mod tests {
         );
 
         assert_eq!(svg.matches(r#"class="row text-outer-tspan""#).count(), 3);
-    }
-
-    #[test]
-    fn prepared_svg_rows_use_the_admitted_line_height() {
-        let mut svg = String::new();
-        write_prepared_svg_text_source_word_lines_with_style(
-            &mut svg,
-            &[
-                vec!["alpha".to_string()],
-                vec!["beta".to_string()],
-                vec!["gamma".to_string()],
-            ],
-            "line-height:1.4 !important",
-            false,
-            crate::text::PreparedTextLabelId::new(
-                crate::text::PreparedTextLabelFamily::Flowchart,
-                1,
-            ),
-            true,
-            1.4,
-            None,
-        );
-
-        assert!(svg.contains(r#"y="-0.4em" dy="1.4em""#), "{svg}");
-        assert!(svg.contains(r#"y="1em" dy="1.4em""#), "{svg}");
-        assert!(svg.contains(r#"y="2.4em" dy="1.4em""#), "{svg}");
     }
 
     #[test]

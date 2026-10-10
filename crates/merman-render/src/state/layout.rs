@@ -190,7 +190,6 @@ pub(super) fn edge_label_metrics(
         typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
-        break_long_words: true,
     };
     let mut metrics = sidecar
         .map_or_else(
@@ -207,15 +206,11 @@ pub(super) fn edge_label_metrics(
         )
         .metrics;
     let owner = super::StateLabelOwner::Edge(edge_id);
-    let prepared_edge_geometry =
-        sidecar.and_then(|sidecar| sidecar.prepared_native_geometry(owner));
     let measured_edge_geometry =
         sidecar.and_then(|sidecar| sidecar.measured_native_geometry(owner));
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
-    if let Some(geometry) = prepared_edge_geometry {
-        metrics = geometry.layout_metrics();
-    } else if let Some(geometry) = measured_edge_geometry.as_ref() {
+    if let Some(geometry) = measured_edge_geometry.as_ref() {
         metrics = geometry.layout_metrics();
     } else if wrap_mode == WrapMode::SvgLike {
         metrics.width += 4.0;
@@ -242,7 +237,6 @@ fn node_label_metrics(
         typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
-        break_long_words: true,
     };
     let metrics = sidecar
         .map_or_else(
@@ -280,7 +274,6 @@ pub(super) fn title_label_metrics(
         typography,
         max_width_px: None,
         wrap_mode,
-        break_long_words: false,
     };
     let metrics = sidecar
         .map_or_else(
@@ -1995,7 +1988,6 @@ fn layout_state_diagram_inner(
                 typography: cluster_label_typography,
                 max_width_px: Some(wrapping_width),
                 wrap_mode,
-                break_long_words: true,
             };
             let measurement = label_sidecar.map_or_else(
                 || {
@@ -2493,7 +2485,7 @@ mod tests {
             width: 73.123_456_789,
             height: 17.25,
         };
-        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default(), None);
+        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default());
 
         assert_eq!(
             edge_label_metrics(
@@ -2537,7 +2529,7 @@ mod tests {
             width: 250.123_456_789,
             height: 17.25,
         };
-        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default(), None);
+        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default());
 
         assert_eq!(
             edge_label_metrics(

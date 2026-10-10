@@ -108,9 +108,11 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
 }
 
 /// Explicit no-op math renderer for hosts that want a backend which declines every label.
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct NoopMathRenderer;
 
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl MathRenderer for NoopMathRenderer {
     fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
         None

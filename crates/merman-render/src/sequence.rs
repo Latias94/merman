@@ -38,7 +38,6 @@ mod rect;
 mod root_bounds;
 mod terminal_css;
 mod terminal_theme;
-mod text_artifact;
 mod text_effect;
 mod theme_binding;
 mod theme_evidence;
@@ -77,7 +76,6 @@ pub(crate) use metrics::{
     wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
-pub(crate) use text_artifact::SequenceTextSidecar;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
@@ -194,7 +192,6 @@ pub(crate) struct SequencePreparedArtifact {
     box_layouts: Vec<SequenceBoxLayout>,
     box_title_height: f64,
     box_height: f64,
-    text_sidecar: SequenceTextSidecar,
     math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
@@ -237,10 +234,6 @@ impl SequencePreparedArtifact {
         &self.theme_evidence
     }
 
-    pub(crate) const fn text_sidecar(&self) -> &SequenceTextSidecar {
-        &self.text_sidecar
-    }
-
     pub(crate) const fn math_sidecar(&self) -> &SequenceMathSidecar {
         &self.math_sidecar
     }
@@ -279,18 +272,6 @@ impl SequencePreparedArtifact {
 
     pub(crate) const fn actor_popup_widths(&self) -> &HashMap<String, f64> {
         &self.actor_popup_widths
-    }
-
-    pub(crate) fn prepared_text_label_ledger(
-        &self,
-    ) -> Vec<crate::text::PreparedTextLabelLedgerEntry> {
-        self.text_sidecar.prepared_text_label_ledger()
-    }
-
-    pub(crate) fn take_prepared_text_retained_reservations(
-        &self,
-    ) -> Vec<crate::resources::PreparedTextRetainedReservation> {
-        self.text_sidecar.take_prepared_text_retained_reservations()
     }
 }
 
@@ -573,7 +554,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     diagram_title: Option<&str>,
     effective_config: &MermaidConfig,
     resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     measurer: &dyn TextMeasurer,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
     work_meter: Arc<OperationWorkMeter>,
@@ -797,11 +777,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         },
         actor_popup_widths,
         message_metrics,
-        text_sidecar: SequenceTextSidecar::new(
-            prepared_text_layout,
-            Arc::clone(&typography),
-            Arc::clone(&work_meter),
-        ),
         math_sidecar,
         theme_evidence: SequenceThemeEvidenceRecorder::default(),
         effect_evidence: Default::default(),
@@ -1005,7 +980,6 @@ mod resource_tests {
             None,
             &MermaidConfig::from_value(json!({})),
             None,
-            None,
             &measurer,
             None,
             Arc::clone(&narrow_meter),
@@ -1027,7 +1001,6 @@ mod resource_tests {
             &model,
             None,
             &MermaidConfig::from_value(json!({})),
-            None,
             None,
             &measurer,
             None,
@@ -1057,7 +1030,6 @@ mod resource_tests {
             None,
             &effective_config,
             None,
-            None,
             &measurer,
             None,
             Arc::clone(&narrow_meter),
@@ -1079,7 +1051,6 @@ mod resource_tests {
             &model,
             None,
             &effective_config,
-            None,
             None,
             &measurer,
             None,
@@ -1131,7 +1102,6 @@ mod resource_tests {
             &model,
             None,
             &effective_config,
-            None,
             None,
             &DeterministicTextMeasurer::default(),
             None,

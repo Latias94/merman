@@ -1,12 +1,11 @@
 use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, GROUP_PADDING};
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides,
-    FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
-    FlowchartSvgWidthMode, NodeLayoutDimensionsRequest,
-    flowchart_effective_text_style_for_classes_with_provenance,
+    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_typography_overrides, node_layout_dimensions,
+    measure_flowchart_svg_label_for_layout_with_terminal_foreground, node_layout_dimensions,
 };
 use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
@@ -73,7 +72,7 @@ fn measure_content_node(
         wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
+    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
         ctx.svg_label_sidecar,
         owner,
         owner.map(|_| node.id.as_str()),
@@ -87,8 +86,7 @@ fn measure_content_node(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
-            .with_terminal_foreground(style.terminal_foreground()),
+        style.terminal_foreground(),
         svg_width_mode,
     );
 
@@ -163,7 +161,7 @@ fn measure_edge_label(
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
-    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
+    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(edge.id.as_str()),
@@ -177,8 +175,7 @@ fn measure_edge_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
-            .with_terminal_foreground(style.terminal_foreground()),
+        style.terminal_foreground(),
         FlowchartSvgWidthMode::Bbox,
     );
     let (label_width, label_height) = ctx
@@ -253,7 +250,7 @@ fn measure_group_title(
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
     let render_label_type = "markdown";
-    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
+    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
         ctx.svg_label_sidecar,
         Some(FlowchartSvgLabelOwner::SwimlaneGroupTitle(
             declaration_ordinal,
@@ -269,8 +266,7 @@ fn measure_group_title(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
-            .with_terminal_foreground(style.terminal_foreground()),
+        style.terminal_foreground(),
         FlowchartSvgWidthMode::Bbox,
     );
     (metrics.width.max(0.0), metrics.height.max(0.0))

@@ -16,8 +16,8 @@ pub(crate) use edge_label_geometry::StateNativeLabelGeometry;
 
 mod label_artifact;
 pub(crate) use label_artifact::{
-    PreparedStateLabel, StateLabelMetricsRequest, StateLabelOwner, StateLabelSidecar,
-    StateLabelSidecarBuilder, StateLabelSourceKind,
+    StateLabelMetricsRequest, StateLabelOwner, StateLabelSidecar, StateLabelSidecarBuilder,
+    StateLabelSourceKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

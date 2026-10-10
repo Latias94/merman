@@ -12,6 +12,7 @@ pub(crate) struct PreparedTextEvidenceLease {
 }
 
 impl PreparedTextEvidenceLease {
+    #[cfg(test)]
     pub(crate) fn new(
         entries: Vec<PreparedTextLabelLedgerEntry>,
         retained_reservations: Vec<PreparedTextRetainedReservation>,

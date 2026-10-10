@@ -455,7 +455,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         }
         title_receipt = title_receipt.with_prepared_typography_reach(
             !flowchart_label_is_empty_for_render(render_title),
-            prepared_title && prepared.emitted_admitted_typography(),
+            false,
         );
         out.push_str("</g></g>");
         if ctx.text_surface_paint.requested() {

@@ -245,7 +245,6 @@ impl DiagramTheme {
         &self,
         resources: &ThemeResourcePolicy,
     ) -> Result<(), ThemeResourceLimitExceeded> {
-        self.0.catalog.validate_retained_resources(resources)?;
         self.0.spec.effects().check_resources(resources)
     }
 
@@ -288,13 +287,11 @@ impl DiagramTheme {
         &self,
         admission: &ThemeAdmissionPolicy,
         font_sources: &FontSourcePolicy,
-        measurement_fallbacks: &HostMeasurementFallbackPolicy,
         portability: ThemePortabilityRequirement,
     ) -> Result<ResolvedThemeAdmission, ThemeAdmissionError> {
         admission::resolve_theme_admission(
             admission,
             font_sources,
-            measurement_fallbacks,
             portability,
             self.requirements(),
             self.font_catalog(),
