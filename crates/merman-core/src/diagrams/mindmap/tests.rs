@@ -6,7 +6,7 @@ use crate::{
 use futures::executor::block_on;
 use serde_json::Value;
 
-fn parse(text: &str) -> Value {
+fn parse(text: &str) -> crate::ManagedSemanticJson {
     let engine = Engine::new();
     block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -741,7 +741,7 @@ fn mindmap_typed_render_model_projects_exact_compatibility_json() {
         .unwrap();
     let typed = parse_mindmap_model_for_render(source, &parsed.meta).unwrap();
     let mut projected = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
-    let mut expected = parsed.model;
+    let mut expected = parsed.model.into_unmanaged_value();
 
     projected["diagramId"] = Value::String("<dynamic>".to_string());
     expected["diagramId"] = Value::String("<dynamic>".to_string());

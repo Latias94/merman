@@ -1349,7 +1349,7 @@ mod tests {
     use futures::executor::block_on;
     use serde_json::json;
 
-    fn parse(text: &str) -> Value {
+    fn parse(text: &str) -> crate::ManagedSemanticJson {
         let engine = Engine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()

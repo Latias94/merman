@@ -62,7 +62,7 @@ struct MetaOut<'a> {
 #[derive(Serialize)]
 struct ParseOut<'a> {
     meta: MetaOut<'a>,
-    model: &'a Value,
+    model: &'a merman::ManagedSemanticJson,
 }
 
 pub(crate) fn run(

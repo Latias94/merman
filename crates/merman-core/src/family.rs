@@ -12,7 +12,7 @@ use crate::diagram::{
 };
 use crate::{
     DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
-    OperationControl, OperationControlResult, ParseMetadata, Result,
+    ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -29,7 +29,7 @@ pub(crate) type WarningSemanticParser =
 
 /// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
 pub(crate) struct WarningSemanticParse {
-    model: Value,
+    model: ManagedSemanticJson,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -40,16 +40,16 @@ pub(crate) struct WarningSemanticParse {
 impl WarningSemanticParse {
     pub(crate) fn new(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
         Self {
-            model,
+            model: model.into(),
             warning_facts,
         }
     }
 
     pub(crate) fn into_model(self) -> Value {
-        self.model
+        self.model.into_unmanaged_value()
     }
 
-    pub(crate) fn into_parts(self) -> (Value, Vec<DiagramWarningFact>) {
+    pub(crate) fn into_parts(self) -> (ManagedSemanticJson, Vec<DiagramWarningFact>) {
         (self.model, self.warning_facts)
     }
 }
@@ -60,7 +60,7 @@ impl WarningSemanticParse {
 /// construction still owns the parser-derived editor facts produced before the error. This
 /// prevents callers from invoking a second recovery parser over the same source.
 pub(crate) struct CombinedSemanticParse {
-    model: Result<Value>,
+    model: Result<ManagedSemanticJson>,
     editor_facts: EditorSemanticFacts,
     warning_facts: Vec<DiagramWarningFact>,
 }
@@ -175,7 +175,7 @@ impl CombinedSemanticParse {
             Ok(source) => {
                 let (model, editor_facts) = success(source);
                 Self {
-                    model,
+                    model: model.map(ManagedSemanticJson::from),
                     editor_facts,
                     warning_facts: Vec::new(),
                 }
@@ -204,7 +204,7 @@ impl CombinedSemanticParse {
             Ok(source) => {
                 let (model, editor_facts, warning_facts) = success(source);
                 Self {
-                    model,
+                    model: model.map(ManagedSemanticJson::from),
                     editor_facts,
                     warning_facts,
                 }
@@ -222,7 +222,11 @@ impl CombinedSemanticParse {
 
     pub(crate) fn into_parts(
         self,
-    ) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>) {
+    ) -> (
+        Result<ManagedSemanticJson>,
+        EditorSemanticFacts,
+        Vec<DiagramWarningFact>,
+    ) {
         (self.model, self.editor_facts, self.warning_facts)
     }
 }
@@ -245,7 +249,7 @@ pub(crate) mod test_support {
         let (model, editor_facts, _) = parsed
             .expect("a private parse control cannot be cancelled")
             .into_parts();
-        model.map(|model| (model, editor_facts))
+        model.map(|model| (model.into_unmanaged_value(), editor_facts))
     }
 
     pub(crate) fn editor_facts(

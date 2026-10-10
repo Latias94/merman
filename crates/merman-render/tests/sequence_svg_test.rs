@@ -590,7 +590,7 @@ fn render_sequence_svg_from_fixture_with_options(
         .to_string()
 }
 
-fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
+fn sequence_layout_json_from_fixture(fixture: &str) -> merman_core::ManagedSemanticJson {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
@@ -2152,25 +2152,25 @@ fn sequence_layout_json_preserves_family_wire_shape() {
             layout_json
                 .pointer("/semantic/messages")
                 .is_some_and(serde_json::Value::is_array),
-            "Sequence semantic messages must remain an array for {fixture}: {layout_json}"
+            "Sequence semantic messages must remain an array for {fixture}: {layout_json:?}"
         );
         let layout = layout_json
             .pointer("/layout/SequenceDiagram")
             .and_then(serde_json::Value::as_object)
             .unwrap_or_else(|| {
-                panic!("missing SequenceDiagram layout projection for {fixture}: {layout_json}")
+                panic!("missing SequenceDiagram layout projection for {fixture}: {layout_json:?}")
             });
         assert!(
             ["nodes", "edges", "clusters"]
                 .into_iter()
                 .all(|key| layout.get(key).is_some_and(serde_json::Value::is_array)),
-            "Sequence layout collections must remain arrays for {fixture}: {layout_json}"
+            "Sequence layout collections must remain arrays for {fixture}: {layout_json:?}"
         );
         assert!(
             layout
                 .get("bounds")
                 .is_some_and(serde_json::Value::is_object),
-            "Sequence layout bounds must remain an object for {fixture}: {layout_json}"
+            "Sequence layout bounds must remain an object for {fixture}: {layout_json:?}"
         );
     }
 }

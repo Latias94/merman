@@ -934,7 +934,7 @@ enum SemanticFallbackProjection {
         feature = "diagram-sequence"
     ))]
     Serialized(Vec<u8>),
-    Value(Value),
+    Value(merman_core::ManagedSemanticJson),
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -974,14 +974,16 @@ fn semantic_fallback_projection(
             let mut value = model
                 .compatibility_json_controlled(metadata, &control)
                 .map_err(SemanticFallbackError::Cancelled)?
-                .map_err(|_| SemanticFallbackError::Unavailable)?;
+                .map_err(|_| SemanticFallbackError::Unavailable)?
+                .into_unmanaged_value();
             if let Some(object) = value.as_object_mut() {
-                object.insert(
+                let previous = object.insert(
                     "type".to_string(),
                     serde_json::Value::String(metadata.diagram_type.clone()),
                 );
+                drop(previous.map(merman_core::ManagedSemanticJson::from));
             }
-            SemanticFallbackProjection::Value(value)
+            SemanticFallbackProjection::Value(value.into())
         }
     };
     control

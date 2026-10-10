@@ -23,7 +23,10 @@ use merman_core::OperationPhase;
 use merman_core::diagrams;
 #[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{
+    BuiltinRenderSemantic, ManagedSemanticJson, ParseMetadata, ParsedDiagramRender,
+    RenderSemanticModel,
+};
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -213,7 +216,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
-    ) -> merman_core::Result<serde_json::Value> {
+    ) -> merman_core::Result<ManagedSemanticJson> {
         self.semantic.compatibility_json(metadata)
     }
 }
@@ -472,62 +475,6 @@ enum LayoutProjection<'a> {
     ErrorDiagram(&'a ErrorDiagramLayout),
 }
 
-fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value {
-    let mut cloned = rustc_hash::FxHashMap::default();
-    let mut stack = vec![(value, false)];
-
-    while let Some((current, visited)) = stack.pop() {
-        let current_ptr = std::ptr::from_ref(current);
-        if visited {
-            let value = match current {
-                serde_json::Value::Null => serde_json::Value::Null,
-                serde_json::Value::Bool(value) => serde_json::Value::Bool(*value),
-                serde_json::Value::Number(value) => serde_json::Value::Number(value.clone()),
-                serde_json::Value::String(value) => serde_json::Value::String(value.clone()),
-                serde_json::Value::Array(items) => serde_json::Value::Array(
-                    items
-                        .iter()
-                        .filter_map(|item| cloned.remove(&std::ptr::from_ref(item)))
-                        .collect(),
-                ),
-                serde_json::Value::Object(entries) => {
-                    let mut object = serde_json::Map::new();
-                    for (key, child) in entries {
-                        if let Some(value) = cloned.remove(&std::ptr::from_ref(child)) {
-                            object.insert(key.clone(), value);
-                        }
-                    }
-                    serde_json::Value::Object(object)
-                }
-            };
-            cloned.insert(current_ptr, value);
-            continue;
-        }
-
-        stack.push((current, true));
-        match current {
-            serde_json::Value::Array(items) => {
-                for item in items.iter().rev() {
-                    stack.push((item, false));
-                }
-            }
-            serde_json::Value::Object(entries) => {
-                for child in entries.values().rev() {
-                    stack.push((child, false));
-                }
-            }
-            serde_json::Value::Null
-            | serde_json::Value::Bool(_)
-            | serde_json::Value::Number(_)
-            | serde_json::Value::String(_) => {}
-        }
-    }
-
-    cloned
-        .remove(&std::ptr::from_ref(value))
-        .unwrap_or(serde_json::Value::Null)
-}
-
 impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
@@ -607,7 +554,7 @@ impl BuiltinFamilyArtifact {
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
-    ) -> merman_core::Result<serde_json::Value> {
+    ) -> merman_core::Result<ManagedSemanticJson> {
         match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { semantic, .. } => semantic.compatibility_json(metadata),
@@ -760,7 +707,7 @@ impl BuiltinFamilyArtifact {
 
 pub struct FamilyRenderArtifact {
     metadata: ParseMetadata,
-    compatibility_projection: OnceLock<std::result::Result<serde_json::Value, String>>,
+    compatibility_projection: OnceLock<std::result::Result<ManagedSemanticJson, String>>,
     family: BuiltinFamilyArtifact,
     required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
@@ -1010,7 +957,7 @@ impl FamilyRenderArtifact {
         }
     }
 
-    pub fn layout_json(&self) -> Result<serde_json::Value> {
+    pub fn layout_json(&self) -> Result<ManagedSemanticJson> {
         self.session.checkpoint(OperationPhase::Emit)?;
         let semantic = self
             .compatibility_projection
@@ -1046,22 +993,24 @@ impl FamilyRenderArtifact {
         );
         metadata.insert(
             "config".to_string(),
-            clone_json_value_nonrecursive(self.metadata.config.as_value()),
+            ManagedSemanticJson::from(self.metadata.config.as_value()).into_unmanaged_value(),
         );
         metadata.insert(
             "effective_config".to_string(),
-            clone_json_value_nonrecursive(self.metadata.effective_config.as_value()),
+            ManagedSemanticJson::from(self.metadata.effective_config.as_value())
+                .into_unmanaged_value(),
         );
 
         let mut projection = serde_json::Map::new();
         projection.insert("meta".to_string(), serde_json::Value::Object(metadata));
         projection.insert(
             "semantic".to_string(),
-            clone_json_value_nonrecursive(semantic),
+            semantic.clone().into_unmanaged_value(),
         );
         projection.insert("layout".to_string(), layout);
+        let projection = ManagedSemanticJson::from(serde_json::Value::Object(projection));
         self.session.checkpoint(OperationPhase::Emit)?;
-        Ok(serde_json::Value::Object(projection))
+        Ok(projection)
     }
 
     /// Post-paint edge geometry, recovered while emitting the diagram.

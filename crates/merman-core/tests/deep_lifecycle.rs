@@ -28,12 +28,13 @@ enum Case {
     BlockMissingOuterEnd,
     RailroadEbnfPostfix,
     MindmapJsonDrop,
+    MindmapJsonCloneExport,
     TreemapTypedCloneDrop,
     IshikawaTypedCloneDrop,
 }
 
 impl Case {
-    const ALL: [Self; 14] = [
+    const ALL: [Self; 15] = [
         Self::FlowchartValid,
         Self::FlowchartMissingOuterEnd,
         Self::StateTypedDrop,
@@ -46,6 +47,7 @@ impl Case {
         Self::BlockMissingOuterEnd,
         Self::RailroadEbnfPostfix,
         Self::MindmapJsonDrop,
+        Self::MindmapJsonCloneExport,
         Self::TreemapTypedCloneDrop,
         Self::IshikawaTypedCloneDrop,
     ];
@@ -64,6 +66,7 @@ impl Case {
             Self::BlockMissingOuterEnd => "block-missing-outer-end",
             Self::RailroadEbnfPostfix => "railroad-ebnf-postfix",
             Self::MindmapJsonDrop => "mindmap-json-drop",
+            Self::MindmapJsonCloneExport => "mindmap-json-clone-export",
             Self::TreemapTypedCloneDrop => "treemap-typed-clone-drop",
             Self::IshikawaTypedCloneDrop => "ishikawa-typed-clone-drop",
         }
@@ -104,7 +107,7 @@ impl Case {
                     "?".repeat(depth)
                 );
             }
-            Self::MindmapJsonDrop => {
+            Self::MindmapJsonDrop | Self::MindmapJsonCloneExport => {
                 let mut source = String::from("mindmap\nroot\n");
                 for index in 0..depth {
                     writeln!(source, "{}n{index}", "  ".repeat(index + 1)).unwrap();
@@ -178,7 +181,7 @@ fn after_small_operation(engine: &Engine, started: Instant) {
 fn run_worker(case: Case, depth: usize) {
     let started = Instant::now();
     let source = case.source(depth);
-    let path = if matches!(case, Case::MindmapJsonDrop) {
+    let path = if matches!(case, Case::MindmapJsonDrop | Case::MindmapJsonCloneExport) {
         "Engine.parse_diagram_sync"
     } else {
         "Engine.parse_diagram_for_render_model_sync"
@@ -198,7 +201,7 @@ fn run_worker(case: Case, depth: usize) {
     let engine = Engine::new();
     marker(started, "parse", "begin");
 
-    if matches!(case, Case::MindmapJsonDrop) {
+    if matches!(case, Case::MindmapJsonDrop | Case::MindmapJsonCloneExport) {
         let parsed = engine
             .parse_diagram_sync(&source, ParseOptions::strict())
             .expect("Mindmap compatibility JSON parses")
@@ -206,9 +209,27 @@ fn run_worker(case: Case, depth: usize) {
         marker(started, "parse", "done");
         assert_eq!(parsed.meta.diagram_type, "mindmap");
         marker(started, "model", "done");
-        // Keep the observed raw-JSON disposal boundary independent of clone/export.
-        marker(started, "export", "deferred-to-U2");
-        marker(started, "clone", "deferred-to-U2");
+        if matches!(case, Case::MindmapJsonCloneExport) {
+            marker(started, "export", "begin");
+            let mut encoded = Vec::new();
+            parsed
+                .model
+                .write_json(&mut encoded)
+                .expect("deep managed JSON export");
+            assert!(encoded.starts_with(b"{") && encoded.ends_with(b"}"));
+            if depth >= 128 {
+                assert!(serde_json::to_vec(&parsed.model).is_err());
+            }
+            marker(started, "export", "done");
+            marker(started, "clone", "begin");
+            let cloned = parsed.clone();
+            assert_eq!(cloned.model, parsed.model);
+            marker(started, "clone", "done");
+            drop(cloned);
+        } else {
+            marker(started, "export", "not-requested");
+            marker(started, "clone", "not-requested");
+        }
         marker(started, "drop", "begin");
         drop(parsed);
         marker(started, "drop", "done");
@@ -413,7 +434,6 @@ fn deep_er_missing_outer_end_3000() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the C4 fragment repair"]
 fn deep_c4_missing_outer_brace_15000() {
     run_child(Case::C4MissingOuterBrace, 15_000);
 }
@@ -437,7 +457,6 @@ fn deep_railroad_ebnf_postfix_5000() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after managed compatibility JSON disposal"]
 fn deep_mindmap_json_drop_3000() {
     run_child(Case::MindmapJsonDrop, 3_000);
 }
@@ -452,4 +471,9 @@ fn deep_treemap_typed_clone_drop_5000() {
 #[ignore = "deep typed clone/drop probe; prior parse/drop success does not establish clone safety"]
 fn deep_ishikawa_typed_clone_drop_5000() {
     run_child(Case::IshikawaTypedCloneDrop, 5_000);
+}
+
+#[test]
+fn deep_mindmap_json_clone_export_3000() {
+    run_child(Case::MindmapJsonCloneExport, 3_000);
 }
