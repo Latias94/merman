@@ -143,29 +143,8 @@ impl RenderedDocument {
     ) -> Self {
         let (svg, family) = completion.into_output_and_report();
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
-        let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
-        let native_svg = svg.native_export_svg();
-        let native_svg_digest = if native_svg == svg.as_str() {
-            public_svg_digest
-        } else {
-            artifact_digest(native_svg.as_bytes())
-        };
         let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
-        let portability = document_portability_report(&svg, &evidence);
-        let document_digest = document_digest(
-            public_svg_digest,
-            native_svg_digest,
-            svg.resource_fingerprint(),
-            &evidence,
-            &portability,
-        );
-        let standalone_svg_admission = standalone_svg_admission(
-            &svg,
-            &evidence,
-            &portability,
-            document_digest,
-            public_svg_digest,
-        );
+        let (portability, standalone_svg_admission) = standalone_svg_evidence(&svg, &evidence);
         Self {
             svg,
             evidence,
@@ -455,13 +434,11 @@ impl PdfOutput {
     }
 }
 
-pub(super) fn finish_standalone_svg_target(
-    svg: merman_render::svg::StandaloneSvgArtifact,
-    family: merman_render::family::FamilyRenderReport,
-    required_capabilities: Vec<merman_render::RenderCapability>,
-) -> Result<SvgOutput, RenderError> {
-    let evidence = RenderEvidence::from_family(family, required_capabilities);
-    let portability = document_portability_report(&svg, &evidence);
+fn standalone_svg_evidence(
+    svg: &merman_render::svg::StandaloneSvgArtifact,
+    evidence: &RenderEvidence,
+) -> (DocumentPortabilityReport, TargetAdmissionReceipt) {
+    let portability = document_portability_report(svg, evidence);
     let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
     let native_svg = svg.native_export_svg();
     let native_svg_digest = if native_svg == svg.as_str() {
@@ -473,16 +450,26 @@ pub(super) fn finish_standalone_svg_target(
         public_svg_digest,
         native_svg_digest,
         svg.resource_fingerprint(),
-        &evidence,
+        evidence,
         &portability,
     );
     let admission = standalone_svg_admission(
-        &svg,
-        &evidence,
+        svg,
+        evidence,
         &portability,
         document_digest,
         public_svg_digest,
     );
+    (portability, admission)
+}
+
+pub(super) fn finish_standalone_svg_target(
+    svg: merman_render::svg::StandaloneSvgArtifact,
+    family: merman_render::family::FamilyRenderReport,
+    required_capabilities: Vec<merman_render::RenderCapability>,
+) -> Result<SvgOutput, RenderError> {
+    let evidence = RenderEvidence::from_family(family, required_capabilities);
+    let (_, admission) = standalone_svg_evidence(&svg, &evidence);
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
         svg: svg.into_string(),

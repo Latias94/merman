@@ -442,30 +442,25 @@ fn render_state_svg_from_text_with_theme_in_environment(
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
 ) -> String {
-    render_state_layout_and_svg_from_text_with_theme_in_environment(text, theme, environment).1
+    prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed State artifact")
+        .svg()
+        .to_owned()
 }
 
-fn render_state_layout_and_svg_from_text_with_theme_in_environment(
+fn prepare_state_artifact_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
-) -> (merman_render::model::StateDiagramLayout, String) {
+) -> family::FamilyRenderArtifact {
     let session = environment.begin_session_with_theme(theme).unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed State artifact");
-    let projection = artifact.layout_json().expect("State layout projection");
-    let layout = serde_json::from_value(projection["layout"]["StateDiagramV2"].clone())
-        .expect("typed State layout");
-    let svg = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed State artifact")
-        .svg()
-        .to_string();
-    (layout, svg)
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed State artifact")
 }
 
 fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
@@ -473,15 +468,10 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
 ) -> (String, String, usize, bool) {
-    let session = environment.begin_session_with_theme(theme).unwrap();
-    let parsed = merman_render::__private::install_parse_compatibility(theme, classic_engine())
-        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
-        .expect("parse ok")
-        .expect("diagram detected");
-    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed State artifact")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed State artifact");
+    let rendered =
+        prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed State artifact");
     let public_svg = rendered.svg().to_owned();
     let rendered = rendered
         .finalize_resvg(&SvgPipeline::resvg_safe())
