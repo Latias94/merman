@@ -12,12 +12,27 @@ execution: code
 ## Execution Status
 
 U1-U7 implementation and static review are complete. **U8 remains active; the goal
-is not complete.** Implementation is frozen at `3a11f46ba`; `62c59113a` contains
-only documentation changes. `17da680e9` repairs facade documentation comments;
-the implementation remains frozen. Final local measurements use that clean
-revision and record comment-only repairs separately from runtime evidence.
-U8's affected remote feature/platform CI matrix is still outstanding; the branch
-has not been pushed for these final checks.
+is not complete.** The initial implementation was frozen at `3a11f46ba`;
+`62c59113a` contains only documentation changes, and `17da680e9` repairs facade
+documentation comments. The initial local measurements use that clean revision
+and record comment-only repairs separately from runtime evidence. The follow-up
+shared implementation at `dd79ca584` has its own verification and measurements.
+U8's affected remote feature/platform CI matrix is still outstanding. The final
+verification update was pushed as `cb3958a43` to the existing feature branch and
+PR #178. Run `38012289765` found stale fuzz lockfile inputs and a Typst size-budget
+regression. The local fuzz fix passes its pinned nightly locked check; Typst
+shared implementation improvements are committed at `dd79ca584`. Its 4,864
+renderer tests and strict CLI clippy check passed. Runtime confirmation completed:
+eight rows confirm non-regression, while label reuse remains A/A-inconclusive;
+the overall result is inconclusive, with no confirmed material regression.
+the authorized six-artifact size rebaseline follows the existing measured +3%,
+round-up-to-1,000-byte rule. One-source package verification is complete and all
+24 replacement size checks pass; twelve limits decrease and twelve increase.
+Remote verification of the shared implementation and replacement limits is
+pending. Shared-source facade (303), native-export (98), full SVG comparison
+and fresh browser (77) checks pass; follow-up raw evidence is archived separately.
+All seven remote fuzz jobs now pass
+in run `38016218098`; Typst size and the aggregate PR gate are its only failures.
 The earlier sandbox Git-write restriction has been resolved. The final
 measurement report and archives are included with this local verification
 update. After loopback socket access was restored, all 704 CI script unit tests

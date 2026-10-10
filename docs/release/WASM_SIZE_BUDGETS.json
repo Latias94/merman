@@ -1,44 +1,44 @@
 {
   "schema_version": 2,
-  "updated": "2026-10-08",
+  "updated": "2026-10-10",
   "compression_source": "stripped",
-  "notes": "Provisional regression ceilings combine the higher accepted per-profile limits from the theme branch's 2026-09-14 measurement and main's 2026-09-30 Mermaid 12 measurement; they are not measurements of the merged source. Web compression follows wasm-tools strip --all on final assembled npm WASM; Typst uses the release wasm-opt -Oz and strip pipeline. Rebuild and remeasure all six final artifacts with the theme features and Mermaid 12.1 before publishing or claiming artifact-size acceptance. Historical inputs and recipes are recorded in docs/performance/theme_artifact_budget_reassessment_2026-09-14.md and the main-branch release measurements.",
+  "notes": "Single-source theme path retirement baseline dd79ca584; all five canonical assembled Web packages and Typst publish recipe measured with Rust 1.95.0 and Binaryen 131. Each raw, stripped, gzip and Brotli ceiling is the measured artifact plus 3%, rounded upward to 1,000 bytes. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Owner Rust compression is unchanged. Source, package checks, hashes and before/after limits are recorded in docs/performance/theme_artifact_budget_reassessment_2026-10-10.md.",
   "artifact_profiles": {
     "typst-wasm": {
-      "max_raw_bytes": 19718000,
-      "max_stripped_bytes": 11950000,
-      "max_gzip_bytes": 4582000,
-      "max_brotli_bytes": 3425000
+      "max_raw_bytes": 20252000,
+      "max_stripped_bytes": 12293000,
+      "max_gzip_bytes": 4737000,
+      "max_brotli_bytes": 3517000
     },
     "web-analysis": {
-      "max_raw_bytes": 3944000,
-      "max_stripped_bytes": 3944000,
-      "max_gzip_bytes": 1558000,
-      "max_brotli_bytes": 1195000
+      "max_raw_bytes": 3938000,
+      "max_stripped_bytes": 3938000,
+      "max_gzip_bytes": 1555000,
+      "max_brotli_bytes": 1192000
     },
     "web-ascii": {
-      "max_raw_bytes": 5522000,
-      "max_stripped_bytes": 5522000,
-      "max_gzip_bytes": 2079000,
-      "max_brotli_bytes": 1579000
+      "max_raw_bytes": 5517000,
+      "max_stripped_bytes": 5517000,
+      "max_gzip_bytes": 2076000,
+      "max_brotli_bytes": 1575000
     },
     "web-editor": {
-      "max_raw_bytes": 4060000,
-      "max_stripped_bytes": 4060000,
-      "max_gzip_bytes": 1604000,
-      "max_brotli_bytes": 1226000
+      "max_raw_bytes": 4054000,
+      "max_stripped_bytes": 4054000,
+      "max_gzip_bytes": 1602000,
+      "max_brotli_bytes": 1224000
     },
     "web-full": {
-      "max_raw_bytes": 16804000,
-      "max_stripped_bytes": 16804000,
-      "max_gzip_bytes": 6282000,
-      "max_brotli_bytes": 4646000
+      "max_raw_bytes": 16857000,
+      "max_stripped_bytes": 16857000,
+      "max_gzip_bytes": 6308000,
+      "max_brotli_bytes": 4665000
     },
     "web-render": {
-      "max_raw_bytes": 14843000,
-      "max_stripped_bytes": 14842000,
-      "max_gzip_bytes": 5606000,
-      "max_brotli_bytes": 4155000
+      "max_raw_bytes": 14897000,
+      "max_stripped_bytes": 14896000,
+      "max_gzip_bytes": 5636000,
+      "max_brotli_bytes": 4172000
     }
   }
 }

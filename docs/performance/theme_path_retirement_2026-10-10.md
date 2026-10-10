@@ -9,8 +9,10 @@ a latency, allocation or artifact-size improvement.
 
 The [implementation plan](../plans/2026-10-09-1500-refactor-theme-path-retirement-plan.md)
 remains open for the affected remote platform CI matrix. Local tests do not attest
-other operating systems, SDKs or packaged bindings. No branch was pushed for this
-verification, and no release was performed.
+other operating systems, SDKs or packaged bindings. The verification update was
+pushed as `cb3958a43` to the existing feature branch and PR #178. No release was
+performed. The following measurements describe the frozen implementation; later
+CI repairs and optimization candidates are tracked separately below.
 
 ## Revisions and controls
 
@@ -220,3 +222,70 @@ environment limitation and is not presented as a green CI result. After socket
 permissions were restored, the same unchanged command passed all 704 tests in
 13.021 seconds. Both logs are archived. Git write permission was also restored;
 the earlier inability to stage this report is no longer a blocker.
+
+## Remote CI follow-up
+
+CI run `38012289765` checks the pushed verification update. Web, macOS and Windows
+builds, platform bindings, Ubuntu build/test and the performance-contract lane
+passed. The overall run failed on the owners listed below. Two separate
+failures require fixes before U8 can close:
+
+- Seven fuzz jobs rejected `fuzz/Cargo.lock` under `--locked`: the exporter still
+  listed the removed optional `sha2` dependency edge. Commit `7e3b91902` removes
+  that edge without changing package versions. The pinned nightly local locked
+  fuzz check passed. After the fix was pushed, all seven fuzz jobs passed in CI
+  run `38016218098`.
+- The Typst package exceeded its unchanged stripped and gzip budgets. CI measured
+  11,972,759 stripped bytes against 11,950,000, and 4,605,401 gzip bytes against
+  4,582,000. This surface was not covered by the earlier web-full size result.
+
+The local Binaryen 131 reproduction measured 19,722,917 raw, 11,984,660 stripped,
+4,611,177 gzip and 3,419,483 Brotli bytes. The adjacent baseline with equal Typst
+features measured 19,555,520 raw and 11,903,873 stripped bytes. Its Python gzip-9
+measurement was 4,574,494 bytes; this is a diagnostic compression measurement,
+not the owner's Rust gzip result. The comparison identifies a code-size increase
+without introducing a dependency or reducing the supported diagram set.
+
+Commit `dd79ca584` shares the Class node/interface index, centralizes Sequence
+effect preparation, and shares common CSS emission and Flowchart class parsing.
+It also shares the existing XML validation loops across callback types without
+removing checks, changing reference-collection modes or changing callback order.
+All 4,864 renderer tests passed (six skipped), and the CI CLI strict clippy command
+passed. Independent source review found no validation-order or cancellation change.
+The final shared implementation's long native confirmation completed against
+the same adjacent baseline, with identical capabilities and nine fixtures.
+Eight rows confirm non-regression. The label-reuse row remains inconclusive
+because its A/A calibration is unstable; its observed paired bounds are
++1.06% to +1.35% and +40.96 to +51.34 microseconds. No row confirms regression
+under the registered joint 10% and 50-microsecond gate, and no speedup is claimed.
+The complete-suite outcome remains inconclusive (exit 3), not a passing latency
+gate. Raw samples, commands and executable hashes are in
+`latency-shared-head.json` and its companion files in the ignored experiment.
+
+The combined local owner result is 19,660,850 raw, 11,933,832 stripped, 4,598,500
+gzip and 3,412,774 Brotli bytes. Relative to the initial reproduction, it removes
+62,067 raw, 50,828 stripped and 12,677 gzip bytes. The old gzip ceiling still fails
+by 16,500 bytes. These are candidate-run size results, not the final six-artifact
+package baseline or a latency improvement claim. Logs and rejected candidates
+remain in the experiment's `size` directory.
+
+On October 10 the maintainer authorized accepting justified code-size growth with
+reasonable thresholds. The follow-up preregisters the existing
+[one-source size-baseline rule](theme_artifact_budget_reassessment_2026-09-14.md):
+build and smoke all five canonical Web packages and Typst from one committed
+source, then set each size ceiling to measured bytes plus 3%, rounded upward to
+1,000 bytes. Commit `dd79ca584` is the fixed source for this follow-up. The current
+budget catalog now records the verified one-source baseline. All six canonical
+artifacts pass functional/package/dependency checks and all 24 revised limits;
+twelve ceilings decrease and twelve increase, each following the same rule.
+The final measurements, identities and before/after ceilings are in the
+[budget reassessment](theme_artifact_budget_reassessment_2026-10-10.md).
+Remote CI confirmation remains pending.
+The shared source also passes 303 public-facade tests (two skipped), 98 native
+export tests, the complete SVG structure/parity/parity-root owner and 77 fresh
+Chromium theme/viewport tests after a locked clone-local dependency install.
+The follow-up's 52 lossless evidence archives and digest manifest are under
+`evidence/theme-path-retirement-2026-10-10/shared-final`; earlier measurements
+remain separately archived and retain their original source identities.
+The production optimizer remains Binaryen 131 `-Oz` with its existing feature
+flags. Convergence and alternative size-level trials are diagnostic only.
