@@ -510,6 +510,51 @@ mod tests {
     }
 
     #[test]
+    fn complete_spec_raw_admission_and_recipe_envelope_keep_distinct_error_positions() {
+        const INVALID_PAYLOAD: &str =
+            r#"{"schema_version":1,"kind":"complete_spec","complete_spec":{"future_field":true}}"#;
+        const INVALID_ENVELOPE: &str =
+            r#"{"schema_version":1,"kind":"future_recipe","complete_spec":{}}"#;
+        for (theme, suffix, expected) in [
+            (
+                INVALID_PAYLOAD,
+                r#", "version":2"#,
+                "invalid complete theme spec:",
+            ),
+            (
+                INVALID_PAYLOAD,
+                r#", "layout":{"text_measurer":"removed"}"#,
+                "invalid complete theme spec:",
+            ),
+            (
+                INVALID_PAYLOAD,
+                r#", "site_config":{"themeCSS":".node {}"}"#,
+                "invalid complete theme spec:",
+            ),
+            (
+                INVALID_ENVELOPE,
+                r#", "version":2"#,
+                "unsupported options_json schema version",
+            ),
+            (
+                INVALID_ENVELOPE,
+                r#", "layout":{"text_measurer":"removed"}"#,
+                "layout.text_measurer was removed",
+            ),
+            (
+                INVALID_ENVELOPE,
+                r#", "site_config":{"themeCSS":".node {}"}"#,
+                "site_config.themeCSS",
+            ),
+        ] {
+            let input = format!(r#"{{"theme":{theme}{suffix}}}"#);
+            let error = crate::common::parse_options(input.as_bytes()).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains(expected), "{input}: {error:?}");
+        }
+    }
+
+    #[test]
     fn saved_recipe_renders_identically_in_one_shot_and_reusable_engines() {
         let recipe = crate::export_theme_preset_json(b"editor-dark").unwrap();
         let restored: Value = serde_json::from_slice(&recipe).unwrap();
