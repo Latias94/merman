@@ -6,6 +6,15 @@ removed executable machinery, simplified current algorithms, retained contracts 
 unchanged static data. Source-line reductions do not establish a binary-size or
 latency improvement. Final validation and cost measurements remain open below.
 
+**Completion correction at `a987774ff`:** the first implementation batch passed the local
+owners recorded below, but the overall cleanup plan is not complete. The subsequent
+[remaining-code review](theme_remaining_code_review_2026-10-10.md) found unreachable prepared
+catalog consumers, a production-inaccessible Core overlay, redundant receipt work and a
+Sequence exact-declaration proof gap. U2, U4–U7 and U9 are reopened in the plan. These findings
+do not invalidate the earlier source-bound test results; those results do not establish
+complete retirement or minimality. No new implementation or runtime measurement is included
+in that review, and affected remote owner checks remain unverified here.
+
 ## Accounting boundaries
 
 The original PR inventory compares main
@@ -174,6 +183,12 @@ and error order, system discovery/fallback, glyph queries, final-tree provenance
 public host/session interfaces, cancellation and current text projection seams.
 No embedded-font or Portable typography capability is newly advertised.
 
+This batch did not finish U4. `PreparedTextLayout` now has no constructor, yet its private
+candidate/fallback state and State/Flowchart/Sequence consumers remain. Session layout/error
+slots are always `None`, catalog maps are permanently empty, and export still has an
+unreachable exact asset-face matcher. The remaining review specifies the full retirement
+boundary; ordinary source projection, prepared labels, host measurement and math remain live.
+
 ### U5 — Share local algorithms with current consumers
 
 **Simplify** Flowchart's repeated incomplete-facet accounting and scalar/padding/
@@ -292,8 +307,8 @@ CI owners and are not inferred from these local receipts.
 | Feature matrix and representative artifact dependency closures | `verify-feature-matrix` passed all 45 build combinations and isolated consumers; `verify_artifact_dependency_closures.py --representative-targets` passed |
 | Fresh Web/Typst/native artifact measurements against unchanged budgets | Five fresh Web packages passed 20 budget checks; fresh Typst publish package passed all 4 checks. Native CLI descriptor recipe built and measured below. No budget changes or causal size-improvement claim |
 | Actual browser and affected language fixture consumers | Current-source Web five-package/runtime/DOM smoke passed. Rebuilt Playground: 47 Chromium theme tests and 46 Firefox/WebKit terminal tests passed. Native CLI rendered migrated scenes to SVG/PNG. Typst 0.15.0 compiled 23 fixtures and rejected 9 expected failures. Installed darwin-arm64 Node N-API smoke passed; Python installed wheel smoke passed; Apple XCFramework and Swift smoke passed |
-| Final independent correctness and maintainability review | Native correctness, maintainability and testing reviewers returned no findings. Final document helper and explicit Dagre/ELK tests received an additional correctness pass |
-| Final accounting after implementation and this document | Refreshed temporary-index tree and disjoint classifications recorded below; final whole-diff total including this report will be added at documentation commit |
+| First-batch independent correctness and maintainability review | The scoped reviewers returned no findings for that implementation. Later whole-PR call-chain review found the additional debt linked above; the earlier review is not a global remaining-code signoff |
+| Accounting after the first batch and its documentation | The excluding-report snapshot is recorded below. At documentation HEAD `a987774ff`, the full cleanup is 138 paths, 2,991 additions and 18,726 deletions, including this report |
 
 Only the private catalog workspace/lock entry is removed at this stage; no new
 third-party dependency is introduced. The 17 legal projections change only their
@@ -344,6 +359,12 @@ the resulting PR delta is **405,021 additions and 40,413 deletions across 1,669
 paths**, still including 104 binary paths. Net PR growth falls from 380,754 to
 364,608 lines, or **4.24%**. The separately added execution report contributes
 its own documentation lines; these are not silently included in the reduction.
+
+At frozen documentation HEAD `a987774ff`, including this 411-line report yields **2,991
+additions and 18,726 deletions across 138 paths** relative to `8664ff06`, net **15,735 fewer
+lines**. The full main-to-HEAD PR is **405,432 additions and 40,413 deletions across 1,670
+paths**, net **365,019 lines**. These are historical first-batch counts; the later review and
+plan corrections are outside this frozen denominator and do not count as executable savings.
 
 | Disjoint final file class | Added | Deleted | Net | Paths |
 | --- | ---: | ---: | ---: | ---: |

@@ -18,8 +18,16 @@ October 9 implementation removed the old visual readers and passed delivery veri
 but its blanket U5 completion statement overstated the retirement of generic cutover proofs.
 This plan closes that gap and addresses further debt found in the full-module review.
 The October 10 focused test review adds U9 before final reconciliation in U8; existing
-unit IDs remain stable. Implementation requires maintainer authorization; execution
-receipts are recorded separately from this plan.
+unit IDs remain stable. Implementation stays within the maintainer-authorized refactor scope;
+execution receipts are recorded separately from this plan.
+
+**Reopened after code review at `a987774ff`.** The first implementation removed substantial
+debt, but its module inventory and passing checks did not establish complete retirement.
+The [remaining-code review](../performance/theme_remaining_code_review_2026-10-10.md)
+traces additional dead construction paths, redundant receipt work and an exact-declaration
+proof gap. U2, U4–U7 and U9 have further unimplemented work below; U8 cannot close the
+overall plan until that work receives its own verification. Earlier receipts remain valid
+only for their recorded revision and scope.
 
 The frozen comparison is main `2928265122d5a3d35e239e3ddbce885c7e342c59` against
 branch `8664ff06ea234da73c59de99fb12a76034e301d3`: 1,683 changed paths,
@@ -197,6 +205,13 @@ by a counting serializer that runs only after constructing the expanded object.
   writers remain residual; altered/cross-document artifacts cannot reuse a receipt; public imports
   cannot access retired private types; Mermaid inputs retain their existing output.
 
+- **Remaining code-review work:** Remove Core's production-inaccessible host/fallback overlay
+  contribution graph and its test-only provenance. `Engine.post_detection_config_overlay`
+  has no production setter; its only non-default construction is under `cfg(test)`.
+  Preserve detector mutations and the GitGraph/ER paint-input ownership freeze through a small
+  current owner. Do not remove raw source/site ownership or keyword-driven ELK selection.
+  Also remove ER's never-written `ErRuleObservation.incomplete` field and unreachable branch.
+
 ### U3. Retire the private source catalog and migrate its live static assets
 
 - **Files:** `crates/merman-theme-fixtures/`, workspace/lockfiles, `fixtures/themes/`, current
@@ -226,6 +241,16 @@ by a counting serializer that runs only after constructing the expanded object.
   stable; no false Portable claim; existing host contract compiles; modified artifact/face identity
   fails sealing; no new embedded-font capability is advertised.
 
+- **Remaining code-review work:** `PreparedTextLayout` has no constructor, and every production
+  session initializes its layout/error slots to `None`. Retire the remaining private candidate,
+  backend-response, fallback and catalog preparation chain, including State/Flowchart catalog
+  branches and the entirely inactive Sequence text sidecar. Simplify the catalog's permanently
+  empty private maps/vectors and constant capability-inference branches. Keep callable public
+  schema/report types where required, explicit unsupported-font rejection and error order.
+  Normal host measurement, source-to-visible projection, ordinary prepared labels, math and
+  exact-artifact binding remain independent live owners. Native export must still reject unknown
+  prepared IDs or unexpected receipts after removing its unreachable asset-face success matcher.
+
 ### U5. Share demonstrated local theme and facade algorithms
 
 - **Files:** Flowchart evidence; Sequence prepared/text effects; Kanban typography receipt;
@@ -238,6 +263,18 @@ by a counting serializer that runs only after constructing the expanded object.
   role/CSS-surface counts, absent titles, source-owned titles, no-op and duplicate emissions,
   strict/BestEffort output and public/native document digests all retain their contracts.
 
+- **Remaining code-review work:** Resolve Ishikawa's single Text style and winning fill once,
+  outside its terminal loop; reuse the existing direct-static paint owner. With N visible labels
+  and R family rules, the repeated winner search currently costs up to O(NR); the proposed
+  preparation is O(N + R), without a whole-render speed claim. Carry a small Kanban run-summary
+  value through writer emission instead of six primitive parameters; actual emitted facts must
+  stay independent from expected facts. Evaluate a family-local GitGraph label/tag event iterator,
+  retaining each receipt's own cursor and property checks. Simplify Venn's redundant stylesheet
+  state, TreeView's unread icon counter and Timeline's equivalent palette counter. Remove the
+  repeated series-shape check inside `ResolvedTokensV1::resolve` after admission has checked it.
+  Consolidate the duplicate `share.externalThemeLimit` explanation in Playground's export menu;
+  retain the limitation and make it visible once when a structured theme is selected.
+
 ### U6. Remove duplicate binding decode and unpublished share compatibility
 
 - **Files:** `crates/merman-bindings-core/src/theme.rs`, `common.rs`, selection/wire consumers;
@@ -248,6 +285,16 @@ by a counting serializer that runs only after constructing the expanded object.
 - **Test scenarios:** Duplicate fields, unknown versions, null/omitted inputs, mutually exclusive
   selectors, encoded budgets, CLI and binding error parity; published shares and recipe round-trips
   remain valid. Compare decode allocations only with equal input and output.
+
+- **Remaining code-review work:** Raw complete-spec validation currently constructs and discards
+  `DiagramThemeSpecWireV1`, then the typed options path constructs it again. Carry the admitted
+  payload to its normal decoding position rather than removing raw duplicate-key detection.
+  Preserve version, union, layout/CSS and payload error precedence; do not substitute an incomplete
+  hand-written duplicate-field/schema scanner for Serde.
+  Evaluate Playground's fixed-Flowchart recipe-validation probe against an existing pure admission
+  owner before adding any new public operation. Retain Flutter's raw options projection until an
+  equivalent constructor/request boundary preserves duplicate fields and original byte budgets;
+  the scanner's existence alone does not justify deletion or an unreviewed wire-contract change.
 
 ### U7. Bound artifact observation, comparator and budget implementations
 
@@ -263,6 +310,16 @@ by a counting serializer that runs only after constructing the expanded object.
   unknown CSS/at-rules; native shadow primitive/region mismatch; painted root containment;
   comparator positive and negative cases; Treemap oversized nested input and cancellation before
   amplification. Retain the existing implementation if an alternative cannot preserve these facts.
+
+- **Remaining code-review work:** Gantt/Journey/Requirement/ER/Block validate complete receipts
+  before immutable storage, then repeat full checkpoint scans in per-rule/property queries.
+  Validate once and let later queries use the admitted local facts. The supported static selector
+  sets bound pending winners: this is repeated linear work, not a demonstrated unbounded quadratic
+  defect. Remove `SvgArtifactReceipt::proves_artifact`'s redundant canonical rehash while retaining
+  construction-time identity and target-artifact comparison. Gate Block's shell XML observer on
+  actual paint-proof demand; preserve expectations for terminal bindings and independent writer
+  geometry/count/typography/label checks. Register scoped work counters or matched measurements
+  before claiming a performance benefit; preserve missing/duplicate/mutated writer rejection.
 
 ### U9. Simplify test ownership and improve independent output checks
 
@@ -345,6 +402,32 @@ Default/private/release jobs are not redundant merely because their test names o
 identify the feature, optimization or trust-boundary contract. Any CI narrowing needs separate
 concrete equivalence evidence. Measure matched test workloads before claiming runtime improvement;
 no timing or allocation benefit has yet been established by this static review.
+
+#### U9.5. Remaining test-review work
+
+Consolidate the three Flowchart unsupported node-geometry tests at family test lines
+1931, 2076 and 2255 in the reviewed revision: three patches, two source surfaces and two
+portability modes remain distinct executions. Preserve their exact residual/error expectations.
+Remove only the radius-8/choice-node case from the later unsupported-style test at line 4961:
+it repeats the same source, patch and both portability outcomes from line 2255. Keep the later
+mixed gradient/stroke case, which checks a distinct combination.
+Merge the two State gradient cases at lines 8117 and 8676: move the former's Unverified and
+empty-source-residual assertions to the latter, keeping its Strict pre-layout rejection. This
+removes one duplicate BestEffort render without losing an asserted contract.
+Share local execution mechanics for Flowchart/Swimlane ordinal-palette cases (5044/5095) and
+Sequence Activation/Note source precedence (7064/7132), retaining both actual consumers and
+their family/target-specific assertions; do not count this as fewer behavioral cases.
+Fix Sequence's exact-writer proof to count every matching property in a rule rather than
+`declaration()`'s last match. Add a same-rule duplicate-property counterexample, including an
+earlier `!important` value; the existing test only duplicates the entire rule. Keep native PNG
+checks separate. Replace whole-SVG `<path` assertions in compiled math tests at lines
+10553, 10739 and 10869 with nonempty-geometry checks inside each prepared-native math subtree.
+Keep terminal/semantic occurrence checks; add a negative control with empty math groups and
+unrelated surviving paths. This review has not read every integration test body; remaining limits
+are explicit in the linked review and must not be described as globally minimal.
+Strengthen Swimlane's math reuse test at line 10015 with a backend call counter: SVG emission
+must not increase the count recorded after preparation. Constant backend HTML alone cannot
+prove reuse; preserve its current sidecar and output assertions.
 
 ### U8. Reconcile tests, documentation and final cost evidence
 
