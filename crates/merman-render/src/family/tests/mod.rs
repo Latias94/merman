@@ -1928,9 +1928,22 @@ fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
 }
 
 #[test]
-fn unverified_flowchart_node_surfaces_keep_typed_stroke_width_fail_closed() {
-    let theme = flowchart_node_stroke_width_theme(DiagramFamilyId::FLOWCHART, 2.5);
-    let cases = [
+fn unverified_flowchart_node_surfaces_keep_typed_geometry_fail_closed() {
+    let themes = [
+        (
+            "stroke width",
+            flowchart_node_stroke_width_theme(DiagramFamilyId::FLOWCHART, 2.5),
+        ),
+        (
+            "stroke dasharray",
+            flowchart_node_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]),
+        ),
+        (
+            "radius",
+            flowchart_node_radius_theme(DiagramFamilyId::FLOWCHART, 8.0),
+        ),
+    ];
+    let sources = [
         r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 flowchart LR
 A[Alpha]
@@ -1938,48 +1951,59 @@ A[Alpha]
         "flowchart LR\nA@{ shape: choice }\n",
     ];
 
-    for source in cases {
-        let parse = || {
-            theme
-                .install_parse_compatibility(Engine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .expect("Flowchart source should produce a render model")
-        };
-        let rendered = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .begin_session_with_theme(&theme)
-                .expect("begin best-effort stroke-width session"),
-        )
-        .expect("prepare unverified stroke-width surface")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("best-effort output should retain geometry evidence");
-        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
-        assert_eq!(
-            rendered.style_report().theme_residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedGeometry
-        );
+    for (property, theme) in themes {
+        for source in sources {
+            let parse = || {
+                theme
+                    .install_parse_compatibility(Engine::new())
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .unwrap()
+                    .expect("Flowchart source should produce a render model")
+            };
+            let rendered = prepare(
+                parse(),
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .begin_session_with_theme(&theme)
+                    .expect("begin best-effort geometry session"),
+            )
+            .expect("prepare unverified geometry surface")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("best-effort output should retain geometry evidence");
+            assert_eq!(
+                rendered.style_report().theme_residuals().len(),
+                1,
+                "{property}: {source}"
+            );
+            assert_eq!(
+                rendered.style_report().theme_residuals()[0].reason(),
+                FamilyThemeResidualReason::UnsupportedGeometry,
+                "{property}: {source}"
+            );
 
-        let artifact = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
-                .expect("begin strict stroke-width session"),
-        )
-        .expect("writer support is decided during SVG emission");
-        let error =
-            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
-                Ok(_) => panic!("unverified Node stroke width must remain fail-closed"),
+            let artifact = prepare(
+                parse(),
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict geometry session"),
+            )
+            .expect("writer support is decided during SVG emission");
+            let error = match artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Ok(_) => panic!("unverified Node {property} must remain fail-closed: {source}"),
                 Err(error) => error,
             };
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((DiagramFamilyId::FLOWCHART, 1))
-        );
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::FLOWCHART, 1)),
+                "{property}: {source}"
+            );
+        }
     }
 }
 
@@ -2070,62 +2094,6 @@ fn flowchart_source_owns_node_stroke_dasharray_precedence() {
         }]
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
-}
-
-#[test]
-fn unverified_flowchart_node_surfaces_keep_typed_stroke_dasharray_fail_closed() {
-    let theme = flowchart_node_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
-    let cases = [
-        r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
-flowchart LR
-A[Alpha]
-"#,
-        "flowchart LR\nA@{ shape: choice }\n",
-    ];
-
-    for source in cases {
-        let parse = || {
-            theme
-                .install_parse_compatibility(Engine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .expect("Flowchart source should produce a render model")
-        };
-        let rendered = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .begin_session_with_theme(&theme)
-                .expect("begin best-effort stroke-dasharray session"),
-        )
-        .expect("prepare unverified stroke-dasharray surface")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("best-effort output should retain dash evidence");
-        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
-        assert_eq!(
-            rendered.style_report().theme_residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedGeometry
-        );
-
-        let artifact = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
-                .expect("begin strict stroke-dasharray session"),
-        )
-        .expect("writer support is decided during SVG emission");
-        let error =
-            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
-                Ok(_) => panic!("unverified Node stroke dasharray must remain fail-closed"),
-                Err(error) => error,
-            };
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((DiagramFamilyId::FLOWCHART, 1))
-        );
-    }
 }
 
 #[test]
@@ -2248,62 +2216,6 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
             }]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
-    }
-}
-
-#[test]
-fn unverified_flowchart_node_surfaces_keep_typed_radius_fail_closed() {
-    let theme = flowchart_node_radius_theme(DiagramFamilyId::FLOWCHART, 8.0);
-    let cases = [
-        r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
-flowchart LR
-A[Alpha]
-"#,
-        "flowchart LR\nA@{ shape: choice }\n",
-    ];
-
-    for source in cases {
-        let parse = || {
-            theme
-                .install_parse_compatibility(Engine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .expect("Flowchart source should produce a render model")
-        };
-        let rendered = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .begin_session_with_theme(&theme)
-                .expect("begin best-effort radius session"),
-        )
-        .expect("prepare unverified radius surface")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("best-effort output should retain geometry evidence");
-        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
-        assert_eq!(
-            rendered.style_report().theme_residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedGeometry
-        );
-
-        let artifact = prepare(
-            parse(),
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
-                .expect("begin strict radius session"),
-        )
-        .expect("writer support is decided during SVG emission");
-        let error =
-            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
-                Ok(_) => panic!("unverified Node radius must remain fail-closed"),
-                Err(error) => error,
-            };
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((DiagramFamilyId::FLOWCHART, 1))
-        );
     }
 }
 
@@ -4967,176 +4879,132 @@ fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
         ],
     )
     .unwrap();
-    let cases = [
-        (
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::LinearGradient(gradient))
-                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            FamilyThemeResidualReason::UnsupportedPaint,
-            "flowchart LR\nA --> B\n",
-        ),
-        (
-            ThemeStylePatch {
-                geometry: crate::diagram_theme::ThemeGeometryPatch {
-                    radius: crate::diagram_theme::Specified::Value(8.0),
-                },
-                ..ThemeStylePatch::default()
-            },
-            FamilyThemeResidualReason::UnsupportedGeometry,
-            "flowchart LR\nA@{ shape: choice }\n",
-        ),
-    ];
+    let style = ThemeStylePatch::default()
+        .with_fill(CanvasPaint::LinearGradient(gradient))
+        .with_stroke(CanvasPaint::solid("#2563eb").unwrap());
+    let source = "flowchart LR\nA --> B\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Node, style).for_family(DiagramFamilyId::FLOWCHART),
+            )),
+        )
+        .expect("compile unsupported Flowchart theme");
+    let parse = || {
+        theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model")
+    };
+    let rendered = prepare(
+        parse(),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort render session"),
+    )
+    .expect("prepare unsupported Flowchart theme")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort Flowchart output should retain residual evidence");
+    assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+    assert_eq!(
+        rendered.style_report().theme_residuals()[0].reason(),
+        FamilyThemeResidualReason::UnsupportedPaint
+    );
 
-    for (style, expected_reason, source) in cases {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(ThemeTarget::Node, style).for_family(DiagramFamilyId::FLOWCHART),
-                )),
-            )
-            .expect("compile unsupported Flowchart theme");
-        let parse = || {
-            theme
-                .install_parse_compatibility(Engine::new())
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .expect("Flowchart source should produce a render model")
-        };
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable render session");
+    let artifact = prepare(parse(), &LayoutOptions::default(), session)
+        .expect("Flowchart theme verification must wait for SVG emission");
+
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("unsupported Flowchart style must remain fail-closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((
+            DiagramFamilyId::FLOWCHART,
+            rendered.style_report().theme_residuals().len(),
+        ))
+    );
+}
+
+#[test]
+fn require_portable_accepts_flowchart_and_swimlane_node_ordinal_palette_after_svg_emission() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    OrdinalPalette::new([
+                        ThemeColorValue::parse("#ef4444").unwrap(),
+                        ThemeColorValue::parse("#2563eb").unwrap(),
+                    ])
+                    .unwrap(),
+                ),
+            ),
+        )
+        .expect("compile node ordinal palette theme");
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            "flowchart LR\nA[Alpha] --> B[Beta]\n",
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] --> B[Beta]\n",
+        ),
+    ] {
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("source should produce a render model");
         let rendered = prepare(
-            parse(),
+            parsed,
             &LayoutOptions::default(),
             crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
                 .begin_session_with_theme(&theme)
-                .expect("begin best-effort render session"),
+                .expect("begin strict portable render session"),
         )
-        .expect("prepare unsupported Flowchart theme")
+        .expect("prepare node ordinal palette")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("best-effort Flowchart output should retain residual evidence");
-        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
-        assert_eq!(
-            rendered.style_report().theme_residuals()[0].reason(),
-            expected_reason
+        .expect("emitted ordinal palette must satisfy strict portability");
+
+        assert_eq!(rendered.family_id(), family);
+        assert!(
+            flowchart_node_shape_style(rendered.svg(), "A").contains("fill:#ef4444 !important"),
+            "{family:?}: {}",
+            rendered.svg()
         );
-
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict portable render session");
-        let artifact = prepare(parse(), &LayoutOptions::default(), session)
-            .expect("Flowchart theme verification must wait for SVG emission");
-
-        let error =
-            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
-                Ok(_) => panic!("unsupported Flowchart style must remain fail-closed"),
-                Err(error) => error,
-            };
+        assert!(
+            flowchart_node_shape_style(rendered.svg(), "B").contains("fill:#2563eb !important"),
+            "{family:?}: {}",
+            rendered.svg()
+        );
         assert_eq!(
-            error.unverified_family_theme(),
-            Some((
-                DiagramFamilyId::FLOWCHART,
-                rendered.style_report().theme_residuals().len(),
-            ))
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified,
+            "{family:?}"
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::OrdinalPalette {
+                target: ThemeTarget::Node,
+            }],
+            "{family:?}"
+        );
+        assert!(
+            rendered.style_report().theme_residuals().is_empty(),
+            "{family:?}"
         );
     }
-}
-
-#[test]
-fn require_portable_accepts_flowchart_node_ordinal_palette_after_svg_emission() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_ordinal_palette(
-                    ThemeTarget::Node,
-                    OrdinalPalette::new([
-                        ThemeColorValue::parse("#ef4444").unwrap(),
-                        ThemeColorValue::parse("#2563eb").unwrap(),
-                    ])
-                    .unwrap(),
-                ),
-            ),
-        )
-        .expect("compile Flowchart ordinal palette theme");
-    let parsed = theme
-        .install_parse_compatibility(Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "flowchart LR\nA[Alpha] --> B[Beta]\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .expect("Flowchart source should produce a render model");
-    let rendered = prepare(
-        parsed,
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict portable render session"),
-    )
-    .expect("prepare Flowchart ordinal palette")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("emitted ordinal palette must satisfy strict portability");
-
-    assert!(flowchart_node_shape_style(rendered.svg(), "A").contains("fill:#ef4444 !important"));
-    assert!(flowchart_node_shape_style(rendered.svg(), "B").contains("fill:#2563eb !important"));
-    assert_eq!(
-        rendered.style_report().verification(),
-        FamilyStyleVerification::Verified
-    );
-    assert_eq!(
-        rendered.style_report().theme_applied_mechanisms(),
-        &[FamilyThemeMechanismKey::OrdinalPalette {
-            target: ThemeTarget::Node,
-        }]
-    );
-    assert!(rendered.style_report().theme_residuals().is_empty());
-}
-
-#[test]
-fn require_portable_accepts_swimlane_node_ordinal_palette_after_svg_emission() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_ordinal_palette(
-                    ThemeTarget::Node,
-                    OrdinalPalette::new([
-                        ThemeColorValue::parse("#ef4444").unwrap(),
-                        ThemeColorValue::parse("#2563eb").unwrap(),
-                    ])
-                    .unwrap(),
-                ),
-            ),
-        )
-        .expect("compile Swimlane ordinal palette theme");
-    let parsed = theme
-        .install_parse_compatibility(Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] --> B[Beta]\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .expect("Swimlane source should produce a render model");
-    let rendered = prepare(
-        parsed,
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict portable render session"),
-    )
-    .expect("prepare Swimlane ordinal palette")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("emitted Swimlane ordinal palette must satisfy strict portability");
-
-    assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
-    assert!(flowchart_node_shape_style(rendered.svg(), "A").contains("fill:#ef4444 !important"));
-    assert!(flowchart_node_shape_style(rendered.svg(), "B").contains("fill:#2563eb !important"));
-    assert_eq!(
-        rendered.style_report().theme_applied_mechanisms(),
-        &[FamilyThemeMechanismKey::OrdinalPalette {
-            target: ThemeTarget::Node,
-        }]
-    );
-    assert!(rendered.style_report().theme_residuals().is_empty());
 }
 
 #[test]
@@ -7061,135 +6929,99 @@ fn sequence_activation_rule_without_a_terminal_rect_is_not_applicable() {
 }
 
 #[test]
-fn sequence_explicit_activation_paints_own_precedence_over_typed_paints() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Activation,
-                        ThemeStylePatch::default()
-                            .with_fill(
-                                CanvasPaint::solid("#ef4444").expect("valid Activation fill"),
-                            )
-                            .with_stroke(
-                                CanvasPaint::solid("#2563eb").expect("valid Activation stroke"),
-                            ),
-                    )
-                    .for_family(DiagramFamilyId::SEQUENCE),
+fn sequence_explicit_activation_and_note_paints_own_precedence_over_typed_paints() {
+    for (target, variables, source) in [
+        (
+            ThemeTarget::Activation,
+            json!({
+                "activationBkgColor": "#22c55e",
+                "activationBorderColor": "#a855f7"
+            }),
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\n",
+        ),
+        (
+            ThemeTarget::Note,
+            json!({
+                "noteBkgColor": "#22c55e",
+                "noteBorderColor": "#a855f7"
+            }),
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\nAlice->>Bob: Hello\n",
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").expect("valid typed fill"))
+                                .with_stroke(
+                                    CanvasPaint::solid("#2563eb").expect("valid typed stroke"),
+                                ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
                 ),
-            ),
-        )
-        .expect("compile Sequence Activation theme");
-    let parsed = theme
-            .install_parse_compatibility(Engine::new().with_site_config(
-                MermaidConfig::from_value(json!({
-                    "themeVariables": {
-                        "activationBkgColor": "#22c55e",
-                        "activationBorderColor": "#a855f7"
-                    }
-                })),
-            ))
-            .parse_diagram_for_render_model_sync(
-                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\n",
-                ParseOptions::strict(),
             )
+            .expect("compile Sequence paint theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"themeVariables": variables}),
+            )))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap()
             .expect("Sequence source should produce a render model");
-    let rendered = prepare(
-        parsed,
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict configured Sequence Activation session"),
-    )
-    .expect("explicit Mermaid Activation paints should remain evaluable")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("explicit Mermaid Activation paints should satisfy strict portability");
-
-    assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
-    assert!(rendered.svg().contains("#a855f7"), "{}", rendered.svg());
-    assert!(!rendered.svg().contains("#ef4444"), "{}", rendered.svg());
-    assert!(!rendered.svg().contains("#2563eb"), "{}", rendered.svg());
-    assert_eq!(
-        rendered.style_report().theme_not_applicable_mechanisms(),
-        &[FamilyThemeMechanismKey::Rule {
-            index: 0,
-            target: ThemeTarget::Activation,
-        }]
-    );
-    assert!(
-        rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .is_empty()
-    );
-    assert!(rendered.style_report().theme_residuals().is_empty());
-}
-
-#[test]
-fn sequence_explicit_note_paints_own_precedence_over_typed_note_paints() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Note,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#ef4444").expect("valid Note fill"))
-                            .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Note stroke")),
-                    )
-                    .for_family(DiagramFamilyId::SEQUENCE),
-                ),
-            ),
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict configured Sequence paint session"),
         )
-        .expect("compile Sequence Note theme");
-    let parsed = theme
-            .install_parse_compatibility(Engine::new().with_site_config(
-                MermaidConfig::from_value(json!({
-                    "themeVariables": {
-                        "noteBkgColor": "#22c55e",
-                        "noteBorderColor": "#a855f7"
-                    }
-                })),
-            ))
-            .parse_diagram_for_render_model_sync(
-                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\nAlice->>Bob: Hello\n",
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .expect("Sequence source should produce a render model");
-    let rendered = prepare(
-        parsed,
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict configured Sequence Note session"),
-    )
-    .expect("explicit Mermaid Note paints should remain evaluable")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("explicit Mermaid Note paints should satisfy strict portability");
+        .expect("explicit Mermaid paints should remain evaluable")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit Mermaid paints should satisfy strict portability");
 
-    assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
-    assert!(rendered.svg().contains("#a855f7"), "{}", rendered.svg());
-    assert!(!rendered.svg().contains("#ef4444"), "{}", rendered.svg());
-    assert!(!rendered.svg().contains("#2563eb"), "{}", rendered.svg());
-    assert_eq!(
-        rendered.style_report().theme_not_applicable_mechanisms(),
-        &[FamilyThemeMechanismKey::Rule {
-            index: 0,
-            target: ThemeTarget::Note,
-        }]
-    );
-    assert!(
-        rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .is_empty()
-    );
-    assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SEQUENCE);
+        assert!(
+            rendered.svg().contains("#22c55e"),
+            "{target:?}: {}",
+            rendered.svg()
+        );
+        assert!(
+            rendered.svg().contains("#a855f7"),
+            "{target:?}: {}",
+            rendered.svg()
+        );
+        assert!(
+            !rendered.svg().contains("#ef4444"),
+            "{target:?}: {}",
+            rendered.svg()
+        );
+        assert!(
+            !rendered.svg().contains("#2563eb"),
+            "{target:?}: {}",
+            rendered.svg()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule { index: 0, target }],
+            "{target:?}"
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty(),
+            "{target:?}"
+        );
+        assert!(
+            rendered.style_report().theme_residuals().is_empty(),
+            "{target:?}"
+        );
+    }
 }
 
 #[test]
@@ -8114,67 +7946,6 @@ fn state_style_residual_survives_terminal_svg_completion() {
 }
 
 #[test]
-fn state_structured_gradient_is_a_semantic_residual_not_verified_source_css() {
-    let gradient = LinearGradient::new(
-        90.0,
-        [
-            GradientStop::new(
-                0.0,
-                ThemeColorValue::parse("#0f172a").expect("valid first stop"),
-            )
-            .expect("valid first stop"),
-            GradientStop::new(
-                1.0,
-                ThemeColorValue::parse("#22d3ee").expect("valid second stop"),
-            )
-            .expect("valid second stop"),
-        ],
-    )
-    .expect("valid gradient");
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::State,
-                ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
-            ))),
-        )
-        .expect("compile gradient theme");
-    let parsed = theme
-        .install_parse_compatibility(Engine::new())
-        .parse_diagram_for_render_model_sync(
-            "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
-            ParseOptions::strict(),
-        )
-        .unwrap()
-        .expect("State source should produce a render model");
-    let rendered = prepare(
-        parsed,
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .begin_session_with_theme(&theme)
-            .expect("begin themed session"),
-    )
-    .expect("best-effort State preparation")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render State SVG");
-
-    assert_eq!(
-        rendered.style_report().verification(),
-        FamilyStyleVerification::Unverified
-    );
-    let residual = rendered
-        .style_report()
-        .theme_residuals()
-        .first()
-        .expect("gradient must retain semantic residual");
-    assert_eq!(
-        residual.reason(),
-        FamilyThemeResidualReason::UnsupportedPaint
-    );
-    assert!(rendered.style_report().residuals().is_empty());
-}
-
-#[test]
 fn state_ordinal_palette_is_applied_by_an_observed_state_binding() {
     let palette = OrdinalPalette::new([
         ThemeColorValue::parse("#0f172a").expect("valid first palette color"),
@@ -8718,6 +8489,11 @@ fn require_portable_rejects_state_semantic_residual_before_layout() {
     .expect("prepare State semantic residual")
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     .expect("best-effort State output should retain semantic residual evidence");
+    assert_eq!(
+        rendered.style_report().verification(),
+        FamilyStyleVerification::Unverified
+    );
+    assert!(rendered.style_report().residuals().is_empty());
     assert_eq!(
         rendered.style_report().theme_residuals(),
         &[FamilyThemeResidual {
@@ -9988,10 +9764,14 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
 }
 
 #[derive(Debug)]
-struct SwimlanePreparedMathRenderer;
+struct SwimlanePreparedMathRenderer {
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+}
 
 impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
     fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Some(r#"<span class="external-math">rendered</span>"#.to_owned())
     }
 
@@ -10003,6 +9783,8 @@ impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
         _max_width_px: Option<f64>,
         _wrap_mode: WrapMode,
     ) -> Option<TextMetrics> {
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Some(TextMetrics {
             width: 42.0,
             height: 18.0,
@@ -10022,8 +9804,11 @@ end
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Swimlane")
         .expect("detect Swimlane");
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let session = crate::environment::RenderEnvironment::deterministic()
-        .with_math_renderer(std::sync::Arc::new(SwimlanePreparedMathRenderer))
+        .with_math_renderer(Arc::new(SwimlanePreparedMathRenderer {
+            calls: Arc::clone(&calls),
+        }))
         .begin_session()
         .expect("begin Swimlane math session");
     let artifact =
@@ -10040,6 +9825,11 @@ end
         swimlane.svg_label_sidecar().prepared_math(owner, "$$x^2$$"),
         crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
     ));
+    let calls_after_preparation = calls.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        calls_after_preparation > 0,
+        "preparation must invoke the math backend"
+    );
 
     let svg = render_family_artifact_svg(
         &artifact,
@@ -10048,6 +9838,11 @@ end
         None,
     )
     .expect("render Swimlane math title");
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::Relaxed),
+        calls_after_preparation,
+        "terminal emission must reuse prepared math without calling its backend"
+    );
     assert!(svg.contains(r#"class="merman-prepared-math""#), "{svg}");
     assert!(svg.contains(r#"class="external-math""#), "{svg}");
     assert!(!svg.contains(">$$x^2$$<"), "{svg}");
@@ -10507,6 +10302,41 @@ fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
 }
 
 #[cfg(feature = "math")]
+fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
+    let document = roxmltree::Document::parse(svg).expect("well-formed native math SVG");
+    document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "merman-prepared-math-native")
+                })
+        })
+        .map(|group| {
+            group.descendants().any(|node| {
+                node.has_tag_name("path")
+                    && node
+                        .attribute("d")
+                        .is_some_and(|data| !data.trim().is_empty())
+            })
+        })
+        .collect()
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn native_math_geometry_observation_ignores_unrelated_paths() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+<path d="M0 0 L10 10"/>
+<g class="merman-prepared-math-native"/>
+<g class="merman-prepared-math-native"><path d=" "/></g>
+</svg>"#;
+    assert_eq!(prepared_math_native_glyph_geometry(svg), [false, false]);
+}
+
+#[cfg(feature = "math")]
 #[test]
 fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
     let parsed = Engine::new()
@@ -10550,7 +10380,7 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
         svg.contains(r#"class="merman-prepared-math-native""#),
         "{svg}"
     );
-    assert!(svg.contains("<path"), "{svg}");
+    assert_eq!(prepared_math_native_glyph_geometry(svg), [true], "{svg}");
 }
 
 #[cfg(feature = "math")]
@@ -10736,7 +10566,7 @@ fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
         1,
         "{svg}"
     );
-    assert!(svg.contains("<path"), "{svg}");
+    assert_eq!(prepared_math_native_glyph_geometry(svg), [true], "{svg}");
 }
 
 #[cfg(feature = "math")]
@@ -10866,7 +10696,11 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
         1,
         "two mirrored terminal emissions belong to one semantic actor occurrence"
     );
-    assert!(svg.contains("<path"), "{svg}");
+    assert_eq!(
+        prepared_math_native_glyph_geometry(svg),
+        [true, true],
+        "{svg}"
+    );
 }
 
 #[cfg(feature = "math")]
