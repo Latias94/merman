@@ -220,3 +220,132 @@ mod graph_routing;
 mod shapes;
 #[path = "flowchart_model/subgraphs.rs"]
 mod subgraphs;
+
+#[test]
+fn feedback_edge_preserves_diamond_vertex_and_enters_target_side() {
+    let input = "flowchart TD\n A[Write code] --> B{Tests pass?}\n B -- Yes --> C[Open PR]\n B -- No --> A\n";
+    for mut options in [AsciiRenderOptions::unicode(), AsciiRenderOptions::ascii()] {
+        for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            options.layout_profile = profile;
+            let rendered = render_flowchart(input, &options).unwrap();
+            let rows: Vec<Vec<char>> = rendered
+                .lines()
+                .map(|line| line.chars().collect())
+                .collect();
+            let diamond_row = rendered
+                .lines()
+                .position(|line| line.contains("Tests pass?"))
+                .unwrap();
+            let vertex_x = rows[diamond_row].iter().rposition(|ch| *ch == '>').unwrap();
+            assert!(
+                rows[diamond_row][vertex_x + 1..]
+                    .iter()
+                    .any(|ch| matches!(ch, '-' | '─')),
+                "the side escape must connect to the preserved diamond vertex: {rendered}"
+            );
+            let target_row = rendered
+                .lines()
+                .position(|line| line.contains("Write code"))
+                .unwrap();
+            assert!(
+                rows[target_row].iter().any(|ch| matches!(ch, '◄' | '<')),
+                "the feedback head must point into the right side of its target: {rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn reverse_edge_labels_keep_reading_clearance() {
+    let rendered = render_flowchart(
+        "flowchart TD\n Draft -->|submit| Review\n Review -->|changes requested| Draft\n",
+        &AsciiRenderOptions::unicode(),
+    )
+    .unwrap();
+    assert_eq!(rendered.matches("submit").count(), 1);
+    assert_eq!(rendered.matches("changes requested").count(), 1);
+    assert!(!rendered.contains("submitchanges requested"), "{rendered}");
+    assert!(!rendered.contains("changes requestedsubmit"), "{rendered}");
+}
+
+#[test]
+fn zero_vertical_padding_reduces_only_node_height() {
+    let input = "flowchart TD\n A[Write code] --> B[Open PR] --> C[Merge]\n";
+    let default = render_flowchart(input, &AsciiRenderOptions::unicode()).unwrap();
+    let compact_nodes =
+        render_flowchart(input, &AsciiRenderOptions::unicode().with_node_padding_y(0)).unwrap();
+    assert_eq!(default.lines().count(), 25);
+    assert_eq!(compact_nodes.lines().count(), 19);
+    assert_eq!(
+        default.lines().map(|line| line.chars().count()).max(),
+        compact_nodes.lines().map(|line| line.chars().count()).max()
+    );
+    for label in ["Write code", "Open PR", "Merge"] {
+        assert_eq!(compact_nodes.matches(label).count(), 1);
+    }
+}
+
+#[test]
+fn diamond_self_loop_source_head_keeps_its_straight_berth_and_bend() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        for (options, left_head, right_head, horizontal) in [
+            (AsciiRenderOptions::ascii(), '<', '>', '-'),
+            (AsciiRenderOptions::unicode(), '◄', '►', '─'),
+        ] {
+            for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+                let rendered = render_flowchart(
+                    &format!("flowchart {direction}\nA{{AAA}} <--> A"),
+                    &options.with_layout_profile(profile),
+                )
+                .expect("a bidirectional diamond self loop should render");
+                let row = rendered.lines().find(|line| line.contains("AAA")).unwrap();
+                let chars = row.chars().collect::<Vec<_>>();
+                let label_start = chars.windows(3).position(|part| part == ['A'; 3]).unwrap();
+                let vertex = if direction == "RL" {
+                    chars[..label_start]
+                        .iter()
+                        .rposition(|ch| *ch == '<')
+                        .unwrap()
+                } else {
+                    label_start
+                        + 3
+                        + chars[label_start + 3..]
+                            .iter()
+                            .position(|ch| *ch == '>')
+                            .unwrap()
+                };
+                let head = if direction == "RL" {
+                    vertex - 1
+                } else {
+                    vertex + 1
+                };
+                assert_eq!(
+                    chars[head],
+                    if direction == "RL" {
+                        right_head
+                    } else {
+                        left_head
+                    },
+                    "{rendered}"
+                );
+                let after_head = if direction == "RL" {
+                    &chars[..head]
+                } else {
+                    &chars[head + 1..]
+                };
+                assert!(
+                    after_head
+                        .iter()
+                        .any(|ch| matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                    "the source marker must leave the exterior bend intact: {rendered}"
+                );
+                assert!(
+                    after_head.iter().all(|ch| *ch == ' '
+                        || *ch == horizontal
+                        || matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                    "source head must remain on the straight terminal run: {rendered}"
+                );
+            }
+        }
+    }
+}

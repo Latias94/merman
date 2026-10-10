@@ -48,7 +48,7 @@ pub(super) fn render_message(
         visible_actors,
         destroyed_actors,
     } = actor_state;
-    let (label_plan, extent) = prepared.into_render_parts();
+    let (label_plan, extent, label_host) = prepared.into_render_parts();
     let label_lines = match label_plan {
         Some(plan) => {
             checkpoints.checkpoint()?;
@@ -64,8 +64,7 @@ pub(super) fn render_message(
     let row_count = extent.height();
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
-    let start =
-        resources.checked_grid_add(from.min(to), layout.policy.message_label_left_margin)?;
+    let start = label_host.start;
 
     let mut lines = Vec::new();
     lines
@@ -75,6 +74,7 @@ pub(super) fn render_message(
     for label in label_lines {
         checkpoints.tick()?;
         let label_width = display_width_with_profile(&label, layout.policy.terminal_width_profile);
+        label_host.verify_width(label_width, resources)?;
         let label_right = resources.checked_grid_add(start, label_width)?;
         let width = resources.checked_grid_add(
             layout.total_width.max(label_right),
@@ -219,7 +219,7 @@ pub(super) fn render_self_message(
         visible_actors,
         destroyed_actors,
     } = actor_state;
-    let (label_plan, extent, geometry) = prepared.into_render_parts();
+    let (label_plan, extent, geometry, label_host) = prepared.into_render_parts();
     let label_lines = match label_plan {
         Some(plan) => {
             checkpoints.checkpoint()?;
@@ -234,7 +234,7 @@ pub(super) fn render_self_message(
     };
     let row_count = extent.height();
     let center = layout.participant_centers[message.from];
-    let start = resources.checked_grid_add(center, layout.policy.message_label_left_margin)?;
+    let start = label_host.start;
 
     let mut lines = Vec::new();
     lines
@@ -243,10 +243,9 @@ pub(super) fn render_self_message(
 
     for label in label_lines {
         checkpoints.tick()?;
-        let label_right = resources.checked_grid_add(
-            start,
-            display_width_with_profile(&label, layout.policy.terminal_width_profile),
-        )?;
+        let label_width = display_width_with_profile(&label, layout.policy.terminal_width_profile);
+        label_host.verify_width(label_width, resources)?;
+        let label_right = resources.checked_grid_add(start, label_width)?;
         let needed =
             resources.checked_grid_add(label_right, layout.policy.message_label_overflow_buffer)?;
         let mut line = geometry.pad_line(

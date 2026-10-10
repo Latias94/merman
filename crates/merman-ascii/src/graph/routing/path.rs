@@ -1,4 +1,7 @@
-use super::super::layout::{GridCoord, NodeLayout};
+use super::super::layout::{
+    CanvasCoord, GraphLayout, GridCoord, GroupLayout, NodeLayout, ROUTING_GRID_MARGIN,
+};
+use super::super::model::GraphGroupKind;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
@@ -75,11 +78,45 @@ pub(super) fn route_grid_path_with_resources(
     )
 }
 
+#[cfg(test)]
 pub(super) fn route_grid_path_with_resources_and_execution(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     port_policy: GridPathPortPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<GridPathRoute>> {
+    route_grid_path_with_geometry(layouts, from, to, port_policy, None, resources, execution)
+}
+
+pub(super) fn route_grid_path_for_layout_with_resources_and_execution(
+    layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    port_policy: GridPathPortPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<GridPathRoute>> {
+    let geometry = (!layout.groups.is_empty()).then_some(GroupRouteGeometry { layout, from, to });
+    route_grid_path_with_geometry(
+        &layout.nodes,
+        from,
+        to,
+        port_policy,
+        geometry,
+        resources,
+        execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_grid_path_with_geometry(
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    port_policy: GridPathPortPolicy,
+    geometry: Option<GroupRouteGeometry<'_>>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
@@ -89,26 +126,30 @@ pub(super) fn route_grid_path_with_resources_and_execution(
             from,
             to,
             directional_left_right_port_pairs(from, to),
+            geometry,
             resources,
             execution,
         ),
         GridPathPortPolicy::Fixed(ports) => {
-            plan_grid_path_for_ports(layouts, from, to, ports, resources, execution)
+            plan_grid_path_for_ports(layouts, from, to, ports, geometry, resources, execution)
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn select_shortest_reachable_grid_path(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     candidates: [PortPair; 2],
+    geometry: Option<GroupRouteGeometry<'_>>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
     let mut selected: Option<GridPathRoute> = None;
     for ports in candidates {
-        let Some(route) = plan_grid_path_for_ports(layouts, from, to, ports, resources, execution)?
+        let Some(route) =
+            plan_grid_path_for_ports(layouts, from, to, ports, geometry, resources, execution)?
         else {
             continue;
         };
@@ -122,17 +163,22 @@ fn select_shortest_reachable_grid_path(
     Ok(selected)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn plan_grid_path_for_ports(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     ports: PortPair,
+    geometry: Option<GroupRouteGeometry<'_>>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
     let start = from.grid_for_port(ports.start, resources)?;
     let target = to.grid_for_port(ports.end, resources)?;
-    let Some(path) = find_grid_path(layouts, start, target, resources, execution)? else {
+    let Some(path) = find_grid_path(
+        layouts, start, target, ports, geometry, resources, execution,
+    )?
+    else {
         return Ok(None);
     };
     Ok(Some(GridPathRoute {
@@ -199,12 +245,23 @@ enum RelativeDirection {
     Middle,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum StepDirection {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl StepDirection {
+    pub(super) const fn opposite(self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }
 
 fn directional_left_right_port_pairs(from: &NodeLayout, to: &NodeLayout) -> [PortPair; 2] {
@@ -262,10 +319,13 @@ fn relative_direction(from: GridCoord, to: GridCoord) -> RelativeDirection {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_grid_path(
     layouts: &[NodeLayout],
     start: GridCoord,
     target: GridCoord,
+    ports: PortPair,
+    geometry: Option<GroupRouteGeometry<'_>>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<Vec<GridCoord>>> {
@@ -279,18 +339,22 @@ fn find_grid_path(
             current.max(resources.checked_grid_add(layout.grid.y, 2)?),
         )
     })?;
-    let max_x = resources.checked_grid_add(max_x, 6)?;
-    let max_y = resources.checked_grid_add(max_y, 6)?;
+    let max_x = resources.checked_grid_add(max_x, ROUTING_GRID_MARGIN)?;
+    let max_y = resources.checked_grid_add(max_y, ROUTING_GRID_MARGIN)?;
     let occupied = occupied_grid_cells(layouts, resources, execution)?;
     let mut open = BinaryHeap::new();
     let mut cost_so_far = HashMap::default();
-    let mut came_from = HashMap::<GridCoord, GridCoord>::default();
+    let mut came_from = HashMap::<SearchPosition, SearchPosition>::default();
+    let start_position = SearchPosition {
+        coord: start,
+        crossing_direction: None,
+    };
     open.try_reserve(1)
         .map_err(|_| layout_allocation_failed())?;
     try_reserve_hash_map(&mut cost_so_far, 1)?;
-    cost_so_far.insert(start, 0usize);
+    cost_so_far.insert(start_position, 0usize);
     open.push(OpenEntry {
-        coord: start,
+        position: start_position,
         cost: 0,
         priority: grid_heuristic(start, target, resources)?,
         sequence: 0,
@@ -300,9 +364,9 @@ fn find_grid_path(
     while let Some(entry) = open.pop() {
         checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
-        let current = entry.coord;
+        let current = entry.position.coord;
         if cost_so_far
-            .get(&current)
+            .get(&entry.position)
             .is_some_and(|known| entry.cost > *known)
         {
             continue;
@@ -313,11 +377,11 @@ fn find_grid_path(
             path.try_reserve(path_capacity)
                 .map_err(|_| layout_allocation_failed())?;
             path.push(current);
-            let mut cursor = current;
+            let mut cursor = entry.position;
             while let Some(previous) = came_from.get(&cursor).copied() {
                 checkpoint_layout(execution)?;
                 resources.charge_layout_work(1)?;
-                path.push(previous);
+                path.push(previous.coord);
                 cursor = previous;
             }
             path.reverse();
@@ -331,28 +395,51 @@ fn find_grid_path(
                 continue;
             }
 
-            let new_cost = resources.checked_work_add(cost_so_far[&current], 1)?;
+            let next_position = if let Some(geometry) = geometry {
+                let direction = step_direction(current, next);
+                if entry
+                    .position
+                    .crossing_direction
+                    .is_some_and(|incoming| incoming != direction)
+                    || (current == start && direction != ports.start.terminal_direction())
+                    || (next == target && direction != ports.end.terminal_direction().opposite())
+                {
+                    continue;
+                }
+                let Some(position) =
+                    geometry.next_position(current, next, direction, resources, execution)?
+                else {
+                    continue;
+                };
+                position
+            } else {
+                SearchPosition {
+                    coord: next,
+                    crossing_direction: None,
+                }
+            };
+            let new_cost = resources.checked_work_add(cost_so_far[&entry.position], 1)?;
             if cost_so_far
-                .get(&next)
+                .get(&next_position)
                 .is_none_or(|current_cost| new_cost < *current_cost)
             {
-                if !cost_so_far.contains_key(&next) {
+                if !cost_so_far.contains_key(&next_position) {
                     try_reserve_hash_map(&mut cost_so_far, 1)?;
                     try_reserve_hash_map(&mut came_from, 1)?;
                 }
-                cost_so_far.insert(next, new_cost);
+                cost_so_far.insert(next_position, new_cost);
                 let priority = resources
                     .checked_work_add(new_cost, grid_heuristic(next, target, resources)?)?;
                 sequence = resources.checked_work_add(sequence, 1)?;
                 open.try_reserve(1)
                     .map_err(|_| layout_allocation_failed())?;
                 open.push(OpenEntry {
-                    coord: next,
+                    position: next_position,
                     cost: new_cost,
                     priority,
                     sequence,
                 });
-                came_from.insert(next, current);
+                came_from.insert(next_position, entry.position);
             }
         }
     }
@@ -360,9 +447,107 @@ fn find_grid_path(
     Ok(None)
 }
 
+/// Only a waypoint on a crossed frame needs directional state. All other coarse cells keep
+/// the original single search state; the no-group path retains its original work admission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SearchPosition {
+    coord: GridCoord,
+    crossing_direction: Option<StepDirection>,
+}
+
+#[derive(Clone, Copy)]
+struct GroupRouteGeometry<'a> {
+    layout: &'a GraphLayout,
+    from: &'a NodeLayout,
+    to: &'a NodeLayout,
+}
+
+impl GroupRouteGeometry<'_> {
+    /// A boundary waypoint can continue only on the same straight transverse segment.
+    /// Checking each projected coarse step avoids both corner turns and strokes along a frame.
+    fn next_position(
+        self,
+        from: GridCoord,
+        to: GridCoord,
+        direction: StepDirection,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Option<SearchPosition>> {
+        let next_grid = to;
+        let from = self.layout.grid_to_canvas(from);
+        let to = self.layout.grid_to_canvas(to);
+        let mut crossing_direction = None;
+        for (index, group) in self.layout.groups.iter().enumerate() {
+            execution.checkpoint_loop(OperationPhase::Layout, index)?;
+            resources.charge_layout_work(1)?;
+            if group.kind != GraphGroupKind::Container {
+                continue;
+            }
+            let contains_from = group_contains_node(group, self.from);
+            let contains_to = group_contains_node(group, self.to);
+            if !group_allows_segment(group, contains_from, contains_to, from, to) {
+                return Ok(None);
+            }
+            if group_perimeter_contains(group, to) {
+                crossing_direction = Some(direction);
+            }
+        }
+        Ok(Some(SearchPosition {
+            coord: next_grid,
+            crossing_direction,
+        }))
+    }
+}
+
+fn group_contains_node(group: &GroupLayout, node: &NodeLayout) -> bool {
+    group.x < node.x
+        && node.right() < group.right()
+        && group.y < node.y
+        && node.bottom() < group.bottom()
+}
+
+fn group_perimeter_contains(group: &GroupLayout, coord: CanvasCoord) -> bool {
+    ((coord.x == group.x || coord.x == group.right())
+        && (group.y..=group.bottom()).contains(&coord.y))
+        || ((coord.y == group.y || coord.y == group.bottom())
+            && (group.x..=group.right()).contains(&coord.x))
+}
+
+fn group_allows_segment(
+    group: &GroupLayout,
+    contains_from: bool,
+    contains_to: bool,
+    from: CanvasCoord,
+    to: CanvasCoord,
+) -> bool {
+    let min_x = from.x.min(to.x);
+    let max_x = from.x.max(to.x);
+    let min_y = from.y.min(to.y);
+    let max_y = from.y.max(to.y);
+    if contains_from && contains_to {
+        return group.x < min_x
+            && max_x < group.right()
+            && group.y < min_y
+            && max_y < group.bottom();
+    }
+    let intersects =
+        min_x <= group.right() && max_x >= group.x && min_y <= group.bottom() && max_y >= group.y;
+    if !intersects {
+        return true;
+    }
+    if !contains_from && !contains_to {
+        return false;
+    }
+    if from.y == to.y {
+        group.y < from.y && from.y < group.bottom()
+    } else {
+        group.x < from.x && from.x < group.right()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct OpenEntry {
-    coord: GridCoord,
+    position: SearchPosition,
     cost: usize,
     priority: usize,
     sequence: usize,
@@ -375,8 +560,8 @@ impl Ord for OpenEntry {
             .cmp(&self.priority)
             .then_with(|| other.cost.cmp(&self.cost))
             .then_with(|| other.sequence.cmp(&self.sequence))
-            .then_with(|| other.coord.y.cmp(&self.coord.y))
-            .then_with(|| other.coord.x.cmp(&self.coord.x))
+            .then_with(|| other.position.coord.y.cmp(&self.position.coord.y))
+            .then_with(|| other.position.coord.x.cmp(&self.position.coord.x))
     }
 }
 
@@ -626,6 +811,70 @@ mod tests {
             )
             .expect("repeated equal-cost routing should stay reachable");
             assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn compound_steps_cross_owned_sides_transversely_without_touching_corners() {
+        let group = group();
+        for (from, to) in [
+            ((5, 15), (15, 15)),
+            ((15, 15), (25, 15)),
+            ((15, 5), (15, 15)),
+            ((15, 15), (15, 25)),
+        ] {
+            let from = CanvasCoord {
+                x: from.0,
+                y: from.1,
+            };
+            let to = CanvasCoord { x: to.0, y: to.1 };
+            assert!(group_allows_segment(&group, true, false, from, to));
+            assert!(group_allows_segment(&group, false, true, to, from));
+            assert!(!group_allows_segment(&group, false, false, from, to));
+            assert!(!group_allows_segment(&group, true, true, from, to));
+        }
+        for (from, to) in [
+            ((5, 10), (15, 10)),
+            ((15, 20), (25, 20)),
+            ((10, 5), (10, 15)),
+            ((20, 15), (20, 25)),
+        ] {
+            let from = CanvasCoord {
+                x: from.0,
+                y: from.1,
+            };
+            let to = CanvasCoord { x: to.0, y: to.1 };
+            assert!(!group_allows_segment(&group, true, false, from, to));
+        }
+        let inside = CanvasCoord { x: 12, y: 15 };
+        let other_inside = CanvasCoord { x: 18, y: 15 };
+        assert!(group_allows_segment(
+            &group,
+            true,
+            true,
+            inside,
+            other_inside
+        ));
+        assert!(!group_allows_segment(
+            &group,
+            false,
+            false,
+            inside,
+            other_inside
+        ));
+    }
+
+    fn group() -> GroupLayout {
+        GroupLayout {
+            id: "group".into(),
+            kind: GraphGroupKind::Container,
+            title: GraphLabel::empty_with_profile(crate::options::TerminalWidthProfile::Unicode),
+            style: crate::graph::model::GraphGroupStyle::default(),
+            divider_span: None,
+            x: 10,
+            y: 10,
+            width: 11,
+            height: 11,
         }
     }
 

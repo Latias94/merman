@@ -36,6 +36,10 @@ use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "This short-lived result transfers one route into the candidate vector without another allocation"
+)]
 pub(in crate::graph::routing) enum EdgeRoutePlan {
     Routed(RoutePlan),
     Unsupported(UnsupportedEdgeRoute),

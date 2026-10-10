@@ -10,6 +10,9 @@ use crate::resource::{LogicalExtent, ResourceContext};
 mod grid;
 mod groups;
 
+/// Additional coarse-grid coordinates available to bounded graph routing.
+pub(super) const ROUTING_GRID_MARGIN: usize = 6;
+
 pub(super) fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
     let comparison_height = if len <= 1 {
         1
@@ -157,42 +160,19 @@ pub(super) fn layout_graph_with_resources_and_execution(
         execution,
     )?;
     checkpoint_layout(execution)?;
-    let (group_offset_x, group_offset_y) = if graph.groups.is_empty() {
-        (0, 0)
+    let (laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
+        (
+            groups::LaidOutGroups {
+                items: Vec::new(),
+                background_order: Vec::new(),
+            },
+            0,
+            0,
+        )
     } else {
-        groups::subgraph_offsets(
+        groups::layout_scene_groups(
             graph,
-            &nodes,
-            topology
-                .as_ref()
-                .expect("non-empty graph groups must have topology"),
-            layout_policy,
-            resources,
-        )?
-    };
-    for (index, node) in nodes.iter_mut().enumerate() {
-        execution.checkpoint_loop(merman_core::OperationPhase::Layout, index)?;
-        node.x = resources.checked_grid_add(node.x, group_offset_x)?;
-        node.y = resources.checked_grid_add(node.y, group_offset_y)?;
-    }
-    let offset_x = nodes
-        .first()
-        .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
-        .unwrap_or_default();
-    let offset_y = nodes
-        .first()
-        .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
-        .unwrap_or_default();
-    checkpoint_layout(execution)?;
-    let laid_out_groups = if graph.groups.is_empty() {
-        groups::LaidOutGroups {
-            items: Vec::new(),
-            background_order: Vec::new(),
-        }
-    } else {
-        groups::layout_groups(
-            graph,
-            &nodes,
+            &mut nodes,
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
@@ -201,6 +181,14 @@ pub(super) fn layout_graph_with_resources_and_execution(
             execution,
         )?
     };
+    let offset_x = nodes
+        .first()
+        .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
+        .unwrap_or(group_offset_x);
+    let offset_y = nodes
+        .first()
+        .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
+        .unwrap_or(group_offset_y);
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
@@ -290,6 +278,265 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    fn compact_two_groups(direction: GraphDirection, nested: bool) -> GraphLayout {
+        let mut graph = AsciiGraph::new(direction);
+        for (id, label) in [
+            ("L", "Lint"),
+            ("T", "Test"),
+            ("S", "Staging"),
+            ("P", "Prod"),
+        ] {
+            graph.add_node(id, label);
+        }
+        for (from, to) in [("L", "T"), ("T", "S"), ("S", "P")] {
+            graph.add_edge(from, to);
+        }
+        graph.add_group_with_style(
+            "CI",
+            "CI",
+            None,
+            vec!["L".into(), "T".into()],
+            GraphGroupStyle::default(),
+        );
+        graph.add_group_with_style(
+            "Deploy",
+            "Deploy",
+            None,
+            vec!["S".into(), "P".into()],
+            GraphGroupStyle::default(),
+        );
+        if nested {
+            graph.add_group_with_style(
+                "CI outer",
+                "CI outer",
+                None,
+                vec!["CI".into()],
+                GraphGroupStyle::default(),
+            );
+            graph.add_group_with_style(
+                "Deploy outer",
+                "Deploy outer",
+                None,
+                vec!["Deploy".into()],
+                GraphGroupStyle::default(),
+            );
+        }
+        let mut options = AsciiRenderOptions::unicode();
+        options.layout_profile = crate::AsciiLayoutProfile::Compact;
+        layout_graph(&graph, &options)
+    }
+
+    fn assert_contains(group: &GroupLayout, x: usize, y: usize, right: usize, bottom: usize) {
+        assert!(
+            group.x < x && right < group.right(),
+            "horizontal frame containment: {group:?}"
+        );
+        assert!(
+            group.y < y && bottom < group.bottom(),
+            "vertical frame containment: {group:?}"
+        );
+    }
+
+    #[test]
+    fn compact_sibling_frames_expand_the_shared_member_gap_only() {
+        let layout = compact_two_groups(GraphDirection::LeftRight, false);
+        let ci = &layout.groups[0];
+        let deploy = &layout.groups[1];
+        assert_eq!(layout.nodes[1].x - layout.nodes[0].right() - 1, 3);
+        assert_eq!(layout.nodes[3].x - layout.nodes[2].right() - 1, 3);
+        assert_eq!(layout.nodes[2].x - layout.nodes[1].right() - 1, 5);
+        assert_eq!(deploy.x - ci.right() - 1, 1);
+        assert_eq!(deploy.right() + 1, 50);
+        for (node, group) in layout.nodes.iter().zip([ci, ci, deploy, deploy]) {
+            assert_contains(group, node.x, node.y, node.right(), node.bottom());
+        }
+    }
+
+    #[test]
+    fn nested_group_overhang_preserves_member_containment_and_sibling_gutters() {
+        for direction in [
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+        ] {
+            let layout = compact_two_groups(direction, true);
+            let left = &layout.groups[2];
+            let right = &layout.groups[3];
+            match direction.canonical() {
+                GraphDirection::LeftRight => assert!(left.right() + 1 < right.x),
+                GraphDirection::TopDown => assert!(left.bottom() + 1 < right.y),
+                GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+            }
+            for (outer, inner) in [(left, &layout.groups[0]), (right, &layout.groups[1])] {
+                assert_contains(outer, inner.x, inner.y, inner.right(), inner.bottom());
+            }
+            for (node, group) in layout.nodes.iter().zip([
+                &layout.groups[0],
+                &layout.groups[0],
+                &layout.groups[1],
+                &layout.groups[1],
+            ]) {
+                assert_contains(group, node.x, node.y, node.right(), node.bottom());
+            }
+        }
+    }
+
+    #[test]
+    fn nested_empty_sibling_layout_keeps_complete_children_inside_parent() {
+        for direction in [
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+        ] {
+            for profile in [
+                crate::AsciiLayoutProfile::Canonical,
+                crate::AsciiLayoutProfile::Compact,
+            ] {
+                for recursive_empty in [false, true] {
+                    for empty_first in [false, true] {
+                        let mut graph = AsciiGraph::new(direction);
+                        graph.add_node("A", "AAA");
+                        graph.add_node("B", "BBB");
+                        graph.add_edge("A", "B");
+                        let group_style = GraphGroupStyle::default();
+                        if empty_first {
+                            graph.add_group_with_style("E", "E", None, Vec::new(), group_style);
+                        }
+                        let mut populated_members = vec!["A".into()];
+                        if recursive_empty {
+                            graph.add_group_with_style("F", "F", None, Vec::new(), group_style);
+                            populated_members.push("F".into());
+                        }
+                        graph.add_group_with_style("X", "X", None, populated_members, group_style);
+                        if !empty_first {
+                            graph.add_group_with_style("E", "E", None, Vec::new(), group_style);
+                        }
+                        let children = if empty_first {
+                            vec!["E".into(), "X".into()]
+                        } else {
+                            vec!["X".into(), "E".into()]
+                        };
+                        graph.add_group_with_style("G1", "G1", None, children, group_style);
+                        graph.add_group_with_style("G2", "G2", None, vec!["B".into()], group_style);
+                        let options = AsciiRenderOptions::unicode().with_layout_profile(profile);
+                        let layout = layout_graph(&graph, &options);
+                        let group =
+                            |id: &str| layout.groups.iter().find(|group| group.id == id).unwrap();
+                        let populated = group("X");
+                        let empty = group("E");
+                        let parent = group("G1");
+                        for child in [populated, empty] {
+                            assert_contains(
+                                parent,
+                                child.x,
+                                child.y,
+                                child.right(),
+                                child.bottom(),
+                            );
+                        }
+                        assert!(
+                            populated.right() + 1 < empty.x
+                                || empty.right() + 1 < populated.x
+                                || populated.bottom() + 1 < empty.y
+                                || empty.bottom() + 1 < populated.y,
+                            "sibling gutter must precede routing: {direction:?} {profile:?}: {layout:?}"
+                        );
+                        if recursive_empty {
+                            let nested_empty = group("F");
+                            assert_contains(
+                                populated,
+                                nested_empty.x,
+                                nested_empty.y,
+                                nested_empty.right(),
+                                nested_empty.bottom(),
+                            );
+                        }
+                        let a = &layout.nodes[0];
+                        assert_contains(populated, a.x, a.y, a.right(), a.bottom());
+                        let next = group("G2");
+                        match direction.canonical() {
+                            GraphDirection::LeftRight => assert!(parent.right() + 1 < next.x),
+                            GraphDirection::TopDown => assert!(parent.bottom() + 1 < next.y),
+                            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scoped_empty_subtrees_keep_node_projection_and_unrelated_frame_gutters() {
+        for direction in [
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+        ] {
+            for profile in [
+                crate::AsciiLayoutProfile::Canonical,
+                crate::AsciiLayoutProfile::Compact,
+            ] {
+                for zero_padding in [false, true] {
+                    let mut graph = AsciiGraph::new(direction);
+                    for node in ["A", "B", "C"] {
+                        graph.add_node(node, node);
+                    }
+                    let style = GraphGroupStyle::default();
+                    graph.add_group_with_style("E", "Empty", None, Vec::new(), style);
+                    graph.add_group_with_style(
+                        "L",
+                        "Left",
+                        None,
+                        vec!["A".into(), "E".into()],
+                        style,
+                    );
+                    graph.add_group_with_style("R", "Right", None, vec!["B".into()], style);
+                    let mut options = AsciiRenderOptions::unicode().with_layout_profile(profile);
+                    if zero_padding {
+                        options = options
+                            .with_node_padding_x(0)
+                            .with_node_padding_y(0)
+                            .with_graph_padding_x(0)
+                            .with_graph_padding_y(0);
+                    }
+                    let layout = layout_graph(&graph, &options);
+                    for node in &layout.nodes {
+                        let projected = layout.grid_to_canvas(node.grid);
+                        assert_eq!(
+                            (projected.x, projected.y),
+                            (node.x, node.y),
+                            "scope placement must preserve the routing projection contract"
+                        );
+                    }
+                    let left = layout.groups.iter().find(|group| group.id == "L").unwrap();
+                    let right = layout.groups.iter().find(|group| group.id == "R").unwrap();
+                    let empty = layout.groups.iter().find(|group| group.id == "E").unwrap();
+                    assert_contains(left, empty.x, empty.y, empty.right(), empty.bottom());
+                    assert!(
+                        left.right() + 1 < right.x
+                            || right.right() + 1 < left.x
+                            || left.bottom() + 1 < right.y
+                            || right.bottom() + 1 < left.y,
+                        "unrelated complete frames need a reading gutter: {layout:?}"
+                    );
+                    let outside = layout.nodes.iter().find(|node| node.id == "C").unwrap();
+                    for group in [left, right] {
+                        assert!(
+                            group.right() + 1 < outside.x
+                                || outside.right() + 1 < group.x
+                                || group.bottom() + 1 < outside.y
+                                || outside.bottom() + 1 < group.y,
+                            "outside nodes must not be swallowed by a complete subtree envelope: {layout:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn graph_layout_cancellation_precedes_grid_and_work_admission() {

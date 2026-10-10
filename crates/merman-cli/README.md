@@ -381,6 +381,17 @@ merman-cli render diagram.mmd --format unicode --ascii-layout-profile compact \
 
 PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
 
+For Flowchart, Swimlane, and State, `--ascii-node-padding-y 0` removes blank rows inside
+ordinary node frames. `--ascii-node-padding 0` sets both axes; `--ascii-node-padding-x` and
+`--ascii-node-padding-y` override that scalar independently. The default remains one cell.
+`--ascii-graph-padding-x` and `--ascii-graph-padding-y` control preferred gaps between ranks,
+including under Compact. Layout still reserves required space for frames, labels, and arrows.
+These switches apply to text rendering.
+
+```sh
+merman-cli render diagram.mmd --format unicode --ascii-node-padding-y 0
+```
+
 `--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
 resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
 rejected. The report uses ASCII output schema 3 and includes `encoding`, logical primary/emitted

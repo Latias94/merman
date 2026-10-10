@@ -225,12 +225,15 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
     };
     cells.try_push(resources, || route_cell(end_x, bottom_y, end_corner))?;
 
-    let arrow_y = bottom_y - 1;
+    let arrow_y = resources.checked_grid_add(to.bottom(), 1)?;
     let end_anchor = cells.try_push_anchor(
         resources,
         || edge_line_cell(end_x, arrow_y, vertical),
         StepDirection::Up,
     )?;
+    for y in (arrow_y + 1)..bottom_y {
+        cells.try_push(resources, || route_cell(end_x, y, vertical))?;
+    }
     let labels = planned_label(
         label,
         CanvasCoord {

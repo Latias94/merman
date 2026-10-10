@@ -29,9 +29,12 @@ pub(super) use cell::RouteCells;
 use cell::{RouteCellPaint, set_edge_cell_with_paint, set_route_cell_with_paint};
 use label::{EdgeLabel, RoutedLabelCatalog, RoutedLabelCatalogPlan, draw_routed_label};
 #[cfg(test)]
+use occupancy::allocate_marker_berths;
+#[cfg(test)]
 use occupancy::{MarkerCandidateDisposition, OccupiedRect, ProtectedKind};
 use occupancy::{
-    RouteCandidateScore, SceneOccupancy, allocate_marker_berths, allocate_route_label_placements,
+    RouteCandidateScore, SceneOccupancy, allocate_committed_route_marker_berths,
+    allocate_route_label_placements,
 };
 #[cfg(test)]
 use path::StepDirection;
@@ -431,6 +434,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            let Some(plan) = plan.resolve_node_attachments(&from, &to, charset, resources)? else {
+                continue;
+            };
             let plan = plan
                 .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
                 .with_style(edge.style);
@@ -454,23 +460,26 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 feature: "routes crossing reserved graph geometry",
             });
         };
-        let plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
+        let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
+        occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
         let start = plan.terminal_candidate(MarkerEndpoint::Start, graph.diagram_type())?;
         let end = plan.terminal_candidate(MarkerEndpoint::End, graph.diagram_type())?;
         let prepared = PreparedRoute { plan, owner };
         let route_index = routes.len();
         occupancy.commit_route(route_index, &prepared, start, end, resources)?;
         routes.push(prepared);
+        // Admission and materialization share the current occupancy. Subsequent route
+        // candidates must preserve the distinct marker berths already committed here.
+        allocate_committed_route_marker_berths(
+            &mut routes,
+            route_index,
+            &mut occupancy,
+            charset,
+            resources,
+            graph.diagram_type(),
+        )?;
     }
 
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    allocate_marker_berths(
-        &mut routes,
-        &mut occupancy,
-        charset,
-        resources,
-        graph.diagram_type(),
-    )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
 

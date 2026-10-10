@@ -180,6 +180,11 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
 '--ascii-charset=[Override the text renderer character set]:ASCII_CHARSET:(ascii unicode)' \
 '--ascii-width-profile=[Display-width convention used for terminal text measurement]:ASCII_WIDTH_PROFILE:(unicode cjk)' \
+'--ascii-node-padding=[Padding inside Flowchart, Swimlane, and State node frames on both axes (zero is allowed)]:ASCII_NODE_PADDING:_default' \
+'--ascii-node-padding-x=[Horizontal node padding in columns; overrides --ascii-node-padding for this axis]:ASCII_NODE_PADDING_X:_default' \
+'--ascii-node-padding-y=[Vertical node padding in rows; overrides --ascii-node-padding for this axis]:ASCII_NODE_PADDING_Y:_default' \
+'--ascii-graph-padding-x=[Preferred graph column gap; required label, route, and group clearance can increase it]:ASCII_GRAPH_PADDING_X:_default' \
+'--ascii-graph-padding-y=[Preferred graph row gap; required label, route, and group clearance can increase it]:ASCII_GRAPH_PADDING_Y:_default' \
 '--ascii-flowchart-node-label-wrap-width=[Flowchart node-label wrap width in terminal display cells]:ASCII_FLOWCHART_WRAP_WIDTH:_default' \
 '--ascii-direction=[Override the default graph direction when Mermaid input omits one]:ASCII_DIRECTION:(left-right top-down)' \
 '--ascii-color=[Color mode for terminal text output]:ASCII_COLOR:(plain auto ansi16 ansi256 truecolor html)' \

@@ -1399,6 +1399,46 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_width_profile: Option<TextWidthProfile>,
 
+    /// Padding inside Flowchart, Swimlane, and State node frames on both axes (zero is allowed).
+    #[arg(
+        long = "ascii-node-padding",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_node_padding: Option<usize>,
+
+    /// Horizontal node padding in columns; overrides --ascii-node-padding for this axis.
+    #[arg(
+        long = "ascii-node-padding-x",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_node_padding_x: Option<usize>,
+
+    /// Vertical node padding in rows; overrides --ascii-node-padding for this axis.
+    #[arg(
+        long = "ascii-node-padding-y",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_node_padding_y: Option<usize>,
+
+    /// Preferred graph column gap; required label, route, and group clearance can increase it.
+    #[arg(
+        long = "ascii-graph-padding-x",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_graph_padding_x: Option<usize>,
+
+    /// Preferred graph row gap; required label, route, and group clearance can increase it.
+    #[arg(
+        long = "ascii-graph-padding-y",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_graph_padding_y: Option<usize>,
+
     /// Flowchart node-label wrap width in terminal display cells.
     #[arg(
         long = "ascii-flowchart-node-label-wrap-width",

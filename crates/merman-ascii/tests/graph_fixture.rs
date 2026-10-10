@@ -1,6 +1,7 @@
 mod support;
 
 use merman_ascii::AsciiRenderOptions;
+use merman_core::diagram::RenderSemanticModel;
 use merman_core::{Engine, ParseOptions};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -405,6 +406,18 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     graph_fixture("extended-chars", "two_layer_single_graph.txt"),
 ];
 
+// These copied outputs erase group borders at legal route crossings. Their bytes remain immutable;
+// named corrections use strict Merman snapshots and independently verify the compound geometry.
+const GRAPH_FIXTURE_CORRECTIONS: &[GraphFixture] = &[
+    graph_fixture("ascii", "subgraph_mixed_nodes.txt"),
+    graph_fixture("ascii", "subgraph_nested_with_external.txt"),
+    graph_fixture("ascii", "subgraph_standalone_labeled_node.txt"),
+    graph_fixture("ascii", "subgraph_td_multiple_paddingy.txt"),
+    graph_fixture("ascii", "subgraph_td_multiple.txt"),
+    graph_fixture("ascii", "subgraph_three_separate.txt"),
+    graph_fixture("ascii", "subgraph_two_separate.txt"),
+];
+
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -454,11 +467,14 @@ fn graph_fixture_keys(fixtures: &[GraphFixture]) -> BTreeSet<String> {
 #[test]
 fn graph_fixture_exact_subset_matches_upstream() {
     let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
+    let corrections = graph_fixture_keys(GRAPH_FIXTURE_CORRECTIONS);
+    let mut exact_count = 0;
     let mut mismatches = Vec::new();
     for fixture in GRAPH_FIXTURE_CORPUS {
-        if gaps.contains(&fixture.key()) {
+        if gaps.contains(&fixture.key()) || corrections.contains(&fixture.key()) {
             continue;
         }
+        exact_count += 1;
         let path = fixture_path(*fixture);
         let (input, expected) = split_fixture(&path);
         match render_flowchart(&input, &fixture.options()) {
@@ -468,11 +484,269 @@ fn graph_fixture_exact_subset_matches_upstream() {
         }
     }
 
+    assert_eq!(
+        exact_count, 33,
+        "the immutable exact subset must remain explicit"
+    );
     assert!(
         mismatches.is_empty(),
         "copied graph fixtures no longer match exactly:\n{}",
         mismatches.join("\n")
     );
+}
+
+#[test]
+fn graph_fixture_named_corrections_preserve_closed_compound_frames() {
+    for fixture in GRAPH_FIXTURE_CORRECTIONS {
+        let (input, copied) = split_fixture(&fixture_path(*fixture));
+        let snapshot = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/graph_fixture/corrected-fixtures")
+            .join(fixture.directory)
+            .join(fixture.name);
+        let expected = std::fs::read_to_string(&snapshot).unwrap_or_else(|error| {
+            panic!("read corrected snapshot {}: {error}", snapshot.display())
+        });
+        assert_ne!(
+            expected,
+            copied,
+            "{} must retain a verified correction",
+            fixture.key()
+        );
+        assert_eq!(
+            expected.len(),
+            copied.len(),
+            "these corrections preserve the copied geometry"
+        );
+        assert!(
+            copied
+                .chars()
+                .zip(expected.chars())
+                .all(|(original, corrected)| {
+                    original == corrected || (matches!(original, '-' | '|') && corrected == '+')
+                }),
+            "{} must only preserve the frame directions at route crossings",
+            fixture.key()
+        );
+        let rendered = render_flowchart(&input, &fixture.options())
+            .unwrap_or_else(|error| panic!("{}: {error}", fixture.key()));
+        assert_eq!(
+            rendered,
+            expected,
+            "{} corrected output changed",
+            fixture.key()
+        );
+        assert_eq!(
+            visible_text_token_counts(&rendered),
+            visible_text_token_counts(&copied),
+            "{} must preserve every copied label exactly once",
+            fixture.key()
+        );
+        assert_corrected_compound_geometry(&input, &rendered);
+    }
+}
+
+fn unique_ascii_label_position(rows: &[Vec<char>], label: &str) -> (usize, usize) {
+    assert!(
+        !label.is_empty() && label.is_ascii(),
+        "these named labels are plain ASCII"
+    );
+    let is_word = |glyph: char| glyph.is_ascii_alphanumeric() || glyph == '_';
+    let positions = rows
+        .iter()
+        .enumerate()
+        .flat_map(|(row, glyphs)| {
+            glyphs
+                .iter()
+                .collect::<String>()
+                .match_indices(label)
+                .filter_map(|(column, _)| {
+                    let before = column.checked_sub(1).and_then(|index| glyphs.get(index));
+                    let after = glyphs.get(column + label.len());
+                    (!before.is_some_and(|glyph| is_word(*glyph))
+                        && !after.is_some_and(|glyph| is_word(*glyph)))
+                    .then_some((row, column))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        positions.len(),
+        1,
+        "authored label {label:?} must occur exactly once"
+    );
+    positions[0]
+}
+
+fn assert_corrected_compound_geometry(input: &str, rendered: &str) {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("corrected fixture parses")
+        .expect("corrected fixture is detected");
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("a corrected graph fixture must have the Flowchart model");
+    };
+    let rows = rendered
+        .lines()
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let mut frames = BTreeMap::new();
+    let mut crossings = 0;
+    for group in &model.subgraphs {
+        let (title_row, title_column) = unique_ascii_label_position(&rows, &group.title);
+        let top = title_row
+            .checked_sub(1)
+            .expect("group title has a top frame");
+        let candidates = (0..title_column)
+            .filter(|left| rows[top][*left] == '+')
+            .flat_map(|left| {
+                let rows = &rows;
+                (title_column + group.title.len()..rows[top].len())
+                    .filter(move |right| rows[top][*right] == '+')
+                    .filter_map(move |right| {
+                        let horizontal_frame = |row: usize| {
+                            rows[row].get(left) == Some(&'+')
+                                && rows[row].get(right) == Some(&'+')
+                                && rows[row][left + 1..right]
+                                    .iter()
+                                    .all(|glyph| matches!(glyph, '-' | '+'))
+                        };
+                        if !horizontal_frame(top) {
+                            return None;
+                        }
+                        (title_row + 1..rows.len())
+                            .find(|bottom| {
+                                horizontal_frame(*bottom)
+                                    && rows[top + 1..*bottom].iter().all(|row| {
+                                        matches!(row.get(left), Some('|' | '+'))
+                                            && matches!(row.get(right), Some('|' | '+'))
+                                    })
+                            })
+                            .map(|bottom| (left, right, bottom))
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            candidates.len(),
+            1,
+            "group {:?} must have one closed frame around its title:\n{rendered}",
+            group.title
+        );
+        let (left, right, bottom) = candidates[0];
+        for row in [top, bottom] {
+            assert_eq!(rows[row][left], '+', "group corner must remain visible");
+            assert_eq!(rows[row][right], '+', "group corner must remain visible");
+            assert!(
+                rows[row][left + 1..right]
+                    .iter()
+                    .all(|glyph| matches!(glyph, '-' | '+')),
+                "horizontal group frame must remain continuous:\n{rendered}"
+            );
+            crossings += rows[row][left + 1..right]
+                .iter()
+                .filter(|glyph| **glyph == '+')
+                .count();
+        }
+        for row in &rows[top + 1..bottom] {
+            for column in [left, right] {
+                assert!(
+                    matches!(row[column], '|' | '+'),
+                    "vertical group frame must remain continuous at {column}:\n{rendered}"
+                );
+                crossings += usize::from(row[column] == '+');
+            }
+        }
+        frames.insert(group.id.as_str(), (left, top, right, bottom));
+    }
+    assert!(
+        crossings > 0,
+        "a named correction must retain an actual frame/route junction"
+    );
+
+    // The first declaration owns repeated membership, including API in the two TD fixtures.
+    let mut owners = BTreeMap::new();
+    for group in &model.subgraphs {
+        for member in &group.nodes {
+            owners.entry(member.as_str()).or_insert(group.id.as_str());
+        }
+    }
+    let contains = |outer: (usize, usize, usize, usize), inner: (usize, usize, usize, usize)| {
+        outer.0 < inner.0 && outer.1 < inner.1 && inner.2 < outer.2 && inner.3 < outer.3
+    };
+    let mut node_frames = BTreeMap::new();
+    for node in model.nodes.iter().filter(|node| !node.is_subgraph_anchor()) {
+        let label = node.label.as_deref().unwrap_or(&node.id);
+        let (row, column) = unique_ascii_label_position(&rows, label);
+        let left = rows[row][..column]
+            .iter()
+            .rposition(|glyph| *glyph == '|')
+            .expect("node left frame remains visible");
+        let right = rows[row][column + label.len()..]
+            .iter()
+            .position(|glyph| *glyph == '|')
+            .map(|offset| column + label.len() + offset)
+            .expect("node right frame remains visible");
+        let top = row
+            .checked_sub(2)
+            .expect("default node frame has two rows above its label");
+        let bottom = row + 2;
+        for corner in [(left, top), (right, top), (left, bottom), (right, bottom)] {
+            assert_eq!(
+                rows[corner.1][corner.0], '+',
+                "node frame corner must remain visible"
+            );
+        }
+        node_frames.insert(node.id.as_str(), (left, top, right, bottom));
+        if let Some(owner) = owners.get(node.id.as_str()) {
+            assert!(
+                contains(frames[owner], (left, top, right, bottom)),
+                "the full node frame must remain inside its declared group:\n{rendered}"
+            );
+        }
+    }
+    let mut attached_heads = BTreeSet::new();
+    for edge in &model.edges {
+        let &(left, top, right, bottom) = node_frames
+            .get(edge.to.as_str())
+            .expect("these copied edges target authored nodes");
+        let center_x = left + (right - left).div_ceil(2);
+        let center_y = top + (bottom - top).div_ceil(2);
+        let mut heads = Vec::new();
+        if let Some(x) = left.checked_sub(1) {
+            heads.push((x, center_y, '>'));
+        }
+        if let Some(y) = top.checked_sub(1) {
+            heads.push((center_x, y, 'v'));
+        }
+        heads.extend([(right + 1, center_y, '<'), (center_x, bottom + 1, '^')]);
+        let heads = heads
+            .into_iter()
+            .filter(|(x, y, glyph)| rows.get(*y).and_then(|row| row.get(*x)) == Some(glyph))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            heads.len(),
+            1,
+            "edge {} -> {} must enter its actual target with one arrowhead:\n{rendered}",
+            edge.from,
+            edge.to
+        );
+        assert!(
+            attached_heads.insert(heads[0]),
+            "distinct edges must retain distinct target heads"
+        );
+    }
+    assert_eq!(
+        attached_heads.len(),
+        model.edges.len(),
+        "every authored edge must keep its arrowhead"
+    );
+    for (id, frame) in &frames {
+        if let Some(owner) = owners.get(id) {
+            assert!(
+                contains(frames[owner], *frame),
+                "the full nested group frame must remain inside its parent:\n{rendered}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -560,8 +834,43 @@ fn visible_token_occurrences(tokens: &[String], expected: &str) -> usize {
 fn graph_fixture_gap_inventory_covers_all_graph_fixtures() {
     let corpus = graph_fixture_keys(GRAPH_FIXTURE_CORPUS);
     let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
+    let corrections = graph_fixture_keys(GRAPH_FIXTURE_CORRECTIONS);
     assert_eq!(corpus.len(), GRAPH_FIXTURE_CORPUS.len());
     assert_eq!(gaps.len(), GRAPH_FIXTURE_GAPS.len());
+    assert_eq!(corrections.len(), GRAPH_FIXTURE_CORRECTIONS.len());
+    assert_eq!((corpus.len(), gaps.len(), corrections.len()), (79, 39, 7));
+    assert!(
+        corrections.is_subset(&corpus),
+        "every correction must belong to the copied corpus"
+    );
+    assert!(
+        corrections.is_disjoint(&gaps),
+        "a corrected oracle must never become a tolerated layout gap"
+    );
+    let corrected_directory =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/graph_fixture/corrected-fixtures/ascii");
+    let corrected_files = std::fs::read_dir(&corrected_directory)
+        .expect("corrected snapshot directory is readable")
+        .map(|entry| {
+            let path = entry.expect("corrected snapshot entry is readable").path();
+            assert!(
+                path.is_file() && path.extension().is_some_and(|extension| extension == "txt"),
+                "only named corrected text snapshots belong in {}",
+                corrected_directory.display()
+            );
+            format!(
+                "ascii/{}",
+                path.file_name()
+                    .expect("snapshot has a filename")
+                    .to_str()
+                    .expect("snapshot filename is UTF-8")
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        corrected_files, corrections,
+        "corrected snapshots must cover their explicit dispositions exactly"
+    );
     assert!(
         gaps.is_subset(&corpus),
         "every named graph gap must belong to the copied corpus"

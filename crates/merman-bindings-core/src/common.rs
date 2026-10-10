@@ -799,6 +799,10 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) theme: Option<AsciiThemeOptionsJson>,
     #[serde(default, alias = "boxBorderPadding")]
     pub(crate) box_border_padding: Option<usize>,
+    #[serde(default, alias = "nodePaddingX")]
+    pub(crate) node_padding_x: Option<usize>,
+    #[serde(default, alias = "nodePaddingY")]
+    pub(crate) node_padding_y: Option<usize>,
     #[serde(default, alias = "graphPaddingX")]
     pub(crate) graph_padding_x: Option<usize>,
     #[serde(default, alias = "graphPaddingY")]

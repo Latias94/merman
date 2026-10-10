@@ -310,6 +310,7 @@ mod tests {
 
     fn test_layout() -> SequenceLayout {
         SequenceLayout {
+            message_labels: Default::default(),
             participant_widths: vec![3, 3],
             participant_centers: vec![0, 4],
             total_width: 5,

@@ -8,7 +8,7 @@ use super::super::label::{
 };
 use super::super::path::{
     GridPathPortPolicy, Port, PortPair, StepDirection,
-    route_grid_path_with_resources_and_execution, step_direction,
+    route_grid_path_for_layout_with_resources_and_execution, step_direction,
 };
 use super::{
     MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
@@ -208,8 +208,8 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
-    let Some(route) = route_grid_path_with_resources_and_execution(
-        &graph_layout.nodes,
+    let Some(route) = route_grid_path_for_layout_with_resources_and_execution(
+        graph_layout,
         from,
         to,
         options.port_policy,
@@ -223,6 +223,28 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     let start_port = route.ports.start();
     let end_port = route.ports.end();
     if path.len() < 2 {
+        return Ok(None);
+    }
+    // Terminal geometry remains authoritative even when an adjacent waypoint has no stroke.
+    // A marker needs a straight berth before a bend; reject a collapsed terminal segment.
+    let start_contact = graph_layout.grid_to_canvas(path[0]);
+    let start_turn = graph_layout.grid_to_canvas(path[1]);
+    let end_turn = graph_layout.grid_to_canvas(path[path.len() - 2]);
+    let end_contact = graph_layout.grid_to_canvas(path[path.len() - 1]);
+    let start_span = resources.checked_work_add(
+        start_contact.x.abs_diff(start_turn.x),
+        start_contact.y.abs_diff(start_turn.y),
+    )?;
+    let end_span = resources.checked_work_add(
+        end_contact.x.abs_diff(end_turn.x),
+        end_contact.y.abs_diff(end_turn.y),
+    )?;
+    if start_span < 2
+        || end_span < 2
+        || step_direction(path[0], path[1]) != start_port.terminal_direction()
+        || step_direction(path[path.len() - 2], path[path.len() - 1])
+            != end_port.terminal_direction().opposite()
+    {
         return Ok(None);
     }
 
@@ -259,7 +281,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     )?;
     plan_grid_box_start(
         &mut cells,
-        lines_drawn[0].as_slice(),
+        start_contact,
         start_port,
         charset,
         segment,
@@ -270,27 +292,13 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
         .into_iter()
         .collect();
 
-    let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(line_directions[0]));
-    let end_anchor = MarkerAnchor::new(
-        end_cell,
-        *line_directions
-            .last()
-            .unwrap_or(&end_port.terminal_direction()),
-    );
+    let start_anchor = MarkerAnchor::new(start_cell, start_port.terminal_direction().opposite());
+    let end_anchor = MarkerAnchor::new(end_cell, end_port.terminal_direction().opposite());
     Ok(Some(RoutePlan::new(
         cells.into_vec(),
         labels,
         MarkerAnchors::new(start_anchor, end_anchor),
     )))
-}
-
-fn opposite_direction(direction: StepDirection) -> StepDirection {
-    match direction {
-        StepDirection::Up => StepDirection::Down,
-        StepDirection::Right => StepDirection::Left,
-        StepDirection::Down => StepDirection::Up,
-        StepDirection::Left => StepDirection::Right,
-    }
 }
 
 fn planned_grid_label(
@@ -502,7 +510,7 @@ fn plan_grid_corners(
 
 fn plan_grid_box_start(
     cells: &mut PlannedRouteCells,
-    first_line: &[CanvasCoord],
+    contact: CanvasCoord,
     start_port: Port,
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
@@ -513,29 +521,19 @@ fn plan_grid_box_start(
     if !charset.unicode {
         return Ok(());
     }
-    let Some(from) = first_line.first().copied() else {
-        return Ok(());
-    };
-
     cells.try_push(resources, || match start_port.terminal_direction() {
         StepDirection::Up => {
-            edge_line_cell_in_segment(from.x, from.y + 1, charset.up_connector, segment)
+            edge_line_cell_in_segment(contact.x, contact.y, charset.up_connector, segment)
         }
-        StepDirection::Down => edge_line_cell_in_segment(
-            from.x,
-            from.y.saturating_sub(1),
-            charset.down_connector,
-            segment,
-        ),
+        StepDirection::Down => {
+            edge_line_cell_in_segment(contact.x, contact.y, charset.down_connector, segment)
+        }
         StepDirection::Left => {
-            edge_line_cell_in_segment(from.x + 1, from.y, charset.left_connector, segment)
+            edge_line_cell_in_segment(contact.x, contact.y, charset.left_connector, segment)
         }
-        StepDirection::Right => edge_line_cell_in_segment(
-            from.x.saturating_sub(1),
-            from.y,
-            charset.right_connector,
-            segment,
-        ),
+        StepDirection::Right => {
+            edge_line_cell_in_segment(contact.x, contact.y, charset.right_connector, segment)
+        }
     })?;
     Ok(())
 }

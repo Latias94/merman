@@ -361,10 +361,19 @@ export interface AsciiRenderOptions {
   theme?: AsciiThemeOptions;
   sequence_mirror_actors?: boolean;
   sequenceMirrorActors?: boolean;
+  /** Fallback node padding for both axes; defaults to 1. Zero is allowed. */
   box_border_padding?: number;
   boxBorderPadding?: number;
+  /** Horizontal Flowchart/Swimlane/State node padding; overrides box_border_padding. */
+  node_padding_x?: number;
+  nodePaddingX?: number;
+  /** Vertical Flowchart/Swimlane/State node padding; overrides box_border_padding. */
+  node_padding_y?: number;
+  nodePaddingY?: number;
+  /** Preferred graph column gap; required geometry can increase it. */
   graph_padding_x?: number;
   graphPaddingX?: number;
+  /** Preferred graph row gap; required geometry can increase it. */
   graph_padding_y?: number;
   graphPaddingY?: number;
   flowchart_node_label_wrap_width?: number;

@@ -3238,7 +3238,17 @@ mod tests {
             assert_eq!(class.support_level, "partial");
             assert!(class.structured_text_fallback);
 
-            assert_eq!(ascii_capabilities.len(), 31);
+            let mut ascii_diagrams = ascii_capabilities
+                .iter()
+                .map(|capability| capability.diagram_type.clone())
+                .collect::<Vec<_>>();
+            ascii_diagrams.sort();
+            let mut declared_diagrams = merman_bindings_core::ascii_capabilities()
+                .into_iter()
+                .map(|capability| capability.diagram_type.to_string())
+                .collect::<Vec<_>>();
+            declared_diagrams.sort();
+            assert_eq!(ascii_diagrams, declared_diagrams);
             let zenuml = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "zenuml")

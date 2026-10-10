@@ -379,7 +379,7 @@ fn sequence_fallback_preserves_primary_work_in_the_render_wide_ledger() {
         "Alice->>Bob: Request with a long authored message\n",
         "Bob-->>Alice: Response with another long authored message\n",
     );
-    let exact_work = 3_818;
+    let exact_work = 4_082;
     let exact_resources = merman_ascii::AsciiResourcePolicy::unbounded()
         .with_limit(
             merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,

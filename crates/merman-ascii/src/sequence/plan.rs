@@ -774,6 +774,7 @@ mod tests {
         const EXACT_WORK: usize = MATERIALIZED_WIDTH + PARTICIPANT_COUNT;
 
         let layout = SequenceLayout {
+            message_labels: Default::default(),
             participant_widths: vec![3, 3],
             participant_centers: vec![2, 98],
             total_width: MATERIALIZED_WIDTH - 1,
@@ -831,11 +832,9 @@ mod tests {
 
     #[test]
     fn final_message_batch_reserves_before_footprint_and_state_materialization() {
-        let diagram = diagram(2);
+        let mut diagram = diagram(2);
         let options = AsciiRenderOptions::ascii();
         let base_policy = AsciiResourcePolicy::default();
-        let mut layout = calculate_layout(&diagram, &options, &base_policy).unwrap();
-        layout.policy.message_spacing = 0;
         let event = SequenceEvent::Message(SequenceMessage {
             model_index: 0,
             from: 0,
@@ -848,6 +847,16 @@ mod tests {
             direction: SequenceMessageDirection::Forward,
             central_decoration: SequenceCentralDecoration::None,
         });
+        let projection_resources = ResourceContext::new(base_policy);
+        let execution = AsciiExecution::for_test(&base_policy);
+        let mut tree =
+            crate::sequence::tree::SequenceTreeBuilder::new(1, &projection_resources, execution)
+                .unwrap();
+        tree.push_event(event.clone(), &projection_resources, execution)
+            .unwrap();
+        diagram.body = tree.finish().unwrap();
+        let mut layout = calculate_layout(&diagram, &options, &base_policy).unwrap();
+        layout.policy.message_spacing = 0;
         let active_counts = [0, 0];
         let visible_actors = [true, true];
 

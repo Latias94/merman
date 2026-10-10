@@ -275,3 +275,6 @@ mod layout_and_lifecycle;
 mod signals;
 #[path = "sequence_model/validation.rs"]
 mod validation;
+
+#[path = "sequence_model/message_spacing.rs"]
+mod message_spacing;

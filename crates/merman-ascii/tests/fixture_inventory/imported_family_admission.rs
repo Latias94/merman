@@ -2,13 +2,16 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use merman_ascii::AsciiRenderOptions;
-use merman_core::{Engine, ParseOptions};
+use merman_ascii::{
+    AsciiError, AsciiRenderOptions, AsciiResourceLimitCause, AsciiResourceLimitId,
+    AsciiResourceLimitPhase, AsciiResourcePolicy,
+};
+use merman_core::{Engine, ParseOptions, resources::ResourceProfile};
 
-use super::support::render_model;
+use super::support::{render_model, render_model_with_resources};
 
 const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
-    ("sequence", "sequence", 322),
+    ("sequence", "sequence", 323),
     ("class", "class", 251),
     ("er", "er", 101),
 ];
@@ -97,8 +100,31 @@ fn imported_common_family_fixtures_parse_and_render() {
                         model.kind()
                     ));
                 }
-                let rendered = render_model(model, &options)
-                    .map_err(|error| format!("ASCII render failed: {error}"))?;
+                let rendered = if fixture_key
+                    == "sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd"
+                {
+                    // Complete message hosts make this large documentation diagram exceed the
+                    // interactive grid ceiling. Keep that rejection observable and admit this
+                    // named offline fixture under the existing bounded trusted-native profile.
+                    let error = render_model(model, &options)
+                        .expect_err("the complete API-flow diagram exceeds the interactive grid");
+                    let AsciiError::ResourceLimitExceeded(limit) = error else {
+                        return Err(format!("expected an interactive grid limit, got {error}"));
+                    };
+                    assert_eq!(limit.limit, AsciiResourceLimitId::MaxGridCells);
+                    assert_eq!(limit.phase(), AsciiResourceLimitPhase::Layout);
+                    assert_eq!(limit.cause, AsciiResourceLimitCause::Ceiling);
+                    assert_eq!(limit.max, 250_000);
+                    assert!(limit.actual > limit.max);
+                    render_model_with_resources(
+                        model,
+                        &options,
+                        AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
+                    )
+                } else {
+                    render_model(model, &options)
+                }
+                .map_err(|error| format!("ASCII render failed: {error}"))?;
                 if expected_empty {
                     if !rendered.trim().is_empty() {
                         return Err(format!(

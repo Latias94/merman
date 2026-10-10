@@ -49,6 +49,8 @@ THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 
 # ASCII/Unicode golden fixtures intentionally preserve trailing character cells.
 crates/merman-ascii/tests/testdata/mermaid-ascii/**/*.txt text eol=lf whitespace=-blank-at-eol
+crates/merman-ascii/tests/graph_fixture/corrected-fixtures/**/*.txt text eol=lf whitespace=-blank-at-eol
+crates/merman-ascii/tests/sequence_model/corrected-fixtures/*.txt text eol=lf whitespace=-blank-at-eol
 
 # This corpus case exercises an indentation-only Mermaid source line.
 distribution/tree-sitter-mermaid/test/corpus/families/ishikawa.txt text eol=lf whitespace=-blank-at-eol
