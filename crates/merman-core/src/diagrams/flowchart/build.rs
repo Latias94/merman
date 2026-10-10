@@ -1,4 +1,6 @@
-use super::{Edge, FlowNodeProvenance, FlowNodeSyntax, Node, Stmt, TitleKind};
+use super::{
+    Edge, FlowNodeProvenance, FlowNodeSyntax, FlowchartAst, Node, StatementEvent, Stmt, TitleKind,
+};
 use crate::{OperationControl, OperationControlResult};
 use std::collections::{HashMap, HashSet};
 
@@ -25,22 +27,16 @@ impl FlowchartBuildState {
 
     pub(super) fn add_statements(
         &mut self,
-        statements: &[Stmt],
+        ast: &FlowchartAst,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        // Keep Mermaid's preorder statement handling without using the Rust call stack for
-        // deeply nested subgraphs.
-        let mut stack = vec![statements.iter()];
-        let mut visited = 0usize;
-        while let Some(iter) = stack.last_mut() {
-            let Some(stmt) = iter.next() else {
-                stack.pop();
-                continue;
-            };
+        for (visited, event) in ast.walk().enumerate() {
             if visited.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            visited = visited.saturating_add(1);
+            let StatementEvent::Enter(stmt) = event else {
+                continue;
+            };
 
             match stmt {
                 Stmt::Chain {
@@ -106,7 +102,7 @@ impl FlowchartBuildState {
                     }
                 }
                 Stmt::Style(_) => {}
-                Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
+                Stmt::Subgraph(_) => {}
                 Stmt::Direction(_)
                 | Stmt::ClassDef(_)
                 | Stmt::ClassAssign(_)
@@ -252,16 +248,37 @@ mod tests {
                 have_callback: false,
             })
             .collect();
-        let statements = [Stmt::Chain {
-            node_groups: vec![nodes],
-            edge_groups: Vec::new(),
-        }];
+        let mut statements = super::super::StatementArena::default();
+        let construction_control = OperationControl::new();
+        let id = statements
+            .push(
+                Stmt::Chain {
+                    node_groups: vec![nodes],
+                    edge_groups: Vec::new(),
+                },
+                &construction_control,
+            )
+            .unwrap();
+        let root = statements
+            .prepend(
+                id,
+                super::super::StatementList::default(),
+                &construction_control,
+            )
+            .unwrap();
+        let ast = FlowchartAst {
+            keyword: "flowchart".to_string(),
+            direction: Some("TB".to_string()),
+            header_span: crate::SourceSpan::new(0, 0),
+            statements,
+            root,
+        };
         let mut build = FlowchartBuildState::new(HashSet::new());
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
-            build.add_statements(&statements, &control),
+            build.add_statements(&ast, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(build.nodes.len() < 256);

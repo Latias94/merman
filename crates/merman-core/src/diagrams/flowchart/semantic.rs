@@ -7,8 +7,9 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowNodeSyntax, FlowSubGraph,
-    FlowSubgraphVertexStyle, FlowchartRenderStyleSources, LinkStylePos, Node, Stmt, TitleKind,
-    apply_shape_data_value_to_node, value_to_bool, value_to_string,
+    FlowSubgraphVertexStyle, FlowchartAst, FlowchartRenderStyleSources, LinkStylePos, Node,
+    StatementEvent, Stmt, TitleKind, apply_shape_data_value_to_node, value_to_bool,
+    value_to_string,
 };
 
 pub(super) struct FlowchartSemanticContext<'a> {
@@ -33,38 +34,25 @@ pub(super) struct FlowchartSemanticContext<'a> {
 }
 
 pub(super) fn apply_semantic_statements(
-    statements: &[Stmt],
+    ast: &FlowchartAst,
     ctx: &mut FlowchartSemanticContext<'_>,
 ) -> OperationControlResult<Result<()>> {
-    ctx.apply_statements(statements)
+    ctx.apply_statements(ast)
 }
 
 impl<'a> FlowchartSemanticContext<'a> {
-    fn apply_statements(&mut self, statements: &[Stmt]) -> OperationControlResult<Result<()>> {
-        enum ReplayItem<'a> {
-            Statement(&'a Stmt),
-            FinishSubgraph,
-        }
-
-        let mut stack = statements
-            .iter()
-            .rev()
-            .map(ReplayItem::Statement)
-            .collect::<Vec<_>>();
-        let mut visited = 0usize;
+    fn apply_statements(&mut self, ast: &FlowchartAst) -> OperationControlResult<Result<()>> {
         let mut active_subgraphs = HashMap::new();
         let mut seen_vertex_ids = HashSet::new();
         let mut vertex_css = HashMap::new();
         let mut seen_edge_indices: HashMap<String, Vec<usize>> = HashMap::new();
         let mut next_built_edge_index = 0usize;
         let mut next_built_subgraph_index = 0usize;
-        while let Some(item) = stack.pop() {
+        for (visited, event) in ast.walk().enumerate() {
             if visited.is_multiple_of(128) {
                 self.control.checkpoint()?;
             }
-            visited = visited.saturating_add(1);
-
-            let ReplayItem::Statement(stmt) = item else {
+            let StatementEvent::Enter(stmt) = event else {
                 let owner = self
                     .subgraph_declaration_owners
                     .get(next_built_subgraph_index)
@@ -83,10 +71,7 @@ impl<'a> FlowchartSemanticContext<'a> {
             };
 
             match stmt {
-                Stmt::Subgraph(sg) => {
-                    stack.push(ReplayItem::FinishSubgraph);
-                    stack.extend(sg.statements.iter().rev().map(ReplayItem::Statement));
-                }
+                Stmt::Subgraph(_) => {}
                 Stmt::Style(s) => {
                     if seen_edge_indices.contains_key(&s.target) {
                         continue;
@@ -719,16 +704,37 @@ mod tests {
             shape_data_documents: &shape_data_documents,
             control: &control,
         };
-        let statements = [Stmt::ClassAssign(ClassAssignStmt {
-            targets: vec!["missing-edge".to_string()],
-            target_spans: Vec::new(),
-            class_name: "hot".to_string(),
-            class_name_span: None,
-            editor_evidence: Default::default(),
-        })];
+        let mut statements = super::super::StatementArena::default();
+        let construction_control = OperationControl::new();
+        let id = statements
+            .push(
+                Stmt::ClassAssign(ClassAssignStmt {
+                    targets: vec!["missing-edge".to_string()],
+                    target_spans: Vec::new(),
+                    class_name: "hot".to_string(),
+                    class_name_span: None,
+                    editor_evidence: Default::default(),
+                }),
+                &construction_control,
+            )
+            .unwrap();
+        let root = statements
+            .prepend(
+                id,
+                super::super::StatementList::default(),
+                &construction_control,
+            )
+            .unwrap();
+        let ast = FlowchartAst {
+            keyword: "flowchart".to_string(),
+            direction: Some("TB".to_string()),
+            header_span: crate::SourceSpan::new(0, 0),
+            statements,
+            root,
+        };
 
         assert!(matches!(
-            apply_semantic_statements(&statements, &mut context),
+            apply_semantic_statements(&ast, &mut context),
             Err(crate::OperationCancelled { .. })
         ));
     }

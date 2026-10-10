@@ -392,13 +392,11 @@ fn small_lifecycle_cases_complete_on_host_stack() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the Flowchart ownership repair"]
 fn deep_flowchart_valid_10000() {
     run_child(Case::FlowchartValid, 10_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the Flowchart fragment repair"]
 fn deep_flowchart_missing_outer_end_10000() {
     run_child(Case::FlowchartMissingOuterEnd, 10_000);
 }
