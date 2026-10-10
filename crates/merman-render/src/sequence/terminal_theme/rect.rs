@@ -81,10 +81,6 @@ impl SequencePreparedStaticRectTheme {
                 _ => {}
             }
         }
-        let mut effect_requested = false;
-        let mut effect_binding_used = false;
-        let mut effect_cleared = false;
-        let mut effect_unhandled = false;
         let style = if has_rule_routes {
             let style =
                 theme.style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?;
@@ -98,33 +94,20 @@ impl SequencePreparedStaticRectTheme {
         let typed_stroke = (!stroke_overridden && has_typed_stroke)
             .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
             .flatten();
-        let mut effect = None;
         let stroke_width = style.as_ref().and_then(|style| style.stroke_width());
         let radius = style.as_ref().and_then(|style| style.radius());
+        let default_effect_resolution = Default::default();
         let resolution = style
             .as_ref()
-            .map(|s| s.effect_resolution().clone())
-            .unwrap_or_default();
-        match theme.resolve_effect(target, &resolution) {
-            None => {}
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                effect_requested = true;
-                effect_cleared = true;
-            }
-            Some(resolved) => {
-                effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                effect_unhandled = effect.is_none();
-            }
-        }
+            .map(|style| style.effect_resolution())
+            .unwrap_or(&default_effect_resolution);
+        let SequencePreparedEffect {
+            effect,
+            effect_requested,
+            effect_binding_used,
+            effect_cleared,
+            effect_unhandled,
+        } = prepare_sequence_effect(theme, target, resolution);
         Ok(SequencePreparedStaticRectTheme {
             stroke_width,
             radius,

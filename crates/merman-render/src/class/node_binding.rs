@@ -5,8 +5,16 @@ use rustc_hash::FxHashMap;
 #[derive(Debug)]
 pub(crate) struct ClassNodeVisualPlan {
     expectations: Box<[super::ClassNodeTerminalExpectation]>,
-    nodes: FxHashMap<String, ClassNodeVisualBinding>,
-    interfaces: FxHashMap<String, ClassInterfaceVisualBinding>,
+    indices: FxHashMap<String, ClassNodeVisualIndices>,
+    nodes: Box<[ClassNodeVisualBinding]>,
+    interfaces: Box<[ClassInterfaceVisualBinding]>,
+}
+
+#[derive(Debug)]
+struct ClassNodeVisualIndices {
+    expectation: usize,
+    node: Option<usize>,
+    interface: Option<usize>,
 }
 
 impl ClassNodeVisualPlan {
@@ -24,41 +32,56 @@ impl ClassNodeVisualPlan {
                 .cloned()
                 .chain(model.interfaces.iter().map(|node| node.id.clone())),
         );
-        let by_id = expectations
-            .iter()
-            .map(|expectation| (expectation.id(), expectation))
-            .collect::<FxHashMap<_, _>>();
-        let mut nodes = FxHashMap::default();
+        let mut indices: FxHashMap<String, ClassNodeVisualIndices> = FxHashMap::default();
+        for (index, expectation) in expectations.iter().enumerate() {
+            if let Some(indices) = indices.get_mut(expectation.id()) {
+                indices.expectation = index;
+            } else {
+                indices.insert(
+                    expectation.id().to_owned(),
+                    ClassNodeVisualIndices {
+                        expectation: index,
+                        node: None,
+                        interface: None,
+                    },
+                );
+            }
+        }
+        let mut nodes = Vec::with_capacity(model.classes.len());
         for (id, node) in &model.classes {
             work.checkpoint(merman_core::OperationPhase::Layout)?;
-            let expectation = by_id
-                .get(id.as_str())
+            let index = indices
+                .get_mut(id.as_str())
                 .expect("prepared Class node theme owner");
-            nodes.insert(
-                id.clone(),
-                ClassNodeVisualBinding::lower(
-                    node,
-                    expectation,
-                    typography,
-                    diagram_use_html_labels,
-                )?,
-            );
+            let binding = ClassNodeVisualBinding::lower(
+                node,
+                &expectations[index.expectation],
+                typography,
+                diagram_use_html_labels,
+            )?;
+            index.node = Some(nodes.len());
+            nodes.push(binding);
         }
-        let mut interfaces = FxHashMap::default();
+        let mut interfaces = Vec::new();
         for interface in &model.interfaces {
             work.checkpoint(merman_core::OperationPhase::Layout)?;
-            let expectation = by_id
-                .get(interface.id.as_str())
+            let index = indices
+                .get_mut(interface.id.as_str())
                 .expect("prepared Class interface theme owner");
-            interfaces.insert(
-                interface.id.clone(),
-                ClassInterfaceVisualBinding::lower(interface, expectation),
-            );
+            let binding =
+                ClassInterfaceVisualBinding::lower(interface, &expectations[index.expectation]);
+            if let Some(slot) = index.interface {
+                interfaces[slot] = binding;
+            } else {
+                index.interface = Some(interfaces.len());
+                interfaces.push(binding);
+            }
         }
         Ok(Self {
             expectations: expectations.into_boxed_slice(),
-            nodes,
-            interfaces,
+            indices,
+            nodes: nodes.into_boxed_slice(),
+            interfaces: interfaces.into_boxed_slice(),
         })
     }
 
@@ -67,15 +90,21 @@ impl ClassNodeVisualPlan {
     }
 
     pub(crate) fn node(&self, id: &str) -> &ClassNodeVisualBinding {
-        self.nodes
+        let index = self
+            .indices
             .get(id)
-            .expect("prepared Class node visual binding")
+            .and_then(|indices| indices.node)
+            .expect("prepared Class node visual binding");
+        &self.nodes[index]
     }
 
     pub(crate) fn interface(&self, id: &str) -> &ClassInterfaceVisualBinding {
-        self.interfaces
+        let index = self
+            .indices
             .get(id)
-            .expect("prepared Class interface visual binding")
+            .and_then(|indices| indices.interface)
+            .expect("prepared Class interface visual binding");
+        &self.interfaces[index]
     }
 }
 

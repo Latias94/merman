@@ -52,38 +52,19 @@ impl SequencePreparedControlTheme {
         }
 
         let style = theme.style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?;
-        let mut effect_requested = false;
-        let mut effect_binding_used = false;
-        let mut effect_cleared = false;
-        let mut effect_unhandled = false;
         let typed_fill = (target == ThemeTarget::LoopLabelBackground && !fill_overridden)
             .then(|| typed_static_sequence_fill(theme, &style))
             .flatten();
         let typed_stroke = (!stroke_overridden)
             .then(|| typed_static_sequence_stroke(theme, &style))
             .flatten();
-        let effect = match theme.resolve_effect(target, style.effect_resolution()) {
-            None => None,
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                effect_requested = true;
-                effect_cleared = true;
-                None
-            }
-            Some(resolved) => {
-                effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                effect_unhandled = effect.is_none();
-                effect
-            }
-        };
+        let SequencePreparedEffect {
+            effect,
+            effect_requested,
+            effect_binding_used,
+            effect_cleared,
+            effect_unhandled,
+        } = prepare_sequence_effect(theme, target, style.effect_resolution());
         Ok(SequencePreparedControlTheme {
             effect,
             stroke_width: style.stroke_width(),

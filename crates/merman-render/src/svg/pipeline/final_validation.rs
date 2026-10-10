@@ -104,19 +104,17 @@ pub(crate) fn validate_well_formed_svg_with_controls(
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
-    visit_well_formed_svg_with_controls::<false, _>(
-        svg,
-        checkpoint,
-        check_structure,
-        &mut |_, _| Ok(()),
-    )
+    visit_well_formed_svg_with_controls::<false>(svg, checkpoint, check_structure, &mut |_, _| {
+        Ok(())
+    })
 }
 
-fn visit_well_formed_svg_with_controls<const REFERENCES: bool, C: FnMut() -> Result<()>>(
+#[inline(never)]
+fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
     svg: &str,
-    checkpoint: &mut C,
-    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-    observe_element: &mut impl FnMut(ValidatedElement, usize) -> Result<()>,
+    checkpoint: &mut dyn FnMut() -> Result<()>,
+    check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
+    observe_element: &mut dyn FnMut(ValidatedElement, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
@@ -281,12 +279,13 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool, C: FnMut() -> Res
     })
 }
 
+#[inline(never)]
 fn validate_well_formed_element<const REFERENCES: bool>(
     element: &BytesStart<'_>,
     namespace: ResolveResult<'_>,
     resolver: &NamespaceResolver,
     is_root: bool,
-    checkpoint: &mut impl FnMut() -> Result<()>,
+    checkpoint: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Option<ValidatedElement>> {
     let is_svg_element = is_svg_element_namespace(&namespace);
     match namespace {
@@ -578,7 +577,7 @@ fn check_svg_resource_budget_with_controls(
 ) -> Result<()> {
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
-    visit_well_formed_svg_with_controls::<true, _>(
+    visit_well_formed_svg_with_controls::<true>(
         svg,
         checkpoint,
         check_structure,
@@ -607,10 +606,11 @@ fn check_svg_resource_budget_with_controls(
     check_structure(plan.expanded_elements(), plan.max_tree_depth())
 }
 
+#[inline(never)]
 fn validate_resvg_compatible_svg_after_xml_with_structure(
     svg: &str,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+    mut checkpoint: &mut dyn FnMut() -> Result<()>,
+    check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
@@ -685,7 +685,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     validated,
                 );
                 if empty_style {
-                    validate_style_text("", checkpoint)?;
+                    validate_style_text("", &mut checkpoint)?;
                 }
                 if is_root {
                     root_seen = true;
@@ -703,7 +703,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                             "a <style> element contains nested XML elements",
                         ));
                     }
-                    validate_style_text(&style.css, checkpoint)?;
+                    validate_style_text(&style.css, &mut checkpoint)?;
                     resource_closure
                         .observe_stylesheet_urls(&style.css)
                         .map_err(validation_error)?;
@@ -790,7 +790,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     }
     checkpoint()?;
     let reference_plan =
-        match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint) {
+        match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, &mut checkpoint) {
             Ok(plan) => plan,
             Err(ReferencePlanningError::Invalid(error)) => {
                 return Err(validation_error(error));
@@ -919,12 +919,13 @@ fn append_reference_node(
     });
 }
 
+#[inline(never)]
 fn validate_element_after_xml(
     element: &BytesStart<'_>,
     resolver: &NamespaceResolver,
     is_root: bool,
     resource_closure: &mut SvgResourceClosureBuilder,
-    checkpoint: &mut impl FnMut() -> Result<()>,
+    mut checkpoint: &mut dyn FnMut() -> Result<()>,
 ) -> Result<ValidatedElement> {
     let (namespace, local_name) = resolver.resolve_element(element.name());
     let is_svg_element = is_svg_element_namespace(&namespace);
@@ -1002,7 +1003,7 @@ fn validate_element_after_xml(
             dimension?;
         }
         if semantic_name == "style" {
-            match validate_resvg_css_declaration_list_with_checkpoints(&value, checkpoint) {
+            match validate_resvg_css_declaration_list_with_checkpoints(&value, &mut checkpoint) {
                 Ok(()) => {}
                 Err(CssValidationError::Invalid(error)) => {
                     checkpoint()?;
@@ -1085,13 +1086,14 @@ impl<'a> ReferenceAttributes<'a> {
         }
     }
 
+    #[inline(never)]
     fn observe(
         &mut self,
         semantic_name: &str,
         is_unbound_attribute: bool,
         is_xlink_attribute: bool,
         value: &str,
-        checkpoint: &mut impl FnMut() -> Result<()>,
+        checkpoint: &mut dyn FnMut() -> Result<()>,
     ) -> Result<()> {
         if self.is_svg_element
             && ((self.element_name == "path" && semantic_name == "d")

@@ -94,10 +94,6 @@ impl SequencePreparedActorTheme {
                 }
             )
         });
-        let mut effect_requested = false;
-        let mut effect_binding_used = false;
-        let mut effect_cleared = false;
-        let mut effect_unhandled = false;
         let style = if has_actors && has_actor_rule_routes {
             let style = theme.style_with_work_meter(
                 ThemeTarget::Actor,
@@ -124,32 +120,18 @@ impl SequencePreparedActorTheme {
             .and_then(|s| s.stroke_width())
             .filter(|_| !width_overridden);
         let radius = style.as_ref().and_then(|s| s.radius());
+        let default_effect_resolution = Default::default();
         let effect_resolution = style
             .as_ref()
-            .map(|style| style.effect_resolution().clone())
-            .unwrap_or_default();
-        let effect = match theme.resolve_effect(ThemeTarget::Actor, &effect_resolution) {
-            None => None,
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                effect_requested = true;
-                effect_cleared = true;
-                None
-            }
-            Some(resolved) => {
-                effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                effect_unhandled = effect.is_none();
-                effect
-            }
-        };
+            .map(|style| style.effect_resolution())
+            .unwrap_or(&default_effect_resolution);
+        let SequencePreparedEffect {
+            effect,
+            effect_requested,
+            effect_binding_used,
+            effect_cleared,
+            effect_unhandled,
+        } = prepare_sequence_effect(theme, ThemeTarget::Actor, effect_resolution);
         let mut ordinal_styles = Vec::new();
         if has_ordinal_routes {
             for (index, actor_id) in model.actor_order.iter().enumerate() {

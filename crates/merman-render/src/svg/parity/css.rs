@@ -111,6 +111,15 @@ pub(super) fn write_mermaid_base_css_prefix_with_font_emission<'a, I>(
 where
     I: Copy + std::fmt::Display,
 {
+    emit_mermaid_base_css_prefix(out, &id, css)
+}
+
+#[inline(never)]
+fn emit_mermaid_base_css_prefix<'a>(
+    out: &mut dyn SvgOutput,
+    id: &dyn std::fmt::Display,
+    css: MermaidBaseCss<'a>,
+) -> Result<MermaidBaseFontCssEmission<'a>> {
     let _ = write!(
         out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
@@ -269,17 +278,17 @@ impl PreparedCommonNeoCss {
         if self.0.use_gradient {
             write_mermaid_common_neo_css_values(
                 out,
-                selector_id,
-                format_args!("url(#{gradient_id})"),
-                drop_shadow,
+                &selector_id,
+                &format_args!("url(#{gradient_id})"),
+                &drop_shadow,
                 &self.0,
             )
         } else {
             write_mermaid_common_neo_css_values(
                 out,
-                selector_id,
+                &selector_id,
                 &self.0.node_border,
-                drop_shadow,
+                &drop_shadow,
                 &self.0,
             )
         }
@@ -332,14 +341,15 @@ where
 {
     let neo_stroke = NeoStroke { fragment_id, css };
     let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
-    write_mermaid_common_neo_css_values(out, selector_id, neo_stroke, drop_shadow, css)
+    write_mermaid_common_neo_css_values(out, &selector_id, &neo_stroke, &drop_shadow, css)
 }
 
+#[inline(never)]
 fn write_mermaid_common_neo_css_values(
-    out: &mut impl SvgOutput,
-    selector_id: impl Copy + std::fmt::Display,
-    neo_stroke: impl std::fmt::Display,
-    drop_shadow: impl std::fmt::Display,
+    out: &mut dyn SvgOutput,
+    selector_id: &dyn std::fmt::Display,
+    neo_stroke: &dyn std::fmt::Display,
+    drop_shadow: &dyn std::fmt::Display,
     css: &MermaidCommonNeoCss,
 ) -> Result<()> {
     let _ = write!(
@@ -423,6 +433,15 @@ pub(super) fn write_mermaid_base_css_root_rule_with_font_emission<'a, I>(
 where
     I: Copy + std::fmt::Display,
 {
+    emit_mermaid_base_css_root_rule(out, &id, font_family)
+}
+
+#[inline(never)]
+fn emit_mermaid_base_css_root_rule<'a>(
+    out: &mut dyn SvgOutput,
+    id: &dyn std::fmt::Display,
+    font_family: &'a str,
+) -> Result<MermaidRootVariableFontCssEmission<'a>> {
     if font_family.is_empty() {
         return Ok(MermaidRootVariableFontCssEmission {
             font_family_css: font_family,
@@ -651,12 +670,7 @@ impl PreparedCommonCss {
         SelectorId: Copy + std::fmt::Display,
         FragmentId: Copy + std::fmt::Display,
     {
-        write_mermaid_common_neo_css(out, selector_id, fragment_id, &self.neo)?;
-        write_mermaid_base_css_root_rule_with_font_emission(
-            out,
-            selector_id,
-            &self.root_font_family,
-        )
+        emit_prepared_common_root(out, &selector_id, &fragment_id, self)
     }
 
     fn write_all<SelectorId, FragmentId>(
@@ -672,6 +686,20 @@ impl PreparedCommonCss {
         self.write_prefix(out, selector_id)?;
         self.write_root(out, selector_id, fragment_id)
     }
+}
+
+#[inline(never)]
+fn emit_prepared_common_root<'a>(
+    out: &mut dyn SvgOutput,
+    selector_id: &dyn std::fmt::Display,
+    fragment_id: &dyn std::fmt::Display,
+    values: &'a PreparedCommonCss,
+) -> Result<MermaidRootVariableFontCssEmission<'a>> {
+    let css = &values.neo;
+    let neo_stroke = NeoStroke { fragment_id, css };
+    let drop_shadow = scoped_drop_shadow(fragment_id, &css.drop_shadow);
+    write_mermaid_common_neo_css_values(out, selector_id, &neo_stroke, &drop_shadow, css)?;
+    emit_mermaid_base_css_root_rule(out, selector_id, &values.root_font_family)
 }
 
 pub(super) struct InfoCssWriter {

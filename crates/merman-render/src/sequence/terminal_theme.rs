@@ -16,6 +16,47 @@ pub(crate) use control::SequencePreparedControlTheme;
 pub(crate) use lines::{SequencePreparedLifelineTheme, SequencePreparedMessageTheme};
 pub(crate) use rect::SequencePreparedStaticRectTheme;
 
+#[derive(Debug, Default)]
+struct SequencePreparedEffect {
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
+    effect_requested: bool,
+    effect_binding_used: bool,
+    effect_cleared: bool,
+    effect_unhandled: bool,
+}
+
+#[inline(never)]
+fn prepare_sequence_effect(
+    theme: &ResolvedDiagramTheme,
+    target: ThemeTarget,
+    resolution: &crate::diagram_theme::ResolvedProperty<String>,
+) -> SequencePreparedEffect {
+    use crate::diagram_theme::{ResolvedThemeEffect, SvgShadowEffect};
+
+    let Some(resolved) = theme.resolve_effect(target, resolution) else {
+        return SequencePreparedEffect::default();
+    };
+    let (graph, effect_binding_used) = match resolved {
+        ResolvedThemeEffect::ClearedByRule => {
+            return SequencePreparedEffect {
+                effect_requested: true,
+                effect_cleared: true,
+                ..SequencePreparedEffect::default()
+            };
+        }
+        ResolvedThemeEffect::Rule { graph } => (graph, false),
+        ResolvedThemeEffect::Binding { graph, .. } => (graph, true),
+    };
+    let effect = graph.and_then(SvgShadowEffect::from_graph);
+    SequencePreparedEffect {
+        effect_requested: true,
+        effect_binding_used,
+        effect_unhandled: effect.is_none(),
+        effect,
+        effect_cleared: false,
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct SequencePreparedTerminalTheme {
     pub(crate) actor: SequencePreparedActorTheme,

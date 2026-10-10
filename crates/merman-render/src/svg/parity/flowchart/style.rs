@@ -239,7 +239,15 @@ impl FlowchartPreparedClassStyles {
             charge_style_work(work_meter, 1)?;
             selected.insert(class_id);
         }
+        Self::prepare_selected(class_defs, &selected, work_meter)
+    }
 
+    #[inline(never)]
+    fn prepare_selected(
+        class_defs: &IndexMap<String, Vec<String>>,
+        selected: &FxHashSet<&str>,
+        work_meter: Option<&crate::resources::OperationWorkMeter>,
+    ) -> std::result::Result<Self, crate::resources::OperationWorkError> {
         let mut classes = IndexMap::new();
         #[cfg(test)]
         let mut parsed_declaration_count = 0usize;

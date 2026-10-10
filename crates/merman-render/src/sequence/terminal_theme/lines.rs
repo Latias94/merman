@@ -67,10 +67,6 @@ impl SequencePreparedMessageTheme {
             None,
             work_meter,
         )?;
-        let mut effect_requested = false;
-        let mut effect_binding_used = false;
-        let mut effect_cleared = false;
-        let mut effect_unhandled = false;
         // Mermaid has one signalColor for the entire Message surface. A winning stroke is the
         // primary source; when it is absent, a winning fill is projected into that same CSS color.
         // Keep the selected property even when its paint cannot be emitted so evidence can account
@@ -89,28 +85,13 @@ impl SequencePreparedMessageTheme {
                 _ => None,
             })
             .flatten();
-        let effect = match theme.resolve_effect(ThemeTarget::Message, style.effect_resolution()) {
-            None => None,
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                effect_requested = true;
-                effect_cleared = true;
-                None
-            }
-            Some(resolved) => {
-                effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                effect_unhandled = effect.is_none();
-                effect
-            }
-        };
+        let SequencePreparedEffect {
+            effect,
+            effect_requested,
+            effect_binding_used,
+            effect_cleared,
+            effect_unhandled,
+        } = prepare_sequence_effect(theme, ThemeTarget::Message, style.effect_resolution());
         Ok(SequencePreparedMessageTheme {
             effect,
             typed_stroke,
@@ -240,10 +221,6 @@ impl SequencePreparedLifelineTheme {
             None,
             work_meter,
         )?;
-        let mut effect_requested = false;
-        let mut effect_binding_used = false;
-        let mut effect_cleared = false;
-        let mut effect_unhandled = false;
         let selected_property = if style.stroke_resolution().winner().is_some() {
             Some(ResolvedStyleProperty::Stroke)
         } else if style.fill_resolution().winner().is_some() {
@@ -268,28 +245,13 @@ impl SequencePreparedLifelineTheme {
         // value so the same completed actor-line receipt can seal both Value and Clear.
         let typed_stroke_width_won =
             has_typed_stroke_width && style.stroke_width_resolution().winner().is_some();
-        let effect = match theme.resolve_effect(ThemeTarget::Lifeline, style.effect_resolution()) {
-            None => None,
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                effect_requested = true;
-                effect_cleared = true;
-                None
-            }
-            Some(resolved) => {
-                effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                effect_unhandled = effect.is_none();
-                effect
-            }
-        };
+        let SequencePreparedEffect {
+            effect,
+            effect_requested,
+            effect_binding_used,
+            effect_cleared,
+            effect_unhandled,
+        } = prepare_sequence_effect(theme, ThemeTarget::Lifeline, style.effect_resolution());
         Ok(SequencePreparedLifelineTheme {
             effect,
             typed_stroke,
