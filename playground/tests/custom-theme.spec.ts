@@ -112,7 +112,9 @@ test("mobile imports recipes, explains external sharing, and can switch back to 
   await dialog.getByRole("button", { name: "Validate and apply" }).click();
   await expect.poll(() => svg(page)).toContain("#fef3c7");
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  await expect(page.getByRole("menu")).toContainText("omit Merman visual presets and custom themes");
+  await expect(
+    page.getByRole("menu").getByText("Mermaid.ink and Mermaid Live links omit Merman visual presets and custom themes.", { exact: true }),
+  ).toHaveCount(1);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   await page.getByRole("menuitemradio", { name: /^Brutalist/ }).click();

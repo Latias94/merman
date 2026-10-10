@@ -277,9 +277,6 @@ export function ToolbarArtifactActions({
             <Code className="size-4" />
             {t("export.copyCode")}
           </DropdownMenuItem>
-          {owner.hasMermanTheme && (
-            <p className="max-w-72 px-2 py-1.5 text-xs text-muted-foreground">{t("share.externalThemeLimit")}</p>
-          )}
           <DropdownMenuItem onClick={owner.handleCopyMarkdown}>
             <FileText className="size-4" />
             {t("export.copyMarkdown")}
