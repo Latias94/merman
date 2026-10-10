@@ -140,8 +140,7 @@ impl ArchitectureGroupThemePlan {
                                     .residual
                                     .get_or_insert(unsupported_residual_for_facet(facet));
                             }
-                            FamilyThemeDisposition::TypedAdapter
-                            | FamilyThemeDisposition::LegacyCompatibility => {
+                            FamilyThemeDisposition::TypedAdapter => {
                                 observation.incomplete = true;
                             }
                         }
@@ -169,8 +168,7 @@ impl ArchitectureGroupThemePlan {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        FamilyThemeDisposition::TypedAdapter
-                        | FamilyThemeDisposition::LegacyCompatibility => {
+                        FamilyThemeDisposition::TypedAdapter => {
                             observation.incomplete = true;
                         }
                     }
@@ -320,10 +318,10 @@ impl ArchitectureGroupThemePlan {
     }
 
     #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn architecture_text_cutover_receipt(
+    pub(crate) fn architecture_text_receipt(
         &self,
-    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
-        self.surfaces.architecture_text_cutover_receipt()
+    ) -> Option<crate::__private::ArchitectureTextReceipt> {
+        self.surfaces.architecture_text_receipt()
     }
 }
 

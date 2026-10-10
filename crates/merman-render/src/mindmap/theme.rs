@@ -480,8 +480,7 @@ impl MindmapNodePalettePlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                (FamilyThemeDisposition::TypedAdapter, _, _)
-                | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                (FamilyThemeDisposition::TypedAdapter, _, _) => {
                     observation.incomplete = true;
                 }
             }
@@ -563,7 +562,6 @@ impl MindmapNodePalettePlan {
                 self.evidence
                     .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
             }
-            FamilyThemeDisposition::LegacyCompatibility => {}
         }
         Ok(())
     }
@@ -659,8 +657,7 @@ impl MindmapNodePalettePlan {
                         ) if static_stroke_rule == Some(rule_index) => {
                             observation.pending = true;
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
                             observation.incomplete = true;
                         }
                     }

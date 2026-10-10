@@ -1696,10 +1696,6 @@ mod tests {
     }
 
     fn claim_kind(summary: FamilyThemeSupportSummary) -> SupportClaimKind {
-        assert!(
-            !summary.has_legacy(),
-            "retired family compatibility must not supply a production support claim"
-        );
         if summary.has_typed() {
             if summary.has_unsupported() {
                 SupportClaimKind::TypedPartial

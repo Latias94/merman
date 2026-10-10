@@ -276,7 +276,6 @@ impl PieThemePlan {
                 self.evidence
                     .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
             }
-            FamilyThemeDisposition::LegacyCompatibility => {}
         }
         Ok(())
     }
@@ -402,12 +401,8 @@ impl PieThemePlan {
             }
 
             observation.applicable = true;
-            // A surviving legacy projection also outranks typed defaults. It must not classify
-            // its own legacy route as NotApplicable unless explicit config owns both sites.
-            let stroke_is_owned_elsewhere = (slice_config_owned && outer_config_owned)
-                || (route.disposition() != FamilyThemeDisposition::LegacyCompatibility
-                    && !slice_site
-                    && !outer_site);
+            let stroke_is_owned_elsewhere =
+                (slice_config_owned && outer_config_owned) || (!slice_site && !outer_site);
             if matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && stroke_is_owned_elsewhere {
                 continue;
             }
@@ -449,8 +444,7 @@ impl PieThemePlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                (FamilyThemeDisposition::TypedAdapter, _, _)
-                | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                (FamilyThemeDisposition::TypedAdapter, _, _) => {
                     observation.incomplete = true;
                 }
             }
@@ -577,8 +571,7 @@ impl PieThemePlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                (FamilyThemeDisposition::TypedAdapter, _, _)
-                | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                (FamilyThemeDisposition::TypedAdapter, _, _) => {
                     observation.incomplete = true;
                 }
             }
@@ -705,8 +698,7 @@ impl PieThemePlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                (FamilyThemeDisposition::TypedAdapter, _, _)
-                | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                (FamilyThemeDisposition::TypedAdapter, _, _) => {
                     observation.incomplete = true;
                 }
             }

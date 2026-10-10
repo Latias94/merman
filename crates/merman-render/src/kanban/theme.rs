@@ -187,23 +187,40 @@ impl KanbanTypographyFacts {
         &mut self,
         facts: &crate::text::VisibleTextStyleFacts,
     ) {
+        self.record_text_runs(
+            facts.parse_valid(),
+            facts.visible_run_count(),
+            facts.inherited_font_family_run_count(),
+            facts.unverified_font_family_run_count(),
+            facts.inherited_font_size_run_count(),
+            facts.unverified_font_size_run_count(),
+        );
+    }
+
+    fn record_text_runs(
+        &mut self,
+        parse_valid: bool,
+        visible_run_count: usize,
+        inherited_font_family_run_count: usize,
+        unverified_font_family_run_count: usize,
+        inherited_font_size_run_count: usize,
+        unverified_font_size_run_count: usize,
+    ) {
         self.terminal_count = self.terminal_count.saturating_add(1);
-        self.visible_run_count = self
-            .visible_run_count
-            .saturating_add(facts.visible_run_count());
+        self.visible_run_count = self.visible_run_count.saturating_add(visible_run_count);
         self.inherited_font_family_run_count = self
             .inherited_font_family_run_count
-            .saturating_add(facts.inherited_font_family_run_count());
+            .saturating_add(inherited_font_family_run_count);
         self.unverified_font_family_run_count = self
             .unverified_font_family_run_count
-            .saturating_add(facts.unverified_font_family_run_count());
+            .saturating_add(unverified_font_family_run_count);
         self.inherited_font_size_run_count = self
             .inherited_font_size_run_count
-            .saturating_add(facts.inherited_font_size_run_count());
+            .saturating_add(inherited_font_size_run_count);
         self.unverified_font_size_run_count = self
             .unverified_font_size_run_count
-            .saturating_add(facts.unverified_font_size_run_count());
-        self.parse_valid &= facts.parse_valid();
+            .saturating_add(unverified_font_size_run_count);
+        self.parse_valid &= parse_valid;
     }
 
     #[cfg(test)]
@@ -560,8 +577,7 @@ impl KanbanTaskTheme {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        (_, FamilyThemeDisposition::TypedAdapter, _)
-                        | (_, FamilyThemeDisposition::LegacyCompatibility, _) => {
+                        (_, FamilyThemeDisposition::TypedAdapter, _) => {
                             observation.incomplete = true;
                         }
                     }
@@ -582,7 +598,6 @@ impl KanbanTaskTheme {
                                 key,
                                 FamilyThemeResidualReason::UnsupportedOrdinalPalette,
                             ),
-                            FamilyThemeDisposition::LegacyCompatibility => {}
                         }
                     }
                 }
@@ -1208,29 +1223,14 @@ impl KanbanTaskThemeReceipt {
         unverified_font_size_run_count: usize,
     ) {
         if self.typography_required {
-            self.actual_typography.terminal_count =
-                self.actual_typography.terminal_count.saturating_add(1);
-            self.actual_typography.visible_run_count = self
-                .actual_typography
-                .visible_run_count
-                .saturating_add(visible_run_count);
-            self.actual_typography.inherited_font_family_run_count = self
-                .actual_typography
-                .inherited_font_family_run_count
-                .saturating_add(inherited_font_family_run_count);
-            self.actual_typography.unverified_font_family_run_count = self
-                .actual_typography
-                .unverified_font_family_run_count
-                .saturating_add(unverified_font_family_run_count);
-            self.actual_typography.inherited_font_size_run_count = self
-                .actual_typography
-                .inherited_font_size_run_count
-                .saturating_add(inherited_font_size_run_count);
-            self.actual_typography.unverified_font_size_run_count = self
-                .actual_typography
-                .unverified_font_size_run_count
-                .saturating_add(unverified_font_size_run_count);
-            self.actual_typography.parse_valid &= parse_valid;
+            self.actual_typography.record_text_runs(
+                parse_valid,
+                visible_run_count,
+                inherited_font_family_run_count,
+                unverified_font_family_run_count,
+                inherited_font_size_run_count,
+                unverified_font_size_run_count,
+            );
         }
     }
 

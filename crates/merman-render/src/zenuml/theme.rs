@@ -1,6 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
-
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
 
 use super::{
@@ -8,25 +5,18 @@ use super::{
     resolve_zenuml_title,
 };
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, ResolvedDiagramTheme, ThemeTarget,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, SingleTitleFillPlan,
+    unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
 
 /// Final ZenUML frame-title fill shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct ZenumlTitleThemePlan {
-    fill_css: Option<Box<str>>,
-    typed_fill_capability: Option<ThemeCapability>,
-    evidence: FamilyThemeEvidence,
-    pending_fill_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
+    fill: SingleTitleFillPlan,
 }
 
 impl ZenumlTitleThemePlan {
@@ -39,228 +29,86 @@ impl ZenumlTitleThemePlan {
     ) -> crate::Result<Self> {
         let title_present = resolve_zenuml_title(model, diagram_title).is_some();
         let non_title_text_present = has_visible_non_title_text(layout);
-        let Some(theme) = theme else {
-            return Ok(Self::baseline());
-        };
-
-        let title_count = usize::from(title_present);
-        let style = title_present.then(|| {
-            theme.style_with_work_meter(
-                ThemeTarget::Title,
-                ThemeVariant::Default,
-                Some(1),
-                work_meter,
-            )
-        });
-        let style = style.transpose()?;
-        let winner_properties = style
-            .as_ref()
-            .into_iter()
-            .flat_map(|style| style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-
-        let typed_fill = style.as_ref().and_then(|style| {
-            resolve_direct_static_fill(
-                theme,
-                style,
-                &[ThemeTarget::Title],
-                DirectStaticSelectorDomain::Unqualified,
-            )
-        });
-        let (fill_css, typed_fill_rule, typed_fill_capability) =
-            typed_fill.map_or((None, None, None), |fill| {
-                let (css, rule_index, capability) = fill.into_parts();
-                (Some(css), Some(rule_index), Some(capability))
-            });
-
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let mut observations = BTreeMap::<usize, ZenumlTitleRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target: ThemeTarget::Title,
-                    selector,
-                    facet,
-                } => {
-                    let observation = observations.entry(rule_index).or_default();
-                    if !selector.ordinal_domain_intersects_occurrence_count(title_count) {
-                        continue;
-                    }
-                    let route_won = winner_properties
-                        .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
-                        continue;
-                    }
-
-                    observation.applicable = true;
-                    match (route.disposition(), selector, facet) {
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
-                            FamilyThemeRuleFacet::Fill(
-                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-                            ),
-                        ) if typed_fill_rule == Some(rule_index) => {
-                            observation.fill_pending = true;
-                        }
-                        (FamilyThemeDisposition::Unsupported, _, facet) => {
-                            observation
-                                .residual
-                                .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
-                            observation.incomplete = true;
+        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        if let Some(theme) = theme {
+            for route in theme.family_mechanism_routes().iter().copied() {
+                match route.mechanism() {
+                    FamilyThemeMechanism::BaseTypography(_) => {
+                        let key = theme.family_mechanism_key(route);
+                        if !title_present && !non_title_text_present {
+                            evidence.mark_not_applicable(key);
+                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                            evidence.mark_residual(
+                                key,
+                                FamilyThemeResidualReason::UnsupportedTypography,
+                            );
                         }
                     }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Title,
-                } => {
-                    // Reconciled below against the final Title style winner.  A qualified or
-                    // explicit fill can suppress the fallback palette even when a title exists.
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Title,
-                    ..
-                } => {
-                    // Reconciled below against the final Title effect winner.
-                }
-                FamilyThemeMechanism::BaseTypography(_) => {
-                    let key = theme.family_mechanism_key(route);
-                    if !title_present && !non_title_text_present {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence
-                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::Text,
+                        facet,
+                        ..
+                    } => {
+                        let key = theme.family_mechanism_key(route);
+                        if !non_title_text_present {
+                            evidence.mark_not_applicable(key);
+                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                            evidence.mark_residual(key, unsupported_residual_for_facet(facet));
+                        }
                     }
-                }
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Text,
-                    facet,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if !non_title_text_present {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(key, unsupported_residual_for_facet(facet));
+                    FamilyThemeMechanism::OrdinalPalette {
+                        target: ThemeTarget::Text,
+                    } => {
+                        let key = theme.family_mechanism_key(route);
+                        if !non_title_text_present {
+                            evidence.mark_not_applicable(key);
+                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                            evidence.mark_residual(
+                                key,
+                                FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                            );
+                        }
                     }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Text,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if !non_title_text_present {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
+                    FamilyThemeMechanism::EffectBinding {
+                        target: ThemeTarget::Text,
+                        ..
+                    } => {
+                        let key = theme.family_mechanism_key(route);
+                        if !non_title_text_present {
+                            evidence.mark_not_applicable(key);
+                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                            evidence
+                                .mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                        }
                     }
+                    FamilyThemeMechanism::RuleFacet { .. }
+                    | FamilyThemeMechanism::OrdinalPalette { .. }
+                    | FamilyThemeMechanism::EffectBinding { .. } => {}
                 }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Text,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if !non_title_text_present {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
-                }
-                FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
-
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Title,
-                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
-            )],
-            work_meter,
-        )?;
-
-        let mut pending_fill_key = None;
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Title,
-            };
-            if !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Mixed rules remain unaccounted until every winning facet has a terminal owner.
-            } else if observation.fill_pending {
-                debug_assert!(pending_fill_key.is_none());
-                pending_fill_key = Some(key);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-
-        Ok(Self {
-            fill_css,
-            typed_fill_capability,
-            evidence,
-            pending_fill_key,
-            terminal_receipt: OnceLock::new(),
-        })
-    }
-
-    fn baseline() -> Self {
-        Self {
-            fill_css: None,
-            typed_fill_capability: None,
-            evidence: FamilyThemeEvidence::default(),
-            pending_fill_key: None,
-            terminal_receipt: OnceLock::new(),
-        }
+        let fill = SingleTitleFillPlan::resolve(theme, title_present, false, evidence, work_meter)?;
+        Ok(Self { fill })
     }
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
-        self.fill_css.as_deref()
+        self.fill.fill_css()
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<ZenumlTitleThemeReceipt> {
-        self.fill_css
-            .as_ref()
-            .map(|fill_css| ZenumlTitleThemeReceipt::new(fill_css.clone()))
+        self.fill
+            .fill_css()
+            .map(|fill_css| ZenumlTitleThemeReceipt::new(fill_css.into()))
     }
 
     pub(crate) fn record_terminal(&self, receipt: ZenumlTitleThemeReceipt) -> bool {
-        self.fill_css.as_deref().is_some_and(|fill_css| {
-            receipt.proves(fill_css) && self.terminal_receipt.set(()).is_ok()
-        })
+        self.fill
+            .fill_css()
+            .is_some_and(|fill_css| receipt.proves(fill_css) && self.fill.record_proven_terminal())
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        if let Some(key) = self.pending_fill_key.clone()
-            && self.terminal_receipt.get().is_some()
-            && let Some(capability) = self.typed_fill_capability
-        {
-            evidence.mark_applied_with_capabilities(key, [capability]);
-        }
-        evidence
+        self.fill.finish_evidence()
     }
 }
 
@@ -360,14 +208,6 @@ impl ZenumlTitleThemeReceipt {
             && self.frame_title_text_count == 1
             && self.terminal_matches
     }
-}
-
-#[derive(Debug, Default)]
-struct ZenumlTitleRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    fill_pending: bool,
 }
 
 #[cfg(test)]

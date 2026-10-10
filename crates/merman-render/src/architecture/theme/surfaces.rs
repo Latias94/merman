@@ -125,12 +125,10 @@ impl ArchitectureSurfaceThemePlan {
     }
 
     #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn architecture_text_cutover_receipt(
+    pub(super) fn architecture_text_receipt(
         &self,
-    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
-        self.terminal_receipt
-            .get()?
-            .architecture_text_cutover_receipt()
+    ) -> Option<crate::__private::ArchitectureTextReceipt> {
+        self.terminal_receipt.get()?.architecture_text_receipt()
     }
 }
 

@@ -436,8 +436,7 @@ impl GanttTaskTheme {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _) => {
                             observation.incomplete = true;
                         }
                     }
@@ -475,9 +474,6 @@ impl GanttTaskTheme {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        FamilyThemeDisposition::LegacyCompatibility => {
-                            observation.incomplete = true;
-                        }
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
@@ -512,9 +508,6 @@ impl GanttTaskTheme {
                             observation
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        FamilyThemeDisposition::LegacyCompatibility => {
-                            observation.incomplete = true;
                         }
                     }
                 }

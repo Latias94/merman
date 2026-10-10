@@ -96,9 +96,6 @@ impl GitGraphNodePaintPlan {
                 continue;
             };
             work.charge(1)?;
-            if route.disposition() == FamilyThemeDisposition::LegacyCompatibility {
-                continue;
-            }
             let property = resolved_style_property_for_facet(facet);
             let won = style.winner_rule_properties().any(|(candidate, origin)| {
                 candidate == property && origin.rule_index() == rule_index

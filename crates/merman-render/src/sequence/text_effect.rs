@@ -1,6 +1,6 @@
-use crate::diagram_theme::{
-    ResolvedDiagramTheme, ResolvedThemeEffect, ResolvedThemeStyle, SvgShadowEffect,
-};
+use crate::diagram_theme::{ResolvedDiagramTheme, ResolvedThemeStyle, SvgShadowEffect};
+
+use super::terminal_theme::prepare_sequence_effect;
 
 use super::{SequenceTypographyRole, SequenceTypographyThemeReceipt};
 
@@ -22,28 +22,18 @@ impl SequencePreparedTextEffect {
         let Some(theme) = theme else {
             return Self::default();
         };
+        let default_effect_resolution = Default::default();
         let resolution = style
-            .map(|style| style.effect_resolution().clone())
-            .unwrap_or_default();
-        let Some(resolved) = theme.resolve_effect(role.target(), &resolution) else {
-            return Self::default();
-        };
-        let mut prepared = Self {
-            requested: true,
-            ..Self::default()
-        };
-        match resolved {
-            ResolvedThemeEffect::ClearedByRule => prepared.cleared = true,
-            ResolvedThemeEffect::Rule { graph } => {
-                prepared.effect = graph.and_then(SvgShadowEffect::from_graph);
-            }
-            ResolvedThemeEffect::Binding { graph, .. } => {
-                prepared.binding_used = true;
-                prepared.effect = graph.and_then(SvgShadowEffect::from_graph);
-            }
+            .map(|style| style.effect_resolution())
+            .unwrap_or(&default_effect_resolution);
+        let prepared = prepare_sequence_effect(theme, role.target(), resolution);
+        Self {
+            effect: prepared.effect,
+            requested: prepared.effect_requested,
+            binding_used: prepared.effect_binding_used,
+            cleared: prepared.effect_cleared,
+            unhandled: prepared.effect_unhandled,
         }
-        prepared.unhandled = !prepared.cleared && prepared.effect.is_none();
-        prepared
     }
 
     pub(crate) fn effect(&self) -> Option<&SvgShadowEffect> {

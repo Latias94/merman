@@ -506,8 +506,7 @@ impl TimelineEventTheme {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _) => {
                             observation.incomplete = true;
                         }
                     }
@@ -539,7 +538,7 @@ impl TimelineEventTheme {
                     let key = theme.family_mechanism_key(route);
                     if event_count == 0 {
                         evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
+                    } else {
                         evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }

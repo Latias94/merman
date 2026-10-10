@@ -900,19 +900,15 @@ impl ResolvedDiagramTheme {
 
     /// Yields native-evidence keys in mechanism-route order.
     ///
-    /// Compatibility-only routes belong to the separate compatibility ledger. A key shared by
-    /// multiple native facets is yielded once per facet; the evidence ledger owns ordered
-    /// uniqueness through its required-key index.
+    /// A key shared by multiple facets is yielded once per facet; the evidence ledger owns
+    /// ordered uniqueness through its required-key index.
     pub(crate) fn family_evidence_mechanism_keys(
         &self,
     ) -> impl Iterator<Item = super::application::FamilyThemeMechanismKey> + '_ {
-        use super::family_mechanism_matrix::FamilyThemeDisposition;
-
         self.program
             .mechanism_routes()
             .iter()
             .copied()
-            .filter(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
             .map(|route| self.family_mechanism_key(route))
     }
 

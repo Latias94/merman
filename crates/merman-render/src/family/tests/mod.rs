@@ -573,11 +573,9 @@ fn family_report(
         output_mutated: false,
         theme_required: required,
         theme_applied: applied,
-        #[cfg(merman_internal_theme_acceptance)]
-        theme_route_cutover_facts: Vec::new(),
         native_filter_receipt: None,
         #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        architecture_text_cutover_receipt: None,
+        architecture_text_receipt: None,
         theme_not_applicable: Vec::new(),
         theme_residuals,
         mermaid_compatibility_residual_count: 0,
@@ -897,11 +895,9 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
             output_mutated: false,
             theme_required: Vec::new(),
             theme_applied: Vec::new(),
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_route_cutover_facts: Vec::new(),
             native_filter_receipt: None,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_cutover_receipt: None,
+            architecture_text_receipt: None,
             theme_not_applicable: Vec::new(),
             theme_residuals: Vec::new(),
             mermaid_compatibility_residual_count: 0,
@@ -9835,11 +9831,30 @@ system - satisfies -> req1
 }
 
 #[test]
-fn flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(
-            r#"---
+fn dagre_flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
+    assert_flowchart_prepared_labels_reused_by_semantic_owner(
+        "dagre",
+        crate::flowchart::FlowchartSvgLabelOwner::EmptySubgraphNode,
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn elk_flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
+    assert_flowchart_prepared_labels_reused_by_semantic_owner(
+        "elk",
+        crate::flowchart::FlowchartSvgLabelOwner::SubgraphTitle,
+    );
+}
+
+fn assert_flowchart_prepared_labels_reused_by_semantic_owner(
+    layout: &str,
+    empty_subgraph_owner: fn(usize) -> crate::flowchart::FlowchartSvgLabelOwner,
+) {
+    let source = format!(
+        r#"---
 config:
+  layout: {layout}
   htmlLabels: false
   flowchart:
     htmlLabels: false
@@ -9852,9 +9867,10 @@ end
 subgraph E[Empty title]
 end
 A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second node]
-"#,
-            ParseOptions::strict(),
-        )
+"#
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Flowchart")
         .expect("detect Flowchart");
     let artifact = prepare(parsed, &LayoutOptions::default(), session())
@@ -9864,6 +9880,10 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
         let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
             panic!("expected Flowchart family artifact");
         };
+        assert_eq!(
+            flowchart.pair().layout().uses_elk_adapter_dom,
+            layout == "elk"
+        );
         let model = crate::flowchart::FlowchartRenderModelRef::new(
             flowchart.pair().semantic(),
             flowchart.render_context(),
@@ -9890,12 +9910,20 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
             .expect("semantic labeled edge");
         let sidecar = flowchart.svg_label_sidecar();
 
+        let expected_empty_subgraph_owner = empty_subgraph_owner(empty_subgraph_index);
+        let actual_empty_subgraph_owner = match expected_empty_subgraph_owner {
+            crate::flowchart::FlowchartSvgLabelOwner::EmptySubgraphNode(_) => sidecar
+                .node_owner("E", false)
+                .expect("Dagre empty subgraph node owner"),
+            crate::flowchart::FlowchartSvgLabelOwner::SubgraphTitle(_) => sidecar
+                .subgraph_title_owner("E")
+                .expect("ELK empty subgraph title owner"),
+            _ => panic!("unexpected empty subgraph owner in test scenario"),
+        };
         let owners = [
             sidecar.node_owner("A", false).expect("node owner"),
             sidecar.edge_owner("labeled", false).expect("edge owner"),
-            sidecar
-                .subgraph_title_owner("E")
-                .expect("empty subgraph title owner"),
+            actual_empty_subgraph_owner,
             sidecar
                 .subgraph_title_owner("S")
                 .expect("cluster title owner"),
@@ -9905,7 +9933,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
             [
                 crate::flowchart::FlowchartSvgLabelOwner::Node(node_index),
                 crate::flowchart::FlowchartSvgLabelOwner::Edge(edge_index),
-                crate::flowchart::FlowchartSvgLabelOwner::SubgraphTitle(empty_subgraph_index),
+                expected_empty_subgraph_owner,
                 crate::flowchart::FlowchartSvgLabelOwner::SubgraphTitle(cluster_index),
             ]
         );
@@ -11445,21 +11473,20 @@ fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
     ];
     // Class Text.fill is typed; shadowed rules retain identity so evidence can account for them.
     assert_eq!(evidence.required, expected);
-    assert_eq!(evidence.required_index, expected.into_iter().collect());
     assert!(!FamilyThemeEvidence::not_applicable(Some(&theme)));
     assert!(evidence.applied.is_empty());
     assert!(evidence.residuals.is_empty());
 }
 
 #[test]
-fn native_evidence_requirements_cover_empty_legacy_only_and_many_rules() {
+fn native_evidence_requirements_cover_empty_typed_text_and_many_rules() {
     assert!(FamilyThemeEvidence::not_applicable(None));
     let empty = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .unwrap()
         .resolve(DiagramFamilyId::CLASS);
     let fill = CanvasPaint::solid("#123456").unwrap();
-    let legacy_only = DiagramThemeCompiler::new()
+    let typed_text = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Text,
@@ -11470,17 +11497,16 @@ fn native_evidence_requirements_cover_empty_legacy_only_and_many_rules() {
         .resolve(DiagramFamilyId::CLASS);
     let empty_evidence = FamilyThemeEvidence::from_theme(Some(&empty));
     assert!(empty_evidence.required.is_empty());
-    assert!(empty_evidence.required_index.is_empty());
     assert!(FamilyThemeEvidence::not_applicable(Some(&empty)));
-    let legacy_evidence = FamilyThemeEvidence::from_theme(Some(&legacy_only));
+    let typed_evidence = FamilyThemeEvidence::from_theme(Some(&typed_text));
     assert_eq!(
-        legacy_evidence.required,
+        typed_evidence.required,
         vec![FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::Text
         }]
     );
-    assert!(!FamilyThemeEvidence::not_applicable(Some(&legacy_only)));
+    assert!(!FamilyThemeEvidence::not_applicable(Some(&typed_text)));
 
     let mut rules = ThemeRuleSet::default();
     for _ in 0..512 {
@@ -11504,7 +11530,6 @@ fn native_evidence_requirements_cover_empty_legacy_only_and_many_rules() {
         })
         .collect::<Vec<_>>();
     assert_eq!(evidence.required, expected);
-    assert_eq!(evidence.required_index, expected.into_iter().collect());
 }
 
 #[test]
@@ -11555,7 +11580,6 @@ fn native_evidence_effect_requirements_keep_binding_order_and_full_identity() {
         })
         .collect::<Vec<_>>();
     assert_eq!(evidence.required, expected);
-    assert_eq!(evidence.required_index, expected.into_iter().collect());
 }
 
 fn render_with_sidecar_host_control(

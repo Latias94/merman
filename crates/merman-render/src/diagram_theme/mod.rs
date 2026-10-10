@@ -86,8 +86,6 @@ pub use definition_admission::{
 pub use effects::{
     DiagramEffectSet, EffectBinding, EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive,
 };
-#[cfg(merman_internal_theme_acceptance)]
-pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape,

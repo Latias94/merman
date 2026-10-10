@@ -608,7 +608,6 @@ impl SequenceThemeEvidenceRecorder {
                                 .residual
                                 .get_or_insert(unsupported_reason_for_facet(facet));
                         }
-                        FamilyThemeDisposition::LegacyCompatibility => {}
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
@@ -894,7 +893,6 @@ fn finish_base_typography(
             | ThemeTypographyProperty::Wrap => receipt.base_relevant_occurrences(),
         };
         match disposition {
-            FamilyThemeDisposition::LegacyCompatibility => {}
             FamilyThemeDisposition::Unsupported => {
                 if relevant_occurrences == 0 {
                     evidence.mark_not_applicable(key);

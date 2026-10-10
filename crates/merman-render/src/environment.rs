@@ -12,8 +12,7 @@ use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 
 use crate::text::{
-    DeterministicTextMeasurer, PrepareCatalogRequest, PreparedTextLayout,
-    PreparedTextLayoutBuilder, PreparedTextLayoutReport, TextLayoutBackend, TextLayoutError,
+    DeterministicTextMeasurer, PreparedTextLayout, PreparedTextLayoutReport, TextLayoutError,
     TextLayoutFailure, TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
     estimate_text_width_em, is_html_collapsible_ascii_whitespace,
 };
@@ -1680,7 +1679,6 @@ fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
 #[derive(Clone)]
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
-    text_layout_backend: Option<ConfiguredTextLayoutBackend>,
     capability_policy: RenderCapabilityPolicy,
     math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
@@ -1694,40 +1692,10 @@ pub struct RenderEnvironment {
     theme_portability: ThemePortabilityRequirement,
 }
 
-#[derive(Clone)]
-struct ConfiguredTextLayoutBackend(Arc<dyn TextLayoutBackend>);
-
-impl ConfiguredTextLayoutBackend {
-    fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
-        self.0.identity()
-    }
-
-    fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
-        self.0.capabilities()
-    }
-
-    fn prepare_catalog(
-        &self,
-        request: &PrepareCatalogRequest,
-    ) -> Result<crate::text::PreparedTextLayoutResponse, TextLayoutError> {
-        self.0.prepare_catalog(request)
-    }
-}
-
-impl fmt::Debug for ConfiguredTextLayoutBackend {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ConfiguredTextLayoutBackend")
-            .field("identity", self.identity())
-            .finish()
-    }
-}
-
 impl fmt::Debug for RenderEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RenderEnvironment")
             .field("text_measurement", &self.text_measurement)
-            .field("text_layout_backend", &self.text_layout_backend)
             .field("capability_policy", &self.capability_policy)
             .field(
                 "has_math_renderer",
@@ -1760,7 +1728,6 @@ impl RenderEnvironment {
         Self {
             text_measurement: TextMeasurementPolicy::deterministic(),
 
-            text_layout_backend: None,
             capability_policy: RenderCapabilityPolicy::unrestricted(),
             math_backend: default_math_backend(),
             icon_registry: None,
@@ -2038,8 +2005,6 @@ impl RenderEnvironment {
         let portability_requirement = resolved_resources
             .portability_requirement()
             .unwrap_or(self.theme_portability);
-        let (prepared_text_layout, text_layout_error) =
-            self.prepare_text_layout(&resolved_resources, portability_requirement);
         let trusted_theme_lanes = resolved_resources
             .admission()
             .map(ResolvedThemeAdmission::trusted_lanes)
@@ -2047,8 +2012,10 @@ impl RenderEnvironment {
             .clone();
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
-            prepared_text_layout,
-            text_layout_error,
+            // Embedded catalogs are rejected before session construction. System fonts
+            // retain the ordinary measurement lane without a catalog preparation result.
+            prepared_text_layout: None,
+            text_layout_error: None,
             measurement_recorder: Box::default(),
             capability_policy: self.capability_policy,
             math_backend: self.math_backend.clone(),
@@ -2065,84 +2032,6 @@ impl RenderEnvironment {
             portability_requirement,
             resolved_theme_resources: resolved_resources,
         })
-    }
-
-    fn prepare_text_layout(
-        &self,
-        resolved_resources: &ResolvedSessionThemeResources,
-        portability: ThemePortabilityRequirement,
-    ) -> (Option<PreparedTextLayout>, Option<TextLayoutError>) {
-        let catalog = resolved_resources.font_catalog();
-        if !catalog.requires_prepared_text_layout() {
-            return (None, None);
-        }
-
-        let Some(backend) = &self.text_layout_backend else {
-            return (None, Some(TextLayoutError::BackendRejected));
-        };
-        let request = PrepareCatalogRequest::new(
-            catalog.clone(),
-            resolved_resources.font_source_policy().clone(),
-        );
-        let fallback_policy = resolved_resources
-            .measurement_fallback_policy()
-            .unwrap_or(&self.theme_measurement_fallbacks);
-        let mut builder = PreparedTextLayoutBuilder::new(request.clone());
-        let mut deferred_host_response = None;
-        let mut terminal_error = None;
-
-        match backend.prepare_catalog(&request) {
-            Ok(response) => {
-                let deferred = response.clone();
-                let mut probe = PreparedTextLayoutBuilder::new(request.clone());
-                match probe.admit_host_dependent_response(
-                    backend.identity(),
-                    backend.capabilities(),
-                    response,
-                    ThemePortabilityRequirement::BestEffort,
-                ) {
-                    Ok(()) => deferred_host_response = Some(deferred),
-                    Err(error) => {
-                        builder.record_catalog_failure();
-                        terminal_error = Some(error);
-                    }
-                }
-            }
-            Err(error) => {
-                builder.record_catalog_failure();
-                terminal_error = Some(error);
-            }
-        }
-
-        for fallback in fallback_policy.priority() {
-            match fallback {
-                HostMeasurementFallback::AcceptHostDependent => {
-                    let Some(response) = deferred_host_response.take() else {
-                        continue;
-                    };
-                    if let Err(error) = builder.admit_host_dependent_response(
-                        backend.identity(),
-                        backend.capabilities(),
-                        response,
-                        portability,
-                    ) {
-                        builder.record_catalog_failure();
-                        terminal_error = Some(error);
-                    }
-                }
-            }
-        }
-
-        if builder.is_empty() {
-            return (
-                None,
-                Some(terminal_error.unwrap_or(TextLayoutError::NoUsableFace)),
-            );
-        }
-        match builder.build() {
-            Ok(layout) => (Some(layout), None),
-            Err(error) => (None, Some(error)),
-        }
     }
 }
 

@@ -175,8 +175,7 @@ impl IshikawaTextThemePlan {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
                             observation.incomplete = true;
                         }
                     }

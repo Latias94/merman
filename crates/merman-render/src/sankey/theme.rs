@@ -537,7 +537,6 @@ impl SankeyNodePalettePlan {
             FamilyThemeDisposition::Unsupported => plan
                 .evidence
                 .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
-            FamilyThemeDisposition::LegacyCompatibility => {}
         }
 
         Ok(plan)

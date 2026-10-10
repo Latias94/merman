@@ -270,9 +270,6 @@ impl BlockNodeLabelPaintPlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                FamilyThemeDisposition::LegacyCompatibility => {
-                    observation.incomplete = true;
-                }
             }
         }
         for ((index, target), observation) in observations {
@@ -871,9 +868,6 @@ impl BlockNodePaintThemePlan {
                     observation
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
-                }
-                FamilyThemeDisposition::LegacyCompatibility => {
-                    observation.incomplete = true;
                 }
             }
         }

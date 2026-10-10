@@ -430,7 +430,6 @@ impl GitGraphNodePalettePlan {
             FamilyThemeDisposition::Unsupported => self
                 .evidence
                 .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
-            FamilyThemeDisposition::LegacyCompatibility => {}
         }
 
         Ok(())

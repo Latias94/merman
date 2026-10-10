@@ -1,11 +1,7 @@
-#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(test)]
 mod audit;
-#[cfg(any(test, merman_internal_theme_acceptance))]
-pub(crate) use audit::legacy_replacing_typed_routes;
 
 use crate::DiagramFamilyId;
-#[cfg(test)]
-use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 #[cfg(test)]
 use audit::*;
 #[cfg(test)]
@@ -18,12 +14,6 @@ use super::resolved::ThemeTypographyProperty;
 use super::semantic::{OrdinalSelector, ThemeRule, ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
-/// Matches the per-string limit used by the core compatibility overlay.
-///
-/// Font stacks above this limit cannot enter the legacy configuration lane and
-/// must remain unsupported so the matrix cannot claim an adaptation the bridge drops.
-pub(super) const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
-
 /// Static owner of one family-local theme mechanism.
 ///
 /// This classification routes work. It never claims that a concrete document applied a
@@ -31,7 +21,6 @@ pub(super) const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum FamilyThemeDisposition {
     TypedAdapter,
-    LegacyCompatibility,
     Unsupported,
 }
 
@@ -39,7 +28,6 @@ pub(crate) enum FamilyThemeDisposition {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FamilyThemeSupportSummary {
     typed: bool,
-    legacy: bool,
     unsupported: bool,
 }
 
@@ -48,17 +36,12 @@ impl FamilyThemeSupportSummary {
     fn record(&mut self, disposition: FamilyThemeDisposition) {
         match disposition {
             FamilyThemeDisposition::TypedAdapter => self.typed = true,
-            FamilyThemeDisposition::LegacyCompatibility => self.legacy = true,
             FamilyThemeDisposition::Unsupported => self.unsupported = true,
         }
     }
 
     pub(super) const fn has_typed(self) -> bool {
         self.typed
-    }
-
-    pub(super) const fn has_legacy(self) -> bool {
-        self.legacy
     }
 
     pub(super) const fn has_unsupported(self) -> bool {
@@ -96,13 +79,6 @@ impl FamilyThemePaintKind {
             Specified::Value(CanvasPaint::LinearGradient(_)) => Some(Self::LinearGradient),
             Specified::Value(CanvasPaint::RadialGradient(_)) => Some(Self::RadialGradient),
             Specified::Value(CanvasPaint::Pattern(_)) => Some(Self::Pattern),
-        }
-    }
-
-    const fn is_legacy_scalar(self) -> bool {
-        match self {
-            Self::Transparent | Self::Solid => true,
-            Self::Clear | Self::LinearGradient | Self::RadialGradient | Self::Pattern => false,
         }
     }
 }
@@ -159,13 +135,6 @@ impl FamilyThemeSelectorShape {
                 variant: rule.variant(),
                 selector,
             },
-        }
-    }
-
-    const fn static_variant(self) -> Option<Option<ThemeVariant>> {
-        match self {
-            Self::Static { variant } => Some(variant),
-            Self::Ordinal { .. } => None,
         }
     }
 
@@ -235,13 +204,6 @@ pub(super) fn compile_base_typography_routes(
     let mut routes = Vec::new();
     if style.is_specified(ThemeTypographyProperty::FontStack) {
         let disposition = classify_base_typography(family, ThemeTypographyProperty::FontStack);
-        let disposition = if disposition == FamilyThemeDisposition::LegacyCompatibility
-            && style.font_stack().as_css().len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES
-        {
-            FamilyThemeDisposition::Unsupported
-        } else {
-            disposition
-        };
         routes.push(FamilyThemeRoute::new(
             FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
             disposition,
@@ -818,87 +780,6 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
         return FamilyThemeDisposition::TypedAdapter;
     }
     FamilyThemeDisposition::Unsupported
-}
-
-/// Current terminal ownership for scalar paint routes that have no Mermaid writer consumer.
-///
-/// This is deliberately independent from KTD23's historical before/after witness. Editing the
-/// retirement manifest cannot change runtime classification, and editing this classification
-/// cannot authorize its own historical projection deletion.
-fn legacy_paint_route_without_writer_consumer(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    selector: FamilyThemeSelectorShape,
-    facet: FamilyThemeRuleFacet,
-) -> bool {
-    let Some(variant) = (match selector {
-        FamilyThemeSelectorShape::Static { variant } => Some(variant),
-        FamilyThemeSelectorShape::Ordinal { .. } => None,
-    }) else {
-        return false;
-    };
-    let fill = matches!(facet, FamilyThemeRuleFacet::Fill(_));
-    let stroke = matches!(facet, FamilyThemeRuleFacet::Stroke(_));
-    let unqualified_or_default = matches!(variant, None | Some(ThemeVariant::Default));
-
-    match family {
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => {
-            target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke)
-        }
-        DiagramFamilyId::CLASS => {
-            (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
-                || (matches!(target, ThemeTarget::ClusterLabel) && unqualified_or_default && fill)
-                || (target == ThemeTarget::Table
-                    && fill
-                    && matches!(variant, None | Some(ThemeVariant::Odd | ThemeVariant::Even)))
-        }
-        DiagramFamilyId::MINDMAP => {
-            (matches!(
-                target,
-                ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Edge
-            ) && unqualified_or_default
-                && fill)
-                || (target == ThemeTarget::Edge && variant == Some(ThemeVariant::Default) && stroke)
-                || (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::EdgeLabelBackground && unqualified_or_default && fill)
-                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
-        }
-        DiagramFamilyId::TREE_VIEW => {
-            (target == ThemeTarget::Node && unqualified_or_default && (fill || stroke))
-                || (matches!(
-                    target,
-                    ThemeTarget::Title | ThemeTarget::EdgeLabelBackground
-                ) && unqualified_or_default
-                    && fill)
-                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
-        }
-        DiagramFamilyId::GIT_GRAPH => {
-            (target == ThemeTarget::Title && unqualified_or_default && fill)
-                || (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
-        }
-        DiagramFamilyId::WARDLEY | DiagramFamilyId::SEQUENCE => {
-            matches!(target, ThemeTarget::Text | ThemeTarget::Title)
-                && unqualified_or_default
-                && fill
-        }
-        DiagramFamilyId::ER | DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN => {
-            target == ThemeTarget::Title && unqualified_or_default && fill
-        }
-        DiagramFamilyId::BLOCK => {
-            matches!(target, ThemeTarget::Title | ThemeTarget::ClusterLabel)
-                && unqualified_or_default
-                && fill
-        }
-        DiagramFamilyId::ARCHITECTURE
-        | DiagramFamilyId::C4
-        | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::SANKEY => target == ThemeTarget::Title && unqualified_or_default && fill,
-        _ => false,
-    }
 }
 
 /// State's possible terminal consumers, before source ownership and value-dependent admission.
@@ -1644,9 +1525,6 @@ pub(super) fn classify_rule_facet(
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
-    }
-    if legacy_paint_route_without_writer_consumer(family, target, selector, facet) {
-        return FamilyThemeDisposition::Unsupported;
     }
     if family == DiagramFamilyId::CLASS
         && target == ThemeTarget::Edge
@@ -2409,289 +2287,7 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    let Some(variant) = selector.static_variant() else {
-        return FamilyThemeDisposition::Unsupported;
-    };
-    match facet {
-        FamilyThemeRuleFacet::Fill(kind)
-            if kind.is_legacy_scalar()
-                && legacy_paint_supported(family, target, variant, PaintChannel::Fill) =>
-        {
-            FamilyThemeDisposition::LegacyCompatibility
-        }
-        FamilyThemeRuleFacet::Stroke(kind)
-            if kind.is_legacy_scalar()
-                && legacy_paint_supported(family, target, variant, PaintChannel::Stroke) =>
-        {
-            FamilyThemeDisposition::LegacyCompatibility
-        }
-        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_) => {
-            FamilyThemeDisposition::Unsupported
-        }
-        FamilyThemeRuleFacet::StrokeWidth
-        | FamilyThemeRuleFacet::StrokeDasharray
-        | FamilyThemeRuleFacet::StrokeLinecap
-        | FamilyThemeRuleFacet::StrokeLinejoin
-        | FamilyThemeRuleFacet::Opacity
-        | FamilyThemeRuleFacet::FillOpacity
-        | FamilyThemeRuleFacet::StrokeOpacity
-        | FamilyThemeRuleFacet::Radius
-        | FamilyThemeRuleFacet::Padding
-        | FamilyThemeRuleFacet::Typography(_)
-        | FamilyThemeRuleFacet::Effect => FamilyThemeDisposition::Unsupported,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaintChannel {
-    Fill,
-    Stroke,
-}
-
-fn legacy_paint_supported(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    variant: Option<ThemeVariant>,
-    channel: PaintChannel,
-) -> bool {
-    if family == DiagramFamilyId::KANBAN
-        && target == ThemeTarget::Task
-        && channel == PaintChannel::Stroke
-    {
-        return variant.is_none();
-    }
-    let variants = legacy_paint_variants(family, target, channel);
-    !variants.is_empty() && variant.is_none_or(|variant| variants.contains(&variant))
-}
-
-fn legacy_paint_variants(
-    family: DiagramFamilyId,
-    target: ThemeTarget,
-    channel: PaintChannel,
-) -> &'static [ThemeVariant] {
-    use DiagramFamilyId as Family;
-    use PaintChannel::{Fill, Stroke};
-    use ThemeTarget as Target;
-    use ThemeVariant as Variant;
-
-    const DEFAULT: &[Variant] = &[Variant::Default];
-    const ODD_EVEN: &[Variant] = &[Variant::Odd, Variant::Even];
-    const GANTT_FILL: &[Variant] = &[
-        Variant::Default,
-        Variant::Active,
-        Variant::Success,
-        Variant::Error,
-    ];
-    const GANTT_STROKE: &[Variant] = &[
-        Variant::Default,
-        Variant::Active,
-        Variant::Success,
-        Variant::Error,
-        Variant::Warning,
-    ];
-
-    if family == Family::CLASS {
-        return match channel {
-            Fill if matches!(
-                target,
-                Target::Node
-                    | Target::NodeLabel
-                    | Target::Text
-                    | Target::Title
-                    | Target::Edge
-                    | Target::EdgeLabelBackground
-                    | Target::Cluster
-            ) =>
-            {
-                DEFAULT
-            }
-            Stroke if matches!(target, Target::Node | Target::Edge | Target::Cluster) => DEFAULT,
-            Fill | Stroke => &[],
-        };
-    }
-
-    if family == Family::MINDMAP {
-        return match channel {
-            Fill | Stroke if matches!(target, Target::Node | Target::Edge) => DEFAULT,
-            Fill | Stroke => &[],
-        };
-    }
-
-    if family == Family::TREE_VIEW {
-        return match channel {
-            Fill if matches!(
-                target,
-                Target::NodeLabel | Target::Text | Target::Edge | Target::Marker
-            ) =>
-            {
-                DEFAULT
-            }
-            Stroke if matches!(target, Target::Edge | Target::Marker) => DEFAULT,
-            Fill | Stroke => &[],
-        };
-    }
-
-    if family == Family::GIT_GRAPH {
-        return match channel {
-            Fill if matches!(
-                target,
-                Target::Node
-                    | Target::NodeLabel
-                    | Target::Text
-                    | Target::Edge
-                    | Target::EdgeLabel
-                    | Target::EdgeLabelBackground
-            ) =>
-            {
-                DEFAULT
-            }
-            Stroke if matches!(target, Target::Node | Target::Edge) => DEFAULT,
-            Fill | Stroke => &[],
-        };
-    }
-
-    let node_family = matches!(family, Family::FLOWCHART | Family::SWIMLANE | Family::BLOCK);
-    if node_family {
-        let common = match channel {
-            Fill => {
-                matches!(
-                    target,
-                    Target::Node
-                        | Target::NodeLabel
-                        | Target::Text
-                        | Target::Title
-                        | Target::Edge
-                        | Target::Marker
-                        | Target::EdgeLabelBackground
-                        | Target::Cluster
-                        | Target::ClusterLabel
-                )
-            }
-            Stroke => matches!(
-                target,
-                Target::Node | Target::Edge | Target::Marker | Target::Cluster
-            ),
-        };
-        if common {
-            return DEFAULT;
-        }
-        return &[];
-    }
-
-    match family {
-        Family::RAILROAD => match (target, channel) {
-            (Target::Text | Target::Title, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::SEQUENCE => match channel {
-            Fill if matches!(
-                target,
-                Target::Actor
-                    | Target::ActorLabel
-                    | Target::Text
-                    | Target::Lifeline
-                    | Target::Message
-                    | Target::MessageLabel
-                    | Target::LoopLabelBackground
-                    | Target::LoopLabel
-                    | Target::Activation
-                    | Target::Note
-                    | Target::NoteLabel
-                    | Target::Title
-            ) =>
-            {
-                DEFAULT
-            }
-            Stroke
-                if matches!(
-                    target,
-                    Target::Actor
-                        | Target::Lifeline
-                        | Target::Message
-                        | Target::LoopLabelBackground
-                        | Target::Activation
-                        | Target::Note
-                ) =>
-            {
-                DEFAULT
-            }
-            _ => &[],
-        },
-        Family::GANTT => match (target, channel) {
-            (Target::Text | Target::Title, Fill) => DEFAULT,
-            (Target::Task, Fill) => GANTT_FILL,
-            (Target::Task, Stroke) => GANTT_STROKE,
-            _ => &[],
-        },
-        Family::KANBAN => match (target, channel) {
-            (Target::Text | Target::Title, Fill) => DEFAULT,
-            (Target::Task, Stroke) => DEFAULT,
-            _ => &[],
-        },
-        Family::REQUIREMENT => match (target, channel) {
-            (Target::Requirement | Target::Relation, Fill | Stroke) => DEFAULT,
-            (Target::Text, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::ER => match (target, channel) {
-            (Target::Relation, Fill | Stroke) => DEFAULT,
-            (Target::Text, Fill) => DEFAULT,
-            (Target::Table, Fill) => ODD_EVEN,
-            _ => &[],
-        },
-        Family::PIE => match (target, channel) {
-            (Target::Text | Target::Title | Target::PieSlice, Fill) => DEFAULT,
-            (Target::PieSlice, Stroke) => DEFAULT,
-            _ => &[],
-        },
-        Family::XY_CHART | Family::QUADRANT_CHART => match (target, channel) {
-            (Target::Text | Target::Title | Target::Axis, Fill) => DEFAULT,
-            (Target::Axis, Stroke) => DEFAULT,
-            _ => &[],
-        },
-        Family::RADAR => match (target, channel) {
-            (Target::Text | Target::Axis, Fill) => DEFAULT,
-            (Target::Axis, Stroke) => DEFAULT,
-            (Target::Title, Fill) => &[Variant::Default],
-            _ => &[],
-        },
-        Family::TIMELINE => match (target, channel) {
-            (Target::TimelineEvent, Fill | Stroke) => DEFAULT,
-            (Target::Text, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::JOURNEY => match (target, channel) {
-            (Target::JourneyTask, Fill | Stroke) => DEFAULT,
-            (Target::Text | Target::Title, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::INFO => match (target, channel) {
-            (Target::Text, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::ERROR => &[],
-        Family::ZENUML
-        | Family::ARCHITECTURE
-        | Family::C4
-        | Family::CYNEFIN
-        | Family::SANKEY
-        | Family::TREEMAP
-        | Family::ISHIKAWA
-        | Family::EVENT_MODELING
-        | Family::VENN => match (target, channel) {
-            (Target::Text | Target::Title, Fill) => DEFAULT,
-            _ => &[],
-        },
-        Family::PACKET | Family::STATE => &[],
-        Family::MINDMAP
-        | Family::FLOWCHART
-        | Family::SWIMLANE
-        | Family::CLASS
-        | Family::BLOCK
-        | Family::GIT_GRAPH
-        | Family::TREE_VIEW => unreachable!("node families were handled above"),
-        _ => &[],
-    }
+    FamilyThemeDisposition::Unsupported
 }
 
 #[cfg(test)]

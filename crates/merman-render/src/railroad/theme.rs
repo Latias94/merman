@@ -504,7 +504,6 @@ impl RailroadTypographyThemePlan {
                                 text_fill: true,
                             });
                         }
-                        FamilyThemeDisposition::LegacyCompatibility => {}
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
@@ -530,7 +529,6 @@ impl RailroadTypographyThemePlan {
                                 text_fill: false,
                             });
                         }
-                        FamilyThemeDisposition::LegacyCompatibility => {}
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {

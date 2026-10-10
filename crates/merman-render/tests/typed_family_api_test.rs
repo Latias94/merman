@@ -168,7 +168,7 @@ fn state_prepared_artifact_renders_the_typed_family() {
 
 #[cfg(merman_internal_theme_acceptance)]
 #[test]
-fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
+fn finalized_svg_receipt_rejects_other_renders_and_mutated_output() {
     use merman_render::DiagramFamilyId;
     use merman_render::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeColorValue, ThemeRule,
@@ -210,25 +210,24 @@ fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
     };
     let first = render("block-beta\n  a[\"First\"]\n");
     let second = render("block-beta\n  b[\"Second\"]\n");
-    let receipts = first.theme_route_cutover_receipts();
-    assert!(
-        !receipts.is_empty(),
-        "the typed Node.fill route must be witnessed"
+    let (first_svg, report) = first.into_output_and_report();
+    assert_eq!(
+        merman_render::__private::family_evidence(&report).applied_count(),
+        1
     );
-    let (first_svg, _) = first.into_output_and_report();
     let first_svg = StandaloneSvgArtifact::from(first_svg);
     let second_svg = StandaloneSvgArtifact::from(second.into_output_and_report().0);
+    let receipt = first_svg
+        .svg_artifact_receipt()
+        .expect("the actual finalized SVG must carry an observation receipt");
     let public_digest = Sha256::digest(first_svg.as_str().as_bytes()).into();
-    let native_digest = Sha256::digest(first_svg.native_export_svg().as_bytes()).into();
     let other_public = Sha256::digest(second_svg.as_str().as_bytes()).into();
-    let other_native = Sha256::digest(second_svg.native_export_svg().as_bytes()).into();
     assert_ne!(public_digest, other_public);
-    assert_ne!(native_digest, other_native);
-    for receipt in receipts {
-        assert!(receipt.proves_artifacts(public_digest, native_digest));
-        assert!(!receipt.proves_artifacts(other_public, native_digest));
-        assert!(!receipt.proves_artifacts(public_digest, other_native));
-    }
+    assert!(receipt.proves_artifact(public_digest));
+    assert!(!receipt.proves_artifact(other_public));
+    let mutated = first_svg.as_str().replace("First", "Changed");
+    assert_ne!(mutated, first_svg.as_str());
+    assert!(!receipt.proves_artifact(Sha256::digest(mutated.as_bytes()).into()));
 }
 
 #[test]

@@ -17,16 +17,16 @@ pub(crate) use lines::{SequencePreparedLifelineTheme, SequencePreparedMessageThe
 pub(crate) use rect::SequencePreparedStaticRectTheme;
 
 #[derive(Debug, Default)]
-struct SequencePreparedEffect {
-    effect: Option<crate::diagram_theme::SvgShadowEffect>,
-    effect_requested: bool,
-    effect_binding_used: bool,
-    effect_cleared: bool,
-    effect_unhandled: bool,
+pub(super) struct SequencePreparedEffect {
+    pub(super) effect: Option<crate::diagram_theme::SvgShadowEffect>,
+    pub(super) effect_requested: bool,
+    pub(super) effect_binding_used: bool,
+    pub(super) effect_cleared: bool,
+    pub(super) effect_unhandled: bool,
 }
 
 #[inline(never)]
-fn prepare_sequence_effect(
+pub(super) fn prepare_sequence_effect(
     theme: &ResolvedDiagramTheme,
     target: ThemeTarget,
     resolution: &crate::diagram_theme::ResolvedProperty<String>,

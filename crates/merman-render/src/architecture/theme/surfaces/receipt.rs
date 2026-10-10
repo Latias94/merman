@@ -666,17 +666,17 @@ impl ArchitectureSurfaceThemeReceipt {
     }
 
     #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fn architecture_text_cutover_receipt(
+    pub(super) fn architecture_text_receipt(
         &self,
-    ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
+    ) -> Option<crate::__private::ArchitectureTextReceipt> {
         if !self.proves_complete() {
             return None;
         }
         let mut terminals = Vec::new();
         for service in &self.services {
-            append_text_cutover_terminal(
+            append_text_receipt_terminal(
                 &mut terminals,
-                crate::__private::ArchitectureTextCutoverRole::Service,
+                crate::__private::ArchitectureTextRole::Service,
                 service.id.as_ref(),
                 service.title_fill.as_ref(),
                 service.title_bounds.as_ref(),
@@ -685,9 +685,9 @@ impl ArchitectureSurfaceThemeReceipt {
             )?;
         }
         for group in &self.groups {
-            append_text_cutover_terminal(
+            append_text_receipt_terminal(
                 &mut terminals,
-                crate::__private::ArchitectureTextCutoverRole::GroupTitle,
+                crate::__private::ArchitectureTextRole::GroupTitle,
                 group.id.as_ref(),
                 group.title_fill.as_ref(),
                 group.title_bounds.as_ref(),
@@ -697,9 +697,9 @@ impl ArchitectureSurfaceThemeReceipt {
         }
         for (index, edge) in self.edges.iter().enumerate() {
             let identity = format!("{}->{}#{index}", edge.lhs_id, edge.rhs_id);
-            append_text_cutover_terminal(
+            append_text_receipt_terminal(
                 &mut terminals,
-                crate::__private::ArchitectureTextCutoverRole::EdgeLabel,
+                crate::__private::ArchitectureTextRole::EdgeLabel,
                 &identity,
                 edge.label_fill.as_ref(),
                 edge.label_bounds.as_ref(),
@@ -707,14 +707,14 @@ impl ArchitectureSurfaceThemeReceipt {
                 edge.label_run_count,
             )?;
         }
-        crate::__private::ArchitectureTextCutoverReceipt::seal(terminals)
+        crate::__private::ArchitectureTextReceipt::seal(terminals)
     }
 }
 
 #[cfg(merman_internal_theme_acceptance)]
-fn append_text_cutover_terminal(
-    terminals: &mut Vec<crate::__private::ArchitectureTextCutoverTerminal>,
-    role: crate::__private::ArchitectureTextCutoverRole,
+fn append_text_receipt_terminal(
+    terminals: &mut Vec<crate::__private::ArchitectureTextTerminal>,
+    role: crate::__private::ArchitectureTextRole,
     identity: &str,
     paint: Option<&ArchitectureExpectedPaint>,
     bounds: Option<&Bounds>,
@@ -728,7 +728,7 @@ fn append_text_cutover_terminal(
     let bounds = bounds?;
     let fragment_digest = fragment_digest?;
     terminals.push(
-        crate::__private::ArchitectureTextCutoverTerminal::with_writer_facts(
+        crate::__private::ArchitectureTextTerminal::with_writer_facts(
             role,
             identity,
             paint.css.as_ref(),
@@ -839,9 +839,6 @@ fn resolve_mechanism_outcomes(
                             .residual
                             .get_or_insert(unsupported_residual_for_facet(facet));
                     }
-                    FamilyThemeDisposition::LegacyCompatibility => {
-                        observation.incomplete = true;
-                    }
                     FamilyThemeDisposition::TypedAdapter
                         if direct_surface_facet(target, selector, facet)
                             && expected_by_rule.get(&key).copied().unwrap_or(0) != 0 =>
@@ -861,8 +858,7 @@ fn resolve_mechanism_outcomes(
                                     FamilyThemeResidualReason::UnsupportedOrdinalPalette,
                                 )
                             }
-                            FamilyThemeDisposition::TypedAdapter
-                            | FamilyThemeDisposition::LegacyCompatibility => {
+                            FamilyThemeDisposition::TypedAdapter => {
                                 ArchitectureMechanismOutcome::Incomplete
                             }
                         }
@@ -881,8 +877,7 @@ fn resolve_mechanism_outcomes(
                                     FamilyThemeResidualReason::UnsupportedEffect,
                                 )
                             }
-                            FamilyThemeDisposition::TypedAdapter
-                            | FamilyThemeDisposition::LegacyCompatibility => {
+                            FamilyThemeDisposition::TypedAdapter => {
                                 ArchitectureMechanismOutcome::Incomplete
                             }
                         }

@@ -273,9 +273,6 @@ impl BlockEdgePaintPlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                FamilyThemeDisposition::LegacyCompatibility => {
-                    observation.incomplete = true;
-                }
             }
         }
         for (index, observation) in observations {

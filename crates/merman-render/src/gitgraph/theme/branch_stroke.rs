@@ -175,8 +175,7 @@ impl GitGraphBranchStrokePlan {
                         ) if stroke_winner == Some((rule_index, property)) => {
                             observation.pending = true;
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
                             observation.incomplete = true;
                         }
                     }

@@ -233,8 +233,7 @@ impl ClassThemeEvidenceRecorder {
                                     .residual
                                     .get_or_insert(unsupported_residual_for_facet(facet));
                             }
-                            (FamilyThemeDisposition::TypedAdapter, _)
-                            | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                            (FamilyThemeDisposition::TypedAdapter, _) => {
                                 observation.incomplete = true;
                             }
                         }
@@ -277,8 +276,7 @@ impl ClassThemeEvidenceRecorder {
                                     .residual
                                     .get_or_insert(unsupported_residual_for_facet(facet));
                             }
-                            (FamilyThemeDisposition::TypedAdapter, _)
-                            | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                            (FamilyThemeDisposition::TypedAdapter, _) => {
                                 observation.incomplete = true;
                             }
                         }
@@ -343,9 +341,6 @@ impl ClassThemeEvidenceRecorder {
                             observation
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::LegacyCompatibility, _) => {
-                            observation.incomplete = true;
                         }
                     }
                 }

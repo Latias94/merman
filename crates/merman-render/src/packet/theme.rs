@@ -204,8 +204,7 @@ impl PacketTypographyThemePlan {
                                 .entry(property)
                                 .or_insert_with(|| unsupported_residual_for_facet(facet));
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
                             observation.incomplete.insert(property);
                         }
                     }

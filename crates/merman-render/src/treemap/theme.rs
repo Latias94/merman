@@ -9,7 +9,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, TerminalVariantDomain,
+    InheritedFontStackOutcome, InheritedFontStackPlan, SingleTitleFillPlan, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -1137,11 +1137,7 @@ fn resolve_treemap_source_text_style(
 /// Final Treemap title fill shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct TreemapTitleThemePlan {
-    fill_css: Option<Box<str>>,
-    typed_fill_capability: Option<ThemeCapability>,
-    evidence: FamilyThemeEvidence,
-    pending_fill_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
+    fill: SingleTitleFillPlan,
 }
 
 impl TreemapTitleThemePlan {
@@ -1152,17 +1148,6 @@ impl TreemapTitleThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let Some(theme) = theme else {
-            return Ok(Self {
-                fill_css: None,
-                typed_fill_capability: None,
-                evidence: FamilyThemeEvidence::default(),
-                pending_fill_key: None,
-                terminal_receipt: OnceLock::new(),
-            });
-        };
-
-        let title_count = usize::from(title_present);
         let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
             effective_config,
             "treemap.titleColor",
@@ -1170,175 +1155,34 @@ impl TreemapTitleThemePlan {
             effective_config,
             "themeVariables.titleColor",
         );
-        let style = title_present.then(|| {
-            theme.style_with_work_meter(
-                ThemeTarget::Title,
-                ThemeVariant::Default,
-                Some(1),
-                work_meter,
-            )
-        });
-        let style = style.transpose()?;
-        let winner_properties = style
-            .as_ref()
-            .into_iter()
-            .flat_map(|style| style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-
-        let typed_fill = (!config_owns_fill)
-            .then(|| {
-                style.as_ref().and_then(|style| {
-                    resolve_direct_static_fill(
-                        theme,
-                        style,
-                        &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Unqualified,
-                    )
-                })
-            })
-            .flatten();
-        let (fill_css, typed_fill_rule, typed_fill_capability) =
-            typed_fill.map_or((None, None, None), |fill| {
-                let (css, rule_index, capability) = fill.into_parts();
-                (Some(css), Some(rule_index), Some(capability))
-            });
-        let source_owned_fill = [config_owns_fill];
-
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let mut observations = BTreeMap::<usize, TreemapRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target: ThemeTarget::Title,
-                    selector,
-                    facet,
-                } => {
-                    let observation = observations.entry(rule_index).or_default();
-                    if !selector.ordinal_domain_intersects_occurrence_count(title_count) {
-                        continue;
-                    }
-                    let route_won = winner_properties
-                        .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
-                        continue;
-                    }
-
-                    observation.applicable = true;
-                    if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        continue;
-                    }
-                    match (route.disposition(), selector, facet) {
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
-                            FamilyThemeRuleFacet::Fill(_),
-                        ) if typed_fill_rule == Some(rule_index) => {
-                            observation.fill_pending = true;
-                        }
-                        (FamilyThemeDisposition::Unsupported, _, facet) => {
-                            observation
-                                .residual
-                                .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::TypedAdapter, _, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
-                            observation.incomplete = true;
-                        }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Title,
-                } => {
-                    // Reconciled below from the final title fill winner.
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Title,
-                    ..
-                } => {
-                    // Reconciled below from the final title style.
-                }
-                FamilyThemeMechanism::BaseTypography(_)
-                | FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => {}
-            }
-        }
-
-        reconcile_unsupported_terminal_domains(
+        let fill = SingleTitleFillPlan::resolve(
             theme,
-            &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Title,
-                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned_fill)],
+            title_present,
+            config_owns_fill,
+            FamilyThemeEvidence::from_theme(theme),
             work_meter,
         )?;
-
-        let mut pending_fill_key = None;
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Title,
-            };
-            if !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Mixed rules stay unaccounted until every winning facet has a terminal owner.
-            } else if observation.fill_pending {
-                debug_assert!(pending_fill_key.is_none());
-                pending_fill_key = Some(key);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-
-        Ok(Self {
-            fill_css,
-            typed_fill_capability,
-            evidence,
-            pending_fill_key,
-            terminal_receipt: OnceLock::new(),
-        })
+        Ok(Self { fill })
     }
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
-        self.fill_css.as_deref()
+        self.fill.fill_css()
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<TreemapTitleThemeReceipt> {
-        self.fill_css
-            .as_ref()
-            .map(|fill_css| TreemapTitleThemeReceipt::new(fill_css.clone()))
+        self.fill
+            .fill_css()
+            .map(|fill_css| TreemapTitleThemeReceipt::new(fill_css.into()))
     }
 
     pub(crate) fn record_terminal(&self, receipt: TreemapTitleThemeReceipt) -> bool {
-        self.fill_css.as_deref().is_some_and(|fill_css| {
-            receipt.proves(fill_css) && self.terminal_receipt.set(()).is_ok()
-        })
+        self.fill
+            .fill_css()
+            .is_some_and(|fill_css| receipt.proves(fill_css) && self.fill.record_proven_terminal())
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        if let Some(key) = self.pending_fill_key.clone()
-            && self.terminal_receipt.get().is_some()
-            && let Some(capability) = self.typed_fill_capability
-        {
-            evidence.mark_applied_with_capabilities(key, [capability]);
-        }
-        evidence
+        self.fill.finish_evidence()
     }
 }
 

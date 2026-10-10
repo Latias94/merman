@@ -3,8 +3,20 @@ mod direct_static_paint;
 mod evidence_support;
 mod inherited_font_stack;
 mod preparation;
+#[cfg(any(
+    feature = "diagram-treemap",
+    feature = "diagram-venn",
+    feature = "diagram-zenuml"
+))]
+mod single_title_fill;
 mod theme_diagnostics;
 
+#[cfg(any(
+    feature = "diagram-treemap",
+    feature = "diagram-venn",
+    feature = "diagram-zenuml"
+))]
+pub(crate) use single_title_fill::SingleTitleFillPlan;
 pub use theme_diagnostics::ThemeDiagnostic;
 
 pub use capability::{RenderCapabilityPlan, plan_render, supports_diagram_type};
@@ -463,11 +475,9 @@ pub(crate) struct FamilyStyleReport {
     output_mutated: bool,
     theme_required: Vec<FamilyThemeMechanismKey>,
     theme_applied: Vec<FamilyThemeMechanismKey>,
-    #[cfg(merman_internal_theme_acceptance)]
-    theme_route_cutover_facts: Vec<crate::theme_route_cutover::ThemeRouteCutoverFact>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
+    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
     mermaid_compatibility_residual_count: usize,
@@ -504,11 +514,9 @@ impl FamilyStyleReport {
             output_mutated: plan.output_mutated,
             theme_required: plan.theme_evidence.required.clone(),
             theme_applied: plan.theme_evidence.applied.clone(),
-            #[cfg(merman_internal_theme_acceptance)]
-            theme_route_cutover_facts: plan.theme_route_cutover_facts(),
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
+            architecture_text_receipt: plan.architecture_text_receipt.clone(),
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
@@ -531,15 +539,13 @@ impl FamilyStyleReport {
             }
         }
         self.native_filter_receipt = None;
-        #[cfg(merman_internal_theme_acceptance)]
-        self.theme_route_cutover_facts.clear();
         #[cfg(all(
             merman_internal_theme_acceptance,
             feature = "layout-cytoscape",
             feature = "diagram-architecture"
         ))]
         {
-            self.architecture_text_cutover_receipt = None;
+            self.architecture_text_receipt = None;
         }
         self
     }
@@ -576,10 +582,10 @@ impl FamilyStyleReport {
     }
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub(crate) fn architecture_text_cutover_receipt(
+    pub(crate) fn architecture_text_receipt(
         &self,
-    ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
-        self.architecture_text_cutover_receipt.as_ref()
+    ) -> Option<&crate::__private::ArchitectureTextReceipt> {
+        self.architecture_text_receipt.as_ref()
     }
 
     /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
@@ -788,13 +794,6 @@ impl FamilyRenderReport {
         &self.style
     }
 
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn theme_route_cutover_facts(
-        &self,
-    ) -> &[crate::theme_route_cutover::ThemeRouteCutoverFact] {
-        &self.style.theme_route_cutover_facts
-    }
-
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
@@ -806,10 +805,10 @@ impl FamilyRenderReport {
     }
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub(crate) fn architecture_text_cutover_receipt(
+    pub(crate) fn architecture_text_receipt(
         &self,
-    ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
-        self.style.architecture_text_cutover_receipt()
+    ) -> Option<&crate::__private::ArchitectureTextReceipt> {
+        self.style.architecture_text_receipt()
     }
 
     pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
@@ -1038,7 +1037,7 @@ pub(crate) struct ResolvedFamilyStylePlan {
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
+    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
     output_mutated: bool,
     mermaid_compatibility_residual_count: usize,
     payload: FamilyStylePayload,
@@ -1062,23 +1061,11 @@ impl ResolvedFamilyStylePlan {
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_cutover_receipt: None,
+            architecture_text_receipt: None,
             output_mutated: false,
             mermaid_compatibility_residual_count: 0,
             payload,
         }
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    fn theme_route_cutover_facts(&self) -> Vec<crate::theme_route_cutover::ThemeRouteCutoverFact> {
-        self.resolved_theme
-            .as_deref()
-            .map_or_else(Vec::new, |theme| {
-                crate::theme_route_cutover::collect_theme_route_cutover_facts(
-                    theme,
-                    &self.theme_evidence.applied,
-                )
-            })
     }
 
     #[cfg(feature = "diagram-state")]
@@ -1178,12 +1165,12 @@ impl ResolvedFamilyStylePlan {
     }
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    fn record_architecture_text_cutover_receipt(
+    fn record_architecture_text_receipt(
         &mut self,
-        receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
+        receipt: Option<crate::__private::ArchitectureTextReceipt>,
     ) {
         debug_assert_eq!(self.family_id, DiagramFamilyId::ARCHITECTURE);
-        self.architecture_text_cutover_receipt = receipt;
+        self.architecture_text_receipt = receipt;
     }
 
     fn reconcile_effect_evidence(
@@ -1245,7 +1232,7 @@ impl ResolvedFamilyStylePlan {
             feature = "diagram-architecture"
         ))]
         {
-            self.architecture_text_cutover_receipt = None;
+            self.architecture_text_receipt = None;
         }
         self.theme_evidence.mark_output_mutated();
     }
@@ -3001,8 +2988,8 @@ impl BuiltinFamilyArtifact {
             feature = "diagram-architecture"
         ))]
         if let Self::Architecture(artifact) = self {
-            context.style_plan.record_architecture_text_cutover_receipt(
-                artifact.group_theme().architecture_text_cutover_receipt(),
+            context.style_plan.record_architecture_text_receipt(
+                artifact.group_theme().architecture_text_receipt(),
             );
         }
         Ok(())
@@ -3350,26 +3337,6 @@ impl<T> FamilyRenderCompletion<T> {
 
     pub fn into_output_and_report(self) -> (T, FamilyRenderReport) {
         (self.output, self.report)
-    }
-}
-
-#[cfg(merman_internal_theme_acceptance)]
-impl FamilyRenderCompletion<ResvgCompatibleSvg> {
-    /// Returns route receipts bound to this completion's frozen report and SVG representations.
-    ///
-    /// Callers cannot supply a different artifact or digest when sealing these facts.
-    #[doc(hidden)]
-    pub fn theme_route_cutover_receipts(&self) -> Vec<crate::__private::ThemeRouteCutoverReceipt> {
-        use sha2::{Digest as _, Sha256};
-
-        if !self.report.style_report().is_verified() {
-            return Vec::new();
-        }
-        crate::theme_route_cutover::seal_theme_route_cutover_receipts(
-            self.report.theme_route_cutover_facts(),
-            Sha256::digest(self.output.as_str().as_bytes()).into(),
-            Sha256::digest(self.output.native_export_svg().as_bytes()).into(),
-        )
     }
 }
 

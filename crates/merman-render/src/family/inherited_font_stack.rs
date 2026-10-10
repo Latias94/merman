@@ -244,13 +244,6 @@ impl InheritedFontStackPlan {
                     typed_font_stack = true;
                 }
                 (
-                    FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
-                    FamilyThemeDisposition::LegacyCompatibility,
-                ) => {
-                    // The compatibility ledger owns this route; it is not a native FontStack
-                    // outcome and must not request a typed receipt.
-                }
-                (
                     FamilyThemeMechanism::BaseTypography(property),
                     FamilyThemeDisposition::Unsupported,
                 ) => {

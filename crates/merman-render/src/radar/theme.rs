@@ -307,8 +307,7 @@ impl RadarTitleThemePlan {
                         .residual
                         .get_or_insert(unsupported_residual_for_facet(facet));
                 }
-                (FamilyThemeDisposition::TypedAdapter, _, _)
-                | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
+                (FamilyThemeDisposition::TypedAdapter, _, _) => {
                     observation.incomplete = true;
                 }
             }
@@ -694,7 +693,6 @@ impl RadarSeriesPaintPlan {
             FamilyThemeDisposition::Unsupported => plan
                 .evidence
                 .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
-            FamilyThemeDisposition::LegacyCompatibility => {}
         }
 
         Ok(plan)

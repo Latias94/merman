@@ -133,8 +133,7 @@ pub struct RenderEvidence {
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    architecture_text_cutover_receipt:
-        Option<merman_render::__private::ArchitectureTextCutoverReceipt>,
+    architecture_text_receipt: Option<merman_render::__private::ArchitectureTextReceipt>,
     #[cfg(merman_internal_theme_acceptance)]
     theme_acceptance: ThemeAcceptanceEvidenceSnapshot,
 }
@@ -162,8 +161,8 @@ impl RenderEvidence {
             merman_render::__private::root_applied_capabilities(&family);
         let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
         #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        let architecture_text_cutover_receipt =
-            merman_render::__private::architecture_text_cutover_receipt(&family).cloned();
+        let architecture_text_receipt =
+            merman_render::__private::architecture_text_receipt(&family).cloned();
         Self {
             execution_path: super::OperationExecutionPath::Renderer,
             session,
@@ -174,7 +173,7 @@ impl RenderEvidence {
             root_applied_capabilities,
             native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_cutover_receipt,
+            architecture_text_receipt,
             #[cfg(merman_internal_theme_acceptance)]
             theme_acceptance: ThemeAcceptanceEvidenceSnapshot {
                 root,
@@ -217,10 +216,10 @@ impl RenderEvidence {
     }
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub(crate) fn architecture_text_cutover_receipt(
+    pub(crate) fn architecture_text_receipt(
         &self,
-    ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
-        self.architecture_text_cutover_receipt.as_ref()
+    ) -> Option<&merman_render::__private::ArchitectureTextReceipt> {
+        self.architecture_text_receipt.as_ref()
     }
 
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {

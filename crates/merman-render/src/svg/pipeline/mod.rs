@@ -1203,6 +1203,33 @@ mod tests {
                 .unwrap()
                 .artifact_matches(sealed.native_export_svg())
         );
+        let native_receipt = sealed.prepared_text_terminal_receipt().unwrap();
+        assert!(!native_receipt.artifact_matches(sealed.as_str()));
+        let other_svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}">other</text></svg>"#,
+            id.as_svg_id(),
+        );
+        let other_evidence = PreparedTextEvidenceLease::new(
+            vec![crate::text::PreparedTextLabelLedgerEntry::for_test(
+                id, "other",
+            )],
+            Vec::new(),
+        );
+        let other_metadata = SvgPostprocessMetadata::from_svg(&other_svg)
+            .with_family_id(crate::DiagramFamilyId::STATE);
+        let other = SvgPipeline::resvg_safe()
+            .process_owned_resvg_compatible_with_metadata_and_evidence(
+                other_svg,
+                &other_metadata,
+                &session,
+                other_evidence,
+                true,
+                PreparedMathEvidenceLease::default(),
+                true,
+            )
+            .unwrap();
+        assert!(!native_receipt.artifact_matches(other.native_export_svg()));
+        assert!(!native_receipt.artifact_matches(&format!("{} ", sealed.native_export_svg())));
         assert_eq!(work.calls, 1);
         assert_eq!(work.svg_bytes, sealed.native_export_svg().len());
 

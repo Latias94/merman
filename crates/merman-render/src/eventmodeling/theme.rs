@@ -155,8 +155,7 @@ impl EventModelingTextThemePlan {
                                     .residual
                                     .get_or_insert(unsupported_residual_for_facet(facet));
                             }
-                            FamilyThemeDisposition::TypedAdapter
-                            | FamilyThemeDisposition::LegacyCompatibility => {
+                            FamilyThemeDisposition::TypedAdapter => {
                                 observation.incomplete = true;
                             }
                         }
@@ -183,8 +182,7 @@ impl EventModelingTextThemePlan {
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
-                        (FamilyThemeDisposition::TypedAdapter, _)
-                        | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                        (FamilyThemeDisposition::TypedAdapter, _) => {
                             observation.incomplete = true;
                         }
                     }

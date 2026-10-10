@@ -28,7 +28,7 @@ RETIRED_IMPORTS = (
 
 PRIVATE_IMPORTS = (
     "merman::__theme_acceptance::TargetArtifactView",
-    "merman_render::__private::ThemeRouteCutoverReceipt",
+    "merman_render::__private::ArchitectureTextReceipt",
 )
 
 

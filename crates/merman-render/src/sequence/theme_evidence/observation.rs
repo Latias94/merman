@@ -96,7 +96,6 @@ pub(super) fn observe_control_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 
@@ -182,7 +181,6 @@ pub(super) fn observe_static_rect_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 
@@ -264,7 +262,6 @@ pub(super) fn observe_message_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 
@@ -306,7 +303,6 @@ pub(super) fn observe_sequence_number_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 
@@ -384,7 +380,6 @@ pub(super) fn observe_lifeline_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 
@@ -467,7 +462,6 @@ pub(super) fn observe_typography_rule(
                 .residual
                 .get_or_insert(unsupported_reason_for_facet(facet));
         }
-        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
     }
 }
 

@@ -189,8 +189,8 @@ pub fn native_filter_receipt(
 }
 
 #[cfg(feature = "layout-cytoscape")]
-pub fn architecture_text_cutover_receipt(
+pub fn architecture_text_receipt(
     evidence: &crate::RenderEvidence,
-) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
-    evidence.architecture_text_cutover_receipt()
+) -> Option<&merman_render::__private::ArchitectureTextReceipt> {
+    evidence.architecture_text_receipt()
 }

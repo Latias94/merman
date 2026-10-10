@@ -17,6 +17,8 @@
 pub mod architecture;
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) mod architecture_metrics;
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
+mod architecture_text_receipt;
 #[cfg(feature = "diagram-block")]
 pub mod block;
 #[cfg(feature = "diagram-c4")]
@@ -240,7 +242,6 @@ pub mod swimlane;
     )
 )]
 pub mod text;
-mod theme_route_cutover;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;
 #[cfg(feature = "diagram-tree-view")]
@@ -272,8 +273,7 @@ pub use merman_core::DiagramFamilyId;
 
 /// Workspace-internal implementation seams with no compatibility promise.
 ///
-/// Only route-cutover inventory is expected to disappear after family migration; the bounded
-/// facade projections may evolve independently of the public renderer API.
+/// Bounded facade and actual-output projections may evolve independently of the public renderer API.
 #[doc(hidden)]
 pub mod __private {
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
@@ -299,32 +299,16 @@ pub mod __private {
     };
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub use crate::theme_route_cutover::{
-        ArchitectureTextCutoverReceipt, ArchitectureTextCutoverRole,
-        ArchitectureTextCutoverTerminal,
+    pub use crate::architecture_text_receipt::{
+        ArchitectureTextReceipt, ArchitectureTextRole, ArchitectureTextTerminal,
     };
 
-    #[cfg(merman_internal_theme_acceptance)]
-    pub use crate::theme_route_cutover::{
-        ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
-        ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
-        ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
-        ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
-    };
-
-    /// Returns every currently typed route that replaces a concrete legacy bridge projection.
-    #[cfg(merman_internal_theme_acceptance)]
-    pub fn legacy_replacing_typed_theme_routes()
-    -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
-        crate::diagram_theme::legacy_replacing_typed_routes()
-    }
-
-    /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.
+    /// Returns the renderer-owned Architecture Text terminal facts sealed by the final writer.
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub fn architecture_text_cutover_receipt(
+    pub fn architecture_text_receipt(
         report: &FamilyRenderReport,
-    ) -> Option<&ArchitectureTextCutoverReceipt> {
-        report.architecture_text_cutover_receipt()
+    ) -> Option<&ArchitectureTextReceipt> {
+        report.architecture_text_receipt()
     }
 
     /// Coarse family-evidence state used by the workspace facade.

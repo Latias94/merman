@@ -468,9 +468,10 @@ impl FlowchartEdgeThemeStyle {
                         );
                     }
                 }
-                ResolvedStyleProperty::Typography(property) => record_incomplete_edge_facet(
+                ResolvedStyleProperty::Typography(property) => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     FamilyThemeRuleFacet::Typography(property),
                 ),
@@ -481,9 +482,10 @@ impl FlowchartEdgeThemeStyle {
                 | ResolvedStyleProperty::FillOpacity
                 | ResolvedStyleProperty::StrokeOpacity
                 | ResolvedStyleProperty::Radius
-                | ResolvedStyleProperty::Padding => record_incomplete_edge_facet(
+                | ResolvedStyleProperty::Padding => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     non_paint_facet(property),
                 ),
@@ -627,15 +629,17 @@ impl FlowchartClusterThemeStyle {
                         FamilyThemeRuleFacet::stroke,
                     );
                 }
-                ResolvedStyleProperty::Typography(property) => record_incomplete_cluster_facet(
+                ResolvedStyleProperty::Typography(property) => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     FamilyThemeRuleFacet::Typography(property),
                 ),
-                ResolvedStyleProperty::Effect => record_incomplete_cluster_facet(
+                ResolvedStyleProperty::Effect => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     FamilyThemeRuleFacet::Effect,
                 ),
@@ -650,9 +654,10 @@ impl FlowchartClusterThemeStyle {
                 | ResolvedStyleProperty::FillOpacity
                 | ResolvedStyleProperty::StrokeOpacity
                 | ResolvedStyleProperty::Radius
-                | ResolvedStyleProperty::Padding => record_incomplete_cluster_facet(
+                | ResolvedStyleProperty::Padding => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     non_paint_facet(property),
                 ),
@@ -807,7 +812,8 @@ impl FlowchartNodeThemeStyle {
                 }
                 ResolvedStyleProperty::Typography(property) => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     FamilyThemeRuleFacet::Typography(property),
                 ),
@@ -819,7 +825,8 @@ impl FlowchartNodeThemeStyle {
                 | ResolvedStyleProperty::StrokeOpacity
                 | ResolvedStyleProperty::Padding => record_incomplete_facet(
                     theme,
-                    &mut resolved,
+                    &mut resolved.incomplete_rules,
+                    &mut resolved.residual_rules,
                     rule_index,
                     non_paint_facet(property),
                 ),
@@ -1015,9 +1022,10 @@ fn resolve_label_theme_style(
             ResolvedStyleProperty::Padding => {
                 resolved.padding = resolve_padding(theme, rule_index, style.padding_resolution());
             }
-            ResolvedStyleProperty::Typography(property) => record_incomplete_label_facet(
+            ResolvedStyleProperty::Typography(property) => record_incomplete_facet(
                 theme,
-                &mut resolved,
+                &mut resolved.incomplete_rules,
+                &mut resolved.residual_rules,
                 rule_index,
                 FamilyThemeRuleFacet::Typography(property),
             ),
@@ -1040,9 +1048,10 @@ fn resolve_label_theme_style(
                     resolved.incomplete_rules.insert(rule_index);
                 }
             }
-            ResolvedStyleProperty::Stroke => record_incomplete_label_facet(
+            ResolvedStyleProperty::Stroke => record_incomplete_facet(
                 theme,
-                &mut resolved,
+                &mut resolved.incomplete_rules,
+                &mut resolved.residual_rules,
                 rule_index,
                 FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())
                     .unwrap_or_else(|| panic!("winning {target:?} stroke has a concrete facet")),
@@ -1055,9 +1064,10 @@ fn resolve_label_theme_style(
             | ResolvedStyleProperty::Opacity
             | ResolvedStyleProperty::FillOpacity
             | ResolvedStyleProperty::StrokeOpacity
-            | ResolvedStyleProperty::Radius => record_incomplete_label_facet(
+            | ResolvedStyleProperty::Radius => record_incomplete_facet(
                 theme,
-                &mut resolved,
+                &mut resolved.incomplete_rules,
+                &mut resolved.residual_rules,
                 rule_index,
                 non_paint_facet(property),
             ),
@@ -1084,7 +1094,6 @@ fn resolve_padding(
         Specified::Clear | Specified::Value(_) => FamilyThemeRuleFacet::Padding,
     };
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartPaddingOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedGeometry,
@@ -1110,7 +1119,6 @@ fn resolve_paint(
 ) -> Option<FlowchartPaintOutcome> {
     let facet = facet(property.specified())?;
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartPaintOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedPaint,
@@ -1148,7 +1156,6 @@ fn resolve_stroke_width(
         Specified::Clear | Specified::Value(_) => FamilyThemeRuleFacet::StrokeWidth,
     };
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartScalarOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedGeometry,
@@ -1176,7 +1183,6 @@ fn resolve_stroke_dasharray(
         Specified::Clear | Specified::Value(_) => FamilyThemeRuleFacet::StrokeDasharray,
     };
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartDasharrayOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedGeometry,
@@ -1210,7 +1216,6 @@ fn resolve_radius(
         Specified::Clear | Specified::Value(_) => FamilyThemeRuleFacet::Radius,
     };
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartScalarOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedGeometry,
@@ -1241,7 +1246,6 @@ fn resolve_typography<T>(
         }
     };
     match theme.rule_facet_disposition(rule_index, facet)? {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::Unsupported => Some(FlowchartTypographyOutcome::Residual {
             rule_index,
             reason: FamilyThemeResidualReason::UnsupportedTypography,
@@ -1280,7 +1284,6 @@ fn resolve_effect_for_target(
                         target,
                     },
                 }),
-                FamilyThemeDisposition::LegacyCompatibility => None,
             };
         }
         ResolvedThemeEffect::Rule { graph } => {
@@ -1312,7 +1315,6 @@ fn resolve_effect_for_target(
         }
     };
     match disposition {
-        FamilyThemeDisposition::LegacyCompatibility => None,
         FamilyThemeDisposition::TypedAdapter => {
             Some(match graph.and_then(SvgShadowEffect::from_graph) {
                 Some(effect) => FlowchartEffectOutcome::Candidate { key, effect },
@@ -1340,78 +1342,18 @@ fn non_paint_facet(property: ResolvedStyleProperty) -> FamilyThemeRuleFacet {
 
 fn record_incomplete_facet(
     theme: &ResolvedDiagramTheme,
-    resolved: &mut FlowchartNodeThemeStyle,
+    incomplete_rules: &mut BTreeSet<usize>,
+    residual_rules: &mut BTreeMap<usize, FamilyThemeResidualReason>,
     rule_index: usize,
     facet: FamilyThemeRuleFacet,
 ) {
     match theme.rule_facet_disposition(rule_index, facet) {
-        None | Some(FamilyThemeDisposition::LegacyCompatibility) => {}
+        None => {}
         Some(FamilyThemeDisposition::TypedAdapter) => {
-            resolved.incomplete_rules.insert(rule_index);
+            incomplete_rules.insert(rule_index);
         }
         Some(FamilyThemeDisposition::Unsupported) => {
-            resolved
-                .residual_rules
-                .entry(rule_index)
-                .or_insert(unsupported_reason_for_facet(facet));
-        }
-    }
-}
-
-fn record_incomplete_label_facet(
-    theme: &ResolvedDiagramTheme,
-    resolved: &mut FlowchartLabelThemeStyle,
-    rule_index: usize,
-    facet: FamilyThemeRuleFacet,
-) {
-    match theme.rule_facet_disposition(rule_index, facet) {
-        None | Some(FamilyThemeDisposition::LegacyCompatibility) => {}
-        Some(FamilyThemeDisposition::TypedAdapter) => {
-            resolved.incomplete_rules.insert(rule_index);
-        }
-        Some(FamilyThemeDisposition::Unsupported) => {
-            resolved
-                .residual_rules
-                .entry(rule_index)
-                .or_insert(unsupported_reason_for_facet(facet));
-        }
-    }
-}
-
-fn record_incomplete_edge_facet(
-    theme: &ResolvedDiagramTheme,
-    resolved: &mut FlowchartEdgeThemeStyle,
-    rule_index: usize,
-    facet: FamilyThemeRuleFacet,
-) {
-    match theme.rule_facet_disposition(rule_index, facet) {
-        None | Some(FamilyThemeDisposition::LegacyCompatibility) => {}
-        Some(FamilyThemeDisposition::TypedAdapter) => {
-            resolved.incomplete_rules.insert(rule_index);
-        }
-        Some(FamilyThemeDisposition::Unsupported) => {
-            resolved
-                .residual_rules
-                .entry(rule_index)
-                .or_insert(unsupported_reason_for_facet(facet));
-        }
-    }
-}
-
-fn record_incomplete_cluster_facet(
-    theme: &ResolvedDiagramTheme,
-    resolved: &mut FlowchartClusterThemeStyle,
-    rule_index: usize,
-    facet: FamilyThemeRuleFacet,
-) {
-    match theme.rule_facet_disposition(rule_index, facet) {
-        None | Some(FamilyThemeDisposition::LegacyCompatibility) => {}
-        Some(FamilyThemeDisposition::TypedAdapter) => {
-            resolved.incomplete_rules.insert(rule_index);
-        }
-        Some(FamilyThemeDisposition::Unsupported) => {
-            resolved
-                .residual_rules
+            residual_rules
                 .entry(rule_index)
                 .or_insert(unsupported_reason_for_facet(facet));
         }
@@ -1981,10 +1923,6 @@ impl FlowchartThemeEvidenceRecorder {
                         evidence.mark_not_applicable(key);
                     } else {
                         match route.disposition() {
-                            FamilyThemeDisposition::LegacyCompatibility => {
-                                // The compatibility lane owns this route; its parse evidence is
-                                // checked separately from typed family evidence.
-                            }
                             FamilyThemeDisposition::TypedAdapter => {
                                 match state.node_ordinal_palette {
                                     FlowchartMechanismObservation::NotObserved => {
@@ -2174,36 +2112,67 @@ fn record_edge_paint_outcome(
     }
 }
 
-fn record_scalar_outcome(
+enum FlowchartFacetOutcome {
+    Candidate(usize),
+    Residual(usize, FamilyThemeResidualReason),
+}
+
+fn record_facet_outcome(
     state: &mut FlowchartRuleEvidenceState,
-    outcome: Option<&FlowchartScalarOutcome>,
+    outcome: Option<FlowchartFacetOutcome>,
     precedence: FlowchartFacetPrecedence,
-    channel_emitted: bool,
+    emitted: bool,
     capability: ThemeCapability,
+    unemitted_reason: FamilyThemeResidualReason,
 ) {
     if precedence.overrides_theme() {
         return;
     }
     match outcome {
-        Some(FlowchartScalarOutcome::Candidate { rule_index, .. }) if channel_emitted => {
-            state.applied_rules.insert(*rule_index);
+        Some(FlowchartFacetOutcome::Candidate(rule_index)) if emitted => {
+            state.applied_rules.insert(rule_index);
             state
                 .applied_rule_capabilities
-                .entry(*rule_index)
+                .entry(rule_index)
                 .or_default()
                 .insert(capability);
         }
-        Some(FlowchartScalarOutcome::Candidate { rule_index, .. }) => {
+        Some(FlowchartFacetOutcome::Candidate(rule_index)) => {
             state
                 .residual_rules
-                .entry(*rule_index)
-                .or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
+                .entry(rule_index)
+                .or_insert(unemitted_reason);
         }
-        Some(FlowchartScalarOutcome::Residual { rule_index, reason }) => {
-            state.residual_rules.entry(*rule_index).or_insert(*reason);
+        Some(FlowchartFacetOutcome::Residual(rule_index, reason)) => {
+            state.residual_rules.entry(rule_index).or_insert(reason);
         }
         None => {}
     }
+}
+
+fn record_scalar_outcome(
+    state: &mut FlowchartRuleEvidenceState,
+    outcome: Option<&FlowchartScalarOutcome>,
+    precedence: FlowchartFacetPrecedence,
+    emitted: bool,
+    capability: ThemeCapability,
+) {
+    let outcome = outcome.map(|outcome| match outcome {
+        FlowchartScalarOutcome::Candidate { rule_index, .. } => {
+            FlowchartFacetOutcome::Candidate(*rule_index)
+        }
+        FlowchartScalarOutcome::Residual { rule_index, reason } => {
+            FlowchartFacetOutcome::Residual(*rule_index, *reason)
+        }
+    });
+    record_facet_outcome(
+        state,
+        outcome,
+        precedence,
+        emitted,
+        capability,
+        FamilyThemeResidualReason::UnsupportedGeometry,
+    );
 }
 
 fn record_padding_outcome(
@@ -2212,60 +2181,46 @@ fn record_padding_outcome(
     precedence: FlowchartFacetPrecedence,
     emitted: bool,
 ) {
-    if precedence.overrides_theme() {
-        return;
-    }
-    match outcome {
-        Some(FlowchartPaddingOutcome::Candidate { rule_index, .. }) if emitted => {
-            state.applied_rules.insert(*rule_index);
-            state
-                .applied_rule_capabilities
-                .entry(*rule_index)
-                .or_default()
-                .insert(ThemeCapability::ContentPadding);
+    let outcome = outcome.map(|outcome| match outcome {
+        FlowchartPaddingOutcome::Candidate { rule_index, .. } => {
+            FlowchartFacetOutcome::Candidate(*rule_index)
         }
-        Some(FlowchartPaddingOutcome::Candidate { rule_index, .. }) => {
-            state
-                .residual_rules
-                .entry(*rule_index)
-                .or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
+        FlowchartPaddingOutcome::Residual { rule_index, reason } => {
+            FlowchartFacetOutcome::Residual(*rule_index, *reason)
         }
-        Some(FlowchartPaddingOutcome::Residual { rule_index, reason }) => {
-            state.residual_rules.entry(*rule_index).or_insert(*reason);
-        }
-        None => {}
-    }
+    });
+    record_facet_outcome(
+        state,
+        outcome,
+        precedence,
+        emitted,
+        ThemeCapability::ContentPadding,
+        FamilyThemeResidualReason::UnsupportedGeometry,
+    );
 }
 
 fn record_dasharray_outcome(
     state: &mut FlowchartRuleEvidenceState,
     outcome: Option<&FlowchartDasharrayOutcome>,
     precedence: FlowchartFacetPrecedence,
-    channel_emitted: bool,
+    emitted: bool,
 ) {
-    if precedence.overrides_theme() {
-        return;
-    }
-    match outcome {
-        Some(FlowchartDasharrayOutcome::Candidate { rule_index, .. }) if channel_emitted => {
-            state.applied_rules.insert(*rule_index);
-            state
-                .applied_rule_capabilities
-                .entry(*rule_index)
-                .or_default()
-                .insert(ThemeCapability::DashStyling);
+    let outcome = outcome.map(|outcome| match outcome {
+        FlowchartDasharrayOutcome::Candidate { rule_index, .. } => {
+            FlowchartFacetOutcome::Candidate(*rule_index)
         }
-        Some(FlowchartDasharrayOutcome::Candidate { rule_index, .. }) => {
-            state
-                .residual_rules
-                .entry(*rule_index)
-                .or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
+        FlowchartDasharrayOutcome::Residual { rule_index, reason } => {
+            FlowchartFacetOutcome::Residual(*rule_index, *reason)
         }
-        Some(FlowchartDasharrayOutcome::Residual { rule_index, reason }) => {
-            state.residual_rules.entry(*rule_index).or_insert(*reason);
-        }
-        None => {}
-    }
+    });
+    record_facet_outcome(
+        state,
+        outcome,
+        precedence,
+        emitted,
+        ThemeCapability::DashStyling,
+        FamilyThemeResidualReason::UnsupportedGeometry,
+    );
 }
 
 fn record_typography_outcome(
@@ -2274,29 +2229,22 @@ fn record_typography_outcome(
     precedence: FlowchartFacetPrecedence,
     emitted: bool,
 ) {
-    if precedence.overrides_theme() {
-        return;
-    }
-    match outcome {
-        Some(FlowchartTypographyOutcome::Candidate { rule_index }) if emitted => {
-            state.applied_rules.insert(*rule_index);
-            state
-                .applied_rule_capabilities
-                .entry(*rule_index)
-                .or_default()
-                .insert(ThemeCapability::Typography);
+    let outcome = outcome.map(|outcome| match outcome {
+        FlowchartTypographyOutcome::Candidate { rule_index } => {
+            FlowchartFacetOutcome::Candidate(*rule_index)
         }
-        Some(FlowchartTypographyOutcome::Candidate { rule_index }) => {
-            state
-                .residual_rules
-                .entry(*rule_index)
-                .or_insert(FamilyThemeResidualReason::UnsupportedTypography);
+        FlowchartTypographyOutcome::Residual { rule_index, reason } => {
+            FlowchartFacetOutcome::Residual(*rule_index, *reason)
         }
-        Some(FlowchartTypographyOutcome::Residual { rule_index, reason }) => {
-            state.residual_rules.entry(*rule_index).or_insert(*reason);
-        }
-        None => {}
-    }
+    });
+    record_facet_outcome(
+        state,
+        outcome,
+        precedence,
+        emitted,
+        ThemeCapability::Typography,
+        FamilyThemeResidualReason::UnsupportedTypography,
+    );
 }
 
 fn same_effect_outcome(
