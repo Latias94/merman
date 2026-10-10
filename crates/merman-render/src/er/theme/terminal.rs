@@ -665,18 +665,34 @@ impl ErEntityThemeReceipt {
             != 0
     }
 
-    pub(super) fn proves_rule(&self, rule_index: usize) -> bool {
-        self.proves_complete()
-            && !self.unverified_rules.contains(&rule_index)
+    // Mutable receipt tests exercise admission and local facts together; production queries
+    // local facts only from the immutable receipt retained by the owning plan.
+    #[cfg(test)]
+    fn proves_rule(&self, rule_index: usize) -> bool {
+        self.proves_complete() && self.has_matching_rule(rule_index)
+    }
+
+    #[cfg(test)]
+    fn proves_typography(&self) -> bool {
+        self.proves_complete() && self.matches_typography()
+    }
+
+    #[cfg(test)]
+    fn proves_font_size(&self) -> bool {
+        self.proves_complete() && self.matches_font_size()
+    }
+
+    // The owning plan queries these facts only after record_terminal admits this receipt.
+    pub(super) fn has_matching_rule(&self, rule_index: usize) -> bool {
+        !self.unverified_rules.contains(&rule_index)
             && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
     }
 
-    pub(super) fn proves_typography(&self) -> bool {
+    pub(super) fn matches_typography(&self) -> bool {
         let Some(expected) = self.typography_expected_font_family.as_deref() else {
             return false;
         };
-        self.proves_complete()
-            && self.typography_emitted_font_family.as_deref() == Some(expected)
+        self.typography_emitted_font_family.as_deref() == Some(expected)
             && self
                 .text_terminals
                 .iter()
@@ -699,12 +715,11 @@ impl ErEntityThemeReceipt {
                     }))
     }
 
-    pub(super) fn proves_font_size(&self) -> bool {
+    pub(super) fn matches_font_size(&self) -> bool {
         let Some(expected) = self.typography_expected_font_size.as_deref() else {
             return false;
         };
-        self.proves_complete()
-            && self.typography_emitted_font_size.as_deref() == Some(expected)
+        self.typography_emitted_font_size.as_deref() == Some(expected)
             && self.typography_font_size_layout_verified
             && self.typography_font_size_measurement_count != 0
             && self.typography_font_size_measurements_match

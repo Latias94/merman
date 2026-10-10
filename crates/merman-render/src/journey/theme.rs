@@ -539,7 +539,7 @@ impl JourneyTaskTheme {
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            if receipt.proves_rule(rule_index, pending) {
+            if receipt.has_matching_rule(rule_index, pending) {
                 evidence.mark_applied_with_capabilities(
                     key.clone(),
                     pending.capabilities.iter().copied(),
@@ -777,9 +777,9 @@ impl JourneyTaskThemeReceipt {
             && self.section_expectations.len() == self.checkpointed_sections.len()
     }
 
-    fn proves_rule(&self, rule_index: usize, pending: &JourneyTaskPendingEvidence) -> bool {
-        self.proves_complete()
-            && (!pending.radius || self.radius_rules.contains(&rule_index))
+    // record_terminal checks completeness once before taking immutable ownership.
+    fn has_matching_rule(&self, rule_index: usize, pending: &JourneyTaskPendingEvidence) -> bool {
+        (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
             && (!pending.stroke || self.stroke_rules.contains(&rule_index))
     }
@@ -880,8 +880,12 @@ mod tests {
             )
         };
 
-        let mut complete = receipt(1);
-        complete.record_checkpointed_task_with_terminal_paint(0, "3", "3", None, None);
+        let complete_receipt = || {
+            let mut complete = receipt(1);
+            complete.record_checkpointed_task_with_terminal_paint(0, "3", "3", None, None);
+            complete
+        };
+        let complete = complete_receipt();
         assert!(complete.proves_complete());
 
         let mut incomplete = receipt(2);
@@ -891,6 +895,17 @@ mod tests {
         let mut mismatch = receipt(1);
         mismatch.record_checkpointed_task_with_terminal_paint(0, "3", "9", None, None);
         assert!(!mismatch.proves_complete());
+
+        let mut duplicate = complete_receipt();
+        duplicate.record_checkpointed_task_with_terminal_paint(0, "3", "3", None, None);
+        let plan = JourneyTaskTheme::baseline(&[one_task()]);
+        for rejected in [incomplete, mismatch, duplicate] {
+            assert!(!plan.record_terminal(rejected));
+            assert!(plan.terminal_receipt.get().is_none());
+        }
+        let duplicate = complete_receipt();
+        assert!(plan.record_terminal(complete));
+        assert!(!plan.record_terminal(duplicate));
     }
 
     #[test]

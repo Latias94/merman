@@ -742,7 +742,8 @@ impl GanttTaskTheme {
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
             if pending.warning_stroke {
-                if receipt.proves_rule(rule_index, pending) && receipt.has_typed_warning_terminal()
+                if receipt.has_matching_rule(rule_index, pending)
+                    && receipt.has_typed_warning_terminal()
                 {
                     evidence.mark_applied_with_capabilities(
                         key.clone(),
@@ -751,7 +752,7 @@ impl GanttTaskTheme {
                 } else if receipt.warning_is_not_applicable() {
                     evidence.mark_not_applicable(key.clone());
                 }
-            } else if receipt.proves_rule(rule_index, pending) {
+            } else if receipt.has_matching_rule(rule_index, pending) {
                 evidence.mark_applied_with_capabilities(
                     key.clone(),
                     pending.capabilities.iter().copied(),
@@ -1557,9 +1558,9 @@ impl GanttTaskThemeReceipt {
                 || (self.warning_vert_css_recorded && self.warning_vert_css_matches))
     }
 
-    fn proves_rule(&self, rule_index: usize, pending: &GanttTaskPendingEvidence) -> bool {
-        self.proves_complete()
-            && (!pending.radius || self.radius_rules.contains(&rule_index))
+    // record_terminal checks completeness once before taking immutable ownership.
+    fn has_matching_rule(&self, rule_index: usize, pending: &GanttTaskPendingEvidence) -> bool {
+        (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
             && (!pending.stroke || self.stroke_rules.contains(&rule_index))
             && (!pending.title_fill
@@ -1708,21 +1709,21 @@ mod tests {
             assert!(!complete.proves_complete());
             complete.record_global_css("g", css, "sans-serif");
             assert!(complete.proves_complete());
-            assert!(!complete.proves_rule(7, &pending));
+            assert!(!complete.has_matching_rule(7, &pending));
 
             if grid_typed {
                 complete.record_task_text("source-owned", "taskText0");
             } else {
                 complete.record_grid_text("source-owned");
             }
-            assert!(!complete.proves_rule(7, &pending));
+            assert!(!complete.has_matching_rule(7, &pending));
             if grid_typed {
                 complete.record_grid_text("typed");
             } else {
                 complete.record_task_text("typed", "taskText0");
             }
-            assert!(complete.proves_rule(7, &pending));
-            assert!(!complete.proves_rule(8, &pending));
+            assert!(complete.has_matching_rule(7, &pending));
+            assert!(!complete.has_matching_rule(8, &pending));
             complete.record_global_css("g", css, "sans-serif");
             assert!(!complete.proves_complete());
 
@@ -1751,7 +1752,7 @@ mod tests {
         receipt.record_grid_text("source-owned");
         receipt.record_task_text("source-owned", "taskText0");
         assert!(receipt.proves_complete());
-        assert!(!receipt.proves_rule(7, &pending));
+        assert!(!receipt.has_matching_rule(7, &pending));
     }
 
     #[test]
@@ -1936,6 +1937,7 @@ mod tests {
         };
         let missing = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
         assert!(!missing.proves_complete());
+        assert!(!GanttTaskTheme::baseline(&[]).record_terminal(missing));
 
         let mut wrong = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
         wrong.record_checkpointed_task(
@@ -1951,6 +1953,7 @@ mod tests {
             Some("#654321"),
         );
         assert!(!wrong.proves_complete());
+        assert!(!GanttTaskTheme::baseline(&[]).record_terminal(wrong));
 
         let mut wrong_stroke = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
         wrong_stroke.record_checkpointed_task(
@@ -1966,6 +1969,7 @@ mod tests {
             Some("#abcdef"),
         );
         assert!(!wrong_stroke.proves_complete());
+        assert!(!GanttTaskTheme::baseline(&[]).record_terminal(wrong_stroke));
 
         let mut duplicate = GanttTaskThemeReceipt::new(vec![expectation]);
         for _ in 0..2 {
@@ -1983,6 +1987,7 @@ mod tests {
             );
         }
         assert!(!duplicate.proves_complete());
+        assert!(!GanttTaskTheme::baseline(&[]).record_terminal(duplicate));
     }
 
     #[test]

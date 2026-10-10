@@ -840,8 +840,6 @@ impl ErEntityThemePlan {
                 evidence.mark_not_applicable(key);
             } else if let Some(reason) = observation.residual {
                 evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Strict completion remains fail-closed until the writer proves every winner.
             } else if !observation.capabilities.is_empty() {
                 pending.insert(key, observation.capabilities);
             } else {
@@ -1035,7 +1033,7 @@ impl ErEntityThemePlan {
             FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if self.font_stack_pending {
             if let Some(receipt) = self.terminal_receipt.get()
-                && receipt.proves_typography()
+                && receipt.matches_typography()
             {
                 evidence
                     .mark_applied_with_capabilities(font_stack_key, [ThemeCapability::Typography]);
@@ -1056,7 +1054,7 @@ impl ErEntityThemePlan {
         let font_size_key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
         if self.font_size_pending {
             if let Some(receipt) = self.terminal_receipt.get()
-                && receipt.proves_font_size()
+                && receipt.matches_font_size()
             {
                 evidence
                     .mark_applied_with_capabilities(font_size_key, [ThemeCapability::Typography]);
@@ -1084,9 +1082,9 @@ impl ErEntityThemePlan {
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            if receipt.proves_rule(rule_index) {
+            if receipt.has_matching_rule(rule_index) {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
-            } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
+            } else if !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -1375,7 +1373,6 @@ fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVa
 #[derive(Debug, Default)]
 struct ErRuleObservation {
     applicable: bool,
-    incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
 }

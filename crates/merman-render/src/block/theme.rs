@@ -992,15 +992,27 @@ impl BlockNodePaintThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockNodePaintThemeReceipt> {
+        if !self.requires_terminal_receipt() {
+            return None;
+        }
         self.expectations
             .as_ref()
             .map(|expectations| BlockNodePaintThemeReceipt::new(Arc::clone(expectations)))
     }
 
+    fn requires_terminal_receipt(&self) -> bool {
+        // Typed paint still needs observation when another facet of the same rule is residual.
+        self.expectations.as_ref().is_some_and(|expectations| {
+            expectations
+                .iter()
+                .any(|expectation| expectation.fill.is_some() || expectation.stroke.is_some())
+        })
+    }
+
     pub(crate) fn record_terminal(&self, receipt: Option<BlockNodePaintThemeReceipt>) -> bool {
         let complete = match receipt.as_ref() {
-            Some(receipt) => self.expectations.is_some() && receipt.proves_complete(),
-            None => self.expectations.is_none(),
+            Some(receipt) => self.requires_terminal_receipt() && receipt.proves_complete(),
+            None => !self.requires_terminal_receipt(),
         };
         complete && self.terminal_receipt.set(receipt).is_ok()
     }
@@ -1017,17 +1029,19 @@ impl BlockNodePaintThemePlan {
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            let capabilities = properties
-                .iter()
-                .filter(|(property, _)| receipt.proves_property(rule_index, **property))
-                .map(|(_, capability)| *capability)
-                .collect::<BTreeSet<_>>();
-            if properties
-                .keys()
-                .all(|property| receipt.proves_property(rule_index, *property))
-            {
+            // record_terminal admitted the complete receipt before moving it into OnceLock.
+            let mut capabilities = BTreeSet::new();
+            let mut all_properties_match = true;
+            for (property, capability) in properties {
+                if receipt.has_matching_property(rule_index, *property) {
+                    capabilities.insert(*capability);
+                } else {
+                    all_properties_match = false;
+                }
+            }
+            if all_properties_match {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities);
-            } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
+            } else if !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -1411,9 +1425,9 @@ impl BlockNodePaintThemeReceipt {
             .proves_rule(self.proves_complete(), rule_index)
     }
 
-    fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
+    fn has_matching_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
         self.paint_ledger
-            .proves_property(self.proves_complete(), rule_index, property)
+            .proves_property(true, rule_index, property)
     }
 }
 
@@ -1748,6 +1762,204 @@ mod tests {
         assert!(!plan.record_terminal(None));
     }
 
+    #[test]
+    fn node_paint_receipt_tracks_actual_paint_demand_without_changing_writer_evidence() {
+        use crate::diagram_theme::{
+            CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec, Specified,
+            ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
+            TypographySpec,
+        };
+
+        const SOURCE: &str = "block\n  A[\"Alpha\"] B[\"Beta\"]\n";
+        const OWNED_SOURCE: &str =
+            "block\n  A[\"Alpha\"] B[\"Beta\"]\n  classDef default fill:#bb0000,stroke:#00bb00\n";
+        let paint = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#654321").unwrap());
+        let paint_spec = |patch| {
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
+            )
+        };
+        let font_spec =
+            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
+                crate::DiagramFamilyId::BLOCK,
+                ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+            ));
+        let mut partial_paint = paint.clone();
+        partial_paint.geometry = ThemeGeometryPatch {
+            radius: Specified::Value(8.0),
+        };
+        for (name, spec, source, needed, residual) in [
+            (
+                "canvas-only",
+                DiagramThemeSpec::new().with_canvas(CanvasSpec::solid("#fafafa").unwrap()),
+                SOURCE,
+                false,
+                false,
+            ),
+            ("font-only", font_spec, SOURCE, false, false),
+            (
+                "source-owned",
+                paint_spec(paint.clone()),
+                OWNED_SOURCE,
+                false,
+                false,
+            ),
+            (
+                "typed-paint",
+                paint_spec(paint.clone()),
+                SOURCE,
+                true,
+                false,
+            ),
+            (
+                "paint-with-unsupported-geometry",
+                paint_spec(partial_paint),
+                SOURCE,
+                true,
+                true,
+            ),
+        ] {
+            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+            let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
+            let parsed = theme
+                .install_parse_compatibility(merman_core::Engine::new())
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+                panic!("expected a Block render model");
+            };
+            let mut typography = BlockTypographyThemePlan::resolve(
+                Some(&resolved),
+                &parsed.metadata().effective_config,
+            )
+            .unwrap();
+            typography.prepare_class_definitions(&model.class_defs);
+            let layout = crate::block::layout_block_diagram_typed_with_text_style(
+                model,
+                typography.padding(),
+                typography.css_binding().html_labels,
+                typography.text_style().clone(),
+                &crate::text::DeterministicTextMeasurer::default(),
+            )
+            .unwrap();
+            let work = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let plan = resolve_node_paint(
+                Some(&resolved),
+                &parsed.metadata().effective_config,
+                model,
+                &layout,
+                &work,
+            )
+            .unwrap();
+            assert_eq!(plan.begin_terminal_receipt().is_some(), needed, "{name}");
+            if residual {
+                assert!(plan.pending.is_empty());
+            }
+            let rendered = crate::family::prepare(
+                parsed,
+                &crate::LayoutOptions::headless_svg_defaults(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .begin_session_with_theme(&theme)
+                    .unwrap(),
+            )
+            .unwrap()
+            .render_svg(
+                &crate::svg::SvgRenderOptions {
+                    diagram_id: Some("paint-demand".into()),
+                    ..crate::svg::SvgRenderOptions::default()
+                },
+                &crate::svg::SvgDebugOptions::default(),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            // Read each real shell checkpoint from the emitted SVG. A full observer still
+            // accepts the cases that omit paint observation; their local evidence is unchanged.
+            let mut receipt =
+                BlockNodePaintThemeReceipt::new(Arc::clone(plan.expectations.as_ref().unwrap()));
+            let mut fragments = Vec::new();
+            for (index, node) in layout.nodes.iter().enumerate() {
+                let id = format!("paint-demand-{}", node.id);
+                let group = document
+                    .descendants()
+                    .find(|element| element.attribute("id") == Some(id.as_str()))
+                    .unwrap();
+                let shell = group.children().find(roxmltree::Node::is_element).unwrap();
+                let fragment = &rendered.svg()[group.range().start..shell.range().end];
+                receipt.observe_checkpointed_node(index, "paint-demand", fragment);
+                fragments.push(fragment);
+            }
+            assert!(receipt.proves_complete(), "{name}");
+            let before = plan.finish_evidence();
+            if needed {
+                assert!(!plan.record_terminal(None));
+                assert!(!plan.record_terminal(plan.begin_terminal_receipt()));
+                for mutation in ["duplicate", "paint"] {
+                    let mut rejected = plan.begin_terminal_receipt().unwrap();
+                    for (index, fragment) in fragments.iter().enumerate() {
+                        let fragment = if mutation == "paint" {
+                            fragment.replace("#123456", "#abcdef")
+                        } else {
+                            (*fragment).to_string()
+                        };
+                        rejected.observe_checkpointed_node(index, "paint-demand", &fragment);
+                    }
+                    if mutation == "duplicate" {
+                        rejected.observe_checkpointed_node(0, "paint-demand", fragments[0]);
+                    }
+                    assert!(!plan.record_terminal(Some(rejected)), "{name}: {mutation}");
+                    assert!(plan.terminal_receipt.get().is_none());
+                }
+                let duplicate = receipt.clone();
+                assert!(plan.record_terminal(Some(receipt)), "{name}");
+                assert!(!plan.record_terminal(Some(duplicate)));
+            } else {
+                assert!(!plan.record_terminal(Some(receipt)));
+                assert!(plan.record_terminal(None), "{name}");
+                assert!(!plan.record_terminal(None));
+                let after = plan.finish_evidence();
+                assert_eq!(after.applied(), before.applied());
+                assert_eq!(
+                    after.not_applicable_mechanisms(),
+                    before.not_applicable_mechanisms()
+                );
+                assert_eq!(after.residuals(), before.residuals());
+            }
+            let key = FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            };
+            let report = rendered.style_report();
+            assert_eq!(
+                report.theme_applied_mechanisms().contains(&key),
+                needed && !residual
+            );
+            assert_eq!(
+                report.theme_residuals().iter().any(|entry| {
+                    entry.key() == &key
+                        && entry.reason() == FamilyThemeResidualReason::UnsupportedGeometry
+                }),
+                residual,
+                "{name}"
+            );
+            if name == "source-owned" {
+                assert!(report.theme_not_applicable_mechanisms().contains(&key));
+                assert!(rendered.svg().contains("fill:#bb0000!important"));
+                assert!(rendered.svg().contains("stroke:#00bb00!important"));
+            } else if name == "font-only" {
+                assert!(report.theme_applied_mechanisms().contains(
+                    &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize)
+                ));
+            } else if name == "canvas-only" {
+                assert!(rendered.svg().contains("#fafafa"));
+            }
+        }
+    }
+
     fn paint(rule_index: usize, css: &str) -> DirectPaintExpectation {
         DirectPaintExpectation::new(
             rule_index,
@@ -1786,8 +1998,8 @@ mod tests {
         let mut receipt = BlockNodePaintThemeReceipt::new(vec![expectation.clone()]);
         receipt.observe_checkpointed_node(0, "test", fragment);
         assert!(receipt.proves_complete());
-        assert!(receipt.proves_property(3, ResolvedStyleProperty::Fill));
-        assert!(receipt.proves_property(4, ResolvedStyleProperty::Stroke));
+        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
+        assert!(receipt.has_matching_property(4, ResolvedStyleProperty::Stroke));
         for mutated in [
             fragment.replace("test-group", "test-other"),
             fragment.replace("translate(10, 20)", "translate(20, 10)"),
@@ -1828,8 +2040,8 @@ mod tests {
             receipt.observe_checkpointed_node(0, "test", &fragment);
             assert!(receipt.proves_complete());
             assert!(receipt.proves_rule(3));
-            assert!(receipt.proves_property(3, ResolvedStyleProperty::Fill));
-            assert!(receipt.proves_property(3, ResolvedStyleProperty::Stroke));
+            assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
+            assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
         }
     }
 
@@ -1866,8 +2078,8 @@ mod tests {
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(3));
         assert!(receipt.proves_rule(3));
-        assert!(!receipt.proves_property(3, ResolvedStyleProperty::Fill));
-        assert!(receipt.proves_property(3, ResolvedStyleProperty::Stroke));
+        assert!(!receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
+        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
     }
 
     #[test]
@@ -1880,8 +2092,8 @@ mod tests {
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(3));
         assert!(receipt.proves_rule(3));
-        assert!(receipt.proves_property(3, ResolvedStyleProperty::Fill));
-        assert!(!receipt.proves_property(3, ResolvedStyleProperty::Stroke));
+        assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
+        assert!(!receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
     }
 
     #[test]

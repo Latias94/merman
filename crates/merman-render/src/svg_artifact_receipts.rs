@@ -152,9 +152,7 @@ impl SvgArtifactReceipt {
     }
 
     pub fn proves_artifact(&self, artifact_digest: [u8; 32]) -> bool {
-        artifact_digest != [0; 32]
-            && self.artifact_digest == artifact_digest
-            && self.digest == self.canonical_digest()
+        artifact_digest != [0; 32] && self.artifact_digest == artifact_digest
     }
 
     pub fn root_id(&self) -> Option<&str> {

@@ -443,12 +443,12 @@ impl RequirementPaintThemePlan {
             };
             let capabilities = properties
                 .iter()
-                .filter(|(property, _)| receipt.proves_property(rule_index, **property))
+                .filter(|(property, _)| receipt.has_matching_property(rule_index, **property))
                 .map(|(_, capability)| *capability)
                 .collect::<BTreeSet<_>>();
             if !capabilities.is_empty() {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities);
-            } else if receipt.proves_complete() && !receipt.has_effective_rule(rule_index) {
+            } else if !receipt.has_effective_rule(rule_index) {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -829,9 +829,10 @@ impl RequirementPaintThemeReceipt {
         self.paint_ledger.has_effective_rule(rule_index)
     }
 
-    fn proves_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
+    // Only the receipt admitted by record_terminal is used to build family evidence.
+    fn has_matching_property(&self, rule_index: usize, property: ResolvedStyleProperty) -> bool {
         self.paint_ledger
-            .proves_property(self.proves_complete(), rule_index, property)
+            .proves_property(true, rule_index, property)
     }
 }
 
