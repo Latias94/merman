@@ -571,18 +571,6 @@ impl ResolvedTokensV1 {
             .try_into()
             .expect("the version one color table has a fixed width");
 
-        let series_len = authored
-            .series()
-            .map_or(DEFAULT_SERIES.len(), <[String]>::len);
-        if series_len == 0 {
-            return Err(ThemeMaterializationError::EmptySeries);
-        }
-        if series_len > super::semantic::MAX_THEME_PALETTE_COLORS {
-            return Err(ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/series".to_owned(),
-                expected_domain_id: "theme-color-series",
-            });
-        }
         let series = match authored.series() {
             Some(series) => series
                 .iter()

@@ -168,6 +168,30 @@ pub(crate) struct KanbanTypographyFacts {
     parse_valid: bool,
 }
 
+/// Local style facts carried by one checkpointed Kanban text terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KanbanTypographyTerminalFacts {
+    pub(crate) parse_valid: bool,
+    pub(crate) visible_run_count: usize,
+    pub(crate) inherited_font_family_run_count: usize,
+    pub(crate) unverified_font_family_run_count: usize,
+    pub(crate) inherited_font_size_run_count: usize,
+    pub(crate) unverified_font_size_run_count: usize,
+}
+
+impl KanbanTypographyTerminalFacts {
+    pub(crate) fn from_visible_style_facts(facts: &crate::text::VisibleTextStyleFacts) -> Self {
+        Self {
+            parse_valid: facts.parse_valid(),
+            visible_run_count: facts.visible_run_count(),
+            inherited_font_family_run_count: facts.inherited_font_family_run_count(),
+            unverified_font_family_run_count: facts.unverified_font_family_run_count(),
+            inherited_font_size_run_count: facts.inherited_font_size_run_count(),
+            unverified_font_size_run_count: facts.unverified_font_size_run_count(),
+        }
+    }
+}
+
 impl Default for KanbanTypographyFacts {
     fn default() -> Self {
         Self {
@@ -187,40 +211,29 @@ impl KanbanTypographyFacts {
         &mut self,
         facts: &crate::text::VisibleTextStyleFacts,
     ) {
-        self.record_text_runs(
-            facts.parse_valid(),
-            facts.visible_run_count(),
-            facts.inherited_font_family_run_count(),
-            facts.unverified_font_family_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.unverified_font_size_run_count(),
-        );
+        self.record_terminal(KanbanTypographyTerminalFacts::from_visible_style_facts(
+            facts,
+        ));
     }
 
-    fn record_text_runs(
-        &mut self,
-        parse_valid: bool,
-        visible_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
-    ) {
+    fn record_terminal(&mut self, facts: KanbanTypographyTerminalFacts) {
         self.terminal_count = self.terminal_count.saturating_add(1);
-        self.visible_run_count = self.visible_run_count.saturating_add(visible_run_count);
+        self.visible_run_count = self
+            .visible_run_count
+            .saturating_add(facts.visible_run_count);
         self.inherited_font_family_run_count = self
             .inherited_font_family_run_count
-            .saturating_add(inherited_font_family_run_count);
+            .saturating_add(facts.inherited_font_family_run_count);
         self.unverified_font_family_run_count = self
             .unverified_font_family_run_count
-            .saturating_add(unverified_font_family_run_count);
+            .saturating_add(facts.unverified_font_family_run_count);
         self.inherited_font_size_run_count = self
             .inherited_font_size_run_count
-            .saturating_add(inherited_font_size_run_count);
+            .saturating_add(facts.inherited_font_size_run_count);
         self.unverified_font_size_run_count = self
             .unverified_font_size_run_count
-            .saturating_add(unverified_font_size_run_count);
-        self.parse_valid &= parse_valid;
+            .saturating_add(facts.unverified_font_size_run_count);
+        self.parse_valid &= facts.parse_valid;
     }
 
     #[cfg(test)]
@@ -1213,24 +1226,9 @@ impl KanbanTaskThemeReceipt {
             && emitted_font_size_css == self.expected_font_size_css.as_ref();
     }
 
-    pub(crate) fn record_typography_text(
-        &mut self,
-        parse_valid: bool,
-        visible_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
-    ) {
+    pub(crate) fn record_typography_text(&mut self, facts: KanbanTypographyTerminalFacts) {
         if self.typography_required {
-            self.actual_typography.record_text_runs(
-                parse_valid,
-                visible_run_count,
-                inherited_font_family_run_count,
-                unverified_font_family_run_count,
-                inherited_font_size_run_count,
-                unverified_font_size_run_count,
-            );
+            self.actual_typography.record_terminal(facts);
         }
     }
 
@@ -1489,7 +1487,7 @@ mod tests {
     use super::{
         KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskResolvedItem,
         KanbanTaskTerminalDecision, KanbanTaskTheme, KanbanTaskThemeReceipt, KanbanTypographyFacts,
-        KanbanTypographyPlan, MERMAID_TASK_RADIUS_PX,
+        KanbanTypographyPlan, KanbanTypographyTerminalFacts, MERMAID_TASK_RADIUS_PX,
     };
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -1644,6 +1642,17 @@ mod tests {
         }
     }
 
+    fn visible_typography_terminal() -> KanbanTypographyTerminalFacts {
+        KanbanTypographyTerminalFacts {
+            parse_valid: true,
+            visible_run_count: 1,
+            inherited_font_family_run_count: 1,
+            unverified_font_family_run_count: 0,
+            inherited_font_size_run_count: 1,
+            unverified_font_size_run_count: 0,
+        }
+    }
+
     fn typed_font_size_receipt(
         emitted_font_size_css: &str,
         typography_layout: &KanbanTypographyLayoutReceipt,
@@ -1661,7 +1670,7 @@ mod tests {
             typography_layout,
         );
         receipt.record_typography_css("Typed, sans-serif", emitted_font_size_css, true);
-        receipt.record_typography_text(true, 1, 1, 0, 1, 0);
+        receipt.record_typography_text(visible_typography_terminal());
         receipt
     }
 
@@ -1818,7 +1827,7 @@ mod tests {
             &decision,
         );
         receipt.record_typography_css("Typed, sans-serif", "24px", true);
-        receipt.record_typography_text(true, 1, 1, 0, 1, 0);
+        receipt.record_typography_text(visible_typography_terminal());
 
         assert!(receipt.proves_palette());
         assert!(receipt.proves_font_family());
@@ -1841,7 +1850,7 @@ mod tests {
             &decision,
         );
         wrong_family.record_typography_css("Other, sans-serif", "24px", true);
-        wrong_family.record_typography_text(true, 1, 1, 0, 1, 0);
+        wrong_family.record_typography_text(visible_typography_terminal());
         assert!(!wrong_family.proves_font_family());
         assert!(wrong_family.proves_font_size());
     }
@@ -1900,14 +1909,9 @@ mod tests {
         );
 
         receipt.record_typography_css("Typed, sans-serif", "16px", true);
-        receipt.record_typography_text(
-            facts.parse_valid(),
-            facts.visible_run_count(),
-            facts.inherited_font_family_run_count(),
-            facts.unverified_font_family_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.unverified_font_size_run_count(),
-        );
+        receipt.record_typography_text(KanbanTypographyTerminalFacts::from_visible_style_facts(
+            &facts,
+        ));
 
         assert!(!receipt.proves_font_family());
     }
@@ -1936,14 +1940,9 @@ mod tests {
         );
 
         receipt.record_typography_css("Typed, sans-serif", "24px", true);
-        receipt.record_typography_text(
-            facts.parse_valid(),
-            facts.visible_run_count(),
-            facts.inherited_font_family_run_count(),
-            facts.unverified_font_family_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.unverified_font_size_run_count(),
-        );
+        receipt.record_typography_text(KanbanTypographyTerminalFacts::from_visible_style_facts(
+            &facts,
+        ));
 
         assert!(!receipt.typography_is_not_applicable());
         assert!(!receipt.proves_font_family());

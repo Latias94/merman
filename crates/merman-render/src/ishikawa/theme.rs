@@ -4,14 +4,14 @@ use std::sync::OnceLock;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
+    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{IshikawaBranchLayout, IshikawaDiagramLayout, IshikawaTextLayout};
@@ -112,15 +112,25 @@ impl IshikawaTextThemePlan {
                 None,
                 work_meter,
             )?;
-            for expectation in &mut expectations {
-                observe_text_style(
+            winner_properties.extend(
+                style
+                    .winner_rule_properties()
+                    .map(|(property, origin)| (origin.rule_index(), property)),
+            );
+            if !mermaid_owns_fill
+                && let Some(fill) = resolve_direct_static_fill(
                     theme,
                     &style,
-                    mermaid_owns_fill,
-                    expectation,
-                    &mut winner_properties,
-                    &mut expected_capabilities,
-                );
+                    &[ThemeTarget::Text],
+                    DirectStaticSelectorDomain::Unqualified,
+                )
+            {
+                let (css, rule_index, capability) = fill.into_parts();
+                expected_capabilities.insert((rule_index, ResolvedStyleProperty::Fill), capability);
+                let fill = ExpectedFill { rule_index, css };
+                for expectation in &mut expectations {
+                    expectation.fill = Some(fill.clone());
+                }
             }
         }
 
@@ -433,66 +443,6 @@ fn push_text_expectation(
     });
 }
 
-fn observe_text_style(
-    theme: &ResolvedDiagramTheme,
-    style: &ResolvedThemeStyle,
-    mermaid_owns_fill: bool,
-    expectation: &mut TextExpectation,
-    winner_properties: &mut BTreeSet<(usize, ResolvedStyleProperty)>,
-    expected_capabilities: &mut BTreeMap<(usize, ResolvedStyleProperty), ThemeCapability>,
-) {
-    winner_properties.extend(
-        style
-            .winner_rule_properties()
-            .map(|(property, origin)| (origin.rule_index(), property)),
-    );
-    if let Some(fill) = typed_fill_expectation(theme, style, mermaid_owns_fill) {
-        expected_capabilities.insert(
-            (fill.rule_index, ResolvedStyleProperty::Fill),
-            paint_capability_from_css(&fill.css),
-        );
-        expectation.fill = Some(fill);
-    }
-}
-
-fn typed_fill_expectation(
-    theme: &ResolvedDiagramTheme,
-    style: &ResolvedThemeStyle,
-    mermaid_owns_fill: bool,
-) -> Option<ExpectedFill> {
-    if mermaid_owns_fill {
-        return None;
-    }
-    let origin = style.fill_resolution().winner()?;
-    let rule = theme
-        .family_rules()
-        .find_map(|(index, rule)| (index == origin.rule_index()).then_some(rule))?;
-    let facet = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
-    if rule.target() != ThemeTarget::Text
-        || rule.variant().is_some()
-        || rule.ordinal().is_some()
-        || theme.rule_facet_disposition(origin.rule_index(), facet)
-            != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-    let css = match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => "transparent".into(),
-        Specified::Value(CanvasPaint::Solid(color)) => color.as_css().into_boxed_str(),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => return None,
-    };
-    Some(ExpectedFill {
-        rule_index: origin.rule_index(),
-        css,
-    })
-}
-
 fn selector_matches_text_domain(selector: FamilyThemeSelectorShape, text_count: usize) -> bool {
     match selector {
         FamilyThemeSelectorShape::Static {
@@ -508,14 +458,6 @@ fn selector_matches_text_domain(selector: FamilyThemeSelectorShape, text_count: 
 
 fn mermaid_owns_text_fill(config: &MermaidConfig) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.textColor")
-}
-
-fn paint_capability_from_css(css: &str) -> ThemeCapability {
-    if css == "transparent" {
-        ThemeCapability::TransparentPaint
-    } else {
-        ThemeCapability::SolidPaint
-    }
 }
 
 #[derive(Debug, Default)]
@@ -647,9 +589,9 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
-        EffectInput, EffectPrimitive, OrdinalPalette, ThemeColorValue, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch,
+        CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
+        EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, ThemeColorValue, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
     };
     use crate::resources::RenderResourcePolicy;
     use serde_json::json;

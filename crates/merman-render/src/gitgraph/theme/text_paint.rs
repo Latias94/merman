@@ -15,7 +15,7 @@ use crate::family::{
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{GitGraphCommitKind, gitgraph_commit_label_is_visible, palette_slot};
+use super::{GitGraphCommitKind, GitGraphLabelEvent, GitGraphLabelEvents, palette_slot};
 
 // Text supplies three paint sources; NodeLabel and EdgeLabel also compete for their own
 // label source by global rule order. Configuration owns each source independently.
@@ -311,9 +311,7 @@ impl GitGraphTextPaintPlan {
             css_recorded: false,
             next_branch: 0,
             next_commit: 0,
-            label_commit: 0,
-            label_checked: false,
-            next_tag: 0,
+            labels: GitGraphLabelEvents::new(layout),
             title_recorded: false,
             valid: true,
             facts: TextTerminalFacts::default(),
@@ -332,7 +330,7 @@ impl GitGraphTextPaintPlan {
                     0
                 })
             && receipt.next_commit == receipt.layout.commits.len()
-            && receipt.next_label().is_none();
+            && receipt.labels.next().is_none();
         complete && self.terminal.set(receipt.facts).is_ok()
     }
 
@@ -383,12 +381,6 @@ impl GitGraphTextPaintPlan {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum LabelEvent {
-    Commit(usize),
-    Tag(usize, usize),
-}
-
 /// Borrows existing layout identity and the writer's branch lookup; no occurrence vector is built.
 #[derive(Debug)]
 pub(crate) struct GitGraphTextPaintReceipt<'a> {
@@ -401,9 +393,7 @@ pub(crate) struct GitGraphTextPaintReceipt<'a> {
     css_recorded: bool,
     next_branch: usize,
     next_commit: usize,
-    label_commit: usize,
-    label_checked: bool,
-    next_tag: usize,
+    labels: GitGraphLabelEvents<'a>,
     title_recorded: bool,
     valid: bool,
     facts: TextTerminalFacts,
@@ -473,53 +463,18 @@ impl GitGraphTextPaintReceipt<'_> {
         self.next_commit += 1;
     }
 
-    fn next_label(&mut self) -> Option<LabelEvent> {
-        while let Some(commit) = self.layout.commits.get(self.label_commit) {
-            if !self.label_checked {
-                self.label_checked = true;
-                if gitgraph_commit_label_is_visible(self.layout, commit) {
-                    return Some(LabelEvent::Commit(self.label_commit));
-                }
-            }
-            if self.next_tag < commit.tags.len() {
-                let tag = self.next_tag;
-                self.next_tag += 1;
-                return Some(LabelEvent::Tag(self.label_commit, tag));
-            }
-            self.label_commit += 1;
-            self.label_checked = false;
-            self.next_tag = 0;
-        }
-        None
-    }
-
     pub(crate) fn record_commit_label(&mut self, index: usize, text: &str) {
-        let event = self.next_label();
-        self.valid &= event == Some(LabelEvent::Commit(index));
-        self.valid &= self
-            .layout
-            .commits
-            .get(index)
-            .is_some_and(|commit| commit.id == text);
+        let event = self.labels.next();
+        self.valid &= event == Some(GitGraphLabelEvent::Commit(index));
+        self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
         self.facts.sources[2] += usize::from(!text.trim().is_empty());
         self.facts.text_visible |= u8::from(!text.trim().is_empty()) << 2;
     }
 
     pub(crate) fn record_tag(&mut self, index: usize, output_index: usize, text: &str) {
-        let event = self.next_label();
-        self.valid &= event == Some(LabelEvent::Tag(index, output_index));
-        self.valid &= self
-            .layout
-            .commits
-            .get(index)
-            .and_then(|commit| {
-                commit
-                    .tags
-                    .len()
-                    .checked_sub(output_index + 1)
-                    .and_then(|i| commit.tags.get(i))
-            })
-            .is_some_and(|tag| tag == text);
+        let event = self.labels.next();
+        self.valid &= event == Some(GitGraphLabelEvent::Tag(index, output_index));
+        self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
         // Even an empty tag still emits a radius-1.5 colored hole.
         self.facts.sources[0] += 1;
         self.facts.sources[1] += usize::from(!text.trim().is_empty());

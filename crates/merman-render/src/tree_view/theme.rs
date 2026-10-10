@@ -741,7 +741,6 @@ pub(crate) struct TreeViewThemeReceipt {
     labels_seen: usize,
     icons_seen: usize,
     paintable_icons_seen: usize,
-    fixed_icons_seen: usize,
     unverified_icons_seen: usize,
     lines_seen: usize,
     terminal_matches: bool,
@@ -776,7 +775,6 @@ impl TreeViewThemeReceipt {
             labels_seen: 0,
             icons_seen: 0,
             paintable_icons_seen: 0,
-            fixed_icons_seen: 0,
             unverified_icons_seen: 0,
             lines_seen: 0,
             terminal_matches: true,
@@ -827,9 +825,7 @@ impl TreeViewThemeReceipt {
                     self.terminal_matches &= emitted_color == expected.as_ref();
                 }
             }
-            crate::svg::IconCurrentColorUse::NotConsumed => {
-                self.fixed_icons_seen = self.fixed_icons_seen.saturating_add(1);
-            }
+            crate::svg::IconCurrentColorUse::NotConsumed => {}
             crate::svg::IconCurrentColorUse::Unverified => {
                 self.unverified_icons_seen = self.unverified_icons_seen.saturating_add(1);
             }

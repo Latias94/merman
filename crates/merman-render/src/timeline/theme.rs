@@ -939,7 +939,6 @@ pub(crate) struct TimelineEventThemeReceipt {
     palette_expectations: Box<[TimelinePaletteNodeExpectation]>,
     next_event_index: usize,
     next_palette_index: usize,
-    palette_nodes_seen: usize,
     attributes_match: bool,
     palette_values_match: bool,
     radius_rules: BTreeSet<usize>,
@@ -975,7 +974,6 @@ impl TimelineEventThemeReceipt {
             palette_expectations: Box::new([]),
             next_event_index: 0,
             next_palette_index: 0,
-            palette_nodes_seen: 0,
             attributes_match: true,
             palette_values_match: true,
             radius_rules: BTreeSet::new(),
@@ -997,7 +995,6 @@ impl TimelineEventThemeReceipt {
             palette_expectations,
             next_event_index: 0,
             next_palette_index: 0,
-            palette_nodes_seen: 0,
             attributes_match: true,
             palette_values_match: true,
             radius_rules: BTreeSet::new(),
@@ -1157,7 +1154,6 @@ impl TimelineEventThemeReceipt {
             && self.next_event_index == expected_event_count
             && self.attributes_match
             && self.next_palette_index == self.palette_expectations.len()
-            && self.palette_nodes_seen == self.palette_expectations.len()
             && self.palette_values_match
             && self
                 .stroke
@@ -1174,7 +1170,6 @@ impl TimelineEventThemeReceipt {
         if self.palette_expectations.is_empty() {
             return;
         }
-        self.palette_nodes_seen += 1;
         let Some(slot) = slot else {
             self.palette_values_match = false;
             return;

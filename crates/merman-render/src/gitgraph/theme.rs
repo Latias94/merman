@@ -32,6 +32,69 @@ pub(crate) use typography::{
 
 pub(crate) const GITGRAPH_PALETTE_SLOT_COUNT: usize = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GitGraphLabelEvent {
+    Commit(usize),
+    Tag(usize, usize),
+}
+
+impl GitGraphLabelEvent {
+    fn text(self, layout: &GitGraphDiagramLayout) -> Option<&str> {
+        match self {
+            Self::Commit(index) => Some(layout.commits.get(index)?.id.as_str()),
+            Self::Tag(commit_index, output_index) => {
+                let tags = &layout.commits.get(commit_index)?.tags;
+                tags.get(tags.len().checked_sub(output_index.checked_add(1)?)?)
+                    .map(String::as_str)
+            }
+        }
+    }
+}
+
+/// Expected commit-label and reversed-tag order shared by independent family receipts.
+#[derive(Debug)]
+struct GitGraphLabelEvents<'a> {
+    layout: &'a GitGraphDiagramLayout,
+    commit_index: usize,
+    label_checked: bool,
+    next_tag: usize,
+}
+
+impl<'a> GitGraphLabelEvents<'a> {
+    fn new(layout: &'a GitGraphDiagramLayout) -> Self {
+        Self {
+            layout,
+            commit_index: 0,
+            label_checked: false,
+            next_tag: 0,
+        }
+    }
+}
+
+impl Iterator for GitGraphLabelEvents<'_> {
+    type Item = GitGraphLabelEvent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(commit) = self.layout.commits.get(self.commit_index) {
+            if !self.label_checked {
+                self.label_checked = true;
+                if gitgraph_commit_label_is_visible(self.layout, commit) {
+                    return Some(GitGraphLabelEvent::Commit(self.commit_index));
+                }
+            }
+            if self.next_tag < commit.tags.len() {
+                let tag = self.next_tag;
+                self.next_tag += 1;
+                return Some(GitGraphLabelEvent::Tag(self.commit_index, tag));
+            }
+            self.commit_index += 1;
+            self.label_checked = false;
+            self.next_tag = 0;
+        }
+        None
+    }
+}
+
 const GIT_COLOR_PATHS: [&str; GITGRAPH_PALETTE_SLOT_COUNT] = [
     "themeVariables.git0",
     "themeVariables.git1",

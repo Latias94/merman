@@ -66,6 +66,7 @@ pub(crate) use css_binding::KanbanCssBinding;
 pub(crate) use theme::{
     KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme,
     KanbanTaskThemeReceipt, KanbanTypographyFacts, KanbanTypographyPlan,
+    KanbanTypographyTerminalFacts,
 };
 
 #[derive(Debug)]

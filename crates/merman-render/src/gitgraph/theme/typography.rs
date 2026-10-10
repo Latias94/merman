@@ -11,6 +11,8 @@ use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFon
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::text::TextStyle;
 
+use super::{GitGraphLabelEvent, GitGraphLabelEvents};
+
 const DEFAULT_FONT_SIZE_PX: f64 = 16.0;
 const DEFAULT_LABEL_FONT_SIZE_PX: f64 = 10.0;
 const TITLE_FONT_SIZE_PX: f64 = 18.0;
@@ -329,16 +331,8 @@ pub(crate) struct GitGraphTypographyCssEmission<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 enum ExpectedTextEvent {
-    Branch {
-        index: usize,
-    },
-    Commit {
-        index: usize,
-    },
-    Tag {
-        commit_index: usize,
-        output_index: usize,
-    },
+    Branch { index: usize },
+    Label(GitGraphLabelEvent),
     Title,
     Complete,
 }
@@ -350,6 +344,7 @@ pub(crate) struct GitGraphTypographyThemeReceipt<'a> {
     expected_font_size_css: &'a str,
     layout: &'a GitGraphDiagramLayout,
     title: Option<&'a str>,
+    labels: GitGraphLabelEvents<'a>,
     next_event: ExpectedTextEvent,
     css_emitted: bool,
     has_visible_font_stack_terminal: bool,
@@ -375,10 +370,13 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
         layout: &'a GitGraphDiagramLayout,
         title: Option<&'a str>,
     ) -> Self {
+        let mut labels = GitGraphLabelEvents::new(layout);
         let next_event = if layout.show_branches && !layout.branches.is_empty() {
             ExpectedTextEvent::Branch { index: 0 }
         } else {
-            Self::next_commit_event(layout, 0)
+            labels
+                .next()
+                .map_or(ExpectedTextEvent::Title, ExpectedTextEvent::Label)
         };
 
         Self {
@@ -386,6 +384,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
             expected_font_size_css: plan.font_size_css(),
             layout,
             title,
+            labels,
             next_event,
             css_emitted: false,
             has_visible_font_stack_terminal: false,
@@ -421,7 +420,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
     pub(crate) fn record_commit_label(&mut self, index: usize, text: &str) {
         let matched = matches!(
             self.next_event,
-            ExpectedTextEvent::Commit { index: expected_index }
+            ExpectedTextEvent::Label(GitGraphLabelEvent::Commit(expected_index))
                 if expected_index == index
                     && self.layout.commits.get(index).map(|commit| commit.id.as_str()) == Some(text)
         );
@@ -440,12 +439,10 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
     ) {
         let matched = matches!(
             self.next_event,
-            ExpectedTextEvent::Tag {
-                commit_index: expected_commit_index,
-                output_index: expected_output_index,
-            } if expected_commit_index == commit_index
+            ExpectedTextEvent::Label(GitGraphLabelEvent::Tag(expected_commit_index, expected_output_index))
+                if expected_commit_index == commit_index
                 && expected_output_index == output_index
-                && self.expected_tag_text(commit_index, output_index) == Some(text)
+                && GitGraphLabelEvent::Tag(commit_index, output_index).text(self.layout) == Some(text)
         );
         let visible = !text.trim().is_empty();
         self.record_text_event(matched, visible, false);
@@ -484,27 +481,6 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
         }
     }
 
-    fn next_commit_event(
-        layout: &GitGraphDiagramLayout,
-        mut commit_index: usize,
-    ) -> ExpectedTextEvent {
-        while let Some(commit) = layout.commits.get(commit_index) {
-            if gitgraph_commit_label_is_visible(layout, commit) {
-                return ExpectedTextEvent::Commit {
-                    index: commit_index,
-                };
-            }
-            if !commit.tags.is_empty() {
-                return ExpectedTextEvent::Tag {
-                    commit_index,
-                    output_index: 0,
-                };
-            }
-            commit_index = commit_index.saturating_add(1);
-        }
-        ExpectedTextEvent::Title
-    }
-
     fn advance_event(&mut self) {
         self.next_event = match self.next_event {
             ExpectedTextEvent::Branch { index }
@@ -512,47 +488,12 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
             {
                 ExpectedTextEvent::Branch { index: index + 1 }
             }
-            ExpectedTextEvent::Branch { .. } => Self::next_commit_event(self.layout, 0),
-            ExpectedTextEvent::Commit { index } => {
-                if self
-                    .layout
-                    .commits
-                    .get(index)
-                    .is_some_and(|commit| !commit.tags.is_empty())
-                {
-                    ExpectedTextEvent::Tag {
-                        commit_index: index,
-                        output_index: 0,
-                    }
-                } else {
-                    Self::next_commit_event(self.layout, index.saturating_add(1))
-                }
-            }
-            ExpectedTextEvent::Tag {
-                commit_index,
-                output_index,
-            } => {
-                let next_output_index = output_index.saturating_add(1);
-                if self
-                    .layout
-                    .commits
-                    .get(commit_index)
-                    .is_some_and(|commit| next_output_index < commit.tags.len())
-                {
-                    ExpectedTextEvent::Tag {
-                        commit_index,
-                        output_index: next_output_index,
-                    }
-                } else {
-                    Self::next_commit_event(self.layout, commit_index.saturating_add(1))
-                }
-            }
+            ExpectedTextEvent::Branch { .. } | ExpectedTextEvent::Label(_) => self
+                .labels
+                .next()
+                .map_or(ExpectedTextEvent::Title, ExpectedTextEvent::Label),
             ExpectedTextEvent::Title | ExpectedTextEvent::Complete => ExpectedTextEvent::Complete,
         };
-    }
-
-    fn expected_tag_text(&self, commit_index: usize, output_index: usize) -> Option<&str> {
-        gitgraph_tags_in_output_order(self.layout.commits.get(commit_index)?).nth(output_index)
     }
 
     fn expected_title(&self) -> Option<&str> {
@@ -674,6 +615,50 @@ mod tests {
         assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
             ThemeTypographyProperty::FontSize,
         )));
+    }
+
+    #[test]
+    fn receipt_keeps_reversed_tags_when_commit_labels_are_hidden() {
+        for show_commit_label in [true, false] {
+            let plan = typography_plan();
+            let mut layout = layout();
+            layout.show_branches = false;
+            layout.show_commit_label = show_commit_label;
+            let commit = layout.commits[0].clone();
+            layout.commits = [
+                ("A", 0, true, vec!["", "v1"]),
+                ("merge", 3, false, vec!["merge-tag"]),
+                ("reverse", 4, true, vec!["reverse-tag"]),
+                ("", 0, true, vec![]),
+                ("merge-custom", 3, true, vec![]),
+            ]
+            .into_iter()
+            .map(|(id, commit_type, custom_id, tags)| GitGraphCommitLayout {
+                id: id.to_string(),
+                commit_type,
+                custom_id: Some(custom_id),
+                tags: tags.into_iter().map(str::to_string).collect(),
+                ..commit.clone()
+            })
+            .collect();
+
+            let mut receipt = plan
+                .begin_terminal_receipt(&layout, None)
+                .expect("typed receipt");
+            receipt.record_css_emission(emission("GitGraphReceipt", "23px"));
+            if show_commit_label {
+                receipt.record_commit_label(0, "A");
+            }
+            receipt.record_tag_label(0, 0, "v1");
+            receipt.record_tag_label(0, 1, "");
+            receipt.record_tag_label(1, 0, "merge-tag");
+            receipt.record_tag_label(2, 0, "reverse-tag");
+            if show_commit_label {
+                receipt.record_commit_label(4, "merge-custom");
+            }
+            receipt.record_title(None);
+            assert!(plan.record_terminal(receipt), "{show_commit_label}");
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@ use super::super::*;
 use crate::kanban::{
     KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanPreparedArtifact,
     KanbanPreparedLabelGeometry, KanbanTaskLabelRole, KanbanTypographyFacts,
+    KanbanTypographyTerminalFacts,
 };
 
 struct KanbanCssEmission {
@@ -133,24 +134,16 @@ struct KanbanLabelGroup<'a> {
     div_class: Option<&'a str>,
     markdown: bool,
     foreground: Option<&'a str>,
-    visible_run_count: usize,
     inherited_color_run_count: usize,
-    inherited_font_family_run_count: usize,
-    unverified_font_family_run_count: usize,
-    inherited_font_size_run_count: usize,
-    unverified_font_size_run_count: usize,
+    typography: KanbanTypographyTerminalFacts,
 }
 
 struct KanbanLabelGroupEmission {
     visible: bool,
     group_style: String,
     div_style: String,
-    visible_run_count: usize,
     inherited_color_run_count: usize,
-    inherited_font_family_run_count: usize,
-    unverified_font_family_run_count: usize,
-    inherited_font_size_run_count: usize,
-    unverified_font_size_run_count: usize,
+    typography: KanbanTypographyTerminalFacts,
 }
 
 struct KanbanTaskRectEmission {
@@ -208,12 +201,8 @@ fn write_kanban_label_group(
         div_class,
         markdown,
         foreground,
-        visible_run_count,
         inherited_color_run_count,
-        inherited_font_family_run_count,
-        unverified_font_family_run_count,
-        inherited_font_size_run_count,
-        unverified_font_size_run_count,
+        typography,
     } = group;
     let max_width = context.max_width;
     let div_style_overrides = match text {
@@ -280,12 +269,8 @@ fn write_kanban_label_group(
         visible,
         group_style,
         div_style,
-        visible_run_count,
         inherited_color_run_count,
-        inherited_font_family_run_count,
-        unverified_font_family_run_count,
-        inherited_font_size_run_count,
-        unverified_font_size_run_count,
+        typography,
     })
 }
 
@@ -308,7 +293,7 @@ fn record_kanban_label_emission(
             role,
             &emission.group_style,
             &emission.div_style,
-            emission.visible_run_count,
+            emission.typography.visible_run_count,
             emission.inherited_color_run_count,
             decision,
         );
@@ -317,22 +302,10 @@ fn record_kanban_label_emission(
 
 fn record_kanban_typography_text(
     receipt: Option<&mut crate::kanban::KanbanTaskThemeReceipt>,
-    parse_valid: bool,
-    visible_run_count: usize,
-    inherited_font_family_run_count: usize,
-    unverified_font_family_run_count: usize,
-    inherited_font_size_run_count: usize,
-    unverified_font_size_run_count: usize,
+    facts: KanbanTypographyTerminalFacts,
 ) {
     if let Some(receipt) = receipt {
-        receipt.record_typography_text(
-            parse_valid,
-            visible_run_count,
-            inherited_font_family_run_count,
-            unverified_font_family_run_count,
-            inherited_font_size_run_count,
-            unverified_font_size_run_count,
-        );
+        receipt.record_typography_text(facts);
     }
 }
 
@@ -496,20 +469,9 @@ pub(crate) fn render_kanban_diagram_svg(
         }
         record_kanban_typography_text(
             task_theme_receipt.as_mut(),
-            prepared_label.visible_style_facts.parse_valid(),
-            prepared_label.visible_style_facts.visible_run_count(),
-            prepared_label
-                .visible_style_facts
-                .inherited_font_family_run_count(),
-            prepared_label
-                .visible_style_facts
-                .unverified_font_family_run_count(),
-            prepared_label
-                .visible_style_facts
-                .inherited_font_size_run_count(),
-            prepared_label
-                .visible_style_facts
-                .unverified_font_size_run_count(),
+            KanbanTypographyTerminalFacts::from_visible_style_facts(
+                &prepared_label.visible_style_facts,
+            ),
         );
     }
     out.push_str("</g>");
@@ -591,27 +553,13 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 markdown: true,
                 foreground: terminal_decision.label_css(),
-                visible_run_count: prepared_item.title.visible_style_facts.visible_run_count(),
+                typography: KanbanTypographyTerminalFacts::from_visible_style_facts(
+                    &prepared_item.title.visible_style_facts,
+                ),
                 inherited_color_run_count: prepared_item
                     .title
                     .visible_style_facts
                     .inherited_color_run_count(),
-                inherited_font_family_run_count: prepared_item
-                    .title
-                    .visible_style_facts
-                    .inherited_font_family_run_count(),
-                unverified_font_family_run_count: prepared_item
-                    .title
-                    .visible_style_facts
-                    .unverified_font_family_run_count(),
-                inherited_font_size_run_count: prepared_item
-                    .title
-                    .visible_style_facts
-                    .inherited_font_size_run_count(),
-                unverified_font_size_run_count: prepared_item
-                    .title
-                    .visible_style_facts
-                    .unverified_font_size_run_count(),
             },
         )?;
         record_kanban_label_emission(
@@ -626,7 +574,7 @@ pub(crate) fn render_kanban_diagram_svg(
             receipt.record_label(
                 crate::kanban::KanbanTextPaintRole::Title,
                 prepared_item.title.visible_style_facts.parse_valid(),
-                title_emission.visible_run_count,
+                title_emission.typography.visible_run_count,
                 title_emission.inherited_color_run_count,
                 prepared_item
                     .title
@@ -635,15 +583,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 terminal_decision.label_css().is_some(),
             );
         }
-        record_kanban_typography_text(
-            task_theme_receipt.as_mut(),
-            prepared_item.title.visible_style_facts.parse_valid(),
-            title_emission.visible_run_count,
-            title_emission.inherited_font_family_run_count,
-            title_emission.unverified_font_family_run_count,
-            title_emission.inherited_font_size_run_count,
-            title_emission.unverified_font_size_run_count,
-        );
+        record_kanban_typography_text(task_theme_receipt.as_mut(), title_emission.typography);
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
         let ticket_text = n.ticket.as_deref();
@@ -668,30 +608,13 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         markdown: false,
                         foreground: terminal_decision.label_css(),
-                        visible_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .visible_run_count(),
+                        typography: KanbanTypographyTerminalFacts::from_visible_style_facts(
+                            &prepared_item.ticket.visible_style_facts,
+                        ),
                         inherited_color_run_count: prepared_item
                             .ticket
                             .visible_style_facts
                             .inherited_color_run_count(),
-                        inherited_font_family_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .inherited_font_family_run_count(),
-                        unverified_font_family_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .unverified_font_family_run_count(),
-                        inherited_font_size_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .inherited_font_size_run_count(),
-                        unverified_font_size_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .unverified_font_size_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -706,7 +629,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     receipt.record_label(
                         crate::kanban::KanbanTextPaintRole::Ticket,
                         prepared_item.ticket.visible_style_facts.parse_valid(),
-                        ticket_emission.visible_run_count,
+                        ticket_emission.typography.visible_run_count,
                         ticket_emission.inherited_color_run_count,
                         prepared_item
                             .ticket
@@ -717,12 +640,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 }
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
-                    prepared_item.ticket.visible_style_facts.parse_valid(),
-                    ticket_emission.visible_run_count,
-                    ticket_emission.inherited_font_family_run_count,
-                    ticket_emission.unverified_font_family_run_count,
-                    ticket_emission.inherited_font_size_run_count,
-                    ticket_emission.unverified_font_size_run_count,
+                    ticket_emission.typography,
                 );
                 out.push_str("</a>");
                 out.checkpoint()?;
@@ -738,30 +656,13 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         markdown: false,
                         foreground: terminal_decision.label_css(),
-                        visible_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .visible_run_count(),
+                        typography: KanbanTypographyTerminalFacts::from_visible_style_facts(
+                            &prepared_item.ticket.visible_style_facts,
+                        ),
                         inherited_color_run_count: prepared_item
                             .ticket
                             .visible_style_facts
                             .inherited_color_run_count(),
-                        inherited_font_family_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .inherited_font_family_run_count(),
-                        unverified_font_family_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .unverified_font_family_run_count(),
-                        inherited_font_size_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .inherited_font_size_run_count(),
-                        unverified_font_size_run_count: prepared_item
-                            .ticket
-                            .visible_style_facts
-                            .unverified_font_size_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -776,7 +677,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     receipt.record_label(
                         crate::kanban::KanbanTextPaintRole::Ticket,
                         prepared_item.ticket.visible_style_facts.parse_valid(),
-                        ticket_emission.visible_run_count,
+                        ticket_emission.typography.visible_run_count,
                         ticket_emission.inherited_color_run_count,
                         prepared_item
                             .ticket
@@ -787,16 +688,11 @@ pub(crate) fn render_kanban_diagram_svg(
                 }
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
-                    prepared_item.ticket.visible_style_facts.parse_valid(),
-                    ticket_emission.visible_run_count,
-                    ticket_emission.inherited_font_family_run_count,
-                    ticket_emission.unverified_font_family_run_count,
-                    ticket_emission.inherited_font_size_run_count,
-                    ticket_emission.unverified_font_size_run_count,
+                    ticket_emission.typography,
                 );
             }
         } else {
-            let _ = write_kanban_label_group(
+            let ticket_emission = write_kanban_label_group(
                 &mut out,
                 &label_context,
                 KanbanLabelGroup {
@@ -807,12 +703,10 @@ pub(crate) fn render_kanban_diagram_svg(
                     div_class: None,
                     markdown: false,
                     foreground: terminal_decision.label_css(),
-                    visible_run_count: 0,
+                    typography: KanbanTypographyTerminalFacts::from_visible_style_facts(
+                        &prepared_item.ticket.visible_style_facts,
+                    ),
                     inherited_color_run_count: 0,
-                    inherited_font_family_run_count: 0,
-                    unverified_font_family_run_count: 0,
-                    inherited_font_size_run_count: 0,
-                    unverified_font_size_run_count: 0,
                 },
             )?;
             if let Some(receipt) = text_receipt.as_mut() {
@@ -825,27 +719,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     terminal_decision.label_css().is_some(),
                 );
             }
-            record_kanban_typography_text(
-                task_theme_receipt.as_mut(),
-                prepared_item.ticket.visible_style_facts.parse_valid(),
-                prepared_item.ticket.visible_style_facts.visible_run_count(),
-                prepared_item
-                    .ticket
-                    .visible_style_facts
-                    .inherited_font_family_run_count(),
-                prepared_item
-                    .ticket
-                    .visible_style_facts
-                    .unverified_font_family_run_count(),
-                prepared_item
-                    .ticket
-                    .visible_style_facts
-                    .inherited_font_size_run_count(),
-                prepared_item
-                    .ticket
-                    .visible_style_facts
-                    .unverified_font_size_run_count(),
-            );
+            record_kanban_typography_text(task_theme_receipt.as_mut(), ticket_emission.typography);
         }
 
         // Assigned label.
@@ -860,30 +734,13 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: None,
                 markdown: false,
                 foreground: terminal_decision.label_css(),
-                visible_run_count: prepared_item
-                    .assigned
-                    .visible_style_facts
-                    .visible_run_count(),
+                typography: KanbanTypographyTerminalFacts::from_visible_style_facts(
+                    &prepared_item.assigned.visible_style_facts,
+                ),
                 inherited_color_run_count: prepared_item
                     .assigned
                     .visible_style_facts
                     .inherited_color_run_count(),
-                inherited_font_family_run_count: prepared_item
-                    .assigned
-                    .visible_style_facts
-                    .inherited_font_family_run_count(),
-                unverified_font_family_run_count: prepared_item
-                    .assigned
-                    .visible_style_facts
-                    .unverified_font_family_run_count(),
-                inherited_font_size_run_count: prepared_item
-                    .assigned
-                    .visible_style_facts
-                    .inherited_font_size_run_count(),
-                unverified_font_size_run_count: prepared_item
-                    .assigned
-                    .visible_style_facts
-                    .unverified_font_size_run_count(),
             },
         )?;
         record_kanban_label_emission(
@@ -898,7 +755,7 @@ pub(crate) fn render_kanban_diagram_svg(
             receipt.record_label(
                 crate::kanban::KanbanTextPaintRole::Assigned,
                 prepared_item.assigned.visible_style_facts.parse_valid(),
-                assigned_emission.visible_run_count,
+                assigned_emission.typography.visible_run_count,
                 assigned_emission.inherited_color_run_count,
                 prepared_item
                     .assigned
@@ -907,15 +764,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 terminal_decision.label_css().is_some(),
             );
         }
-        record_kanban_typography_text(
-            task_theme_receipt.as_mut(),
-            prepared_item.assigned.visible_style_facts.parse_valid(),
-            assigned_emission.visible_run_count,
-            assigned_emission.inherited_font_family_run_count,
-            assigned_emission.unverified_font_family_run_count,
-            assigned_emission.inherited_font_size_run_count,
-            assigned_emission.unverified_font_size_run_count,
-        );
+        record_kanban_typography_text(task_theme_receipt.as_mut(), assigned_emission.typography);
 
         if let Some(p) = n.priority.as_deref() {
             let y1 = rect_y + (n.rx / 2.0).floor();

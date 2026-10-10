@@ -253,12 +253,11 @@ pub(crate) struct VennTypographyThemeReceipt {
     expected: VennTypographyOccurrences,
     emitted: VennTypographyOccurrences,
     expected_font_family_css: Box<str>,
-    emitted_font_family_css: Option<Box<str>>,
+    stylesheet_recorded: bool,
     expected_text_fill_css: Option<Box<str>>,
     stylesheet_text_fill_css: Option<Box<str>>,
     text_fill_terminal_count: usize,
     text_fill_terminal_matches: bool,
-    stylesheet_selector_mask: u8,
     terminal_matches: bool,
 }
 
@@ -272,12 +271,11 @@ impl VennTypographyThemeReceipt {
             expected,
             emitted: VennTypographyOccurrences::default(),
             expected_font_family_css: expected_font_family_css.into(),
-            emitted_font_family_css: None,
+            stylesheet_recorded: false,
             expected_text_fill_css: expected_text_fill_css.map(Into::into),
             stylesheet_text_fill_css: None,
             text_fill_terminal_count: 0,
             text_fill_terminal_matches: true,
-            stylesheet_selector_mask: 0,
             terminal_matches: true,
         }
     }
@@ -289,12 +287,11 @@ impl VennTypographyThemeReceipt {
         title_fill: &str,
         set_text_color: &str,
     ) -> String {
-        if self.emitted_font_family_css.is_some() {
+        if self.stylesheet_recorded {
             self.terminal_matches = false;
         }
-        self.emitted_font_family_css = Some(self.expected_font_family_css.clone());
+        self.stylesheet_recorded = true;
         self.stylesheet_text_fill_css = Some(set_text_color.into());
-        self.stylesheet_selector_mask = 0b1111;
         let id = crate::svg::escape_css_identifier(diagram_id);
         let mut css = String::new();
         let _ = write!(
@@ -376,11 +373,7 @@ impl VennTypographyThemeReceipt {
     }
 
     fn proves_font_stack(&self) -> bool {
-        self.emitted == self.expected
-            && self.emitted_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && self.stylesheet_selector_mask == 0b1111
-            && self.terminal_matches
+        self.emitted == self.expected && self.stylesheet_recorded && self.terminal_matches
     }
 
     fn has_text_fill_terminal(&self) -> bool {
@@ -617,10 +610,8 @@ mod tests {
         }
         assert!(!missing_role.proves_font_stack());
 
-        let mut duplicate_stylesheet = VennTypographyThemeReceipt::new(expected, "VennSans", None);
-        duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
-        duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
-        assert!(!duplicate_stylesheet.proves_font_stack());
+        complete.stylesheet("venn-test", "#123456", "#abcdef");
+        assert!(!complete.proves_font_stack());
     }
 
     #[test]
