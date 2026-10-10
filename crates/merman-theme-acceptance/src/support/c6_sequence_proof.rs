@@ -441,10 +441,9 @@ fn exact_writer_stylesheet_property<'a>(
         .filter(|stylesheet| stylesheet.parse_valid())
         .flat_map(|stylesheet| stylesheet.rules())
         .filter(|rule| rule.selector() == selector)
-        .filter_map(|rule| {
-            rule.declaration(property)
-                .map(|declaration| declaration.value())
-        })
+        .flat_map(|rule| rule.declarations())
+        .filter(|declaration| declaration.property() == property)
+        .map(|declaration| declaration.value())
         .collect::<Vec<_>>();
     c6_ensure!(
         "sequence-svg-stylesheet",
@@ -697,13 +696,40 @@ mod tests {
 
     #[test]
     fn spotless_sequence_terminal_contract_rejects_duplicate_writer_declaration() {
-        let svg = spotless_proof_svg().replacen(
-            "</svg>",
-            "<style>#seq .actor-line{stroke:#2c2416;}</style></svg>",
-            1,
-        );
-
-        assert!(check_sequence_svg(SPOTLESS_CONTRACT, svg.as_bytes()).is_err());
+        let baseline = spotless_proof_svg();
+        let cases = [
+            (
+                "second rule",
+                baseline.replacen(
+                    "</svg>",
+                    "<style>#seq .actor-line{stroke:#2c2416;}</style></svg>",
+                    1,
+                ),
+            ),
+            (
+                "same-rule important predecessor",
+                baseline.replacen(
+                    "#seq .actor-line{stroke:#2c2416;",
+                    "#seq .actor-line{stroke:#000!important;stroke:#2c2416;",
+                    1,
+                ),
+            ),
+            (
+                "same-rule identical value",
+                baseline.replacen(
+                    "#seq .actor-line{stroke:#2c2416;",
+                    "#seq .actor-line{stroke:#2c2416;stroke:#2c2416;",
+                    1,
+                ),
+            ),
+        ];
+        for (name, svg) in cases {
+            assert_ne!(svg, baseline, "{name} must mutate the fixture");
+            assert!(
+                check_sequence_svg(SPOTLESS_CONTRACT, svg.as_bytes()).is_err(),
+                "{name} must fail the unique writer-declaration proof"
+            );
+        }
     }
 
     #[test]
