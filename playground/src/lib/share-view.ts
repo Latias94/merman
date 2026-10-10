@@ -17,8 +17,6 @@ import {
 } from "./svg-presentation.ts";
 
 const SHARE_VIEW_VERSION = "1";
-// Decoder-only compatibility for Host-bearing rv=1 links created on the open branch.
-const LEGACY_RENDER_VIEWPORT_KEY = "renderViewportMode";
 const LEGACY_HOST_LOCK_KEYS = [
   "hostWidth",
   "hostHeight",
@@ -31,7 +29,6 @@ const VIEW_PARAMETER_KEYS = [
   "previewMode",
   "showSvgBounds",
   "svgPresentationMode",
-  LEGACY_RENDER_VIEWPORT_KEY,
   ...LEGACY_HOST_LOCK_KEYS,
 ] as const;
 
@@ -97,6 +94,7 @@ export function decodeShareView(
   input: string | URLSearchParams | Pick<Location, "search">,
 ): ShareViewDecodeResult {
   const params = toSearchParams(input);
+  if (params.has("renderViewportMode")) return invalidShareView();
   const hasViewState = VIEW_PARAMETER_KEYS.some((key) => params.has(key));
   if (!hasViewState) {
     return Object.freeze({ status: "absent", view: null, warning: null });
@@ -223,12 +221,6 @@ function decodeOptionalSvgPresentationMode(
 }
 
 function hasValidLegacyHostState(params: URLSearchParams): boolean {
-  if (params.has(LEGACY_RENDER_VIEWPORT_KEY)) {
-    if (!hasSingleValue(params, LEGACY_RENDER_VIEWPORT_KEY)) return false;
-    const mode = params.get(LEGACY_RENDER_VIEWPORT_KEY);
-    if (mode !== "canonical" && mode !== "host") return false;
-  }
-
   const presentLockKeys = LEGACY_HOST_LOCK_KEYS.filter((key) =>
     params.has(key),
   );

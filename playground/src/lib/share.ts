@@ -72,15 +72,12 @@ export const WORKSPACE_V3_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
 });
 
 const MAX_LEGACY_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
-// Decoder-only compatibility for Host-bearing links created on the open branch.
-const LEGACY_RENDER_VIEWPORT_KEY = "renderViewportMode";
 const WORKSPACE_V2_KEYS = new Set([
   "code",
   "theme",
   "themeSelection",
   "config",
   "themePresetId",
-  LEGACY_RENDER_VIEWPORT_KEY,
   "svgPipeline",
   "textMeasurementMode",
   "diagramFont",
@@ -248,7 +245,6 @@ function decodeWorkspaceRecord(
     mermaidConfig === null ||
     textMeasurementMode === null ||
     diagramFont === null ||
-    !hasValidLegacyRenderViewportMode(value) ||
     renderOptions === null ||
     themeRecipeJson === undefined ||
     !isThemeRecipeJson(themeRecipeJson) ||
@@ -309,7 +305,7 @@ function decodeLegacyWorkspaceHash(
       config === null ||
       textMeasurementMode === null ||
       diagramFont === null ||
-      !hasValidLegacyRenderViewportMode(value) ||
+      Object.hasOwn(value, "renderViewportMode") ||
       Object.hasOwn(value, "hostThemePreset") ||
       Object.hasOwn(value, "themeRecipeJson")
     ) {
@@ -529,14 +525,6 @@ function isDiagramFontValue(
   value: unknown
 ): value is WorkspaceSnapshot["diagramFont"] {
   return typeof value === "string" && isDiagramFont(value);
-}
-
-function hasValidLegacyRenderViewportMode(
-  value: Record<string, unknown>,
-): boolean {
-  if (!Object.hasOwn(value, LEGACY_RENDER_VIEWPORT_KEY)) return true;
-  const mode = value[LEGACY_RENDER_VIEWPORT_KEY];
-  return mode === "canonical" || mode === "host";
 }
 
 function isBoundedString(value: unknown, maxBytes: number): value is string {

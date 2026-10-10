@@ -111,6 +111,9 @@ test("rejects malformed or future view state atomically", () => {
     `?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=${tooWide}`,
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&previewMode=svg",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=fluid",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=host",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=canonical",
+    "?renderViewportMode=host",
   ];
 
   for (const query of invalidQueries) {

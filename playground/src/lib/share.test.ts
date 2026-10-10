@@ -229,31 +229,17 @@ test("inherits caller defaults when every optional render field is absent", () =
   );
 });
 
-test("ignores validated Host viewport state in legacy Base64 and s2 payloads", () => {
-  const expected = {
-    ...DEFAULT_WORKSPACE_SNAPSHOT,
-    code: "flowchart TD\nA",
-  };
-
-  assert.deepEqual(
-    decodeShareHash(
-      encodedPayload({
-        code: expected.code,
-        theme: "default",
-        renderViewportMode: "host",
-      }),
-    ),
-    expected,
-  );
-  assert.deepEqual(
-    decodeShareHash(
-      s2Payload({
-        code: expected.code,
-        renderViewportMode: "host",
-      }),
-    ),
-    expected,
-  );
+test("rejects the retired viewport field across legacy, s2 and s3 payloads", () => {
+  for (const mode of ["canonical", "host", "fluid", null]) {
+    const payload = {
+      code: "flowchart TD\nA",
+      theme: "default",
+      renderViewportMode: mode,
+    };
+    for (const encode of [encodedPayload, s2Payload, s3Payload]) {
+      assert.equal(decodeShareHash(encode(payload)), null, `${mode}: ${encode.name}`);
+    }
+  }
 });
 
 test("rejects an invalid required or present optional field as one payload", () => {
@@ -444,7 +430,6 @@ function legacySnapshotHash(snapshot: WorkspaceSnapshot): string {
     theme: snapshot.diagramTheme,
     config: snapshot.mermaidConfig,
     themePresetId: snapshot.themePresetId,
-    renderViewportMode: "host",
     svgPipeline: snapshot.svgPipeline,
     textMeasurementMode: snapshot.textMeasurementMode,
     diagramFont: snapshot.diagramFont,
