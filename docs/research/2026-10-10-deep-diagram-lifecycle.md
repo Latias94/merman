@@ -154,3 +154,305 @@ The fresh Treemap/Ishikawa failures occurred during ordinary typed clone after p
 Malformed ER at 3,000 levels did not reproduce an abort with this generator. It reported `unexpected end of input`, disposed of the reported error, and completed a subsequent small operation. Its passing malformed baseline does not waive the independently failing valid ER construction case.
 
 U2 will add managed JSON clone/export coverage. Later units will add cancellation/deadline, projection-failure and facade budget cleanup cases, bounded-family accepted-edge coverage, and final repaired-family results. Those cases are outside this characterization-only U1 baseline.
+
+## Canonical ownership and requested output growth
+
+The integrated debug implementation was measured with the existing five family-local accounting
+tests in `merman_core-ede88a4848860763.exe`. All five passed. Retained output lives under
+`<system-temp>/merman-lifecycle-growth-xzmrtep3`; each log names its exact unit-test selector.
+These counters describe construction or retained records, rather than a whole-pipeline benchmark.
+
+| Block depth | Source bytes | Canonical records | Child IDs | Requested legacy JSON bytes |
+| ---: | ---: | ---: | ---: | ---: |
+| 16 | 335 | 18 | 17 | 17,229 |
+| 32 | 671 | 34 | 33 | 58,333 |
+| 64 | 1,343 | 66 | 65 | 212,733 |
+
+Block retains each logical block once while preserving the nested legacy `blocksFlat` output.
+The output still repeats descendants. Increasing output size is therefore separate from the
+removed canonical subtree copies and does not justify changing the JSON representation.
+
+| Grammar workload | Source bytes | Action records | Action links | Additional records |
+| --- | ---: | ---: | ---: | --- |
+| Class, 1,024 flat declarations | 11,191 | 1,024 | 1,023 | No class-ID carrier records |
+| Class, 1,024 declarations in one namespace | 11,207 | 1,027 | 1,026 | 1,024 class-ID records and 1,023 links |
+| Class, 1,024 nested namespace declarations | 19,394 | 3,073 | 3,072 | One class-ID record |
+| Sequence, 1,024 flat messages | 15,376 | 3,072 | 3,071 | No second action carrier |
+| Sequence, 1,024 nested fragments | 14,281 | 2,051 | 2,050 | No second action carrier |
+| Sequence, 1,024 nested two-branch fragments | 24,533 | 4,101 | 4,100 | No second action carrier |
+
+The Class and Sequence tests also passed at sizes 8 and 128. Each event is attached once; the
+tests independently replay events and check source order. Required qualified namespace strings
+remain a separate semantic/output cost.
+
+The Flowchart accounting test passed widths 1, 32, and 1,024, with one stored statement and two
+construction steps per declaration. The ER test passed depths 32, 128, and 512, with `depth + 1`
+action records, `depth` membership candidates, and `depth` retained completed memberships.
+These are assertions over the actual private carriers, rather than timing-based complexity claims.
+
+## Pinned-source Block correction
+
+The flat Block conversion exposed a pre-existing Rust semantic discrepancy. Mermaid 12.1.0
+(`21f72f07ea22c0af48a3149c550654e80d8e40cb`) stores the original block object in its map and
+uses that same object in parent children. Later style, class, type, and label updates are visible
+through both references. The former Rust `clone_block_tree_nonrecursive` froze the nested copy
+when a parent completed.
+
+The source authority is [`blockDB.ts`](https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/diagrams/block/blockDB.ts):
+style/class updates at lines 61–87; insertion and duplicate type/label handling at 157–175;
+child references at 186–191; and direct `getBlocks`/`getBlocksFlat` access at 305–337.
+The [Block grammar](https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/diagrams/block/parser/block.jison)
+creates a fresh shallow object for each composite declaration. Replaying a repeated composite
+populates that fresh object, while the first registered object's children and columns remain intact.
+The retained flat model implements these two rules without historical subtree copies.
+
+A Node probe transpiled the actual pinned TypeScript DB source in memory. Its
+`post-completion-metadata` case confirmed identical object identity for nested and flat `A`, with
+later circle/type, label, styles, and class updates but the original width and directions. Its
+`repeated-composite-columns` case confirmed `G` retains columns 2 and child `A`, while the later
+child `B` is still registered in the flat map. Only unrelated imports were stubbed: ASCII label
+sanitization, empty config, logging/clear hooks, and an unused shallow space clone. This is a
+DB source probe, not a complete browser renderer run. The reproducer and JSONL result are
+retained at `<system-temp>/merman-u7-pinned-blockdb-12.1.0-20261011-probe.cjs` and its
+`.stdout.jsonl` sibling.
+
+The existing `xtask update-snapshots --diagram block` changed exactly four Rust semantic goldens:
+`upstream_docs_block_introduction_to_block_diagrams_001`,
+`upstream_docs_block_text_on_links_045`,
+`upstream_examples_block_basic_block_layout_001`, and
+`upstream_html_demos_block_block_diagram_demos_001`. Each change adds the already-declared
+styles to three nested views of `B`. No upstream SVG baseline or comparator policy changed.
+The focused tests independently check live metadata and repeated-composite children/columns.
+
+## Integrated family comparison
+
+A fresh debug `xtask` compared 17 affected or bounded families against the committed Mermaid
+12.1.0 SVGs using `--check-dom --dom-mode parity --dom-decimals 3`. Block, C4, Mindmap, Ishikawa,
+ER, Swimlane, Railroad and its EBNF/ABNF/PEG dialects, TreeView, and Usecase returned success
+without the browser-text-layout diagnostic flag. Existing family fixture policies still apply,
+including the explicitly named hand-drawn Ishikawa fixture's structure profile.
+
+The unflagged runs for State, Sequence, Class, Treemap, and Flowchart returned their established
+DOM differences. The repository CI gate was then run with `--diagnostic-browser-text-layout`.
+All five passed verification of the existing exact input, upstream, and local SVG signatures:
+
+| Family | Existing browser-text-layout receipts accepted |
+| --- | ---: |
+| State | 11 |
+| Sequence | 9 |
+| Class | 1 |
+| Treemap | 14 |
+| Flowchart | 61 |
+
+Treemap also accepted its one existing exact parser-diagnostic receipt. That diagnostic result
+is not strict DOM parity. The catalog and normalization rules were unchanged; a changed local
+signature would fail this gate. Flowchart uses `compare-all-svgs --diagram flowchart` for this
+CI check because its specialized command does not accept the diagnostic flag. The other four
+use their corresponding `compare-<family>-svgs` command with that flag. Raw command results and
+logs are retained under `<system-temp>/merman-lifecycle-family-parity-o6hd4t91`, in `results.json`
+and `ci-residual-results.json`. These results establish the existing CI comparison boundary,
+not elimination of registered browser/layout differences. ZenUML has no command in this SVG
+comparison catalog; its semantic, typed-wire, and facade SVG lifecycle suites cover its change.
+
+## Repaired debug host lifecycles
+
+The integrated debug run `658c1eef-3014-49b7-9d67-37e07914dd6e` completed all fifteen deep
+core child cases. Every case used a 2,097,152-byte worker stack, exited with code zero, recorded
+`timed_out=false` and `process_error=None`, and completed both ordinary disposal and a subsequent
+small diagram. The fixed child timeout was 60 seconds. These are direct strict Engine operations;
+large indentation-based sources are intentionally separate from facade source admission.
+
+| Child selector | Logical depth | Source bytes | Parent elapsed ms |
+| --- | ---: | ---: | ---: |
+| `block-missing-outer-end` | 10,000 | 158,902 | 85 |
+| `block-valid` | 3,000 | 46,906 | 55 |
+| `c4-missing-outer-brace` | 15,000 | 442,809 | 129 |
+| `er-missing-outer-end` | 3,000 | 55,901 | 192 |
+| `er-valid` | 3,000 | 55,905 | 200 |
+| `flowchart-missing-outer-end` | 10,000 | 188,910 | 98 |
+| `flowchart-valid` | 10,000 | 188,914 | 16,394 |
+| `ishikawa-typed-clone-drop` | 5,000 | 25,063,911 | 3,981 |
+| `mindmap-json-clone-export` | 3,000 | 9,019,903 | 1,677 |
+| `mindmap-json-drop` | 3,000 | 9,019,903 | 1,483 |
+| `railroad-ebnf-postfix` | 5,000 | 5,034 | 658 |
+| `state-missing-outer-brace` | 10,000 | 158,909 | 128 |
+| `state-typed-clone-drop` | 5,000 | 78,911 | 149 |
+| `state-typed-drop` | 5,000 | 78,911 | 118 |
+| `treemap-typed-clone-drop` | 5,000 | 25,043,913 | 5,282 |
+
+The retained status/stdout/stderr files are in `<system-temp>/merman-core-deep-lifecycle-<pid>-<selector>-<depth>-0`.
+The parent PIDs for these rows are 2172, 22920, 25168, 43324, 53444, 58920, 67564, 68724,
+74504, 82900, 83152, 84320, 87684, 87880, and 91596. Parent times include launch and observation;
+worker times include source construction and Engine setup. Neither column is a parser benchmark.
+The 5,000-postfix Railroad case reports the established local construction-depth outcome safely.
+The passing malformed ER case remains a passing baseline rather than a newly repaired abort.
+
+Additional core/facade suites exercise cancellation after nested completion, a real deadline after
+export begins, projection failure, default model-budget rejection, repeated IDs with shallow
+canonical depth, overlay/snapshot ownership, SVG/ASCII adapters, and maximum accepted bounded
+families. ZenUML's accepted 256-level semantic walk initially exposed a real overflow and was
+replaced locally by iterative construction; its parser boundary and bounded public AST remain.
+
+## Integrated debug quality checks
+
+On Windows 11 / Rust 1.95, `cargo nextest run --workspace --all-features --locked -j 2
+--no-fail-fast --status-level fail --final-status-level fail` completed run
+`658c1eef-3014-49b7-9d67-37e07914dd6e`: all 9,450 tests across 255 binaries passed; seven existing
+skips remain. Test execution took 441.088 seconds. The configured all-target/all-feature Clippy
+command for core, render, facade, bindings-core, CLI, and xtask passed with `-D warnings` on the
+finished production change. `cargo fmt --all --check`, `git diff --check`, and fresh xtask
+`verify-lalrpop-parsers` also passed. Cargo builds used `CARGO_BUILD_JOBS=2` throughout the final
+runs, separately from nextest's two test jobs.
+
+Earlier integrated run `88b2471d-6af9-4ecc-b3b4-2d35bf5ce0ab` passed 9,447 tests and exposed
+the one old Block golden mismatch described above. A subsequent rebuild was interrupted by
+disk exhaustion before tests began. Only task-created incremental compiler caches were removed
+from verified `target/debug/incremental`; this freed 28.703 GiB and retained sources, fixture
+baselines, and test executables. Neither build interruption is recorded as a successful test run.
+
+Feature/public API checks additionally passed: the core infrastructure-only managed JSON suite
+(12 tests; run `c4d354ef-7358-4d37-b094-c5412743b761`), reduced State/Treemap/Ishikawa/ZenUML
+core compilation, the public native ASCII closure for core/facade/bindings/UniFFI/Wasm libraries,
+the reduced ASCII CLI, and wasm32-unknown-unknown ASCII compilation. The Rust example in the
+migration guide was extracted, compiled against the migrated core library, and executed; retained
+compile/run logs are under `<system-temp>/merman-migration-example-3miiedih`. All-target checking
+also compiles the migrated examples and pipeline benchmark. No dependency, manifest, FFI ABI,
+or transport-schema revision was needed by this ownership change.
+
+## Release host lifecycles and selected Wasm targets
+
+Release core run `b365f049-7955-43b1-9253-53d356b52f7d` passed all 34 tests across the deep
+lifecycle, managed JSON, Block lifecycle, and bounded lifecycle integration binaries in 2.875
+seconds. Release facade run `2460ce6c-f02b-4e1e-b3ee-bb078f3c5b83` passed all 13 deep/bounded
+lifecycle tests in 0.527 seconds. Both used two Cargo build jobs and two nextest test jobs;
+their worker stack assertions remain 2,097,152 bytes.
+
+The preceding core release run passed 33 tests and failed one before creating its worker:
+Windows returned `AlreadyExists` while the parent created a retained diagnostic directory.
+The affected case passed an exact retry (`e66c8c4b-8f27-4405-a085-271bda8ced40`) without source
+changes, followed by the clean full 34-test run above. PID-based names can collide with retained
+artifacts when Windows reuses a process ID. The existing core/facade/managed-JSON diagnostic
+names now also include an epoch-nanosecond suffix and creation errors display the actual path.
+No old diagnostic directory was removed. The interrupted run is not counted as a passing suite.
+
+The explicitly selected extended Flowchart release case completed at 30,000 levels with a
+588,914-byte source, a 2 MiB worker, exit code zero, and no timeout. Its parent elapsed time was
+14,676 ms against a fixed 180-second limit. It completed typed parse, ordinary clone/drop, and
+a subsequent small operation; compatibility export was not requested in this ownership probe.
+Logs and status are retained under
+`<system-temp>/merman-lifecycle-flowchart-30000-release-9grdnr4r`. This is lifecycle evidence,
+not a linear-time parsing claim.
+
+The affected-family `merman-wasm` closure also compiled for `wasm32-unknown-unknown`, without
+defaults, with both SVG and ASCII enabled and Flowchart, Swimlane, ER, State, C4, Block, Class,
+Sequence, Mindmap, Treemap, Ishikawa, Railroad, ZenUML, TreeView, and Usecase selected. This
+compile gate establishes the feature/API closure; it is not a Wasm runtime or browser test.
+
+## Additional completed-fragment cancellation coverage
+
+Debug run `7549b292-3148-4a0f-b6e1-acb4c5e85dc3` passed six named cancellation tests across
+three binaries in 7.142 seconds. Three new integration cases use the existing explicit child
+processes, 60-second watchdogs, and 2 MiB workers. State and Block project 3,000-level models
+and cancel during ascent, with approximately 1,600 levels of completed inner JSON still owned.
+The State probe keeps only the outer state record so map iteration order cannot determine its
+exit point. ZenUML confirms a complete 256-level first branch and cancels at the second statement
+task, after that deep branch enters the managed completed collection. Checkpoint counts are
+derived from these confirmed structures and their documented traversal steps. All preserve the
+original terminal phase and then process a small diagram.
+
+The other two upgraded cases exercise C4 closure and replay cancellation at 15,000 levels in
+explicit 2 MiB workers. Their exact private construction checkpoints retain the existing
+derivation, terminal assertions, and subsequent small diagram. These named unit cases use
+nextest's per-test OS process isolation rather than the integration harness's separate parent
+watchdog. The sixth selected test is the existing State inner-document cancellation regression.
+
+The root additionally ran both upgraded C4 unit selectors directly from the current debug test
+executable under an external Python `subprocess.run(timeout=60)` watchdog. Closure and replay
+completed with exit code zero, no timeout, and parent times of 83 ms and 7,516 ms, respectively.
+The existing unit assertions verify the 2 MiB worker, original terminal, cleanup, and subsequent
+small operation. Python's timeout path kills and reaps the child; this verification adds no
+production worker or persistent runner framework. Logs and status are retained under
+`<system-temp>/merman-c4-cancellation-watchdog-debug-2fq7kq4t`.
+
+## Requirement evidence map
+
+| Requirement | Implementation and evidence |
+| --- | --- |
+| R1 | Named core/facade deep and bounded lifecycle cases use 2 MiB workers; debug and release results are recorded separately above. |
+| R2 | Parser carriers and projection slots retain non-recursive or verified locally bounded ownership through malformed input, partial-completion cancellation, projection errors, deadline expiry, and model-budget rejection. |
+| R3 | State/Block/Treemap/Ishikawa canonical relationships use IDs; deep returned model and managed-JSON clone/drop cases use their ordinary destructors. |
+| R4 | Source-backed family tests, shallow typed-wire oracles, exact existing family SVG gates, and the Rust migration guide retain the pinned Mermaid contract; the Block correction has separate pinned-source evidence. |
+| R5 | Managed compact/pretty writers export deep JSON; generic serde preflights actual emitted containers at 128, independently of model policy. |
+| R6 | Flat complexity calculations match the former typed-wire meaning; facade tests preserve default limits, override provenance, suppression behavior, and original sticky operation phases. |
+| R7 | Repeated-ID Flowchart cases separate deep syntax from shallow canonical depth; no new global syntax-depth ceiling is present. |
+| R8 | Flat families retain their models; Railroad constructed depth and ZenUML/TreeView/Usecase accepted/rejected edges have explicit lifecycle cases. |
+| R9 | Carrier, retained-membership, canonical-record, and output-byte growth checks are reported above, separately from required legacy output duplication and remaining parsing/layout cost. |
+| R10 | Family-specific grammars, records, replay, editor facts, and render adapters remain the authorities; managed JSON is a narrow owner over the existing value type. |
+
+All eleven active units are represented by these changes. The plan's separately deferred release
+selection/publication, Holt upgrade recommendation, generic policy redesign, and independent
+layout optimization remain outside this implementation. The evidence does not claim arbitrary
+raw `Value` operations, caller-defined recursive models, unlimited allocation, or Wasm runtime
+execution.
+
+## Completed review and caller-owned resolution
+
+The actual `ce-code-review` run `20261010-185836-59455179` completed all eight selected local
+reviewer lenses and independent finding validation. Its original verdict was `Ready with fixes`,
+with one confirmed P2 finding (#1): a caller's writer could observe and latch cancellation, then
+return an I/O error that masked the original terminal. The root implementer accepted and applied
+#1 inline. A narrow read-only control accessor now replays an already observed cancellation with
+its original phase and reason. It does not observe a newly requested cancellation, check the clock,
+consume a checkpoint, or change resource-terminal behavior.
+
+The discriminating regression initially failed against the former implementation (run
+`8eab3d59-6879-478f-bf99-ec223ea71fd4`). After the fix, all eight managed-JSON tests passed
+in run `b7eb91c9-4332-4732-8eb9-9c4fb0e1748b`. The regression covers compact and pretty output,
+each with both already observed cancellation and requested-only cancellation followed by I/O
+failure. The migration guide states this precedence explicitly.
+
+Two separate read-only caller follow-ups then reviewed only the production fix and the later
+test/diagnostic-directory differences. The reliability follow-up closed #1 with no findings or
+testing gaps. The testing follow-up closed both original coverage gaps, confirmed the completed
+State/Block/ZenUML fragments and deep C4 workers, and returned no findings or remaining testing
+gaps. These follow-ups did not rerun or replace the original full review. The original immutable
+receipt retains its pre-fix R6/U2/U11 status; caller resolution closes those items with the explicit
+follow-up and execution evidence.
+
+Artifacts are retained under
+`<system-temp>/compound-engineering-Frankorz/ce-code-review/20261010-185836-59455179/`:
+`review.json`, `caller-writer-fix-review.json`, and `caller-test-delta-review.json`. Reviewers did
+not run Cargo; the root executed verification. All reviewers used Codex subagents as requested;
+different-model independence is not claimed. No actionable finding was skipped or deferred.
+
+## Final checks after review resolution
+
+After applying #1 and completing the independent test-delta reviews, final all-workspace
+all-feature run `9cd54652-015e-451e-8ebb-d7a03503ff0d` passed all 9,454 tests across 255 binaries,
+with seven existing skips, in 428.249 seconds. This includes the three additional completed-fragment
+cancellation cases and the discriminating writer regression. The final configured Clippy command
+for core, render, facade, bindings-core, CLI, and xtask also passed with all targets, all features,
+and `-D warnings` in 1 minute 26 seconds. Both commands used two Cargo build jobs; nextest used
+two test jobs. No production source changed between these gates.
+
+Final release core run `cbb5175f-b10c-4c5c-8994-3146690d1169` passed all 40 selected lifecycle
+tests across five binaries in 3.649 seconds, after a bounded two-job release build. Its 1,763
+excluded unit tests were outside the explicit selection, rather than ignored lifecycle failures.
+This run includes the final writer precedence regression, all three new completed-fragment
+integration cases, and both 15,000-level C4 unit cases. The post-directory-fix facade release run
+`4cb65355-81a2-4fe9-8fab-9c4c867a231b` had already passed all 13 cases in 0.530 seconds; the final
+all-workspace debug gate additionally covers facade behavior after the writer precedence fix.
+
+Both release C4 unit selectors also passed a direct external 60-second watchdog run: closure in
+31 ms and replay in 1,197 ms, both exit code zero and no timeout. Logs and status are retained under
+`<system-temp>/merman-c4-cancellation-watchdog-release-gha87kzg`. This complements the independently
+bounded debug executions recorded above; the checked-in unit harness still uses nextest isolation.
+
+Final infrastructure-only core run `e19da38b-8b3d-4135-8d23-8f05fdff50b2`, without default
+features, passed all 13 feature/managed-JSON tests in 0.329 seconds. The selected 15-family
+Wasm SVG/ASCII closure was rechecked after the fix and passed in 7.06 seconds. This remains
+compilation evidence, not Wasm runtime execution. Earlier native/reduced-family, generated-parser,
+formatting, migration-example, canonical-growth, and 17-family CI comparison results remain
+applicable: the review fix changes only precedence for an already observed cancellation followed
+by writer I/O failure, and leaves successful output, grammars, comparison policies, and examples
+unchanged. No required implementation or validated review finding remains unresolved.
