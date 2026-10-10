@@ -14,6 +14,7 @@ use serde_json::Value;
 use std::cell::Cell;
 use std::collections::HashSet;
 
+use super::ast::{ActionArena, Actions};
 use super::class_grammar;
 use super::db::ClassDb;
 use super::lexer::Lexer;
@@ -71,18 +72,21 @@ impl ClassSyntax {
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
-        std::result::Result<Vec<super::Action>, ClassGrammarError>,
+        std::result::Result<Actions, ClassGrammarError>,
     )> {
         let Self { events } = self;
         let editor_facts = collect_class_editor_facts_from_events(&events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
             emitted = emitted.saturating_add(1);
             active
         });
-        let actions = class_grammar::ActionsParser::new().parse(controlled_events);
+        let mut arena = ActionArena::default();
+        let actions = class_grammar::ActionsParser::new()
+            .parse(&mut arena, control, controlled_events)
+            .map(|list| arena.into_actions(list));
         control.checkpoint()?;
         Ok((editor_facts, actions))
     }
@@ -1195,4 +1199,87 @@ fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String
     let text = &text[..trimmed_len];
     let start = span.start + colon_offset + leading;
     Some((text.to_string(), SourceSpan::new(start, start + text.len())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt::Write as _;
+
+    fn assert_carrier_work(source: &str, expected: (usize, usize, usize, usize)) {
+        let control = OperationControl::new();
+        let mut arena = ActionArena::default();
+        let root = class_grammar::ActionsParser::new()
+            .parse(&mut arena, &control, Lexer::new(source))
+            .expect("Class grammar accepts carrier workload");
+        assert_eq!(arena.carrier_counts(), expected);
+        let materialized = arena.into_actions(root).count();
+        assert_eq!(materialized, expected.0);
+        println!(
+            "source_bytes={} action_records={} action_links={} class_id_records={} \
+             class_id_links={} replayed_events={materialized}",
+            source.len(),
+            expected.0,
+            expected.1,
+            expected.2,
+            expected.3,
+        );
+    }
+
+    #[test]
+    fn grammar_carriers_attach_each_event_once_at_increasing_width_and_depth() {
+        for size in [8, 128, 1_024] {
+            let mut flat = String::from("classDiagram\n");
+            for index in 0..size {
+                writeln!(flat, "class C{index}").unwrap();
+            }
+            assert_carrier_work(&flat, (size, size - 1, 0, 0));
+
+            let mut namespace = String::from("classDiagram\nnamespace N {\n");
+            for index in 0..size {
+                writeln!(namespace, "class C{index}").unwrap();
+            }
+            namespace.push_str("}\n");
+            assert_carrier_work(&namespace, (size + 3, size + 2, size, size - 1));
+
+            let mut nested = String::from("classDiagram\n");
+            for index in 0..size {
+                writeln!(nested, "namespace N{index} {{").unwrap();
+            }
+            nested.push_str("class Leaf\n");
+            nested.push_str(&"}\n".repeat(size));
+            assert_carrier_work(&nested, (size * 3 + 1, size * 3, 1, 0));
+        }
+    }
+
+    #[test]
+    fn grammar_carrier_reductions_observe_cancellation() {
+        let source = format!("classDiagram\n{}", "class C\n".repeat(1_024));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut arena = ActionArena::default();
+        let error = class_grammar::ActionsParser::new()
+            .parse(&mut arena, &control, Lexer::new(&source))
+            .err()
+            .expect("construction checkpoint interrupts reductions");
+        assert!(matches!(error, lalrpop_util::ParseError::User { .. }));
+        assert!(arena.carrier_counts().0 < 1_024);
+        assert_eq!(
+            control.checkpoint().unwrap_err().reason,
+            crate::CancelReason::Requested
+        );
+    }
+
+    #[test]
+    fn cancelled_token_delivery_returns_terminal_before_grammar_eof() {
+        let source = format!("classDiagram\n{}", "class C\n".repeat(256));
+        let control = OperationControl::new();
+        let syntax = ClassSyntax::lex(&source, &control).unwrap();
+        control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
+        let error = syntax
+            .into_editor_facts_and_actions(&source, &control)
+            .err()
+            .expect("cancelled delivery returns the outer terminal");
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
 }
