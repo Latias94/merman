@@ -925,6 +925,10 @@ mod tests {
         let receipt =
             SvgArtifactReceipt::observe_svg_for_test(&svg, digest).expect("generic receipt");
         assert!(receipt.proves_artifact(digest));
+        assert!(!receipt.proves_artifact([0; 32]));
+        let other_digest = Sha256::digest(b"different artifact").into();
+        assert!(!receipt.proves_artifact(other_digest));
+        assert_eq!(receipt.clone().digest(), receipt.digest());
         assert_eq!(receipt.root_id(), Some("state"));
         assert_eq!(receipt.view_box(), [0.0, 0.0, 40.0, 30.0]);
         assert_eq!(receipt.elements().len(), 5);
