@@ -167,7 +167,7 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
         .unwrap();
     for (source, has_corners) in [
         (
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
             true,
         ),
         ("flowchart LR\nA{Decision}", false),

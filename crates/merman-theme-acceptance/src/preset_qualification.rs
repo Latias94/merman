@@ -116,19 +116,19 @@ const CYBERPUNK_SPECS: [PresetQualificationSpec; 3] = [
         family: DiagramFamilyId::FLOWCHART,
         source_id: "public-cyberpunk-flowchart-v1",
         png_scale: 1.0,
-        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+        source: include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
     },
     PresetQualificationSpec {
         family: DiagramFamilyId::SEQUENCE,
         source_id: "public-cyberpunk-sequence-v1",
         png_scale: 1.0,
-        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+        source: include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
     },
     PresetQualificationSpec {
         family: DiagramFamilyId::XY_CHART,
         source_id: "public-cyberpunk-xychart-v1",
         png_scale: 1.0,
-        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+        source: include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
     },
 ];
 

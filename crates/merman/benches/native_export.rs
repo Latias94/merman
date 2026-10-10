@@ -11,15 +11,15 @@ use std::{hint::black_box, io::Cursor, path::PathBuf};
 const SCENES: [(&str, &str); 3] = [
     (
         "flowchart",
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
     ),
     (
         "sequence",
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
     ),
     (
         "xychart",
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
     ),
 ];
 

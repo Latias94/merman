@@ -234,7 +234,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
       if (preset === "cyberpunk") {
         for (const family of ["flowchart", "sequence", "xychart"]) {
           const source = await readFile(new URL(
-            `../../../crates/merman-theme-fixtures/fixtures/public-cyberpunk/${family}.mmd`,
+            `../../../fixtures/themes/public-cyberpunk/${family}.mmd`,
             import.meta.url,
           ), "utf8");
           const sceneId = `${diagramId}-${family}`;

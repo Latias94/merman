@@ -17,7 +17,7 @@ private func recipeSources() throws -> [(String, String)] {
     var sources = [("class", "classDiagram\nclass Account {\n+String name\n+save()\n}\n")]
     for family in ["flowchart", "sequence", "xychart"] {
         let file = repositoryRoot.appendingPathComponent(
-            "crates/merman-theme-fixtures/fixtures/public-cyberpunk/\(family).mmd"
+            "fixtures/themes/public-cyberpunk/\(family).mmd"
         )
         sources.append((family, try String(contentsOf: file, encoding: .utf8)))
     }

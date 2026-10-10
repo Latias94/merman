@@ -112,7 +112,7 @@ def probe(
 
 
 def check_scene(cli: Path, output: Path, family: str, expected: dict) -> dict:
-    source = ROOT / "crates/merman-theme-fixtures/fixtures/public-cyberpunk" / f"{family}.mmd"
+    source = ROOT / "fixtures/themes/public-cyberpunk" / f"{family}.mmd"
     source_digest = sha256(source)
     options = ["--theme-preset", "cyberpunk", "--config-file", str(output / "config.json")]
     for extension in ("svg", "pdf"):

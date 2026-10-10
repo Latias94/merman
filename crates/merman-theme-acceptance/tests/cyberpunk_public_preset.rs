@@ -65,7 +65,7 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
 #[test]
 fn complete_flowchart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
         13,
     );
 }
@@ -73,7 +73,7 @@ fn complete_flowchart_public_recipe_round_trip_preserves_artifacts() {
 #[test]
 fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
         21,
     );
 }
@@ -81,7 +81,7 @@ fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
 #[test]
 fn complete_xychart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+        include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
         28,
     );
 }

@@ -218,7 +218,7 @@ def run_theme_authoring_smoke() -> None:
             require(from_preset == from_export, f"{preset} direct import changed the rendered recipe")
             if preset == "cyberpunk":
                 for family in ("flowchart", "sequence", "xychart"):
-                    source = (FIXTURES.parents[2] / "merman-theme-fixtures/fixtures/public-cyberpunk"
+                    source = (FIXTURES.parents[3] / "fixtures/themes/public-cyberpunk"
                               / f"{family}.mmd").read_text(encoding="utf-8")
                     scene_options = {**options, "svg": {"diagram_id": f"python-cyberpunk-{family}"}}
                     original = engine.render_svg(source, json.dumps({

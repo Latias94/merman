@@ -619,8 +619,7 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corner
     let imported = DiagramThemeCompiler::new()
         .compile_recipe(serde_json::from_slice(&wire).unwrap())
         .unwrap();
-    let source =
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd");
+    let source = include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd");
     for theme in [&selected, &imported] {
         let rendered = render(source, theme, "classic", true).unwrap();
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();

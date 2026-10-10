@@ -4,7 +4,7 @@ import { encodeShareHash } from "../src/lib/share";
 import { monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 
 const sceneSource = (family: string): string => readFileSync(
-  new URL(`../../crates/merman-theme-fixtures/fixtures/public-cyberpunk/${family}.mmd`, import.meta.url),
+  new URL(`../../fixtures/themes/public-cyberpunk/${family}.mmd`, import.meta.url),
   "utf8",
 );
 

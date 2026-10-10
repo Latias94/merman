@@ -147,15 +147,15 @@ fn public_cyberpunk_canvas_survives_recipe_exchange() {
     for (family, source) in [
         (
             "flowchart",
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
         ),
         (
             "sequence",
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
         ),
         (
             "xychart",
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
         ),
         ("class", "classDiagram\nclass Account {\n +String name\n}"),
     ] {

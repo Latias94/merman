@@ -293,7 +293,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
     let RenderOutput::Document(Some(document)) = Renderer::new()
         .render(
             RenderRequest::document(
-                include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+                include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
                 OperationControl::new(),
                 Default::default(),
             )
@@ -558,7 +558,7 @@ A->>B: Message
     for (source, theme) in [
         (source, ordinary),
         (
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
             compiler.compile_preset(ThemePreset::Cyberpunk).unwrap(),
         ),
     ] {

@@ -56,7 +56,7 @@ fn native_marker_pixels_follow_the_public_edge_paint() {
             false,
         ),
         (
-            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+            include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
             preset,
             true,
         ),

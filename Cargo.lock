@@ -2694,22 +2694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merman-theme-fixtures"
-version = "0.8.0"
-dependencies = [
- "cssparser 0.38.0",
- "data-encoding",
- "json5",
- "lol_html",
- "merman-core",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "merman-typst-plugin"
 version = "0.8.0"
 dependencies = [

@@ -420,7 +420,7 @@ fn complete_cyberpunk_xy_scene_fits_default_native_filter_budget() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::Cyberpunk)
         .unwrap();
-    let source = include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd");
+    let source = include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd");
     let RenderOutput::Document(Some(document)) = Renderer::new()
         .render(
             RenderRequest::document(source, OperationControl::new(), Default::default())

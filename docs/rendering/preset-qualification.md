@@ -9,7 +9,7 @@ recorded source, recipe and profile. Public catalog cells remain empty for every
 fresh execution can issue an artifact-local qualification projection.
 
 `inspect_preset_admission(Cyberpunk)` instead executes the three unchanged complete scenes in
-`crates/merman-theme-fixtures/fixtures/public-cyberpunk`: Flowchart, Sequence and XY Chart.
+`fixtures/themes/public-cyberpunk`: Flowchart, Sequence and XY Chart.
 This inventory uses native SVG labels, system fonts, default resource limits and 1x PNG. It
 checks current artifact identity and reports admission/residuals without issuing qualification.
 The other nine presets retain the small Flowchart/State/Sequence admission sources.

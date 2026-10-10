@@ -75,7 +75,7 @@ async function verifyCustomizedRecipeExchange(engine, entrypoint) {
   };
   for (const family of ["flowchart", "sequence", "xychart"]) {
     sources[family] = await readFile(new URL(
-      `../../../crates/merman-theme-fixtures/fixtures/public-cyberpunk/${family}.mmd`,
+      `../../../fixtures/themes/public-cyberpunk/${family}.mmd`,
       import.meta.url,
     ), "utf8");
   }

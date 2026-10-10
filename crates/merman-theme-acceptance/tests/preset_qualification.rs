@@ -97,21 +97,15 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             for (pair, (source_id, source)) in report.observations().chunks_exact(2).zip([
                 (
                     "public-cyberpunk-flowchart-v1",
-                    include_str!(
-                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"
-                    ),
+                    include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
                 ),
                 (
                     "public-cyberpunk-sequence-v1",
-                    include_str!(
-                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"
-                    ),
+                    include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
                 ),
                 (
                     "public-cyberpunk-xychart-v1",
-                    include_str!(
-                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"
-                    ),
+                    include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
                 ),
             ]) {
                 for observation in pair {

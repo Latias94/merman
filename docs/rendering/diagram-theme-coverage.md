@@ -654,7 +654,7 @@ contract check; it does not qualify a document, preset, artifact profile, or C7a
 
 The preset admission runner executes all ten exact catalog recipes, then exports each completed
 document to PNG. Cyberpunk uses the unchanged complete Flowchart, Sequence and XY Chart sources
-from `merman-theme-fixtures/fixtures/public-cyberpunk`; the other nine presets retain the small
+from `fixtures/themes/public-cyberpunk`; the other nine presets retain the small
 Flowchart, State and Sequence sources. These admission runs use native SVG labels, system fonts,
 default resource limits and 1x PNG. The shared runner explicitly uses `flowchart.look: classic`,
 `flowchart.layout: dagre`, and `sequence.look: classic`; other families retain their defaults. Public

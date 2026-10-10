@@ -598,8 +598,7 @@ fn public_cyberpunk_scene_has_cyan_direction_markers_after_recipe_exchange() {
     let imported = DiagramThemeCompiler::new()
         .compile_recipe(serde_json::from_slice(&wire).unwrap())
         .unwrap();
-    let source =
-        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd");
+    let source = include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd");
     for selected in [&theme, &imported] {
         let rendered = render(
             source,
