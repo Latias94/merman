@@ -174,11 +174,76 @@ enum Action {
         id: String,
         title: String,
         label_type: String,
-        body: Vec<Action>,
+        body: ErActionList,
     },
     SetDirection(String),
     SetAccTitle(String),
     SetAccDescr(String),
+}
+
+// Grammar symbols carry scalar links; the arena owns every action exactly once.
+#[derive(Debug, Clone, Copy, Default)]
+struct ErActionList {
+    first: Option<usize>,
+    last: Option<usize>,
+}
+
+#[derive(Debug)]
+struct ErActionRecord {
+    action: Option<Action>,
+    next: Option<usize>,
+}
+
+#[derive(Debug, Default)]
+struct ErActionArena {
+    records: Vec<ErActionRecord>,
+}
+
+impl ErActionArena {
+    fn push(&mut self, action: Action) -> ErActionList {
+        let index = self.records.len();
+        self.records.push(ErActionRecord {
+            action: Some(action),
+            next: None,
+        });
+        ErActionList {
+            first: Some(index),
+            last: Some(index),
+        }
+    }
+
+    fn actions(&mut self, actions: Vec<Action>) -> ErActionList {
+        let mut list = ErActionList::default();
+        for action in actions {
+            let item = self.push(action);
+            list = self.append(list, item);
+        }
+        list
+    }
+
+    fn append(&mut self, left: ErActionList, right: ErActionList) -> ErActionList {
+        let (Some(last), Some(first)) = (left.last, right.first) else {
+            return if left.first.is_some() { left } else { right };
+        };
+        self.records[last].next = Some(first);
+        ErActionList {
+            first: left.first,
+            last: right.last,
+        }
+    }
+}
+
+struct ErSubgraphCompletion {
+    id: String,
+    title: String,
+    label_type: String,
+    members: Vec<String>,
+    direction: Option<String>,
+}
+
+struct ErReplayFrame {
+    next: Option<usize>,
+    subgraph: Option<ErSubgraphCompletion>,
 }
 
 #[derive(Debug, Clone)]
@@ -216,6 +281,9 @@ struct ErDb {
     subgraphs: Vec<ErSubgraphRenderModel>,
     subgraph_lookup: IndexMap<String, usize>,
     subgraph_counter: usize,
+    completed_members: HashSet<String>,
+    #[cfg(test)]
+    membership_candidates: usize,
 }
 
 impl ErDb {
@@ -340,56 +408,37 @@ impl ErDb {
         }
     }
 
-    fn add_subgraph(
+    fn complete_subgraph(
         &mut self,
-        raw_id: String,
-        title: String,
-        label_type: String,
-        body: Vec<Action>,
-    ) -> String {
-        let mut members = Vec::new();
-        let mut direction = None;
-
-        for action in body {
-            match action {
-                Action::AddEntity { name, alias } => {
-                    members.push(name.clone());
-                    self.apply_action(Action::AddEntity { name, alias });
-                }
-                Action::AddAttributes { entity, attributes } => {
-                    members.push(entity.clone());
-                    self.apply_action(Action::AddAttributes { entity, attributes });
-                }
-                Action::AddRelationship { a, role, b, spec } => {
-                    members.push(a.clone());
-                    members.push(b.clone());
-                    self.apply_action(Action::AddRelationship { a, role, b, spec });
-                }
-                Action::AddSubgraph {
-                    id,
-                    title,
-                    label_type,
-                    body,
-                } => {
-                    let child_id = self.add_subgraph(id, title, label_type, body);
-                    members.push(child_id);
-                }
-                Action::SetDirection(dir) => direction = Some(dir),
-                other => {
-                    self.apply_action(other);
-                }
+        completion: ErSubgraphCompletion,
+        control: &OperationControl,
+    ) -> OperationControlResult<String> {
+        let ErSubgraphCompletion {
+            id: raw_id,
+            title,
+            label_type,
+            members,
+            direction,
+        } = completion;
+        let mut seen = HashSet::new();
+        let mut retained = Vec::new();
+        for (index, member) in members.into_iter().enumerate() {
+            #[cfg(test)]
+            {
+                self.membership_candidates += 1;
+            }
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let trimmed = member.trim();
+            if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+                continue;
+            }
+            // ER appends repeated IDs and keeps the union of all completed memberships.
+            if self.completed_members.insert(member.clone()) {
+                retained.push(member);
             }
         }
-
-        let mut seen = HashSet::new();
-        members.retain(|member| !member.trim().is_empty() && seen.insert(member.clone()));
-
-        let existing_members: HashSet<&str> = self
-            .subgraphs
-            .iter()
-            .flat_map(|subgraph| subgraph.nodes.iter().map(String::as_str))
-            .collect();
-        members.retain(|member| !existing_members.contains(member.as_str()));
 
         let id = if raw_id.trim().is_empty() {
             format!("subGraph{}", self.subgraph_counter)
@@ -406,66 +455,119 @@ impl ErDb {
                 "markdown" | "string" | "text" => label_type,
                 _ => "markdown".to_string(),
             },
-            nodes: members,
+            nodes: retained,
             title: title.trim().to_string(),
         };
         let index = self.subgraphs.len();
         self.subgraphs.push(subgraph);
         self.subgraph_lookup.insert(id.clone(), index);
-        id
+        Ok(id)
     }
 
-    fn apply_action(&mut self, action: Action) -> Option<String> {
-        match action {
-            Action::AddEntity { name, alias } => {
-                self.add_entity(&name, alias.as_deref());
+    fn replay(
+        &mut self,
+        mut arena: ErActionArena,
+        actions: ErActionList,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let mut frames = vec![ErReplayFrame {
+            next: actions.first,
+            subgraph: None,
+        }];
+        let mut replayed = 0usize;
+        while let Some(frame) = frames.last_mut() {
+            if replayed % 128 == 0 {
+                control.checkpoint()?;
             }
-            Action::AddAttributes { entity, attributes } => {
-                self.add_attributes(&entity, attributes);
-            }
-            Action::AddRelationship { a, role, b, spec } => {
-                self.add_relationship(&a, &role, &b, spec);
-            }
-            Action::SetClass { entities, classes } => self.set_class(&entities, &classes),
-            Action::AddClassDef { classes, raw } => {
-                let styles = split_styles(&raw);
-                self.add_class_def(&classes, &styles);
-            }
-            Action::AddCssStyles { entities, raw } => {
-                let styles = split_styles(&raw);
-                self.add_css_styles(&entities, &styles);
-            }
-            Action::AddSubgraph {
-                id,
-                title,
-                label_type,
-                body,
-            } => return Some(self.add_subgraph(id, title, label_type, body)),
-            Action::SetDirection(dir) => self.direction = dir,
-            Action::SetAccTitle(t) => {
-                self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
-            }
-            Action::SetAccDescr(t) => {
-                // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
-                let trimmed = t.trim_matches(is_ecmascript_whitespace);
-                let mut out = String::with_capacity(trimmed.len());
-                let mut chars = trimmed.chars().peekable();
-                while let Some(ch) = chars.next() {
-                    out.push(ch);
-                    if ch == '\n' {
-                        while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
-                            chars.next();
-                        }
+            replayed = replayed.saturating_add(1);
+            let Some(index) = frame.next else {
+                let frame = frames.pop().expect("the current replay frame exists");
+                if let Some(completion) = frame.subgraph {
+                    let id = self.complete_subgraph(completion, control)?;
+                    if let Some(parent) =
+                        frames.last_mut().and_then(|frame| frame.subgraph.as_mut())
+                    {
+                        parent.members.push(id);
                     }
                 }
-                self.acc_descr = Some(out);
+                continue;
+            };
+            let record = &mut arena.records[index];
+            frame.next = record.next;
+            let action = record.action.take().expect("an action is replayed once");
+            match action {
+                Action::AddEntity { name, alias } => {
+                    if let Some(subgraph) = &mut frame.subgraph {
+                        subgraph.members.push(name.clone());
+                    }
+                    self.add_entity(&name, alias.as_deref());
+                }
+                Action::AddAttributes { entity, attributes } => {
+                    if let Some(subgraph) = &mut frame.subgraph {
+                        subgraph.members.push(entity.clone());
+                    }
+                    self.add_attributes(&entity, attributes);
+                }
+                Action::AddRelationship { a, role, b, spec } => {
+                    if let Some(subgraph) = &mut frame.subgraph {
+                        subgraph.members.push(a.clone());
+                        subgraph.members.push(b.clone());
+                    }
+                    self.add_relationship(&a, &role, &b, spec);
+                }
+                Action::SetClass { entities, classes } => self.set_class(&entities, &classes),
+                Action::AddClassDef { classes, raw } => {
+                    let styles = split_styles(&raw);
+                    self.add_class_def(&classes, &styles);
+                }
+                Action::AddCssStyles { entities, raw } => {
+                    let styles = split_styles(&raw);
+                    self.add_css_styles(&entities, &styles);
+                }
+                Action::AddSubgraph {
+                    id,
+                    title,
+                    label_type,
+                    body,
+                } => frames.push(ErReplayFrame {
+                    next: body.first,
+                    subgraph: Some(ErSubgraphCompletion {
+                        id,
+                        title,
+                        label_type,
+                        members: Vec::new(),
+                        direction: None,
+                    }),
+                }),
+                Action::SetDirection(dir) => {
+                    if let Some(subgraph) = &mut frame.subgraph {
+                        subgraph.direction = Some(dir);
+                    } else {
+                        self.direction = dir;
+                    }
+                }
+                Action::SetAccTitle(t) => {
+                    self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
+                }
+                Action::SetAccDescr(t) => {
+                    // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
+                    let trimmed = t.trim_matches(is_ecmascript_whitespace);
+                    let mut out = String::with_capacity(trimmed.len());
+                    let mut chars = trimmed.chars().peekable();
+                    while let Some(ch) = chars.next() {
+                        out.push(ch);
+                        if ch == '\n' {
+                            while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
+                                chars.next();
+                            }
+                        }
+                    }
+                    self.acc_descr = Some(out);
+                }
             }
         }
-        None
-    }
-
-    fn apply(&mut self, a: Action) {
-        let _ = self.apply_action(a);
+        control.checkpoint()?;
+        Ok(())
     }
 
     fn into_render_model(self) -> ErDiagramRenderModel {
@@ -554,7 +656,7 @@ impl ErSyntax {
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
-        std::result::Result<Vec<Action>, ErGrammarError>,
+        std::result::Result<(ErActionArena, ErActionList), ErGrammarError>,
     )> {
         let mut facts = EditorSemanticFacts::new();
         let mut collector = ErEditorFactCollector::default();
@@ -571,11 +673,14 @@ impl ErSyntax {
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
             emitted = emitted.saturating_add(1);
             active
         });
-        let actions = er_grammar::ActionsParser::new().parse(controlled_events);
+        let mut arena = ErActionArena::default();
+        let actions = er_grammar::ActionsParser::new()
+            .parse(&mut arena, controlled_events)
+            .map(|actions| (arena, actions));
         control.checkpoint()?;
         Ok((facts, actions))
     }
@@ -638,7 +743,7 @@ fn construct_er_semantic_source(
 ) -> OperationControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
     let syntax = ErSyntax::lex(code, control)?;
     let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
-    let actions = match actions {
+    let (arena, actions) = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Ok(Err(Box::new(ErSemanticFailure {
@@ -649,13 +754,7 @@ fn construct_er_semantic_source(
     };
 
     let mut db = ErDb::new();
-    for (index, a) in actions.into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        db.apply(a);
-    }
-    control.checkpoint()?;
+    db.replay(arena, actions, control)?;
     Ok(Ok(ErSemanticSource { db, editor_facts }))
 }
 
@@ -2414,5 +2513,86 @@ mod tests {
         assert_eq!(model.subgraphs[0].id, "WithRL");
         assert_eq!(model.subgraphs[0].dir.as_deref(), Some("RL"));
         assert_eq!(model.subgraphs[0].nodes, ["A", "B"]);
+    }
+
+    fn nested_subgraphs(depth: usize) -> String {
+        let mut source = String::from("erDiagram\n");
+        for index in 0..depth {
+            source.push_str(&format!("subgraph G{index}\n"));
+        }
+        source.push_str("LEAF\n");
+        for _ in 0..depth {
+            source.push_str("end\n");
+        }
+        source
+    }
+
+    #[test]
+    fn er_flat_action_storage_and_membership_work_grow_with_records() {
+        for depth in [32, 128, 512] {
+            let source = nested_subgraphs(depth);
+            let control = OperationControl::new();
+            let syntax = ErSyntax::lex(&source, &control).unwrap();
+            let (_, parsed) = syntax
+                .into_editor_facts_and_actions(&source, &control)
+                .unwrap();
+            let (arena, actions) = parsed.unwrap();
+            assert_eq!(arena.records.len(), depth + 1);
+            assert_eq!(actions.first, actions.last, "one top-level subgraph");
+
+            let mut db = ErDb::new();
+            db.replay(arena, actions, &control).unwrap();
+            assert_eq!(db.subgraphs.len(), depth);
+            assert_eq!(db.membership_candidates, depth);
+            assert_eq!(db.completed_members.len(), depth);
+            assert_eq!(db.subgraphs[0].nodes, ["LEAF"]);
+            assert_eq!(db.subgraphs[depth - 1].nodes, ["G1"]);
+        }
+    }
+
+    #[test]
+    fn er_cancellation_during_one_deep_action_preserves_completed_inner_subgraphs() {
+        let depth = 1024;
+        let source = nested_subgraphs(depth);
+        let parsing = OperationControl::new();
+        let syntax = ErSyntax::lex(&source, &parsing).unwrap();
+        let (_, parsed) = syntax
+            .into_editor_facts_and_actions(&source, &parsing)
+            .unwrap();
+        let (arena, actions) = parsed.unwrap();
+        assert_eq!(actions.first, actions.last, "one top-level action");
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(12);
+        let mut db = ErDb::new();
+        let cancelled = db.replay(arena, actions, &control).unwrap_err();
+        assert_eq!(control.checkpoint(), Err(cancelled));
+        assert!(
+            !db.subgraphs.is_empty(),
+            "inner completion started before cancellation"
+        );
+        assert!(
+            db.subgraphs.len() < depth,
+            "the outer action was interrupted"
+        );
+        assert_eq!(db.subgraphs[0].id, "G1023");
+        assert_eq!(db.subgraphs[0].nodes, ["LEAF"]);
+        drop(db);
+        assert!(parse_er_model_for_render("erDiagram\nAFTER\n", &meta()).is_ok());
+    }
+
+    #[test]
+    fn er_cancellation_during_token_delivery_retains_the_terminal_outcome() {
+        let source = nested_subgraphs(64);
+        let control = OperationControl::new();
+        let syntax = ErSyntax::lex(&source, &control).unwrap();
+        let fact_checkpoints = syntax.events.len().div_ceil(128) + 1;
+        // Cancel during the third token batch, after inner grammar fragments have completed.
+        control.cancel_after_checkpoints(fact_checkpoints + 2);
+        let cancelled = syntax
+            .into_editor_facts_and_actions(&source, &control)
+            .err()
+            .expect("token delivery observes cancellation");
+        assert_eq!(control.checkpoint(), Err(cancelled));
     }
 }

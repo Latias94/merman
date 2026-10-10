@@ -420,13 +420,11 @@ fn deep_state_missing_outer_brace_10000() {
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the ER ownership repair"]
 fn deep_er_valid_3000() {
     run_child(Case::ErValid, 3_000);
 }
 
 #[test]
-#[ignore = "deep baseline characterization; enable after the ER fragment repair"]
 fn deep_er_missing_outer_end_3000() {
     run_child(Case::ErMissingOuterEnd, 3_000);
 }

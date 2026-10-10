@@ -1577,3 +1577,178 @@ fn parse_diagram_er_accessibility_multiline_uses_ecmascript_trim() {
         assert_eq!(parsed.model["accDescr"], expected, "{source}");
     }
 }
+
+#[test]
+fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_order() {
+    let source = concat!(
+        "erDiagram\n",
+        "direction LR\n",
+        "subgraph Outer [Outer Domain]\n",
+        "PRE\n",
+        "subgraph Inner [Inner Domain]\n",
+        "direction TB\n",
+        "A ||--|| B : inner_relation\n",
+        "end\n",
+        "PRE ||--|| C : outer_relation\n",
+        "Inner ||--|| C : group_relation\n",
+        "style Inner fill:#eee\n",
+        "direction BT\n",
+        "end\n",
+        "B ||--|| D : cross_relation\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let model = &parsed.model;
+    assert_eq!(model["direction"], "LR");
+    assert_eq!(model["subgraphs"][0]["id"], "Inner");
+    assert_eq!(model["subgraphs"][0]["nodes"], json!(["A", "B"]));
+    assert_eq!(model["subgraphs"][0]["dir"], "TB");
+    assert_eq!(model["subgraphs"][0]["cssStyles"], json!(["fill:#eee"]));
+    assert_eq!(model["subgraphs"][1]["id"], "Outer");
+    assert_eq!(model["subgraphs"][1]["nodes"], json!(["PRE", "Inner", "C"]));
+    assert_eq!(model["subgraphs"][1]["dir"], "BT");
+    let entities = model["entities"].as_object().unwrap();
+    assert!(
+        entities
+            .keys()
+            .map(String::as_str)
+            .eq(["PRE", "A", "B", "C", "D"])
+    );
+    assert_eq!(entities["PRE"]["id"], "entity-PRE-0");
+    let relationships = model["relationships"].as_array().unwrap();
+    assert!(
+        relationships
+            .iter()
+            .map(|relationship| relationship["roleA"].as_str().unwrap())
+            .eq([
+                "inner_relation",
+                "outer_relation",
+                "group_relation",
+                "cross_relation",
+            ])
+    );
+    assert_eq!(relationships[2]["entityA"], "Inner");
+    assert_eq!(relationships[3]["entityA"], "entity-B-2");
+}
+
+#[test]
+fn parse_diagram_er_shared_members_belong_to_the_first_completed_subgraph() {
+    let source = concat!(
+        "erDiagram\n",
+        "subgraph Outer\n",
+        "A\n",
+        "subgraph First\nA\nB\nend\n",
+        "A\nC\n",
+        "subgraph Empty\nend\n",
+        "end\n",
+        "subgraph Peer\nA\nB\nC\nD\nFirst\nFirst\nend\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let subgraphs = parsed.model["subgraphs"].as_array().unwrap();
+    assert!(
+        subgraphs
+            .iter()
+            .map(|subgraph| subgraph["id"].as_str().unwrap())
+            .eq(["First", "Empty", "Outer", "Peer",])
+    );
+    assert_eq!(subgraphs[0]["nodes"], json!(["A", "B"]));
+    assert_eq!(subgraphs[1]["nodes"], json!([]));
+    assert_eq!(subgraphs[2]["nodes"], json!(["First", "C", "Empty"]));
+    assert_eq!(subgraphs[3]["nodes"], json!(["D"]));
+}
+
+#[test]
+fn parse_diagram_er_repeated_subgraph_ids_keep_records_and_update_the_latest_lookup() {
+    let source = concat!(
+        "erDiagram\n",
+        "subgraph Same [Outer]\nA\n",
+        "subgraph Same [Inner]\nB\nend\n",
+        "class Same inner_class\n",
+        "style Same fill:#abc\n",
+        "A ||--|| Same : before_outer_completion\n",
+        "end\n",
+        "class Same outer_class\n",
+        "style Same stroke:#def\n",
+        "subgraph Same [Sibling]\nB\nC\nend\n",
+        "class Same last_class\n",
+        "style Same color:#123\n",
+        "Same ||--|| X : after_last_completion\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let subgraphs = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(subgraphs.len(), 3);
+    for subgraph in subgraphs {
+        assert_eq!(subgraph["id"], "Same");
+    }
+    assert_eq!(subgraphs[0]["title"], "Inner");
+    assert_eq!(subgraphs[0]["nodes"], json!(["B"]));
+    assert_eq!(subgraphs[0]["classes"], json!(["inner_class"]));
+    assert_eq!(subgraphs[0]["cssStyles"], json!(["fill:#abc"]));
+    assert_eq!(subgraphs[1]["title"], "Outer");
+    assert_eq!(subgraphs[1]["nodes"], json!(["A", "Same"]));
+    assert_eq!(subgraphs[1]["classes"], json!(["outer_class"]));
+    assert_eq!(subgraphs[1]["cssStyles"], json!(["stroke:#def"]));
+    assert_eq!(subgraphs[2]["title"], "Sibling");
+    assert_eq!(subgraphs[2]["nodes"], json!(["C"]));
+    assert_eq!(subgraphs[2]["classes"], json!(["last_class"]));
+    assert_eq!(subgraphs[2]["cssStyles"], json!(["color:#123"]));
+    assert_eq!(parsed.model["relationships"][0]["entityB"], "Same");
+    assert_eq!(parsed.model["relationships"][1]["entityA"], "Same");
+}
+
+#[test]
+fn parse_diagram_er_empty_subgraph_and_trimmed_member_deduplication_match_upstream() {
+    let source = concat!(
+        "erDiagram\n",
+        "subgraph Empty\nend\n",
+        "subgraph Members\n\" A \"\nA\nend\n",
+        "Empty ||--|| Members : groups\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["subgraphs"][0]["nodes"], json!([]));
+    assert!(parsed.model["subgraphs"][0]["dir"].is_null());
+    assert_eq!(parsed.model["subgraphs"][1]["nodes"], json!([" A "]));
+    assert_eq!(parsed.model["relationships"][0]["entityA"], "Empty");
+    assert_eq!(parsed.model["relationships"][0]["entityB"], "Members");
+}
+
+#[test]
+fn parse_er_missing_outer_end_preserves_recovery_facts_and_eof_span() {
+    let source = "erDiagram\nsubgraph Outer\nsubgraph Inner\n顧客\nend\n";
+    let engine = Engine::new();
+    let error = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap_err();
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("missing end must remain an ER parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(source.len(), source.len()))
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", source)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let entity_start = source.find("顧客").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "顧客"
+        && symbol.selection == SourceSpan::new(entity_start, entity_start + "顧客".len())));
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.span == Some(SourceSpan::new(source.len(), source.len())))
+    );
+}
