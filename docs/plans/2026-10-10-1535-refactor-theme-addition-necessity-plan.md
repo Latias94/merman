@@ -29,6 +29,9 @@ proof gap. U2, U4–U7 and U9 have further unimplemented work below; U8 cannot c
 overall plan until that work receives its own verification. Earlier receipts remain valid
 only for their recorded revision and scope.
 
+Implementation decisions and local verification for the reopened work are recorded in the
+[remaining cleanup execution](../performance/theme_remaining_cleanup_execution_2026-10-10.md).
+
 The frozen comparison is main `2928265122d5a3d35e239e3ddbce885c7e342c59` against
 branch `8664ff06ea234da73c59de99fb12a76034e301d3`: 1,683 changed paths,
 421,112 added text lines, 40,358 deleted text lines, and 104 binary paths.

@@ -134,11 +134,11 @@ around host resource admission.
 Development snapshots also exposed a `VendoredDefault` measurement fallback even though no
 vendored font or metrics implementation existed. Remove that variant and
 `HostMeasurementFallbackPolicy::default_parity()` from host policy construction. Use
-`HostMeasurementFallback::NativeCatalog` for retained custom-font catalogs and
-`HostMeasurementFallback::AcceptHostDependent` when an admitted external result may be retained.
+`HostMeasurementFallback::AcceptHostDependent` when an admitted external measurement may be retained.
+The readable `NativeCatalog` policy value does not enable an embedded-font backend: custom font
+catalog compilation returns `EmbeddedFontsUnavailable` after input and resource validation.
 The asset-free catalog constructor is now `FontCatalog::system_fonts()` instead of
-`FontCatalog::default_parity()`; the rename does not add bundled fonts or make system-font output
-portable.
+`FontCatalog::default_parity()`; it does not add bundled fonts or make system-font output portable.
 
 The unreleased `ThemeDefinitionV1` contract is still pre-freeze. Development snapshots that used
 `family = "er", target = "requirement"` must use `family = "er", target = "entity"`; the
