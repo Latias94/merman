@@ -13,9 +13,15 @@ execution: code
 
 U1-U7 implementation and static review are complete. **U8 remains active; the goal
 is not complete.** Implementation is frozen at `3a11f46ba`; `62c59113a` contains
-only documentation changes. The subsequent facade documentation repairs change
-comments only; the implementation remains frozen. Final acceptance records those
-repairs separately from runtime evidence.
+only documentation changes. `17da680e9` repairs facade documentation comments;
+the implementation remains frozen. Final local measurements use that clean
+revision and record comment-only repairs separately from runtime evidence.
+U8's affected remote feature/platform CI matrix is still outstanding; the branch
+has not been pushed for these final checks.
+The earlier sandbox Git-write restriction has been resolved. The final
+measurement report and archives are included with this local verification
+update. After loopback socket access was restored, all 704 CI script unit tests
+passed; the earlier five environment errors remain archived alongside the recheck.
 
 - U1: Inventory covers all 35 renderer families, including Error; there are
   34 selectable diagram families.
@@ -33,13 +39,20 @@ repairs separately from runtime evidence.
   corrected. Historical migration records remain explicitly separated. The current
   documentation scan checked 46 files and confirmed all 201 relative file links
   exist; this is not remote-URL or exhaustive anchor verification.
-- U8: Final local checks below have passed. SVG corpus comparison/root viewport,
-  optimized-release and calibrated performance/size acceptance remain pending. No speed or size improvement is claimed.
+- U8: Local contract, SVG corpus/root viewport and optimized-release checks have
+  passed. Equal-feature, adjacent-revision latency, allocation and CLI/WASM size evidence is recorded
+  in the [final measurement report](../performance/theme_path_retirement_2026-10-10.md).
+  Eight latency rows satisfy the registered non-regression thresholds; one A/A
+  row is inconclusive. Flowchart allocator smoke checks pass; the supplementary
+  Sequence lane is unavailable at both revisions. CLI size increases about 1%;
+  the unchanged web-full budget passes. No speed, allocation or size improvement
+  is claimed. Remote affected-platform CI remains pending.
 
 ### Final frozen-implementation local evidence
 
 These are final local receipts for `3a11f46ba`, distinct from the earlier migration
-checks below. They do not establish completion of the pending U8 lanes.
+checks below. Comment-only repairs are identified separately. They do not attest
+the outstanding remote platform CI matrix or unavailable measurement lanes.
 
 | Owner | Result |
 | --- | --- |
@@ -59,12 +72,28 @@ checks below. They do not establish completion of the pending U8 lanes.
 | Dependency and legal owners | cargo-deny, representative closures, 13 license reports, 382 release projections and third-party verification passed |
 | Web full WASM and TypeScript | Rebuilt full artifact; 42 exports, 53 bindings and five entries verified; input freshness passed |
 | Playground | Fresh build and test typecheck passed; all 77 Chromium tests passed |
+| Optimized evidence / qualification | 13 passed, one ignored / 11 passed |
+| Full SVG corpus | Structure, parity and parity-root comparisons passed |
+| Chromium root containment | 3,712 fixtures, zero blocking failures; 54 browser diagnostics, 2,344 inherited cases, one existing exact residual, zero unused residuals |
+| Native latency | Nine output identities match; eight rows have 14 AB/BA pairs and confirmed non-regression; one A/A-unstable row leaves overall result inconclusive |
+| Native allocator | Flowchart six scales x five repetitions pass existing smoke caps; no allocation reduction or candidate admission; Sequence preflight fails at both revisions |
+| Equal-feature CLI size | Raw +1.01%, stripped +1.03%, gzip +0.91%; same 441-row normal package/version closure |
+| Web-full size budget | Unchanged official assembled-package budget passed; independent clean-clone comparison retained in measurement report |
 | Current documentation | 46 files, 201 existing relative file links; historical references classified separately |
+| CI script unit tests | 704 passed after restoring local loopback access; original sandbox errors retained |
 
 The first browser artifact build stopped at a wasm-opt 133 assertion. Repeating
 with the existing CI-pinned wasm-opt 131 selected through local PATH, after verifying
 its hash, passed. No production code was changed for this tool mismatch. Browser
 receipts apply to the rebuilt artifact, not the earlier stale Playground dist.
+
+The initial full root oracle stopped on an external-image decode failure. The
+unchanged full recheck passed after focused local/upstream decoding succeeded.
+Both receipts are retained; no comparator or residual was relaxed. Performance
+archives preserve the unstable A/A row and both failed Sequence preflights.
+Those are evidence limitations, not green checks. The complete release-profile
+size matrix remains a publication requirement; this local comparison selects
+web-full and the equal-feature CLI.
 
 ### Completed migration receipts
 
@@ -100,8 +129,9 @@ Earlier Web input checks (151 tests), license-report regeneration, third-party a
 release-material verification, and six theme-contract rustdoc examples passed at
 their recorded revisions. `1fb614180` owns the Web/license refresh; `9f3e5d42d` and
 `c8dcdd721` clarify historical/current documentation. Those scoped receipts do not
-substitute for the remaining SVG corpus, optimized-release and performance/size
-lanes; the final workspace/docs/dependency receipts are listed above.
+substitute for final frozen-tree verification. The final workspace, documentation,
+dependency, SVG, optimized-release and measurement receipts are listed above;
+the affected remote platform CI matrix remains outstanding.
 
 ## Goal Capsule
 
