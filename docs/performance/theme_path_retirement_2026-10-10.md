@@ -7,6 +7,11 @@ renderer-owned family artifacts bind winning visual properties before emission.
 This is an ownership and maintenance refactor. These measurements do not establish
 a latency, allocation or artifact-size improvement.
 
+The [final deletion inventory](../knowledge/engineering/theme-path-retirement-inventory-2026-10-09.md)
+maps removed readers/providers/gates to their replacement owners across all 35
+renderer families. The [gate removal record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+separates historical authorization from retained current behavior tests.
+
 The [implementation plan](../plans/2026-10-09-1500-refactor-theme-path-retirement-plan.md)
 remains open for the affected remote platform CI matrix. Local tests do not attest
 other operating systems, SDKs or packaged bindings. The verification update was

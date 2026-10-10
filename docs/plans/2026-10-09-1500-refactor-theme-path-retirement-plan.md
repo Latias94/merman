@@ -39,7 +39,9 @@ update. After loopback socket access was restored, all 704 CI script unit tests
 passed; the earlier five environment errors remain archived alongside the recheck.
 
 - U1: Inventory covers all 35 renderer families, including Error; there are
-  34 selectable diagram families.
+  34 selectable diagram families. The
+  [final deletion closure and replacement owners](../knowledge/engineering/theme-path-retirement-inventory-2026-10-09.md)
+  preserve the initial inventory separately from the final family partition.
 - U2-U4: Family terminal bindings and final Flowchart node/cluster/edge source
   cutovers are committed. The frozen-tree static audit found no remaining production
   terminal interpretation outside prepared family artifacts. Edge typography is
@@ -60,8 +62,10 @@ passed; the earlier five environment errors remain archived alongside the rechec
   Eight latency rows satisfy the registered non-regression thresholds; one A/A
   row is inconclusive. Flowchart allocator smoke checks pass; the supplementary
   Sequence lane is unavailable at both revisions. CLI size increases about 1%;
-  the unchanged web-full budget passes. No speed, allocation or size improvement
-  is claimed. Remote affected-platform CI remains pending.
+  the initial unchanged web-full budget passed at `17da680e9`. The final
+  shared source has a verified, authorized six-artifact baseline with measured
+  +3% ceilings. No speed or allocation improvement is claimed. Remote
+  affected-platform CI remains pending.
 
 ### Final frozen-implementation local evidence
 

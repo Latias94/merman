@@ -1,6 +1,73 @@
 # Theme path retirement inventory
 
-Status: initial planning snapshot, captured October 9, 2026, before the family cutovers.
+Status: initial planning snapshot, captured October 9, 2026, before the family cutovers;
+final deletion closure added October 10 at runtime source `dd79ca584`.
+
+## Final deletion closure
+
+The final source/reference audit at `3a11f46ba` covered all 35 renderer families;
+the sharing follow-up at `dd79ca584` changes nine implementation files without
+restoring a reader or provider. The pushed branch source at `32e2588e8` contains no
+`SvgTheme`, `MermaidThemeAdapter`, `FamilyPaintDefaultPaths`, historical bridge
+module or retirement authorization caller. This is a source audit, not proof
+that every future arbitrary JSON reader would be detected automatically.
+
+| Deleted closure | Current owner and retained contract |
+| --- | --- |
+| `merman-render/src/theme.rs`, parity theme family readers and old exports | Core Mermaid derivation remains in `merman-core/src/theme.rs`; family preparation supplies concrete paint, typography, raw CSS and provenance bindings. Parity theme helpers retain only fixed default palettes. |
+| `family/parse_defaults.rs`, `FamilyPaintDefaultPaths` and default eligibility plumbing | Family bindings preserve explicit source/site ownership before applying typed fallback; parser/layout configuration stays with its original owner. |
+| `svg/parity/class/settings.rs` | Class preparation retains final node/interface, relation, namespace and typography plans; Class CSS/writers consume those prepared facts. |
+| `legacy_family_theme_bridge.rs`, `legacy_projection_retirement.rs`, `legacy_tombstones.rs`, private exports | Current route classification and family paint evidence remain; no lazy legacy provider/cache or historical witness dispatch survives. |
+| Acceptance `cutover_manifest.rs`, `route_retirement_manifest.rs`, retirement integration target, fixed Class CSS witnesses | Preset qualification, support discovery and actual Block/Class/Flowchart paint tests retain live contracts. Historical authority and CI/release commands are removed together. |
+| Renderer `theme_raster_paint.rs`, exporter `raster_paint_cutover.rs`, private facade pair/digest retention | Ordinary native encoding, resource admission, filter receipts and current emitted-paint evidence remain. The unused optional exporter-to-`sha2` dependency edge is removed from workspace and fuzz lockfiles. |
+
+The exact 16 deleted paths are reproducible with
+`git diff --name-status f8160267a3e905eb2d9d6c0b0c980d9fa1f07657..32e2588e8 --diff-filter=D`.
+Deleted symbols in retained files belong to the same closures above. Historical
+source/digests and retained current checks are detailed in the
+[gate removal record](verification/2026-10-09-theme-retirement-gate-removal.md).
+
+### Final family owner partition
+
+The table covers the 35 `RenderFamilyKind` variants. Concrete family artifacts
+are prepared through `crates/merman-render/src/family/preparation.rs` and
+family-local preparation/binding modules. They preserve each family's existing
+support limits; this inventory does not qualify additional targets or effects.
+
+| Family/families | Prepared facts consumed by the final writer |
+| --- | --- |
+| Flowchart, Swimlane, Agentflow | Shared Flowchart artifact retains family-specific palettes, node/cluster/source terminals, prepared class styles, Rough wrapper style, render settings and occurrence-owned edge typography. |
+| Sequence | Prepared settings, actor/message/control/rect terminal styles and effect selection; writer geometry and actual emission counts remain downstream. |
+| Class | Node/interface visual index, relations, namespaces, labels and typography plans. |
+| Mindmap | Node palette and prepared node/edge/typography bindings. |
+| State | State style plan supplies final node/edge/class and marker declarations. |
+| ER | Entity/row/text/subgraph/relation bindings preserve explicit source ownership. |
+| Block | Node/edge/marker/background and typography plans plus ordered, pre-parsed authored class declarations. |
+| Requirement | Final actual-node/source and relation terminals. |
+| C4 | Element text/paint and prepared relation/default colors. |
+| Sankey | Prepared node palette, links and typography; value prefixes and viewport settings remain content/layout configuration. |
+| GitGraph | Terminal styles and explicit ownership; title geometry and URL serialization remain downstream. |
+| Treemap | Prepared section/leaf/node visuals; fitted font size remains geometry-dependent. |
+| Venn | Prepared area visuals; Rough numeric realization remains a backend operation. |
+| Usecase | Prepared source/visual forms; label markup and escaping remain serialization. |
+| Wardley | Prepared paint binding and root disposition. |
+| Error, Info, Zenuml, Architecture, Cynefin, Railroad, Kanban, Gantt, Pie, Packet, Timeline, Journey, Radar, QuadrantChart, XYChart, TreeView, Ishikawa, EventModeling | Existing family-local prepared paint/typography bindings consume compatibility input before writer use. Pie's `highlightSlice` selects interactive classes, not paint ownership. |
+
+Final source inspection distinguishes preparation-time resolution from lawful
+downstream work: geometry-dependent effect realization, HTML/native safety,
+resource/cancellation checks, residual reporting, escaping, references and actual
+emission receipts remain. No universal CSS interpreter, global cache, fixture
+allowlist or replacement compatibility provider was introduced.
+
+The current matrix invariant enumerates typography, rule facets, ordinal palettes
+and effect routes and rejects `LegacyCompatibility`; it is not a constant-empty
+historical inventory. It does not detect every possible reader bypassing that
+matrix. The complementary source/reference audit and family owner tests establish
+the current deletion boundary. Public package checks also reject retired imports.
+The [measurement report](../../performance/theme_path_retirement_2026-10-10.md)
+and its separate initial/shared-source archives identify each validation revision.
+
+## Initial inventory
 
 This inventory records the initial source owners and work partition for the approved unified
 theme lowering refactor. Its file lists and obligations describe that starting point, not the
