@@ -38,9 +38,13 @@ stack. Raw parity SVG does not enter this recursive backend and is not subject t
 The sealed SVG artifact retains its authorized font catalog and font-source policy. Native PNG,
 JPEG, and PDF export consult host fonts only when that policy permits them. An authorized system
 scan is cached process-wide and shared by subsequent exports; such an export is host-dependent and
-may select different installed fonts or fallback glyphs on different machines. Embedded-only
-exports do not perform host discovery. `RasterExportReport` and `PdfExportReport` record the actual
-font source and fallback decisions made while parsing the sealed artifact.
+may select different installed fonts or fallback glyphs on different machines.
+
+Embedding theme font assets is currently unavailable: font-catalog compilation rejects them with
+`EmbeddedFontsUnavailable`. The retained embedded-only policy does not enable that capability;
+without an available font source it rejects export before host discovery. This restriction is
+separate from the supported RaTeX math-font path. `RasterExportReport` and `PdfExportReport` record
+the actual font source and fallback decisions made while parsing the sealed artifact.
 
 Embedded images have a narrower input contract. The native exporters resolve only `data:` URLs;
 they do not read image paths from the filesystem and do not fetch images over the network. The

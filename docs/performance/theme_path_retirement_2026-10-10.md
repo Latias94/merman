@@ -1,5 +1,16 @@
 # Theme path retirement: local verification and measurements
 
+## Scope correction: subsequent addition-necessity review
+
+The completion recorded below applies to the October 9 path-retirement plan and its
+frozen revisions. It did not remove every historical theme proof model: the later
+addition-necessity review found the generic route-cutover projection chain and the
+private self-consuming fixture catalog still present at `8664ff06ea234da73c59de99fb12a76034e301d3`.
+Those remaining owners are covered by the [subsequent cleanup plan](../plans/2026-10-10-1535-refactor-theme-addition-necessity-plan.md)
+and its [execution evidence](theme_addition_cleanup_execution_2026-10-10.md).
+The original timing, artifact measurements and remote receipts below remain bound
+to their stated revisions; they do not verify the subsequent cleanup.
+
 The unified terminal-theme implementation is complete locally. It removes the
 production `SvgTheme`/`MermaidThemeAdapter` closure and historical retirement
 authorization machinery. Mermaid input and derivation remain in the core;
