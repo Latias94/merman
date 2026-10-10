@@ -340,3 +340,50 @@ more width; the large offline fixture now explicitly proves Interactive rejectio
 the existing bounded TrustedNative profile. Debug CLI process timings for the five reproductions
 were approximately 48–52 ms median over seven runs per case, including process startup; these
 are validation observations, not evidence of a performance improvement.
+
+## Corrective geometry review closure
+
+The compound layout now measures complete subtrees in their immediate parent scopes. Empty
+subtrees are translated as complete envelopes beside their actual sibling groups and direct
+nodes; final frames reuse the same resolved bounds after one scene normalization. Anchored
+nodes retain their coarse-grid projection. This preserves both fully empty root trees and mixed
+parents without using foreign nodes to place an internal empty frame.
+
+Graph terminals now resolve the painted contour, including LeanRight and LeanLeft row spans.
+Drawing, multiline label placement, and attachments share that geometry. Both terminal normal
+runs must be continuous; missing, bent, or duplicate cells reject the route candidate. Returning
+bottom lanes contain the entire target terminal segment through ancestor group frames.
+
+Marker berths are allocated when each canonical route is committed, so later candidates see
+actual occupied heads. Only the same endpoint, contour contact, and normal may share that
+terminal corridor. This retains finite existing route alternatives and restores the backlink
+fixtures without adding a general assignment solver. Subroutine labels with zero horizontal
+padding also preserve their inner decoration.
+
+The new planning stages have independent exact/N-minus-one and phase-local cancellation
+oracles: compound pair work is 6/5; Sequence early message planning is 70/69; the three-cell
+terminal index admits its complete work before allocating storage. Failed operations preserve
+resource ledgers and do not partially commit axis requirements.
+
+The 96 copied fixture files and all named corrected byte snapshots remain unchanged. The
+Issue #53 Canonical blank-cell characterization changes from 3220 to 3236 because the legal
+side lane is shorter; both layouts retain all seven arrows, the same extents, and the existing
+compactness assertions. The shared binding work boundary remains 3065/3064. No resource ceiling
+or transport schema changes were needed.
+
+Final corrective validation on Windows, using serial Cargo invocations and two build jobs:
+
+- ASCII all-diagram nextest: 1376 passed.
+- Bindings core, WASM host, FFI, and UniFFI nextest: 414 passed.
+- CLI release-feature nextest: 497 passed; one existing ignored test remains skipped.
+- Clippy with warnings denied, the real wasm32 target check, formatting, and whitespace checks:
+  passed.
+- Original five CLI cases and 56 review reproductions: successful and lossless; compound-only
+  pressure cases: 192 passed.
+- Independent Standards, Spec, route, and resource reviews: all confirmed findings closed.
+
+Code review: harness-native fallback. The earlier CE orchestration did not yield a completed
+review receipt; independent native review axes and specialist reviews supplied the final gate.
+The unchanged coarse-rank limitation for a foreign node interleaved between two node-bearing
+group members remains outside this empty-subtree repair; this change does not replace compound
+ranking with a general layout solver.

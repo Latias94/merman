@@ -335,3 +335,264 @@ fn invalid_message_label_host() -> AsciiError {
         feature: "message label host",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitCause, AsciiResourceLimitId};
+    use crate::sequence::model::{
+        SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration, SequenceLineStyle,
+        SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
+    };
+    use crate::sequence::render::render_sequence_diagram_with_execution;
+    use crate::sequence::tree::SequenceTreeBuilder;
+    use merman_core::{CancelReason, OperationControl};
+    use unicode_segmentation::UnicodeSegmentation;
+
+    const FIRST_LABEL: &str = "abcdefghijklmno";
+    const REPLY_LABEL: &str = "reply";
+    // Two participant scans, two event admissions, two cache entries, and three units per
+    // ASCII label byte: source preflight, source segment, and normalized output segment.
+    const EXACT_MESSAGE_PLANNING_WORK: usize = 2 * 3 + 2 + 2 + 3 * (15 + 5);
+    // The second label's transaction rolls back, retaining the first plan and the next event.
+    const WORK_BEFORE_SECOND_LABEL: usize = 2 * 3 + 1 + 3 * 15 + 1 + 1;
+    const SEEDED_WORK: usize = 7;
+    const SEEDED_DOCUMENT_CELLS: usize = 11;
+
+    #[test]
+    fn early_message_planning_admits_exact_work_and_rejects_limit_minus_one() {
+        let diagram = two_message_diagram(REPLY_LABEL);
+        let options = AsciiRenderOptions::ascii();
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                EXACT_MESSAGE_PLANNING_WORK,
+            )
+            .unwrap();
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::for_test(&exact_policy),
+            OperationPhase::Layout,
+        );
+
+        let layout = calculate_layout_with_resources(
+            &diagram,
+            &options,
+            &mut exact_resources,
+            &mut exact_checkpoints,
+        )
+        .expect("the independently derived early-planning work limit should fit exactly");
+
+        assert_eq!(
+            exact_resources.layout_work_used(),
+            EXACT_MESSAGE_PLANNING_WORK
+        );
+        assert_eq!(exact_resources.document_cells_used(), 0);
+        assert_eq!(layout.participant_centers, [2, 20]);
+        assert_eq!(layout.total_width, 22);
+        assert_eq!(layout.message_labels.len(), 2);
+        assert_eq!(layout.message_labels[&0].metrics().max_width, 15);
+        assert_eq!(layout.message_labels[&1].metrics().max_width, 5);
+
+        let below_policy = exact_policy
+            .with_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                EXACT_MESSAGE_PLANNING_WORK - 1,
+            )
+            .unwrap();
+        let mut below_resources = ResourceContext::new(below_policy);
+        let mut below_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::for_test(&below_policy),
+            OperationPhase::Layout,
+        );
+        let error = calculate_layout_with_resources(
+            &diagram,
+            &options,
+            &mut below_resources,
+            &mut below_checkpoints,
+        )
+        .expect_err("the second cache admission must reject before assigning actor centers");
+
+        assert_work_ceiling(
+            error,
+            EXACT_MESSAGE_PLANNING_WORK,
+            EXACT_MESSAGE_PLANNING_WORK - 1,
+            below_policy,
+        );
+        assert_eq!(
+            below_resources.layout_work_used(),
+            EXACT_MESSAGE_PLANNING_WORK - 1
+        );
+        assert_eq!(below_resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn early_message_planning_work_rejection_rolls_back_the_render_ledger() {
+        let diagram = two_message_diagram(REPLY_LABEL);
+        let original_diagram = diagram.clone();
+        let maximum = SEEDED_WORK + EXACT_MESSAGE_PLANNING_WORK - 1;
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, maximum)
+            .unwrap();
+        let mut resources = seeded_resources(policy);
+        let control = OperationControl::new();
+        let error = render_sequence_diagram_with_execution(
+            &diagram,
+            None,
+            &AsciiRenderOptions::ascii(),
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("the render should reject the second early-plan cache admission");
+
+        assert_work_ceiling(error, maximum + 1, maximum, policy);
+        assert_eq!(resources.layout_work_used(), SEEDED_WORK);
+        assert_eq!(resources.document_cells_used(), SEEDED_DOCUMENT_CELLS);
+        assert_eq!(diagram, original_diagram);
+    }
+
+    #[test]
+    fn early_message_planning_cancels_inside_the_second_label_and_rolls_back_render() {
+        let multi_codepoint_grapheme = "\u{301}".repeat(128);
+        assert_eq!(multi_codepoint_grapheme.graphemes(true).count(), 1);
+        assert_eq!(multi_codepoint_grapheme.chars().count(), 128);
+
+        for (name, second_label) in [
+            ("ordinary label", "z".repeat(128)),
+            ("one multi-codepoint grapheme", multi_codepoint_grapheme),
+        ] {
+            let diagram = two_message_diagram(&second_label);
+            let original_diagram = diagram.clone();
+            let policy = AsciiResourcePolicy::default();
+            let base_resources = seeded_resources(policy);
+            let control = OperationControl::new();
+            // The short first label and its cache admission complete before this checkpoint.
+            // The second label still has many normalized segments left, including when all
+            // of its source codepoints belong to one zero-width grapheme.
+            control.cancel_after_checkpoints(250);
+            let execution = AsciiExecution::new(&control, &policy);
+            let mut resources = execution.resource_context(&base_resources, OperationPhase::Layout);
+            let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+            let error = calculate_layout_with_resources(
+                &diagram,
+                &AsciiRenderOptions::ascii(),
+                &mut resources,
+                &mut checkpoints,
+            )
+            .expect_err("cancellation must stop the second label before centers are returned");
+
+            assert_layout_cancellation(error, name);
+            assert_eq!(
+                base_resources.layout_work_used(),
+                SEEDED_WORK + WORK_BEFORE_SECOND_LABEL,
+                "{name}: the first label must have completed before the second label rolled back",
+            );
+            assert_eq!(base_resources.document_cells_used(), SEEDED_DOCUMENT_CELLS);
+            assert_eq!(diagram, original_diagram);
+
+            let mut render_resources = seeded_resources(policy);
+            let render_control = OperationControl::new();
+            render_control.cancel_after_checkpoints(250);
+            let error = render_sequence_diagram_with_execution(
+                &diagram,
+                None,
+                &AsciiRenderOptions::ascii(),
+                &mut render_resources,
+                AsciiExecution::new(&render_control, &policy),
+            )
+            .expect_err("the render must observe the same in-planning cancellation");
+
+            assert_layout_cancellation(error, name);
+            assert_eq!(render_resources.layout_work_used(), SEEDED_WORK, "{name}");
+            assert_eq!(
+                render_resources.document_cells_used(),
+                SEEDED_DOCUMENT_CELLS,
+                "{name}",
+            );
+            assert_eq!(diagram, original_diagram);
+        }
+    }
+
+    fn two_message_diagram(second_label: &str) -> AsciiSequenceDiagram {
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
+        let mut builder = SequenceTreeBuilder::new(2, &resources, execution).unwrap();
+        for (model_index, label) in [FIRST_LABEL, second_label].into_iter().enumerate() {
+            builder
+                .push_event(
+                    SequenceEvent::Message(SequenceMessage {
+                        model_index,
+                        from: model_index,
+                        to: 1 - model_index,
+                        label: label.to_string(),
+                        wrap: false,
+                        style: SequenceLineStyle::Solid,
+                        source_marker: SequenceArrowHead::None,
+                        target_marker: SequenceArrowHead::Filled,
+                        direction: SequenceMessageDirection::Forward,
+                        central_decoration: SequenceCentralDecoration::None,
+                    }),
+                    &resources,
+                    execution,
+                )
+                .unwrap();
+        }
+        AsciiSequenceDiagram {
+            participants: ["A", "B"]
+                .into_iter()
+                .map(|id| SequenceParticipant {
+                    id: id.to_string(),
+                    label: SequenceParticipantLabel::from_raw(
+                        id,
+                        false,
+                        TerminalWidthProfile::Unicode,
+                    ),
+                })
+                .collect(),
+            lifecycles: vec![SequenceActorLifecycle::default(); 2],
+            boxes: Vec::new(),
+            body: builder.finish().unwrap(),
+        }
+    }
+
+    fn seeded_resources(policy: AsciiResourcePolicy) -> ResourceContext {
+        let resources = ResourceContext::new(policy);
+        resources.charge_layout_work(SEEDED_WORK).unwrap();
+        resources
+            .charge_document_cells(SEEDED_DOCUMENT_CELLS)
+            .unwrap();
+        resources
+    }
+
+    fn assert_work_ceiling(
+        error: AsciiError,
+        actual: usize,
+        maximum: usize,
+        policy: AsciiResourcePolicy,
+    ) {
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.phase() == AsciiResourceLimitPhase::LayoutWork
+                    && details.cause == AsciiResourceLimitCause::Ceiling
+                    && details.profile == policy.profile()
+                    && details.actual == actual
+                    && details.max == maximum
+        ));
+    }
+
+    fn assert_layout_cancellation(error: AsciiError, name: &str) {
+        assert!(
+            matches!(
+                error,
+                AsciiError::Cancelled(cancelled)
+                    if cancelled.phase == OperationPhase::Layout
+                        && cancelled.reason == CancelReason::Requested
+            ),
+            "{name}: {error}",
+        );
+    }
+}

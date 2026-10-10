@@ -60,19 +60,47 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    resources.transaction(|resources| {
+        reserve_compound_axis_spacing_inner(
+            graph,
+            nodes,
+            topology,
+            policy,
+            column_widths,
+            row_heights,
+            resources,
+            execution,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reserve_compound_axis_spacing_inner(
+    graph: &AsciiGraph,
+    nodes: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    policy: &GraphLayoutPolicy,
+    column_widths: &mut AxisSizes,
+    row_heights: &mut AxisSizes,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    execution.checkpoint(OperationPhase::Layout)?;
+    resources.charge_layout_work(graph.groups.len())?;
     let mut envelopes = Vec::new();
     envelopes
         .try_reserve(graph.groups.len())
         .map_err(|_| layout_work_allocation_failed())?;
     let group_bounds =
         raw_group_bounds_batch(graph, nodes, topology, policy, resources, execution)?;
+    let mut membership_resources = resources.clone();
     for group_index in 0..graph.groups.len() {
         execution.checkpoint_loop(OperationPhase::Layout, group_index)?;
-        let members = group_member_indices(topology, group_index, resources)?;
+        let members = group_member_indices(topology, group_index, &mut membership_resources)?;
         let Some(first) = members.first().and_then(|index| nodes.get(*index)) else {
-            // Empty groups place their own closed envelope outside measured sibling frames.
-            // Their bounds already participate in every containing group's measured envelope;
-            // only groups with member bands need an additional shared-axis expansion here.
+            // Zero-node subtrees are packed as complete physical envelopes in their immediate
+            // scopes by raw_group_bounds_batch. They have no node bands to expand; every anchored
+            // parent includes their full overhang in its own axis-separator requirements.
             continue;
         };
         let mut grid = GridBounds::for_node(first.grid, resources)?;
@@ -93,6 +121,28 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
         });
     }
 
+    reserve_envelope_spacing(
+        &envelopes,
+        nodes,
+        graph.direction,
+        column_widths,
+        row_heights,
+        resources,
+        execution,
+    )
+}
+
+/// Admit one finite envelope comparison pass before applying either shared-axis result.
+#[allow(clippy::too_many_arguments)]
+fn reserve_envelope_spacing(
+    envelopes: &[GroupEnvelope],
+    nodes: &[NodeLayout],
+    direction: GraphDirection,
+    column_widths: &mut AxisSizes,
+    row_heights: &mut AxisSizes,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     let mut column_requirements = AxisSizes::default();
     let mut row_requirements = AxisSizes::default();
     let pair_work = resources.checked_work_add(
@@ -112,7 +162,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
                 envelope.canvas,
                 GridBounds::for_node(node.grid, resources)?,
                 node_canvas_bounds(node, resources)?,
-                graph.direction,
+                direction,
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -129,7 +179,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
                 envelope.canvas,
                 other.grid,
                 other.canvas,
-                graph.direction,
+                direction,
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -254,4 +304,176 @@ fn node_canvas_bounds(node: &NodeLayout, resources: &ResourceContext) -> Result<
         right: isize::try_from(right).map_err(|_| resources.grid_overflow())?,
         bottom: isize::try_from(bottom).map_err(|_| resources.grid_overflow())?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::label::GraphLabel;
+    use crate::graph::model::{GraphNodeShape, GraphNodeStyle};
+    use crate::resource::{
+        AsciiResourceLimitCause, AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy,
+    };
+    use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl};
+
+    fn sibling_nodes_and_envelopes() -> (Vec<NodeLayout>, Vec<GroupEnvelope>) {
+        let nodes = vec![
+            NodeLayout {
+                id: "A".into(),
+                label: GraphLabel::new("A"),
+                shape: GraphNodeShape::Rect,
+                style: GraphNodeStyle::default(),
+                grid: GridCoord { x: 0, y: 0 },
+                x: 2,
+                y: 4,
+                width: 3,
+                height: 3,
+            },
+            NodeLayout {
+                id: "B".into(),
+                label: GraphLabel::new("B"),
+                shape: GraphNodeShape::Rect,
+                style: GraphNodeStyle::default(),
+                grid: GridCoord { x: 4, y: 0 },
+                x: 6,
+                y: 4,
+                width: 3,
+                height: 3,
+            },
+        ];
+        let envelopes = vec![
+            GroupEnvelope {
+                members: vec![0],
+                grid: GridBounds {
+                    x: 0,
+                    y: 0,
+                    right: 2,
+                    bottom: 2,
+                },
+                canvas: RawBounds {
+                    x: 0,
+                    y: 0,
+                    right: 6,
+                    bottom: 8,
+                },
+            },
+            GroupEnvelope {
+                members: vec![1],
+                grid: GridBounds {
+                    x: 4,
+                    y: 0,
+                    right: 6,
+                    bottom: 2,
+                },
+                canvas: RawBounds {
+                    x: 4,
+                    y: 0,
+                    right: 10,
+                    bottom: 8,
+                },
+            },
+        ];
+        (nodes, envelopes)
+    }
+
+    #[test]
+    fn compound_pair_spacing_admits_exact_work_and_rolls_back_max_minus_one() {
+        // Two group/node comparisons each plus one group pair cost five units. One committed
+        // separator requirement costs the sixth unit. This fixed ledger is independent of any
+        // successful measurement and covers the actual shared pair pass used after bounds.
+        const EXPECTED_WORK: usize = 6;
+        let (nodes, envelopes) = sibling_nodes_and_envelopes();
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        for max in [EXPECTED_WORK, EXPECTED_WORK - 1] {
+            let policy = unbounded
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, max)
+                .expect("small layout budget should be valid");
+            let resources = ResourceContext::new(policy);
+            let mut columns = AxisSizes::default();
+            let mut rows = AxisSizes::default();
+            columns.insert(3, 2);
+            rows.insert(3, 7);
+            let original_columns = columns.clone();
+            let original_rows = rows.clone();
+            let result = resources.transaction(|resources| {
+                reserve_envelope_spacing(
+                    &envelopes,
+                    &nodes,
+                    GraphDirection::TopDown,
+                    &mut columns,
+                    &mut rows,
+                    resources,
+                    AsciiExecution::for_test(&policy),
+                )
+            });
+            if max == EXPECTED_WORK {
+                result.expect("exact pair-work and commit budget should pass");
+                assert_eq!(resources.layout_work_used(), EXPECTED_WORK);
+                assert_eq!(columns.get(&3), Some(&6));
+                assert_eq!(rows, original_rows);
+            } else {
+                let error = result.expect_err("commit work must reject max-minus-one");
+                assert!(
+                    matches!(error, crate::AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                        && details.actual == EXPECTED_WORK && details.max == max
+                        && details.phase() == AsciiResourceLimitPhase::LayoutWork
+                        && details.cause == AsciiResourceLimitCause::Ceiling
+                        && details.profile == ResourceProfile::UnboundedForTrustedInput)
+                );
+                assert_eq!(resources.layout_work_used(), 0);
+                assert_eq!(columns, original_columns);
+                assert_eq!(rows, original_rows);
+            }
+        }
+    }
+
+    #[test]
+    fn compound_pair_spacing_cancels_inside_comparisons_without_partial_axes() {
+        let (nodes, envelopes) = sibling_nodes_and_envelopes();
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        for transactional in [false, true] {
+            let control = OperationControl::new();
+            // Three checked pair-count operations and the work charge succeed. The first
+            // envelope and its member-node checkpoints succeed. Cancellation interrupts a
+            // checked grid addition for the foreign node inside the comparison loop.
+            control.cancel_after_checkpoints(6);
+            let resources =
+                ResourceContext::new(policy).controlled(control.clone(), OperationPhase::Layout);
+            let mut columns = AxisSizes::default();
+            let mut rows = AxisSizes::default();
+            columns.insert(3, 2);
+            rows.insert(3, 7);
+            let original_columns = columns.clone();
+            let original_rows = rows.clone();
+            let mut compare = |resources: &ResourceContext| {
+                reserve_envelope_spacing(
+                    &envelopes,
+                    &nodes,
+                    GraphDirection::TopDown,
+                    &mut columns,
+                    &mut rows,
+                    resources,
+                    AsciiExecution::new(&control, &policy),
+                )
+            };
+            let result = if transactional {
+                resources.transaction(compare)
+            } else {
+                compare(&resources)
+            };
+            let error =
+                result.expect_err("cancellation must interrupt the envelope comparison stage");
+            assert!(matches!(error, crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout && cancelled.reason == CancelReason::Requested));
+            assert_eq!(
+                resources.layout_work_used(),
+                if transactional { 0 } else { 5 },
+                "the unwrapped pass proves pair work was admitted before cancellation; the wrapped pass proves rollback"
+            );
+            assert_eq!(columns, original_columns);
+            assert_eq!(rows, original_rows);
+        }
+    }
 }

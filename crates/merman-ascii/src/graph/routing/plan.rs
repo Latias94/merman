@@ -186,36 +186,107 @@ impl RoutePlan {
         else {
             return Ok(None);
         };
+        let needs_contour_lowering = [from.shape, to.shape].iter().any(|shape| {
+            super::super::shape::GraphNodeShapeSemantics::new(*shape)
+                .needs_contour_terminal_lowering()
+        });
+        let mut coordinate_index = if needs_contour_lowering {
+            Some(self.terminal_coordinate_index(resources)?)
+        } else {
+            None
+        };
+        if let Some(index) = coordinate_index.as_mut()
+            && (!self.lower_contour_terminal(
+                MarkerEndpoint::Start,
+                from,
+                start,
+                index,
+                charset,
+                resources,
+            )? || !self.lower_contour_terminal(
+                MarkerEndpoint::End,
+                to,
+                end,
+                index,
+                charset,
+                resources,
+            )?)
+        {
+            return Ok(None);
+        }
+        if [(start, self.anchors.start), (end, self.anchors.end)]
+            .into_iter()
+            .any(|(attachment, anchor)| {
+                let berth = self.cells[anchor.cell.index()].coord;
+                attachment.contact.x.abs_diff(berth.x) + attachment.contact.y.abs_diff(berth.y) > 1
+            })
+            && coordinate_index.is_none()
+        {
+            coordinate_index = Some(self.terminal_coordinate_index(resources)?);
+        }
+        for (attachment, anchor) in [(start, self.anchors.start), (end, self.anchors.end)] {
+            if !self.terminal_is_continuous(
+                attachment,
+                anchor,
+                coordinate_index.as_ref(),
+                resources,
+            )? {
+                return Ok(None);
+            }
+        }
         self.attachments = Some(NodeAttachments { start, end });
-        // All producers use the same shape contact. Nonrectangular vertices retain their
-        // border glyph; marker anchors stay on the first straight exterior cell.
+        // A shape contact belongs to the contour. Only shapes with orthogonal borders
+        // replace it with a connector; sloped vertices keep their original glyph.
+        let start_berth = self.cells[self.anchors.start.cell.index()].coord;
+        let end_berth = self.cells[self.anchors.end.cell.index()].coord;
+        let mut start_occurrences = 0;
+        let mut end_occurrences = 0;
         for index in 0..self.cells.len() {
             resources.checkpoint()?;
             resources.charge_layout_work(1)?;
-            if self.cells[index].coord != start.contact
-                || self.cells[index].kind != PlannedRouteCellKind::EdgeLine
-            {
+            let coord = self.cells[index].coord;
+            start_occurrences += usize::from(coord == start_berth);
+            end_occurrences += usize::from(coord == end_berth);
+            let attachment = if coord == start.contact {
+                start
+            } else if coord == end.contact {
+                end
+            } else {
+                continue;
+            };
+            if let Some(connector) = attachment.connector {
+                if self.cells[index].kind == PlannedRouteCellKind::EdgeLine {
+                    self.cells[index].ch = connector;
+                }
                 continue;
             }
-            if let Some(connector) = start.connector {
-                self.cells[index].ch = connector;
-                continue;
-            }
-            if self.anchors.start.cell.index() == index {
-                let neighbor = marker_relocation_step(
-                    start.contact,
-                    self.anchors.start.point_direction,
-                    resources,
-                )?;
+            for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
+                let anchor = match endpoint {
+                    MarkerEndpoint::Start => self.anchors.start,
+                    MarkerEndpoint::End => self.anchors.end,
+                };
+                if anchor.cell.index() != index {
+                    continue;
+                }
+                let neighbor = marker_relocation_step(coord, anchor.point_direction, resources)?;
                 resources.charge_layout_work(self.cells.len())?;
-                let Some(neighbor_index) = self
+                let mut neighbors = self
                     .cells
                     .iter()
-                    .position(|cell| Some(cell.coord) == neighbor)
-                else {
+                    .enumerate()
+                    .filter(|(_, cell)| Some(cell.coord) == neighbor);
+                let Some((neighbor_index, _)) = neighbors.next() else {
                     return Ok(None);
                 };
-                self.anchors.start.cell = PlannedCellId(neighbor_index);
+                if neighbors.next().is_some() {
+                    return Ok(None);
+                }
+                match endpoint {
+                    MarkerEndpoint::Start => {
+                        self.anchors.start.cell = PlannedCellId(neighbor_index)
+                    }
+                    MarkerEndpoint::End => self.anchors.end.cell = PlannedCellId(neighbor_index),
+                }
             }
             self.suppressed_cells
                 .try_reserve(1)
@@ -224,7 +295,192 @@ impl RoutePlan {
                 })?;
             self.suppressed_cells.insert(PlannedCellId(index));
         }
+        if start_occurrences > 1 || end_occurrences > 1 {
+            return Ok(None);
+        }
+        for (attachment, anchor) in [(start, self.anchors.start), (end, self.anchors.end)] {
+            if !self.terminal_is_continuous(
+                attachment,
+                anchor,
+                coordinate_index.as_ref(),
+                resources,
+            )? {
+                return Ok(None);
+            }
+        }
         Ok(Some(self))
+    }
+
+    fn terminal_coordinate_index(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<HashMap<CanvasCoord, Option<PlannedCellId>>> {
+        resources.charge_layout_work(self.cells.len())?;
+        let mut index = HashMap::default();
+        index
+            .try_reserve(self.cells.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        for (cell_index, cell) in self.cells.iter().enumerate() {
+            resources.checkpoint()?;
+            index
+                .entry(cell.coord)
+                .and_modify(|existing| *existing = None)
+                .or_insert(Some(PlannedCellId(cell_index)));
+        }
+        Ok(index)
+    }
+
+    fn lower_contour_terminal(
+        &mut self,
+        endpoint: MarkerEndpoint,
+        node: &NodeLayout,
+        attachment: NodeAttachment,
+        index: &mut HashMap<CanvasCoord, Option<PlannedCellId>>,
+        charset: &GraphCharset,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        if !super::super::shape::GraphNodeShapeSemantics::new(node.shape)
+            .needs_contour_terminal_lowering()
+        {
+            return Ok(true);
+        }
+        let anchor = match endpoint {
+            MarkerEndpoint::Start => self.anchors.start,
+            MarkerEndpoint::End => self.anchors.end,
+        };
+        let prototype = self.cells[anchor.cell.index()];
+        let bounding_contact = match attachment.outward {
+            StepDirection::Left => CanvasCoord {
+                x: node.x,
+                y: attachment.contact.y,
+            },
+            StepDirection::Right => CanvasCoord {
+                x: node.right(),
+                y: attachment.contact.y,
+            },
+            StepDirection::Up => CanvasCoord {
+                x: attachment.contact.x,
+                y: node.y,
+            },
+            StepDirection::Down => CanvasCoord {
+                x: attachment.contact.x,
+                y: node.bottom(),
+            },
+        };
+        let distance = bounding_contact.x.abs_diff(attachment.contact.x)
+            + bounding_contact.y.abs_diff(attachment.contact.y);
+        let line = match attachment.outward {
+            StepDirection::Left | StepDirection::Right => charset.horizontal,
+            StepDirection::Up | StepDirection::Down => charset.vertical,
+        };
+        let Some(first_exterior) =
+            marker_relocation_step(attachment.contact, anchor.point_direction, resources)?
+        else {
+            return Ok(false);
+        };
+        let mut coord = attachment.contact;
+        for _ in 0..distance {
+            resources.checkpoint()?;
+            let Some(next) = marker_relocation_step(coord, anchor.point_direction, resources)?
+            else {
+                return Ok(false);
+            };
+            coord = next;
+            resources.charge_layout_work(1)?;
+            if let Some(existing) = index.get(&coord) {
+                let Some(cell_id) = existing else {
+                    return Ok(false);
+                };
+                let cell = &mut self.cells[cell_id.index()];
+                if cell.kind != PlannedRouteCellKind::EdgeLine
+                    && super::cell::route_char_directions(cell.ch)
+                        != super::cell::route_char_directions(line)
+                {
+                    return Ok(false);
+                }
+                cell.ch = line;
+                cell.kind = PlannedRouteCellKind::RouteCell;
+                cell.directions = 0;
+            } else {
+                self.cells
+                    .try_reserve(1)
+                    .map_err(|_| AsciiError::AllocationFailed {
+                        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                    })?;
+                index
+                    .try_reserve(1)
+                    .map_err(|_| AsciiError::AllocationFailed {
+                        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                    })?;
+                let cell_id = PlannedCellId(self.cells.len());
+                self.cells.push(PlannedRouteCell {
+                    coord,
+                    ch: line,
+                    kind: PlannedRouteCellKind::RouteCell,
+                    directions: 0,
+                    ..prototype
+                });
+                index.insert(coord, Some(cell_id));
+            }
+        }
+        if !self.terminal_is_continuous(attachment, anchor, Some(index), resources)? {
+            return Ok(false);
+        }
+        if let Some(cell_id) = index.get(&first_exterior).copied().flatten() {
+            match endpoint {
+                MarkerEndpoint::Start => self.anchors.start.cell = cell_id,
+                MarkerEndpoint::End => self.anchors.end.cell = cell_id,
+            }
+        } else if distance > 0 {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    fn terminal_is_continuous(
+        &self,
+        attachment: NodeAttachment,
+        anchor: MarkerAnchor,
+        index: Option<&HashMap<CanvasCoord, Option<PlannedCellId>>>,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        use super::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions};
+        let berth = self.cells[anchor.cell.index()];
+        let distance = attachment.contact.x.abs_diff(berth.coord.x)
+            + attachment.contact.y.abs_diff(berth.coord.y);
+        if distance == 0 {
+            return Ok(true);
+        }
+        let axis = match attachment.outward {
+            StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+            StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+        };
+        if route_char_directions(berth.ch) & axis != axis {
+            return Ok(false);
+        }
+        if distance == 1 {
+            return Ok(true);
+        }
+        let Some(index) = index else { return Ok(false) };
+        let mut coord = attachment.contact;
+        for _ in 0..distance {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            let Some(next) = marker_relocation_step(coord, anchor.point_direction, resources)?
+            else {
+                return Ok(false);
+            };
+            coord = next;
+            let Some(cell_id) = index.get(&coord).copied().flatten() else {
+                return Ok(false);
+            };
+            if route_char_directions(self.cells[cell_id.index()].ch) & axis != axis {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     #[cfg(test)]

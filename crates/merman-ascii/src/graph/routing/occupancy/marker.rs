@@ -4,8 +4,11 @@ use crate::graph::charset::GraphCharset;
 use crate::graph::routing::layout_allocation_failed;
 use crate::graph::routing::plan::{MarkerCandidate, MarkerEndpoint};
 use crate::graph::routing::{PreparedRoute, sort_levels};
-use crate::resource::{AsciiResourceLimitId, ResourceContext};
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
+use crate::resource::ResourceContext;
 
+#[cfg(test)]
 pub(in crate::graph::routing) fn allocate_marker_berths(
     routes: &mut [PreparedRoute],
     occupancy: &mut SceneOccupancy<'_>,
@@ -22,7 +25,50 @@ pub(in crate::graph::routing) fn allocate_marker_berths(
     pending
         .try_reserve(marker_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for (route_index, route) in routes.iter().enumerate() {
+    collect_marker_requests(
+        routes,
+        0..routes.len(),
+        occupancy,
+        resources,
+        diagram_type,
+        &mut pending,
+    )?;
+    allocate_pending_markers(routes, occupancy, charset, resources, diagram_type, pending)
+}
+
+pub(in crate::graph::routing) fn allocate_committed_route_marker_berths(
+    routes: &mut [PreparedRoute],
+    route_index: usize,
+    occupancy: &mut SceneOccupancy<'_>,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    diagram_type: &'static str,
+) -> Result<()> {
+    let mut pending = Vec::new();
+    pending
+        .try_reserve(2)
+        .map_err(|_| layout_allocation_failed())?;
+    collect_marker_requests(
+        routes,
+        route_index..route_index + 1,
+        occupancy,
+        resources,
+        diagram_type,
+        &mut pending,
+    )?;
+    allocate_pending_markers(routes, occupancy, charset, resources, diagram_type, pending)
+}
+
+fn collect_marker_requests(
+    routes: &[PreparedRoute],
+    indices: std::ops::Range<usize>,
+    occupancy: &mut SceneOccupancy<'_>,
+    resources: &mut ResourceContext,
+    diagram_type: &'static str,
+    pending: &mut Vec<PendingMarker>,
+) -> Result<()> {
+    for route_index in indices {
+        let route = &routes[route_index];
         for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
             let candidates = route
                 .plan
@@ -55,6 +101,17 @@ pub(in crate::graph::routing) fn allocate_marker_berths(
         }
     }
 
+    Ok(())
+}
+
+fn allocate_pending_markers(
+    routes: &mut [PreparedRoute],
+    occupancy: &mut SceneOccupancy<'_>,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    diagram_type: &'static str,
+    mut pending: Vec<PendingMarker>,
+) -> Result<()> {
     let sort_work = resources.checked_work_mul(pending.len(), sort_levels(pending.len()))?;
     resources.charge_layout_work(sort_work)?;
     pending.sort_by(|left, right| {

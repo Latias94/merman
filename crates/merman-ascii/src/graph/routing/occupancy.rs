@@ -24,8 +24,29 @@ const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(super) use labels::allocate_route_label_placements;
 use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
+#[cfg(test)]
+pub(super) use marker::allocate_marker_berths;
 use marker::marker_candidate_continues_chain;
-pub(super) use marker::{MarkerCandidateDisposition, allocate_marker_berths};
+pub(super) use marker::{MarkerCandidateDisposition, allocate_committed_route_marker_berths};
+
+fn own_terminal_marker_escape(
+    protected: &ProtectedGeometry<'_>,
+    endpoint_id: &str,
+    plan: &RoutePlan,
+    endpoint: MarkerEndpoint,
+    candidate: MarkerCandidate,
+) -> bool {
+    if protected.kind != ProtectedKind::Node || protected.owner_id != endpoint_id {
+        return false;
+    }
+    plan.attachments.is_some_and(|attachments| {
+        let attachment = match endpoint {
+            MarkerEndpoint::Start => attachments.start,
+            MarkerEndpoint::End => attachments.end,
+        };
+        candidate.coord != attachment.contact && attachment.allows_escape(candidate.coord)
+    })
+}
 
 fn marker_occupant_is_compatible(
     routes: &[PreparedRoute],
@@ -493,8 +514,16 @@ impl<'layout> SceneOccupancy<'layout> {
                         break;
                     }
                 }
+                let is_own_terminal_escape = protected.kind == ProtectedKind::Node
+                    && plan.attachments.is_some_and(|attachments| {
+                        protected.owner_id == owner.from
+                            && attachments.start.allows_escape(cell.coord)
+                            || protected.owner_id == owner.to
+                                && attachments.end.allows_escape(cell.coord)
+                    });
                 if protected.shape.contains(cell.coord)
                     && !is_endpoint_port
+                    && !is_own_terminal_escape
                     && !is_owned_group_border
                 {
                     crosses_reserved = true;
@@ -503,6 +532,36 @@ impl<'layout> SceneOccupancy<'layout> {
             }
             if crosses_reserved {
                 return Ok(None);
+            }
+            if let Some(marker) = self.markers.get(&cell.coord) {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                let existing = &existing_routes[marker.route_index];
+                let existing_endpoint = existing.owner.endpoint_id(marker.endpoint);
+                let existing_attachment = existing.plan.attachments.map(|attachments| match marker
+                    .endpoint
+                {
+                    MarkerEndpoint::Start => attachments.start,
+                    MarkerEndpoint::End => attachments.end,
+                });
+                let shares_terminal = plan.attachments.is_some_and(|attachments| {
+                    [
+                        (owner.from.as_str(), attachments.start),
+                        (owner.to.as_str(), attachments.end),
+                    ]
+                    .into_iter()
+                    .any(|(endpoint, attachment)| {
+                        endpoint == existing_endpoint
+                            && existing_attachment.is_some_and(|existing_attachment| {
+                                attachment.contact == existing_attachment.contact
+                                    && attachment.outward == existing_attachment.outward
+                                    && attachment.allows_escape(cell.coord)
+                            })
+                    })
+                });
+                if !shares_terminal {
+                    return Ok(None);
+                }
             }
             if let Some(claims) = self.terminal_claims.get(&cell.coord)
                 && !terminal_claims_allow_route_cell(
@@ -561,6 +620,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 match self.marker_candidate_disposition_before_commit(
                     existing_routes,
                     owner,
+                    plan,
                     endpoint,
                     candidate,
                     resources,
@@ -712,6 +772,7 @@ impl<'layout> SceneOccupancy<'layout> {
         &self,
         existing_routes: &[PreparedRoute],
         owner: &RouteOwner,
+        plan: &RoutePlan,
         endpoint: MarkerEndpoint,
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
@@ -723,6 +784,13 @@ impl<'layout> SceneOccupancy<'layout> {
             let allowed = !protected.shape.contains(candidate.coord)
                 || (candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                        || own_terminal_marker_escape(
+                            protected,
+                            endpoint_id,
+                            plan,
+                            endpoint,
+                            candidate,
+                        )
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
                                 || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
@@ -1055,6 +1123,13 @@ impl<'layout> SceneOccupancy<'layout> {
             if protected.shape.contains(candidate.coord)
                 && !(candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                        || own_terminal_marker_escape(
+                            protected,
+                            endpoint_id,
+                            &routes[route_index].plan,
+                            endpoint,
+                            candidate,
+                        )
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(
                                 &routes[route_index].owner.from,

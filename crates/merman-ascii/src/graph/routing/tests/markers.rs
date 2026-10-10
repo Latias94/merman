@@ -395,6 +395,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
         .marker_candidate_disposition_before_commit(
             &existing_routes,
             &candidate_route.owner,
+            &candidate_route.plan,
             MarkerEndpoint::End,
             candidate,
             &mut measured_resources,
@@ -412,6 +413,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
             .marker_candidate_disposition_before_commit(
                 &existing_routes,
                 &candidate_route.owner,
+                &candidate_route.plan,
                 MarkerEndpoint::End,
                 candidate,
                 &mut exact_resources,
@@ -429,6 +431,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
         .marker_candidate_disposition_before_commit(
             &existing_routes,
             &candidate_route.owner,
+            &candidate_route.plan,
             MarkerEndpoint::End,
             candidate,
             &mut below_resources,

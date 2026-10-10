@@ -218,11 +218,69 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
         .iter()
         .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
         .expect("third edge should retain its marker");
-    assert_ne!(second_marker.coord, third_marker.coord);
+    assert_eq!(second_marker.coord.y, to.bottom() + 1);
+    assert_eq!(third_marker.coord.y, to.bottom() + 1);
     assert_ne!(
         second.labels[0].placement.y(),
         third.labels[0].placement.y()
     );
+
+    // Candidate production supplies adjacent berths. Only the scene allocator can
+    // assign distinct marker positions while accounting for shared terminal paths.
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    let scene = super::super::prepare_route_scene(&graph, &layout, &edges, &charset).unwrap();
+    let markers = scene
+        .routes
+        .iter()
+        .map(|route| {
+            route
+                .plan
+                .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                .unwrap()
+                .unwrap()
+                .coord
+        })
+        .collect::<HashSet<_>>();
+    assert_eq!(markers.len(), edges.len());
+    for route in &scene.routes {
+        let marker = route
+            .plan
+            .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+            .unwrap()
+            .unwrap();
+        let attachment = route.plan.attachments.unwrap().end;
+        let axis = match attachment.outward {
+            StepDirection::Left | StepDirection::Right => {
+                super::super::cell::DIR_LEFT | super::super::cell::DIR_RIGHT
+            }
+            StepDirection::Up | StepDirection::Down => {
+                super::super::cell::DIR_UP | super::super::cell::DIR_DOWN
+            }
+        };
+        let distance = attachment.contact.x.abs_diff(marker.coord.x)
+            + attachment.contact.y.abs_diff(marker.coord.y);
+        let mut coord = attachment.contact;
+        for _ in 0..distance {
+            coord = marker_relocation_step(
+                coord,
+                route.plan.marker_point_direction(MarkerEndpoint::End),
+                &unbounded_route_resources(),
+            )
+            .unwrap()
+            .unwrap();
+            assert!(
+                scene
+                    .routes
+                    .iter()
+                    .any(|owner| owner.plan.active_cells().any(|(_, cell)| {
+                        cell.coord == coord && cell.directions & axis == axis
+                    })),
+                "allocated markers must retain a continuous scene terminal into the node"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1811,4 +1869,138 @@ fn layout_node<'a>(layout: &'a GraphLayout, id: &str) -> &'a NodeLayout {
         .iter()
         .find(|node| node.id == id)
         .expect("layout should contain test node")
+}
+
+#[test]
+fn attachments_reject_missing_bent_and_duplicate_normal_terminal_cells() {
+    let from = node("from", 0, 0, 5, 5);
+    let to = node("to", 12, 0, 5, 5);
+    let edge = edge(None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+    for defect in ["missing", "bent", "duplicate"] {
+        let mut resources = unbounded_route_resources();
+        let mut plan = super::same_rank::plan_same_rank_bottom_lane_route_with_index_and_resources(
+            &from,
+            &to,
+            &edge,
+            1,
+            None,
+            &charset,
+            &mut resources,
+        )
+        .unwrap()
+        .unwrap();
+        let anchor = plan.anchors.end;
+        let primary = plan.cells[anchor.cell.index()].coord;
+        let farther = plan
+            .cells
+            .iter()
+            .position(|cell| cell.coord.x == primary.x && cell.coord.y == primary.y + 1)
+            .unwrap();
+        plan.anchors.end.cell = PlannedCellId(farther);
+        match defect {
+            "missing" => plan.cells[anchor.cell.index()].coord.x += 1,
+            "bent" => plan.cells[anchor.cell.index()].ch = charset.bottom_right,
+            "duplicate" => plan.cells.push(plan.cells[anchor.cell.index()]),
+            _ => unreachable!(),
+        }
+        assert!(
+            plan.resolve_node_attachments(&from, &to, &charset, &resources)
+                .unwrap()
+                .is_none(),
+            "{defect} terminal must be rejected before scene ownership is committed"
+        );
+    }
+}
+
+#[test]
+fn lower_bottom_lane_keeps_target_berth_adjacent_and_emits_the_complete_terminal() {
+    let from = node("from", 0, 0, 5, 5);
+    let to = node("to", 12, 0, 5, 5);
+    let edge = edge(None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+    let mut resources = unbounded_route_resources();
+    let plan = super::same_rank::plan_same_rank_bottom_lane_route_with_index_and_resources(
+        &from,
+        &to,
+        &edge,
+        3,
+        None,
+        &charset,
+        &mut resources,
+    )
+    .unwrap()
+    .unwrap()
+    .resolve_node_attachments(&from, &to, &charset, &resources)
+    .unwrap()
+    .unwrap();
+    let berth = plan.cells[plan.anchors.end.cell.index()].coord;
+    assert_eq!(
+        berth,
+        CanvasCoord {
+            x: to.center_x(),
+            y: to.bottom() + 1
+        }
+    );
+    let lane = from.bottom().max(to.bottom()) + 8;
+    for y in (to.bottom() + 1)..lane {
+        assert!(plan.cells.iter().any(|cell| cell.coord
+            == CanvasCoord {
+                x: to.center_x(),
+                y
+            }
+            && super::super::cell::route_char_directions(cell.ch)
+                == super::super::cell::DIR_UP | super::super::cell::DIR_DOWN));
+    }
+}
+
+#[test]
+fn terminal_coordinate_index_admits_exact_work_before_allocation_and_preserves_failed_ledgers() {
+    const INDEX_WORK: usize = 3;
+    let plan = RoutePlan::new_without_markers_for_test(
+        vec![
+            route_cell(0, 0, '-'),
+            route_cell(1, 0, '-'),
+            route_cell(2, 0, '-'),
+        ],
+        Vec::new(),
+    );
+    let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let exact = ResourceContext::new(
+        policy
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, INDEX_WORK + 1)
+            .unwrap(),
+    );
+    exact.charge_layout_work(1).unwrap();
+    assert_eq!(
+        plan.terminal_coordinate_index(&exact).unwrap().len(),
+        INDEX_WORK
+    );
+    assert_eq!(exact.layout_work_used(), INDEX_WORK + 1);
+
+    let below = ResourceContext::new(
+        policy
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, INDEX_WORK)
+            .unwrap(),
+    );
+    below.charge_layout_work(1).unwrap();
+    let error = below
+        .transaction(|resources| plan.terminal_coordinate_index(resources))
+        .unwrap_err();
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+            && details.actual == INDEX_WORK + 1 && details.max == INDEX_WORK
+            && details.phase() == crate::AsciiResourceLimitPhase::LayoutWork
+            && details.cause == crate::AsciiResourceLimitCause::Ceiling));
+    assert_eq!(below.layout_work_used(), 1);
+
+    let control = merman_core::OperationControl::new();
+    let cancelled = ResourceContext::new(policy)
+        .controlled(control.clone(), merman_core::OperationPhase::Layout);
+    cancelled.charge_layout_work(1).unwrap();
+    control.cancel();
+    let error = plan.terminal_coordinate_index(&cancelled).unwrap_err();
+    assert!(matches!(error, AsciiError::Cancelled(details)
+        if details.phase == merman_core::OperationPhase::Layout && details.reason == merman_core::CancelReason::Requested));
+    assert_eq!(cancelled.layout_work_used(), 1);
 }

@@ -160,12 +160,19 @@ pub(super) fn layout_graph_with_resources_and_execution(
         execution,
     )?;
     checkpoint_layout(execution)?;
-    let (group_offset_x, group_offset_y) = if graph.groups.is_empty() {
-        (0, 0)
+    let (laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
+        (
+            groups::LaidOutGroups {
+                items: Vec::new(),
+                background_order: Vec::new(),
+            },
+            0,
+            0,
+        )
     } else {
-        groups::subgraph_offsets(
+        groups::layout_scene_groups(
             graph,
-            &nodes,
+            &mut nodes,
             topology
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
@@ -174,37 +181,14 @@ pub(super) fn layout_graph_with_resources_and_execution(
             execution,
         )?
     };
-    for (index, node) in nodes.iter_mut().enumerate() {
-        execution.checkpoint_loop(merman_core::OperationPhase::Layout, index)?;
-        node.x = resources.checked_grid_add(node.x, group_offset_x)?;
-        node.y = resources.checked_grid_add(node.y, group_offset_y)?;
-    }
     let offset_x = nodes
         .first()
         .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
-        .unwrap_or_default();
+        .unwrap_or(group_offset_x);
     let offset_y = nodes
         .first()
         .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
-        .unwrap_or_default();
-    checkpoint_layout(execution)?;
-    let laid_out_groups = if graph.groups.is_empty() {
-        groups::LaidOutGroups {
-            items: Vec::new(),
-            background_order: Vec::new(),
-        }
-    } else {
-        groups::layout_groups(
-            graph,
-            &nodes,
-            topology
-                .as_ref()
-                .expect("non-empty graph groups must have topology"),
-            layout_policy,
-            resources,
-            execution,
-        )?
-    };
+        .unwrap_or(group_offset_y);
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
@@ -478,6 +462,76 @@ mod tests {
                             GraphDirection::TopDown => assert!(parent.bottom() + 1 < next.y),
                             GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scoped_empty_subtrees_keep_node_projection_and_unrelated_frame_gutters() {
+        for direction in [
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+        ] {
+            for profile in [
+                crate::AsciiLayoutProfile::Canonical,
+                crate::AsciiLayoutProfile::Compact,
+            ] {
+                for zero_padding in [false, true] {
+                    let mut graph = AsciiGraph::new(direction);
+                    for node in ["A", "B", "C"] {
+                        graph.add_node(node, node);
+                    }
+                    let style = GraphGroupStyle::default();
+                    graph.add_group_with_style("E", "Empty", None, Vec::new(), style);
+                    graph.add_group_with_style(
+                        "L",
+                        "Left",
+                        None,
+                        vec!["A".into(), "E".into()],
+                        style,
+                    );
+                    graph.add_group_with_style("R", "Right", None, vec!["B".into()], style);
+                    let mut options = AsciiRenderOptions::unicode().with_layout_profile(profile);
+                    if zero_padding {
+                        options = options
+                            .with_node_padding_x(0)
+                            .with_node_padding_y(0)
+                            .with_graph_padding_x(0)
+                            .with_graph_padding_y(0);
+                    }
+                    let layout = layout_graph(&graph, &options);
+                    for node in &layout.nodes {
+                        let projected = layout.grid_to_canvas(node.grid);
+                        assert_eq!(
+                            (projected.x, projected.y),
+                            (node.x, node.y),
+                            "scope placement must preserve the routing projection contract"
+                        );
+                    }
+                    let left = layout.groups.iter().find(|group| group.id == "L").unwrap();
+                    let right = layout.groups.iter().find(|group| group.id == "R").unwrap();
+                    let empty = layout.groups.iter().find(|group| group.id == "E").unwrap();
+                    assert_contains(left, empty.x, empty.y, empty.right(), empty.bottom());
+                    assert!(
+                        left.right() + 1 < right.x
+                            || right.right() + 1 < left.x
+                            || left.bottom() + 1 < right.y
+                            || right.bottom() + 1 < left.y,
+                        "unrelated complete frames need a reading gutter: {layout:?}"
+                    );
+                    let outside = layout.nodes.iter().find(|node| node.id == "C").unwrap();
+                    for group in [left, right] {
+                        assert!(
+                            group.right() + 1 < outside.x
+                                || outside.right() + 1 < group.x
+                                || group.bottom() + 1 < outside.y
+                                || outside.bottom() + 1 < group.y,
+                            "outside nodes must not be swallowed by a complete subtree envelope: {layout:?}"
+                        );
                     }
                 }
             }
