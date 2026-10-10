@@ -9,8 +9,9 @@ baseline only after all six canonical artifact recipes pass their package checks
 at one committed source.
 
 The six-artifact local reassessment is complete. The replacement catalog records
-one measured product and all 24 official checks pass. Remote CI confirmation
-remains pending; this decision does not close the wider U8 delivery gate.
+one measured product and all 24 official checks pass. Remote CI confirms the
+catalog and package recipes at `3a2a2de46` in successful run `38023696805`.
+The wider U8 delivery result is recorded separately in the final measurement report.
 
 The decision rule follows the
 [September 14 reassessment](theme_artifact_budget_reassessment_2026-09-14.md):
@@ -151,5 +152,5 @@ and failed npm's dependency-tree check; a locked install in the owned source
 clone resolved it without changing source or lockfiles. Both receipts remain
 archived. This follow-up does not claim to have repeated the earlier whole
 workspace or 45-build feature matrix at the shared implementation commit.
-Remote CI must verify the shipped source and limits. None of the functional,
+Remote CI verifies the pushed source and limits. None of the functional,
 runtime or platform delivery gates is waived by accepting justified growth.

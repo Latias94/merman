@@ -13,8 +13,9 @@ renderer families. The [gate removal record](../knowledge/engineering/verificati
 separates historical authorization from retained current behavior tests.
 
 The [implementation plan](../plans/2026-10-09-1500-refactor-theme-path-retirement-plan.md)
-remains open for the affected remote platform CI matrix. Local tests do not attest
-other operating systems, SDKs or packaged bindings. The verification update was
+is complete after the affected remote platform CI matrix passed at `3a2a2de46`.
+Local tests alone do not attest other operating systems, SDKs or packaged bindings.
+The initial verification update was
 pushed as `cb3958a43` to the existing feature branch and PR #178. No release was
 performed. The following measurements describe the frozen implementation; later
 CI repairs and optimization candidates are tracked separately below.
@@ -285,7 +286,7 @@ artifacts pass functional/package/dependency checks and all 24 revised limits;
 twelve ceilings decrease and twelve increase, each following the same rule.
 The final measurements, identities and before/after ceilings are in the
 [budget reassessment](theme_artifact_budget_reassessment_2026-10-10.md).
-Remote CI confirmation remains pending.
+Remote CI confirmation passed in run `38023696805` at `3a2a2de46`.
 The shared source also passes 303 public-facade tests (two skipped), 98 native
 export tests, the complete SVG structure/parity/parity-root owner and 77 fresh
 Chromium theme/viewport tests after a locked clone-local dependency install.
@@ -294,3 +295,30 @@ The follow-up's 52 lossless evidence archives and digest manifest are under
 remain separately archived and retain their original source identities.
 The production optimizer remains Binaryen 131 `-Oz` with its existing feature
 flags. Convergence and alternative size-level trials are diagnostic only.
+
+## Final delivery verification
+
+CI run `38023696805` and Performance run `38023696796` complete successfully at
+`3a2a2de46476365b2d45270f35ce036da62fbb4d`. CI has 55 successful jobs, including
+the aggregate `pr-gate`. The sole skipped CI job is the intentionally unselected
+`typst-package-compat`; all selected owners complete in the same run. This covers
+Linux/macOS/Windows, CLI profiles, Node transports, Apple/Android/C/Python bindings,
+Web packages and browser tests, Typst, all seven fuzz jobs, dependency/legal owners
+and VS Code packages. Ubuntu completes full workspace and feature checks, private
+acceptance and qualification, documentation, SVG DOM parity and painted root
+containment. Existing diagnostics remain admitted by their unchanged contracts.
+
+The final local private-acceptance check runs 25 tests, all passing, and the public
+package boundary verifies production consumers while rejecting internal and
+retired imports. Commands, logs and full remote run/job/step identities are retained
+in `evidence/theme-path-retirement-2026-10-10/completion` with digest manifest.
+The GitHub bulk text log download did not complete during archival; the archived
+official JSON records retain each remote job and step result, not their text logs.
+The final documentation-only completion commit preserves the verified runtime,
+features, lockfiles, budgets, fixtures and workflow recipes. These records do not
+claim another whole-platform run at that later documentation commit.
+
+U1-U8 are complete as an ownership/maintenance refactor with measured product
+costs. The native latency suite still has an A/A-unstable row; the old Sequence
+allocator contract still produces no comparable samples. Neither limitation is
+hidden or represented as an optimization result. No merge or release was performed.

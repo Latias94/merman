@@ -11,28 +11,36 @@ execution: code
 
 ## Execution Status
 
-U1-U7 implementation and static review are complete. **U8 remains active; the goal
-is not complete.** The initial implementation was frozen at `3a11f46ba`;
+**U1-U8 are complete.** The final deletion closure, local contract matrix and
+affected remote platform CI have been verified. CI run `38023696805` at
+`3a2a2de46476365b2d45270f35ce036da62fbb4d` completes successfully with 55 passing
+jobs and the successful `pr-gate`; the unselected `typst-package-compat` job is
+intentionally skipped. Performance run `38023696796` at the same commit passes.
+These workflow results do not turn the separately recorded inconclusive native
+latency row or unavailable Sequence allocator lane into successful measurements.
+No merge or release was performed.
+
+The initial implementation was frozen at `3a11f46ba`;
 `62c59113a` contains only documentation changes, and `17da680e9` repairs facade
 documentation comments. The initial local measurements use that clean revision
 and record comment-only repairs separately from runtime evidence. The follow-up
 shared implementation at `dd79ca584` has its own verification and measurements.
-U8's affected remote feature/platform CI matrix is still outstanding. The final
-verification update was pushed as `cb3958a43` to the existing feature branch and
+The initial verification update was pushed as `cb3958a43` to the existing feature branch and
 PR #178. Run `38012289765` found stale fuzz lockfile inputs and a Typst size-budget
 regression. The local fuzz fix passes its pinned nightly locked check; Typst
 shared implementation improvements are committed at `dd79ca584`. Its 4,864
 renderer tests and strict CLI clippy check passed. Runtime confirmation completed:
 eight rows confirm non-regression, while label reuse remains A/A-inconclusive;
 the overall result is inconclusive, with no confirmed material regression.
-the authorized six-artifact size rebaseline follows the existing measured +3%,
+The authorized six-artifact size rebaseline follows the existing measured +3%,
 round-up-to-1,000-byte rule. One-source package verification is complete and all
 24 replacement size checks pass; twelve limits decrease and twelve increase.
-Remote verification of the shared implementation and replacement limits is
-pending. Shared-source facade (303), native-export (98), full SVG comparison
+Remote verification of the shared implementation and replacement limits passed
+in the final CI run. Shared-source facade (303), native-export (98), full SVG comparison
 and fresh browser (77) checks pass; follow-up raw evidence is archived separately.
 All seven remote fuzz jobs now pass
-in run `38016218098`; Typst size and the aggregate PR gate are its only failures.
+in run `38016218098`; that historical run failed only Typst size and its aggregate
+gate. Both pass in the final run after the authorized package rebaseline.
 The earlier sandbox Git-write restriction has been resolved. The final
 measurement report and archives are included with this local verification
 update. After loopback socket access was restored, all 704 CI script unit tests
@@ -65,13 +73,13 @@ passed; the earlier five environment errors remain archived alongside the rechec
   the initial unchanged web-full budget passed at `17da680e9`. The final
   shared source has a verified, authorized six-artifact baseline with measured
   +3% ceilings. No speed or allocation improvement is claimed. Remote
-  affected-platform CI remains pending.
+  affected-platform CI and its aggregate gate pass at `3a2a2de46`.
 
 ### Final frozen-implementation local evidence
 
 These are final local receipts for `3a11f46ba`, distinct from the earlier migration
 checks below. Comment-only repairs are identified separately. They do not attest
-the outstanding remote platform CI matrix or unavailable measurement lanes.
+the later remote platform CI matrix or unavailable measurement lanes.
 
 | Owner | Result |
 | --- | --- |
@@ -150,7 +158,7 @@ their recorded revisions. `1fb614180` owns the Web/license refresh; `9f3e5d42d` 
 `c8dcdd721` clarify historical/current documentation. Those scoped receipts do not
 substitute for final frozen-tree verification. The final workspace, documentation,
 dependency, SVG, optimized-release and measurement receipts are listed above;
-the affected remote platform CI matrix remains outstanding.
+the affected remote platform CI matrix additionally passes at `3a2a2de46`.
 
 ## Goal Capsule
 
