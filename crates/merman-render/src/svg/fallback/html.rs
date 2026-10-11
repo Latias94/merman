@@ -1,4 +1,7 @@
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    TextMeasurer, TextStyle, WrapMode, html_break_spaces_segments_with_checkpoints,
+    is_html_collapsible_ascii_whitespace,
+};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
@@ -147,40 +150,34 @@ fn line_width_html_px<E>(
     Ok(width)
 }
 
-fn split_line_to_words_with_checkpoints<E>(
-    line: &str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<VecDeque<String>, E> {
-    let mut tokens = VecDeque::new();
-    let mut part_start = 0usize;
-    for (iteration, (offset, character)) in line.char_indices().enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        if character != ' ' {
-            continue;
-        }
-        if part_start < offset {
-            tokens.push_back(line[part_start..offset].to_string());
-        }
-        tokens.push_back(" ".to_string());
-        part_start = offset + character.len_utf8();
-    }
-    if part_start < line.len() {
-        tokens.push_back(line[part_start..].to_string());
-    }
-    while tokens.back().is_some_and(|token| token == " ") {
-        tokens.pop_back();
-    }
-    checkpoint()?;
-    Ok(tokens)
-}
-
 fn wrap_html_line_to_width<E>(
     line: &str,
     max_width_px: f64,
+    white_space: HtmlWhiteSpace,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<String>, E> {
+    let preserve_spaces = white_space.preserves_spaces();
+    let mut collapsed = String::new();
+    let line = if preserve_spaces {
+        line
+    } else {
+        let mut pending_space = false;
+        for (index, ch) in line.chars().enumerate() {
+            checkpoint_loop(index, checkpoint)?;
+            if is_html_collapsible_ascii_whitespace(ch) {
+                pending_space = !collapsed.is_empty();
+            } else {
+                if pending_space {
+                    collapsed.push(' ');
+                }
+                collapsed.push(ch);
+                pending_space = false;
+            }
+        }
+        collapsed.as_str()
+    };
     if !max_width_px.is_finite() || max_width_px <= 0.0 {
         return Ok(vec![line.to_string()]);
     }
@@ -189,7 +186,9 @@ fn wrap_html_line_to_width<E>(
     }
 
     checkpoint()?;
-    let mut tokens = split_line_to_words_with_checkpoints(line, checkpoint)?;
+    let mut tokens = VecDeque::from(html_break_spaces_segments_with_checkpoints(
+        line, checkpoint,
+    )?);
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut iteration = 0usize;
@@ -197,34 +196,51 @@ fn wrap_html_line_to_width<E>(
     while let Some(tok) = tokens.pop_front() {
         checkpoint_loop(iteration, checkpoint)?;
         iteration = iteration.saturating_add(1);
-        if cur.is_empty() && tok == " " {
+        if !preserve_spaces && cur.is_empty() && tok == " " {
             continue;
         }
-
+        if white_space == HtmlWhiteSpace::PreWrap && tok == " " {
+            cur.push(' ');
+            continue;
+        }
         let candidate = format!("{cur}{tok}");
-        let candidate_trimmed = candidate.trim_end();
-        if line_width_html_px(measurer, style, candidate_trimmed, checkpoint)? <= max_width_px {
+        let measured_candidate = if white_space == HtmlWhiteSpace::BreakSpaces {
+            candidate.as_str()
+        } else {
+            candidate.trim_end_matches(' ')
+        };
+        if line_width_html_px(measurer, style, measured_candidate, checkpoint)? <= max_width_px {
             cur = candidate;
             continue;
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
-            cur.clear();
+        if !cur.is_empty() {
+            if !preserve_spaces {
+                cur.truncate(cur.trim_end_matches(' ').len());
+            }
+            out.push(std::mem::take(&mut cur));
             tokens.push_front(tok);
             continue;
         }
 
-        if tok == " " {
+        // Keep a pre-wrap segment pending so its entire trailing space run can hang together.
+        if white_space == HtmlWhiteSpace::PreWrap {
+            cur = candidate;
             continue;
         }
-
-        // HTML labels do not use `word-break: break-all`; preserve long tokens as readable units.
-        out.push(tok);
+        // Browser wrapping preserves an unbreakable segment's min-content overflow.
+        out.push(if preserve_spaces {
+            tok.to_string()
+        } else {
+            tok.trim_end_matches(' ').to_string()
+        });
     }
 
-    if !cur.trim().is_empty() {
-        out.push(cur.trim_end().to_string());
+    if !cur.is_empty() {
+        if !preserve_spaces {
+            cur.truncate(cur.trim_end_matches(' ').len());
+        }
+        out.push(cur);
     }
 
     if out.is_empty() {
@@ -236,12 +252,12 @@ fn wrap_html_line_to_width<E>(
 
 pub(super) fn wrap_html_lines_to_width<E>(
     lines: Vec<String>,
-    max_width_px: Option<f64>,
+    wrapping: HtmlTextWrapping,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<String>, E> {
-    let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
+    let Some(max_width_px) = wrapping.max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
         checkpoint()?;
         return Ok(lines);
     };
@@ -252,6 +268,7 @@ pub(super) fn wrap_html_lines_to_width<E>(
         wrapped.extend(wrap_html_line_to_width(
             &line,
             max_width_px,
+            wrapping.white_space,
             measurer,
             style,
             checkpoint,
@@ -273,23 +290,70 @@ pub(super) fn extract_inline_html_style_property<E>(
     extract_style_property_with_checkpoints(style, property, checkpoint)
 }
 
-pub(super) fn foreign_object_html_soft_wrap_width<E>(
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum HtmlWhiteSpace {
+    Normal,
+    PreWrap,
+    BreakSpaces,
+}
+
+impl HtmlWhiteSpace {
+    pub(super) fn preserves_spaces(self) -> bool {
+        self != Self::Normal
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct HtmlTextWrapping {
+    pub max_width_px: Option<f64>,
+    pub white_space: HtmlWhiteSpace,
+}
+
+pub(super) fn html_line_alignment_offset<E>(
+    line: &str,
+    white_space: HtmlWhiteSpace,
+    anchor: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<f64, E> {
+    if white_space != HtmlWhiteSpace::PreWrap || anchor == "start" || !line.ends_with(' ') {
+        return Ok(0.0);
+    }
+    // Hanging spaces remain selectable, but do not participate in visible text alignment.
+    let hanging_width = line_width_html_px(measurer, style, line, checkpoint)?
+        - line_width_html_px(measurer, style, line.trim_end_matches(' '), checkpoint)?;
+    Ok(hanging_width * if anchor == "middle" { 0.5 } else { 1.0 })
+}
+
+pub(super) fn foreign_object_html_wrapping<E>(
     tag: &str,
     inner: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<f64>, E> {
-    let white_space = extract_inline_html_style_property(inner, "white-space", checkpoint)?
+) -> Result<HtmlTextWrapping, E> {
+    let css_white_space = extract_inline_html_style_property(inner, "white-space", checkpoint)?
         .map(|value| value.trim().to_ascii_lowercase());
-    if matches!(white_space.as_deref(), Some("nowrap" | "pre")) {
-        return Ok(None);
+    let white_space = match css_white_space.as_deref() {
+        Some("break-spaces") => HtmlWhiteSpace::BreakSpaces,
+        Some("pre-wrap" | "pre") => HtmlWhiteSpace::PreWrap,
+        _ => HtmlWhiteSpace::Normal,
+    };
+    if matches!(css_white_space.as_deref(), Some("nowrap" | "pre")) {
+        return Ok(HtmlTextWrapping {
+            max_width_px: None,
+            white_space,
+        });
     }
 
     let wrap_is_explicit = matches!(
-        white_space.as_deref(),
+        css_white_space.as_deref(),
         Some("break-spaces" | "normal" | "pre-wrap" | "pre-line")
     );
-    if white_space.is_some() && !wrap_is_explicit {
-        return Ok(None);
+    if css_white_space.is_some() && !wrap_is_explicit {
+        return Ok(HtmlTextWrapping {
+            max_width_px: None,
+            white_space,
+        });
     }
 
     let css_width = extract_inline_html_style_property(inner, "width", checkpoint)?
@@ -303,5 +367,8 @@ pub(super) fn foreign_object_html_soft_wrap_width<E>(
         *width > 0.0 && (wrap_is_explicit || css_width.is_some() || max_width.is_some())
     });
     checkpoint()?;
-    Ok(width)
+    Ok(HtmlTextWrapping {
+        max_width_px: width,
+        white_space,
+    })
 }

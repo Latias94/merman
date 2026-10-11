@@ -23,7 +23,10 @@ use std::fmt::{self, Write};
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{GFrame, source_class_attr_tokens, sum_translate};
-use html::{foreign_object_html_soft_wrap_width, htmlish_to_text_lines, wrap_html_lines_to_width};
+use html::{
+    foreign_object_html_wrapping, html_line_alignment_offset, htmlish_to_text_lines,
+    wrap_html_lines_to_width,
+};
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -252,10 +255,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     }
 
                     let measure_style = typography.text_style();
-                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner, checkpoint)?;
+                    let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
+                    let space_attr = if wrapping.white_space.preserves_spaces() {
+                        r#" xml:space="preserve""#
+                    } else {
+                        ""
+                    };
                     let lines = wrap_html_lines_to_width(
                         raw_lines,
-                        wrap_width,
+                        wrapping,
                         text_measurer,
                         &measure_style,
                         checkpoint,
@@ -283,16 +291,26 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 
                     for (idx, line) in lines.iter().enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
+                        let line_x = text_x
+                            + html_line_alignment_offset(
+                                line,
+                                wrapping.white_space,
+                                anchor,
+                                text_measurer,
+                                &measure_style,
+                                checkpoint,
+                            )?;
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text_with_checkpoints(line, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{} style="{}">{}</text>"##,
-                                text_x,
+                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{}{} style="{}">{}</text>"##,
+                                line_x,
                                 y_line,
                                 escaped_fill,
                                 source_classes_attr,
+                                space_attr,
                                 escaped_style,
                                 text
                             ),
@@ -1541,6 +1559,138 @@ mod tests {
             2,
             "the deterministic fallback should fit this label in two readable rows: {out}"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_layout_breaks_for_unicode_and_long_paths() {
+        use crate::text::{TextStyle, WrapMode};
+
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+            text.chars().filter(|ch| *ch != '\u{200b}').count() as f64 * 10.0
+        });
+        for (label, limit, expected_rows) in [
+            ("alpha-beta", 60.0, vec!["alpha-", "beta"]),
+            ("alpha\u{200b}beta", 50.0, vec!["alpha\u{200b}", "beta"]),
+            ("负责人审批", 20.0, vec!["负责", "人审", "批"]),
+            ("a  b", 20.0, vec!["a ", " b"]),
+            ("unbreakable", 20.0, vec!["unbreakable"]),
+            ("alpha\u{a0}beta", 50.0, vec!["alpha\u{a0}beta"]),
+            ("alpha\u{2011}beta", 50.0, vec!["alpha\u{2011}beta"]),
+            ("https://x.test/a/b", 50.0, vec!["https://x.test/a/b"]),
+            (
+                "docs/plans/2026-10-11-release-checklist.final.md",
+                200.0,
+                vec!["docs/plans/2026-10-11-", "release-", "checklist.final.md"],
+            ),
+            (
+                "src/components/navigation/sidebar-tree.tsx",
+                200.0,
+                vec!["src/components/navigation/sidebar-", "tree.tsx"],
+            ),
+        ] {
+            let metrics = measurer.measure_wrapped(
+                label,
+                &TextStyle::default(),
+                Some(limit),
+                WrapMode::HtmlLike,
+            );
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:break-spaces;max-width:{limit}px;width:{limit}px"><span>{label}</span></div></foreignObject></svg>"#,
+                metrics.width, metrics.height,
+            );
+            let output = render_fallback(&svg, measurer.as_ref());
+            let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+            let rows: Vec<_> = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("merman-foreignobject-fallback-text")
+                })
+                .map(|node| node.text().unwrap_or(""))
+                .collect();
+            assert_eq!(rows, expected_rows, "label={label:?}");
+            assert_eq!(rows.concat(), label, "visible content must be preserved");
+            assert_eq!(rows.len(), metrics.line_count, "label={label:?}");
+            assert!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .all(
+                        |node| node.attribute(("http://www.w3.org/XML/1998/namespace", "space"))
+                            == Some("preserve")
+                    )
+            );
+            assert!(rows.iter().all(|row| {
+                measurer
+                    .measure_wrapped(row, &TextStyle::default(), None, WrapMode::HtmlLike)
+                    .width
+                    <= metrics.width
+            }));
+        }
+    }
+
+    #[test]
+    fn foreign_object_overlay_collapses_spaces_for_normal_and_pre_line_wrapping() {
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        for white_space in ["normal", "pre-line"] {
+            for (label, limit, expected_rows) in [
+                ("a    b", 20.0, vec!["a", "b"]),
+                ("a\t\tb", 20.0, vec!["a", "b"]),
+                ("a    b", 30.0, vec!["a b"]),
+                ("a\u{a0}b", 20.0, vec!["a\u{a0}b"]),
+                ("alpha-beta", 60.0, vec!["alpha-", "beta"]),
+            ] {
+                let svg = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="{limit}" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:{white_space};width:{limit}px">{label}</div></foreignObject></svg>"#,
+                );
+                let output = render_fallback(&svg, measurer.as_ref());
+                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let rows: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .map(|node| node.text().unwrap_or(""))
+                    .collect();
+                assert_eq!(
+                    rows, expected_rows,
+                    "white-space={white_space}, label={label:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn foreign_object_overlay_hangs_preserved_trailing_spaces_for_pre_wrap() {
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+            // Model a kerning pair so hanging width cannot be obtained by adding space widths.
+            text.chars().count() as f64 * 10.0 - if text.contains("a ") { 8.0 } else { 0.0 }
+        });
+        for label in ["a    b", "aaaa    b"] {
+            for (anchor, expected_x) in [
+                ("start", [0.0, 0.0]),
+                ("middle", [26.0, 10.0]),
+                ("end", [52.0, 20.0]),
+            ] {
+                let svg = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="20" height="48" text-anchor="{anchor}"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:pre-wrap;width:20px">{label}</div></foreignObject></svg>"#
+                );
+                let output = render_fallback(&svg, measurer.as_ref());
+                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let rows: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .collect();
+                assert_eq!(
+                    rows.iter()
+                        .map(|node| node.text().unwrap_or(""))
+                        .collect::<Vec<_>>(),
+                    [label.trim_end_matches('b'), "b"]
+                );
+                for (row, x) in rows.iter().zip(expected_x) {
+                    assert_eq!(row.attribute("x").unwrap().parse::<f64>().unwrap(), x);
+                }
+            }
+        }
     }
 
     #[test]

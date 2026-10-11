@@ -41,32 +41,48 @@ pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_
 /// `?`. CSS `white-space: break-spaces` additionally permits a break after every preserved U+0020,
 /// so runs of spaces are divided without discarding the spaces themselves.
 pub(crate) fn html_break_spaces_segments(text: &str) -> Vec<&str> {
+    match html_break_spaces_segments_with_checkpoints(text, &mut || {
+        Ok::<(), std::convert::Infallible>(())
+    }) {
+        Ok(segments) => segments,
+        Err(error) => match error {},
+    }
+}
+
+/// Shares browser break opportunities with cancellable SVG label conversion.
+pub(crate) fn html_break_spaces_segments_with_checkpoints<'a, E>(
+    text: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Vec<&'a str>, E> {
+    checkpoint()?;
     if text.is_empty() {
-        return vec![text];
+        return Ok(vec![text]);
     }
 
     let mut segments = Vec::new();
     let mut segment_start = 0usize;
     for (segment_end, opportunity) in unicode_linebreak::linebreaks(text) {
+        checkpoint()?;
         if opportunity == unicode_linebreak::BreakOpportunity::Allowed
             && text[..segment_end].ends_with('/')
         {
             continue;
         }
-        push_break_spaces_segments(text, segment_start, segment_end, &mut segments);
+        push_break_spaces_segments(text, segment_start, segment_end, &mut segments, checkpoint)?;
         segment_start = segment_end;
     }
 
     // UAX #14 emits a mandatory opportunity at the end of non-empty text. Keep the remainder as
     // a defensive fallback in case the dependency changes that iterator contract.
     if segment_start < text.len() {
-        push_break_spaces_segments(text, segment_start, text.len(), &mut segments);
+        push_break_spaces_segments(text, segment_start, text.len(), &mut segments, checkpoint)?;
     }
 
+    checkpoint()?;
     if segments.is_empty() {
-        vec![text]
+        Ok(vec![text])
     } else {
-        segments
+        Ok(segments)
     }
 }
 
@@ -79,18 +95,22 @@ pub(crate) fn html_has_soft_break_opportunity(text: &str) -> bool {
     html_break_spaces_segments(text).len() > 1
 }
 
-fn push_break_spaces_segments<'a>(
+fn push_break_spaces_segments<'a, E>(
     text: &'a str,
     start: usize,
     end: usize,
     segments: &mut Vec<&'a str>,
-) {
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<(), E> {
     if start >= end {
-        return;
+        return Ok(());
     }
 
     let mut part_start = start;
-    for (offset, ch) in text[start..end].char_indices() {
+    for (iteration, (offset, ch)) in text[start..end].char_indices().enumerate() {
+        if iteration.is_multiple_of(64) {
+            checkpoint()?;
+        }
         if ch != ' ' {
             continue;
         }
@@ -101,13 +121,14 @@ fn push_break_spaces_segments<'a>(
     if part_start < end {
         segments.push(&text[part_start..end]);
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        html_break_spaces_segments, html_has_soft_break_opportunity,
-        mermaid_html_breaks_to_newlines,
+        html_break_spaces_segments, html_break_spaces_segments_with_checkpoints,
+        html_has_soft_break_opportunity, mermaid_html_breaks_to_newlines,
     };
 
     #[test]
@@ -129,6 +150,10 @@ mod tests {
     #[test]
     fn follows_browser_line_breaking_for_prose_cjk_and_url_boundaries() {
         assert_eq!(html_break_spaces_segments("alpha-beta"), ["alpha-", "beta"]);
+        assert_eq!(
+            html_break_spaces_segments("alpha\u{200b}beta"),
+            ["alpha\u{200b}", "beta"]
+        );
         assert_eq!(
             html_break_spaces_segments("负责人审批"),
             ["负", "责", "人", "审", "批"]
@@ -167,5 +192,17 @@ mod tests {
     fn break_spaces_preserves_each_space_before_its_break() {
         assert_eq!(html_break_spaces_segments("a  b"), ["a ", " ", "b"]);
         assert_eq!(html_break_spaces_segments("  "), [" ", " "]);
+    }
+
+    #[test]
+    fn controlled_segmentation_can_cancel_within_an_unbreakable_segment() {
+        let text = "unbreakable".repeat(1024);
+        let mut calls = 0;
+        let result = html_break_spaces_segments_with_checkpoints(&text, &mut || {
+            calls += 1;
+            if calls == 4 { Err("cancelled") } else { Ok(()) }
+        });
+        assert_eq!(result, Err("cancelled"));
+        assert_eq!(calls, 4);
     }
 }
