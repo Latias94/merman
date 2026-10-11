@@ -69,7 +69,17 @@ impl DiscoveryProvider {
         match self {
             Self::Bounded(catalog) => catalog.fallback(character, base, excluded, control, accept),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform { catalog, .. } => {
+            Self::Platform { catalog, explicit } => {
+                // Initial faces have stable precedence; dynamically installed faces never vote.
+                for face in explicit.faces() {
+                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+                    if excluded.iter().any(|used| system::same_face(used, face)) {
+                        continue;
+                    }
+                    if let Some(id) = accept(FontCandidate::Loaded(face.clone()))? {
+                        return Ok(Some(id));
+                    }
+                }
                 for candidate in catalog.fallback_candidates(character, base, control)? {
                     control.terminal_checkpoint_at(OperationPhase::Layout)?;
                     if let Some(id) = accept(platform::candidate(candidate)?)? {
@@ -130,11 +140,6 @@ pub(super) fn resolver(
                 let Some(base) = excluded_faces.first() else {
                     return Ok(None);
                 };
-                if let Some(id) =
-                    (usvg::FontResolver::default_fallback_selector())(character, excluded, database)
-                {
-                    return Ok(Some(id));
-                }
                 let provider = context
                     .0
                     .discovery

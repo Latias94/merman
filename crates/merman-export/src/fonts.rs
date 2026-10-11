@@ -543,19 +543,8 @@ impl FontLoader {
         }
         for face in candidate.faces() {
             self.checkpoint()?;
-            let mut families: Vec<_> = face
-                .families
-                .iter()
-                .map(|(name, _)| name.to_lowercase())
-                .collect();
-            families.sort();
-            families.dedup();
-            let descriptor = format!(
-                "{families:?}/{:?}/{:?}/{}",
-                face.style, face.stretch, face.weight.0
-            );
             // Earlier explicitly supplied faces win equal family/style descriptors.
-            if self.descriptors.insert(descriptor) {
+            if self.descriptors.insert(face_descriptor(face)) {
                 self.hash.update(&digest);
                 self.hash.update(face.index.to_be_bytes());
                 self.database.push_face_info(face.clone());
@@ -563,6 +552,20 @@ impl FontLoader {
         }
         Ok(())
     }
+}
+
+fn face_descriptor(face: &usvg::fontdb::FaceInfo) -> String {
+    let mut families: Vec<_> = face
+        .families
+        .iter()
+        .map(|(name, _)| name.to_lowercase())
+        .collect();
+    families.sort();
+    families.dedup();
+    format!(
+        "{families:?}/{:?}/{:?}/{}",
+        face.style, face.stretch, face.weight.0
+    )
 }
 
 fn is_font_path(path: &Path) -> bool {

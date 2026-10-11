@@ -223,18 +223,7 @@ impl Discovery<'_> {
         for face in candidate.faces() {
             self.control
                 .terminal_checkpoint_at(OperationPhase::Admission)?;
-            let mut families: Vec<_> = face
-                .families
-                .iter()
-                .map(|(name, _)| name.to_lowercase())
-                .collect();
-            families.sort();
-            families.dedup();
-            let descriptor = format!(
-                "{families:?}/{:?}/{:?}/{}",
-                face.style, face.stretch, face.weight.0
-            );
-            if !self.descriptors.insert(descriptor) {
+            if !self.descriptors.insert(face_descriptor(face)) {
                 continue;
             }
             let coverage = candidate
@@ -857,6 +846,68 @@ mod tests {
         assert_eq!(context.0.sources.snapshots.lock().unwrap().files.len(), 2);
         assert_eq!(context.selected_faces().len(), 2);
         assert!(context.check().is_ok());
+    }
+
+    #[test]
+    fn fallback_selection_matches_measurement_independently_of_paint_order() {
+        let root = Root::new();
+        root.copy("Cousine-Regular.ttf");
+        root.copy("NotoSans-Latin-subset.ttf");
+        root.copy("NotoSansSC-subset.ttf");
+        let shared = context(&root, NativeFontLimits::default(), &OperationControl::new()).unwrap();
+        let style = TextStyle {
+            font_family: Some("Noto Sans SC".to_owned()),
+            font_size: 20.0,
+            font_weight: Some("400".to_owned()),
+            ..TextStyle::default()
+        };
+        let other = r#"<text font-family="Noto Sans" x="0" y="20">A</text>"#;
+        for (before, after) in [(other, ""), ("", other), ("", "")] {
+            let active = shared.for_operation(&OperationControl::new());
+            let measured = active
+                .measure(HostTextMeasurementRequest {
+                    operation: TextMeasurementOperation::CanvasMeasureTextWidth,
+                    phase: merman_render::environment::TextMeasurementPhase::ComputedLength,
+                    text: "A",
+                    style: &style,
+                    max_width: None,
+                    wrap_mode: WrapMode::SvgLike,
+                })
+                .unwrap()
+                .unwrap();
+            let HostTextMeasurement::Length(expected) = measured else {
+                panic!("expected computed length, got {measured:?}");
+            };
+            assert_eq!(active.selected_faces(), ["Cousine-Regular#0"]);
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" font-size="20">{before}<text id="left" font-family="Noto Sans SC" x="100" y="40">A</text><text id="right" font-family="Noto Sans SC" text-anchor="end" x="100" y="40">A</text>{after}</svg>"#,
+            );
+            let mut options = usvg::Options::default();
+            active.apply_to_usvg_options(&mut options);
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let Some(usvg::Node::Text(left)) = tree.node_by_id("left") else {
+                panic!("missing left text");
+            };
+            let Some(usvg::Node::Text(right)) = tree.node_by_id("right") else {
+                panic!("missing right text");
+            };
+            let painted = f64::from(left.bounding_box().x() - right.bounding_box().x()).abs();
+            assert!(
+                (expected - painted).abs() < 0.001,
+                "measurement={expected}, paint={painted}, before={before:?}, after={after:?}"
+            );
+            for text in [left, right] {
+                for glyph in text
+                    .layouted()
+                    .iter()
+                    .flat_map(|span| &span.positioned_glyphs)
+                {
+                    let face = tree.fontdb().face(glyph.font).unwrap();
+                    assert_eq!(face.post_script_name, "Cousine-Regular");
+                }
+            }
+            active.check().unwrap();
+        }
     }
 
     #[test]
