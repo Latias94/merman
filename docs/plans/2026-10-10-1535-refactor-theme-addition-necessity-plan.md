@@ -31,6 +31,9 @@ only for their recorded revision and scope.
 
 Implementation decisions and local verification for the reopened work are recorded in the
 [remaining cleanup execution](../performance/theme_remaining_cleanup_execution_2026-10-10.md).
+The subsequent eight-finding review and its implementation have a separate
+[October 11 execution record](../performance/theme_followup_cleanup_execution_2026-10-11.md).
+Neither receipt certifies all remaining code as minimal.
 
 The frozen comparison is main `2928265122d5a3d35e239e3ddbce885c7e342c59` against
 branch `8664ff06ea234da73c59de99fb12a76034e301d3`: 1,683 changed paths,
