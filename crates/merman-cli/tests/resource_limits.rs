@@ -144,35 +144,24 @@ fn css_and_puppeteer_files_use_their_owned_limits() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let css = tmp.path().join("style.css");
     fs::write(&css, "a{}").expect("write CSS");
-    let css_exact = run_with_stdin(
-        &[
-            "render",
-            "-",
-            "--output",
-            "-",
-            "--css-file",
-            css.to_str().expect("UTF-8 temp path"),
-            "--resource-limit",
-            "max_css_bytes=3",
-        ],
-        SOURCE,
-    );
+    #[allow(unused_mut)]
+    let mut css_args = vec![
+        "render",
+        "-",
+        "--output",
+        "-",
+        "--css-file",
+        css.to_str().expect("UTF-8 temp path"),
+        "--resource-limit",
+        "max_css_bytes=3",
+    ];
+    #[cfg(feature = "native-fonts")]
+    css_args.extend(["--font-measurement", "deterministic"]);
+    let css_exact = run_with_stdin(&css_args, SOURCE);
     assert!(css_exact.status.success(), "stderr: {:?}", css_exact.stderr);
 
     fs::write(&css, "a{ }").expect("write oversized CSS");
-    let css_oversized = run_with_stdin(
-        &[
-            "render",
-            "-",
-            "--output",
-            "-",
-            "--css-file",
-            css.to_str().expect("UTF-8 temp path"),
-            "--resource-limit",
-            "max_css_bytes=3",
-        ],
-        SOURCE,
-    );
+    let css_oversized = run_with_stdin(&css_args, SOURCE);
     assert_eq!(exit_code(css_oversized.status), 2);
     assert!(utf8(&css_oversized.stderr).contains("CSS file"));
 
@@ -388,21 +377,23 @@ fn remote_icon_body_stream_stops_at_limit_plus_one() {
     let (url, server) = serve_body_once(body.as_bytes(), HttpBodyFraming::Chunked);
     let source = format!("remote#{url}/secret-path?token=do-not-print");
     let limit = format!("max_remote_icon_body_bytes={}", body.len() - 1);
-    let output = run_with_stdin(
-        &[
-            "render",
-            "-",
-            "--output",
-            "-",
-            "--icon-pack-source",
-            &source,
-            "--allow-network",
-            "--allow-private-network",
-            "--resource-limit",
-            &limit,
-        ],
-        SOURCE,
-    );
+    #[allow(unused_mut)]
+    let mut args = vec![
+        "render",
+        "-",
+        "--output",
+        "-",
+        "--icon-pack-source",
+        &source,
+        "--allow-network",
+        "--allow-private-network",
+        "--resource-limit",
+        &limit,
+    ];
+    // Network-resource fixtures measure HTTP admission, without unrelated host discovery.
+    #[cfg(feature = "native-fonts")]
+    args.extend(["--font-measurement", "deterministic"]);
+    let output = run_with_stdin(&args, SOURCE);
     join_fixture(server);
 
     assert_eq!(exit_code(output.status), 2);
@@ -416,19 +407,21 @@ fn remote_icon_body_stream_stops_at_limit_plus_one() {
 fn remote_icon_json_errors_do_not_echo_url_secrets() {
     let (url, server) = serve_body_once(b"not valid icon JSON", HttpBodyFraming::ContentLength);
     let source = format!("remote#{url}/secret-path?token=do-not-print#fragment-do-not-print");
-    let output = run_with_stdin(
-        &[
-            "render",
-            "-",
-            "--output",
-            "-",
-            "--icon-pack-source",
-            &source,
-            "--allow-network",
-            "--allow-private-network",
-        ],
-        SOURCE,
-    );
+    #[allow(unused_mut)]
+    let mut args = vec![
+        "render",
+        "-",
+        "--output",
+        "-",
+        "--icon-pack-source",
+        &source,
+        "--allow-network",
+        "--allow-private-network",
+    ];
+    // Network-resource fixtures measure HTTP admission, without unrelated host discovery.
+    #[cfg(feature = "native-fonts")]
+    args.extend(["--font-measurement", "deterministic"]);
+    let output = run_with_stdin(&args, SOURCE);
     join_fixture(server);
 
     assert_eq!(exit_code(output.status), 2);

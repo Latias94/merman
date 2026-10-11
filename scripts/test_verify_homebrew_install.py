@@ -15,20 +15,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_homebrew_install as verifier
 import verify_cli_installation as installation_verifier
-from ascii_capability_contract import canonical_ascii_capabilities
+from test_verify_cli_release_archive import (
+    CONTRACT_PATHS,
+    semantic_surface_digest,
+    valid_capabilities_payload,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORT_ASSETS_SINCE = "0.8.0"
 
 
-def ascii_capabilities_contract() -> dict[str, object]:
-    return canonical_ascii_capabilities()
-
-
 class HomebrewInstallVerifierTests(unittest.TestCase):
     def test_standard_release_includes_rustdoc_and_its_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 5)
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 6)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
         for name in ("merman-cli-rustdoc.1", "merman-cli-rustdoc-build.1", "merman-cli-rustdoc-check.1"):
@@ -350,6 +350,194 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         runner=fixture.run,
                     )
 
+    def test_native_font_subcontract_is_required_and_has_exact_keys(self) -> None:
+        for mutation in ("missing", "null", "array", "extra"):
+            with self.subTest(mutation=mutation), self.installation_fixture() as fixture:
+                if mutation == "missing":
+                    fixture.capabilities.pop("native_fonts")
+                elif mutation == "extra":
+                    fixture.capabilities["native_fonts"]["unknown"] = None
+                else:
+                    fixture.capabilities["native_fonts"] = None if mutation == "null" else []
+                with self.assertRaisesRegex(verifier.HomebrewVerificationError, "native_fonts"):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
+    def test_native_font_fields_have_exact_json_types_and_values(self) -> None:
+        native = valid_capabilities_payload()["native_fonts"]
+        for field, value in native.items():
+            if isinstance(value, bool):
+                wrong_value = not value
+                wrong_type = int(value)
+            elif isinstance(value, str):
+                wrong_value = "experimental-system-font-query"
+                wrong_type = None
+            else:
+                wrong_value = list(reversed(value))
+                wrong_type = {}
+            for mutation in ("missing", "value", "type"):
+                with self.subTest(field=field, mutation=mutation), self.installation_fixture() as fixture:
+                    if mutation == "missing":
+                        fixture.capabilities["native_fonts"].pop(field)
+                    else:
+                        fixture.capabilities["native_fonts"][field] = (
+                            wrong_value if mutation == "value" else wrong_type
+                        )
+                    with self.assertRaisesRegex(
+                        verifier.HomebrewVerificationError, f"native_fonts.*{field}"
+                    ):
+                        verifier.verify_homebrew_install(
+                            formula_version="0.8.0",
+                            support_assets_since=SUPPORT_ASSETS_SINCE,
+                            prefix=fixture.prefix,
+                            binary=fixture.binary,
+                            contract_root=fixture.contract_root,
+                            runner=fixture.run,
+                        )
+
+    def test_capability_and_output_metadata_are_exact(self) -> None:
+        for field in ("capabilities", "outputs"):
+            for mutation in ("ids_only", "missing_key", "extra_key", "type", "value", "order"):
+                with self.subTest(field=field, mutation=mutation), self.installation_fixture() as fixture:
+                    entries = fixture.capabilities[field]
+                    if mutation == "ids_only":
+                        fixture.capabilities[field] = [{"id": entry["id"]} for entry in entries]
+                    elif mutation == "missing_key":
+                        entries[0].pop("description")
+                    elif mutation == "extra_key":
+                        entries[0]["unknown"] = None
+                    elif mutation == "order":
+                        entries.reverse()
+                    else:
+                        entries[0]["description"] = 7 if mutation == "type" else "drifted"
+                    with self.assertRaisesRegex(verifier.HomebrewVerificationError, field):
+                        verifier.verify_homebrew_install(
+                            formula_version="0.8.0",
+                            support_assets_since=SUPPORT_ASSETS_SINCE,
+                            prefix=fixture.prefix,
+                            binary=fixture.binary,
+                            contract_root=fixture.contract_root,
+                            runner=fixture.run,
+                        )
+
+    def test_nested_output_resources_have_exact_json_types_and_keys(self) -> None:
+        for mutation in ("font_boolean", "image_boolean", "integer_as_float", "extra_limit", "null"):
+            with self.subTest(mutation=mutation), self.installation_fixture() as fixture:
+                output = next(entry for entry in fixture.capabilities["outputs"] if entry["id"] == "png")
+                if mutation == "font_boolean":
+                    output["system_fonts"]["resource_bounded"] = 0
+                elif mutation == "image_boolean":
+                    output["embedded_images"]["network_access"] = 0
+                elif mutation == "integer_as_float":
+                    limits = output["embedded_images"]["limits"]
+                    limits["max_bytes_per_image"] = float(limits["max_bytes_per_image"])
+                elif mutation == "extra_limit":
+                    output["embedded_images"]["limits"]["unknown"] = 1
+                else:
+                    output["embedded_images"] = None
+                with self.assertRaisesRegex(verifier.HomebrewVerificationError, "outputs"):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
+    def test_metadata_uses_the_installed_versions_release_source(self) -> None:
+        with self.installation_fixture() as fixture:
+            surface_path = fixture.contract_root / "capabilities/feature-surface-v1.json"
+            surface = json.loads(surface_path.read_text(encoding="utf-8"))
+            surface["capabilities"][0]["description"] = "Version-owned description."
+            surface_path.write_text(json.dumps(surface), encoding="utf-8")
+            descriptor_path = fixture.contract_root / installation_verifier.PROFILE_DESCRIPTOR
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+            descriptor["capability_authority"]["digest"] = semantic_surface_digest(surface)
+            descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+            fixture.capabilities = valid_capabilities_payload(fixture.contract_root, version="0.8.0")
+            self.assertTrue(
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
+            )
+            fixture.capabilities["capabilities"][0]["description"] = "Stale description."
+            with self.assertRaisesRegex(verifier.HomebrewVerificationError, "capabilities.*description"):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
+
+    def test_duplicate_native_font_json_keys_are_rejected(self) -> None:
+        with self.installation_fixture() as fixture:
+            def runner(command, **kwargs):
+                result = fixture.run(command, **kwargs)
+                if command[1:] == ["capabilities", "--json"]:
+                    result.stdout = result.stdout.replace(
+                        b'"system_resources_bounded": true',
+                        b'"system_resources_bounded": false, "system_resources_bounded": true',
+                        1,
+                    )
+                return result
+
+            with self.assertRaisesRegex(verifier.HomebrewVerificationError, "duplicate JSON key"):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=runner,
+                )
+
+    def test_capability_schema_version_has_an_exact_integer_type(self) -> None:
+        with self.installation_fixture() as fixture:
+            fixture.capabilities["schema_version"] = 2.0
+            with self.assertRaisesRegex(verifier.HomebrewVerificationError, "schema version"):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
+
+    def test_cli_contract_version_must_be_exactly_six(self) -> None:
+        for version in (None, 5, 7, "6", 6.0, True):
+            with self.subTest(version=version), self.installation_fixture() as fixture:
+                if version is None:
+                    fixture.capabilities.pop("cli_contract_version")
+                else:
+                    fixture.capabilities["cli_contract_version"] = version
+                with self.assertRaisesRegex(
+                    verifier.HomebrewVerificationError,
+                    "unexpected CLI contract version",
+                ):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
     def test_capabilities_package_version_must_match_formula(self) -> None:
         with self.installation_fixture() as fixture:
             fixture.capabilities["package"]["version"] = "0.8.1"
@@ -370,6 +558,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
         cases = (
             ({"digest": "sha256:" + "f" * 64}, "descriptor does not match"),
             ({"schema_version": 99}, "descriptor does not match"),
+            ({"schema_version": True}, "descriptor does not match"),
+            ({"schema_version": 1.0}, "descriptor does not match"),
         )
         for mutation, error in cases:
             with self.subTest(mutation=mutation):
@@ -443,11 +633,10 @@ class InstallationFixture:
     def __init__(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.contract_root = Path(self.temporary.name) / "release-source"
-        descriptor = self.contract_root / installation_verifier.PROFILE_DESCRIPTOR
-        descriptor.parent.mkdir(parents=True)
-        descriptor.write_bytes(
-            (ROOT / installation_verifier.PROFILE_DESCRIPTOR).read_bytes()
-        )
+        for relative in CONTRACT_PATHS:
+            destination = self.contract_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((ROOT / relative).read_bytes())
         self.prefix = Path(self.temporary.name) / "Cellar/merman-cli/0.8.0"
         self.binary = self.prefix / "bin/merman-cli"
         self.binary.parent.mkdir(parents=True)
@@ -465,27 +654,7 @@ class InstallationFixture:
             (man_root / name).write_text(contents, encoding="utf-8", newline="\n")
             (source_man_root / name).write_text(contents, encoding="utf-8", newline="\n")
 
-        profile, authority = verifier._read_release_contract(self.contract_root)
-        self.capabilities = {
-            "schema_version": verifier.CAPABILITIES_SCHEMA_VERSION,
-            "cli_contract_version": verifier.CLI_CONTRACT_VERSION,
-            "package": {"name": "merman-cli", "version": "0.8.0"},
-            "compatibility": {"mermaid": "11.16.0", "mmdc": "11.16.0"},
-            "descriptor": {
-                "schema_version": authority["schema_version"],
-                "digest": authority["digest"],
-            },
-            "commands": list(verifier.COMMANDS),
-            "diagram_families": profile["expected"]["diagram_families"],
-            "capabilities": [
-                {"id": identifier}
-                for identifier in profile["expected"]["capabilities"]
-            ],
-            "outputs": [
-                {"id": identifier} for identifier in profile["expected"]["outputs"]
-            ],
-            "ascii": ascii_capabilities_contract(),
-        }
+        self.capabilities = valid_capabilities_payload(self.contract_root, version="0.8.0")
 
     def __enter__(self):
         return self

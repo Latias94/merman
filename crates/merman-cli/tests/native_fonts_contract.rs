@@ -345,6 +345,10 @@ fn native_font_budget_failure_aborts_the_entire_batch_publication() {
             "expected the native font label budget, not another failure: {diagnostic}"
         );
         assert!(
+            diagnostic.contains("Markdown chart 2 at line 5, column 1"),
+            "expected the second fence location: {diagnostic}"
+        );
+        assert!(
             !temp
                 .path()
                 .join(output_directory)
@@ -363,6 +367,53 @@ fn native_font_budget_failure_aborts_the_entire_batch_publication() {
                 "aborted publication must leave only the stable empty transaction lock"
             );
         }
+    }
+}
+
+#[test]
+fn explicit_font_files_are_protected_from_output_aliases() {
+    let temp = tempfile::tempdir().unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = temp.path().join("font");
+    std::fs::write(&font_path, &original).unwrap();
+    std::fs::hard_link(&font_path, temp.path().join("font-alias")).unwrap();
+    let source = "flowchart LR\nA-->B\n";
+    let mut args = [
+        "render",
+        "-",
+        "--font-file",
+        "font",
+        "--output",
+        "-",
+        "--format",
+        "svg",
+    ];
+    let baseline = support::run_with_stdin_in_dir(&args, source, Some(temp.path()));
+    assert!(
+        baseline.status.success(),
+        "extensionless font must be valid: {}",
+        String::from_utf8_lossy(&baseline.stderr)
+    );
+    assert!(String::from_utf8_lossy(&baseline.stdout).contains("<svg"));
+
+    for output_name in ["font", "font-alias"] {
+        args[5] = output_name;
+        let output = support::run_with_stdin_in_dir(&args, source, Some(temp.path()));
+        assert!(
+            !output.status.success(),
+            "font output alias must be rejected"
+        );
+        assert!(output.stdout.is_empty());
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            diagnostic.contains("aliases protected font input") && diagnostic.contains(output_name),
+            "expected a protected font alias error: {diagnostic}"
+        );
+        assert_eq!(std::fs::read(&font_path).unwrap(), original);
+        assert_eq!(
+            std::fs::read(temp.path().join("font-alias")).unwrap(),
+            original
+        );
     }
 }
 

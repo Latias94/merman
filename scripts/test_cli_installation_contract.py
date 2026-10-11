@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,12 +17,50 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import cli_installation_contract as contract
+from test_verify_cli_release_archive import valid_capabilities_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class CliInstallationContractTests(unittest.TestCase):
+    def test_complete_capabilities_pass_with_only_the_filtered_nix_source(self) -> None:
+        policy = json.loads((ROOT / "nix/source-policy.json").read_text(encoding="utf-8"))
+        payload = valid_capabilities_payload(version="0.8.0")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for relative in (
+                *policy["script_files"],
+                "capabilities/artifact-profiles-v2.json",
+                "capabilities/feature-surface-v1.json",
+            ):
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / relative, destination)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-c",
+                    "from pathlib import Path\n"
+                    "import sys\n"
+                    "root = Path(sys.argv[1])\n"
+                    "sys.path.insert(0, str(root / 'scripts'))\n"
+                    "from verify_cli_installation import read_release_contract, _verify_capabilities\n"
+                    "profile, authority = read_release_contract(root)\n"
+                    "_verify_capabilities(sys.stdin.buffer.read(), package_version='0.8.0', "
+                    "profile=profile, authority=authority, contract_root=root)\n",
+                    str(root),
+                ],
+                input=json.dumps(payload).encode("utf-8"),
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+            self.assertEqual(result.stdout, b"")
+            self.assertEqual(result.stderr, b"")
+
     def test_every_cli_release_target_resolves_to_the_cargo_dist_archive(self) -> None:
         artifacts = contract.validate_repository_contract(ROOT)
         workspace = contract._read_toml(ROOT, Path("Cargo.toml"))

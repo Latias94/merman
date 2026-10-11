@@ -285,8 +285,8 @@ Use this shape when preparing the upstream Formula change for `0.8.0`:
 def install
   features = %w[
     all-diagrams analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
-    network-icons parallel-markdown pdf png rustdoc shell-completions svg
-    system-clock system-random system-timezone system-timing
+    native-fonts network-icons parallel-markdown pdf png rustdoc shell-completions svg
+    system-clock system-fonts system-random system-timezone system-timing
   ]
 
   args = std_cargo_args(path: "crates/merman-cli", features:)

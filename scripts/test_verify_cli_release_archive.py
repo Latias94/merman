@@ -243,6 +243,50 @@ def valid_capabilities_payload(
         "diagram_families": profile["expected"]["diagram_families"],
         "capabilities": capabilities,
         "outputs": outputs,
+        "native_fonts": {
+            "default_policy_scope": "mermaid-graphical-input",
+            "default_measurement": "native",
+            "default_font_source": "bounded-system-discovery",
+            "default_system_discovery": "before-layout",
+            "system_resources_bounded": True,
+            "selected_font_bytes_bounded": True,
+            "legacy_export_paths": (
+                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+            ),
+            "explicit_font_sources": "closed-set-unless-font-system-on",
+            "measurement_operations": [
+                "measure",
+                "computed-length",
+                "bbox-x",
+                "bbox-x-with-ascii-overhang",
+                "title-bbox-x",
+                "simple-bbox-width",
+                "raw-bbox-width",
+                "tspan-bbox-width",
+                "tspan-bbox-height",
+                "wrap-probe-bbox-width",
+                "simple-bbox-height",
+                "wrapped",
+                "wrapped-with-raw-width",
+                "bounding-client-rect-width",
+                "create-text-bbox-y-offset",
+                "mermaid-calculate-text-dimensions",
+                "canvas-measure-text-width",
+                "create-text-middle-bbox-y-offset",
+                "raw-bbox-height",
+                "raw-bbox-y-offset",
+                "raw-middle-bbox-y-offset",
+                "raw-hanging-bbox-y-offset",
+            ],
+            "measurement_phases": ["layout", "wrap", "svg-bbox", "computed-length"],
+            "unsupported_operations": "deterministic-fallback",
+            "missing_glyphs": "deterministic-fallback",
+            "browser_pixel_parity": False,
+            "system_discovery_compiled": True,
+            "system_discovery_runtime_available": True,
+            "embeds_fonts_in_svg": False,
+            "context_scope": "operation-owned",
+        },
         "ascii": valid_ascii_capabilities_payload(),
     }
 
@@ -1224,6 +1268,62 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_shared_release_subcontract_matches_the_runtime_fixture(self) -> None:
+        payload = valid_capabilities_payload()
+        profiles = read_json(PROJECT_ROOT, "capabilities/artifact-profiles-v2.json")
+        profile = next(value for value in profiles["profiles"] if value["id"] == "cli-release")
+        self.assertEqual(
+            verifier.release_capabilities_subcontract(
+                read_json(PROJECT_ROOT, "capabilities/feature-surface-v1.json"),
+                capability_ids=set(profile["expected"]["capabilities"]),
+            ),
+            {field: payload[field] for field in ("capabilities", "outputs", "native_fonts")},
+        )
+
+    def test_runtime_rejects_equal_valued_output_resources_with_wrong_json_types(self) -> None:
+        expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        for mutation in ("font_boolean", "image_boolean", "integer_as_float"):
+            with self.subTest(mutation=mutation):
+                payload = valid_capabilities_payload()
+                output = next(entry for entry in payload["outputs"] if entry["id"] == "png")
+                if mutation == "font_boolean":
+                    output["system_fonts"]["resource_bounded"] = 0
+                elif mutation == "image_boolean":
+                    output["embedded_images"]["network_access"] = 0
+                else:
+                    limits = output["embedded_images"]["limits"]
+                    limits["max_bytes_per_image"] = float(limits["max_bytes_per_image"])
+                with self.assertRaisesRegex(verifier.ArchiveVerificationError, "outputs.*wrong JSON type"):
+                    verifier._validate_runtime_capabilities(payload, expected)
+
+    def test_runtime_accepts_complete_release_native_font_metadata(self) -> None:
+        payload = valid_capabilities_payload()
+        expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        self.assertEqual(payload["native_fonts"], expected["native_fonts"])
+        verifier._validate_runtime_capabilities(payload, expected)
+
+    def test_runtime_rejects_native_font_metadata_field_drift(self) -> None:
+        native = valid_capabilities_payload()["native_fonts"]
+        for field, value in native.items():
+            if isinstance(value, bool):
+                wrong_value = not value
+            elif isinstance(value, str):
+                wrong_value = "unknown"
+            else:
+                wrong_value = list(reversed(value))
+            for case in ("missing", "value", "type"):
+                with self.subTest(field=field, case=case):
+                    payload = valid_capabilities_payload()
+                    if case == "missing":
+                        payload["native_fonts"].pop(field)
+                    else:
+                        payload["native_fonts"][field] = (
+                            wrong_value if case == "value" else None
+                        )
+                    self.assert_runtime_payload_rejected(
+                        PROJECT_ROOT, payload, f"native_fonts.*{field}"
+                    )
+
     def test_ascii_contract_covers_every_release_diagram_family(self) -> None:
         contract = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
         aliases = {"gitGraph": "gitgraph", "quadrantChart": "quadrantchart"}
@@ -1561,6 +1661,18 @@ class RuntimeContractTests(unittest.TestCase):
                 ("diagram_families", lambda value: value["diagram_families"].pop()),
                 ("diagram_families", lambda value: value["diagram_families"].append("error")),
                 ("missing", lambda value: value.pop("cli_contract_version")),
+                ("native_fonts", lambda value: value.pop("native_fonts")),
+                ("native_fonts", lambda value: value.__setitem__("native_fonts", None)),
+                (
+                    "native_fonts",
+                    lambda value: value["native_fonts"].__setitem__("unknown", None),
+                ),
+                (
+                    "native_fonts.system_resources_bounded",
+                    lambda value: value["native_fonts"].__setitem__(
+                        "system_resources_bounded", 1,
+                    ),
+                ),
                 ("extra", lambda value: value.__setitem__("unknown", None)),
                 (
                     "type",

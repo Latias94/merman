@@ -878,6 +878,17 @@ fn render_inputs(
             &common.cwd,
         )?);
     }
+    #[cfg(feature = "native-fonts")]
+    for source in &common.render.fonts.sources {
+        if let crate::cli::FontSource::File(path) = source {
+            inputs.push(ProtectedInput::inspect(
+                "font input",
+                InputRole::Auxiliary,
+                path,
+                &common.cwd,
+            )?);
+        }
+    }
     if let Some(path) = puppeteer_config {
         inputs.push(ProtectedInput::inspect(
             "Puppeteer configuration file",
