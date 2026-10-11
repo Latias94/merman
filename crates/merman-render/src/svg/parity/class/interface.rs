@@ -70,12 +70,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     let binding = ctx.visual_binding;
     let emitted_label_fill = binding.emitted_label_fill();
     let container_style = "opacity:0; !important";
-    let label_style = &binding.label_style;
-    let label_style_attr = if !label_style.is_empty() {
-        format!(r#" style="{}""#, escape_attr_display(&label_style))
-    } else {
-        String::new()
-    };
+    let label_style = binding.label_style.as_str();
 
     include_xywh(
         content_bounds,
@@ -107,7 +102,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         fmt(top),
         fmt(w),
         fmt(h),
-        escape_attr_display(&label_style),
+        escape_attr_display(label_style),
         fmt(if ctx.use_html_labels {
             -fo_w / 2.0
         } else {
@@ -119,15 +114,20 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         .use_html_labels
         .then(|| class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer))
         .flatten();
-    if ctx.use_html_labels {
+    let emitted_label_style = if ctx.use_html_labels {
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel""#,
             fmt(fo_w),
             fmt(fo_h),
             class_html_div_style(fo_w, ctx.wrapping_width as i64),
-            label_style_attr,
         );
+        let emitted_style = super::super::util::write_style_attribute(
+            out,
+            (!label_style.is_empty()).then_some(label_style),
+        )
+        .unwrap_or("");
+        out.push('>');
         if let Some(math_html) = math_html.as_deref() {
             out.push_str(math_html);
         } else {
@@ -141,14 +141,22 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             out.push_str("</p>");
         }
         out.push_str("</span></div></foreignObject>");
+        emitted_style
     } else {
         let source = crate::graph_label::FlowchartSvgLabelSource::new(&label_text);
         let lines =
             source.wrapped_lines(ctx.measurer, ctx.text_style, Some(ctx.wrapping_width), true);
         out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-        super::super::label::write_svg_text_source_word_lines(out, &lines, true, false);
+        super::super::label::write_svg_text_source_word_lines_with_style(
+            out,
+            &lines,
+            label_style,
+            false,
+            None,
+        );
         out.push_str("</g>");
-    }
+        label_style
+    };
     out.push_str("</g></g>");
     out.checkpoint()?;
     Ok(ClassInterfaceRenderResult {
@@ -159,7 +167,7 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             crate::class::ClassNodePaintTerminalEmission::new(
                 binding.source_owned,
                 emitted_label_fill,
-                label_style,
+                emitted_label_style,
             )
             .with_terminal_verified(binding.verified),
         ),
@@ -168,6 +176,6 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
         } else {
             crate::class::ClassTextTerminalFacts::inherited_text(label_text.as_ref())
         })
-        .with_paint(emitted_label_fill, label_style),
+        .with_paint(emitted_label_fill, emitted_label_style),
     })
 }

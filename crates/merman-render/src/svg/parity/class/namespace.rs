@@ -127,7 +127,7 @@ fn render_class_namespace_cluster_at(
         fmt(label_y),
     );
     let title_paint = ctx.relation_theme.namespace_title_terminal();
-    if ctx.use_html_labels {
+    let emitted_title_style = if ctx.use_html_labels {
         let _ = write!(
             out,
             r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel""#,
@@ -135,35 +135,34 @@ fn render_class_namespace_cluster_at(
             fmt(label_h),
             MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
         );
-        if let Some((_, style)) = title_paint {
-            let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
-        }
+        let emitted_style =
+            super::super::util::write_style_attribute(out, title_paint.map(|(_, style)| style))
+                .unwrap_or("");
         let _ = write!(out, ">{title_html}</span></div></foreignObject>");
+        emitted_style
     } else {
-        if let Some((_, style)) = title_paint {
-            let _ = write!(out, r#"<g style="{}">"#, escape_attr_display(style));
-        }
-        write_class_svg_plain_node_text(out, &cluster.title);
-        if title_paint.is_some() {
-            out.push_str("</g>");
-        }
-    }
+        write_class_svg_plain_node_text(
+            out,
+            &cluster.title,
+            title_paint.map_or("", |(_, style)| style),
+        )
+    };
     out.push_str("</g></g>");
     out.checkpoint()?;
     let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
     theme_receipt.record_cluster(&cluster.id, fill_rule, stroke_rule, terminal_style);
-    if let Some((rule, style)) = title_paint {
+    if let Some((rule, _)) = title_paint {
         theme_receipt.record_namespace_title(
             &cluster.id,
             rule,
-            style,
+            emitted_title_style,
             label_w > 0.0 && !cluster.title.trim().is_empty(),
             typography.has_verified_inherited_paint(),
         );
     }
     Ok(typography.with_paint(
         ctx.relation_theme.namespace_title_fill(),
-        title_paint.map_or("", |(_, style)| style),
+        emitted_title_style,
     ))
 }
 

@@ -4853,6 +4853,60 @@ fn class_extracted_namespace_receipts_follow_source_relations() {
 }
 
 #[test]
+fn class_native_namespace_and_interface_paint_reaches_text_terminals() {
+    let source = "classDiagram\nnamespace Internal {\nclass A\n}\nA --() IService\n";
+    for layout in [
+        "dagre",
+        #[cfg(feature = "layout-elk")]
+        "elk",
+    ] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#ff0000").unwrap(), "#ff0000"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let theme = class_edge_rules_theme([ThemeTarget::Title, ThemeTarget::NodeLabel].map(
+                |target| {
+                    ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint.clone()))
+                },
+            ));
+            let rendered = try_render_class_svg_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "htmlLabels": false,
+                    "layout": layout,
+                }))),
+            )
+            .expect("render native Class namespace and interface paint");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for owner_id in ["merman-Internal", "merman-interface0"] {
+                let owner = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(owner_id))
+                    .expect("Class namespace or interface owner");
+                let text = owner
+                    .descendants()
+                    .find(|node| node.has_tag_name("text"))
+                    .expect("native Class text terminal");
+                assert!(
+                    text.attribute("style").is_some_and(|style| {
+                        style.contains(&format!("fill:{css} !important"))
+                            && style.contains(&format!("color:{css} !important"))
+                    }),
+                    "{layout} {owner_id} must paint its text directly with {css}: {:?}",
+                    text.attribute("style"),
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 2, "layout={layout}, paint={css}");
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn class_namespace_title_scalar_has_a_direct_terminal() {
     for source in [
         "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nX --> A\n",

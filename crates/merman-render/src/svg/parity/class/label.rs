@@ -73,7 +73,11 @@ pub(super) fn render_class_html_label<'a>(
     emitted_style
 }
 
-pub(super) fn write_class_svg_plain_node_text(out: &mut impl SvgOutput, text: &str) {
+pub(super) fn write_class_svg_plain_node_text<'a>(
+    out: &mut impl SvgOutput,
+    text: &str,
+    terminal_style: &'a str,
+) -> &'a str {
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
         .into_iter()
         .map(|line| {
@@ -83,8 +87,15 @@ pub(super) fn write_class_svg_plain_node_text(out: &mut impl SvgOutput, text: &s
         })
         .collect::<Vec<_>>();
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-    crate::svg::parity::label::write_svg_text_source_word_lines(out, &lines, true, false);
+    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+        out,
+        &lines,
+        terminal_style,
+        false,
+        None,
+    );
     out.push_str("</g>");
+    terminal_style
 }
 
 pub(super) fn write_class_svg_text_markdown(
