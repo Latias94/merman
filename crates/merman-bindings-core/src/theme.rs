@@ -92,13 +92,13 @@ pub(crate) fn validate_theme_input_json_with(
     compiler
         .check_encoded_input_bytes(theme.get().len())
         .map_err(theme_resource_error)?;
-    check_recipe_json_input(compiler, theme.get().as_bytes())
+    check_theme_json_input(compiler, theme.get().as_bytes())
 }
 
 // Borrow payloads so version and authoring admission precede Value normalization. In particular,
-// normalizing first would silently discard duplicate definition or complete-spec fields.
+// normalizing first would silently discard duplicate definition, spec, or complete-spec fields.
 #[derive(Deserialize)]
-struct RecipeInputProbe<'a> {
+struct ThemeInputProbe<'a> {
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     schema_version: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
@@ -107,6 +107,8 @@ struct RecipeInputProbe<'a> {
     definition: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     complete_spec: Option<&'a RawValue>,
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    spec: Option<&'a RawValue>,
 }
 
 fn present_raw_value<'de, D>(deserializer: D) -> Result<Option<&'de RawValue>, D::Error>
@@ -116,28 +118,34 @@ where
     <&RawValue>::deserialize(deserializer).map(Some)
 }
 
-fn check_recipe_json_input(
+fn check_theme_json_input(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<(), BindingError> {
-    let probe: RecipeInputProbe<'_> = serde_json::from_slice(bytes)
+    let probe: ThemeInputProbe<'_> = serde_json::from_slice(bytes)
         .map_err(|error| invalid_options(format!("invalid theme JSON: {error}")))?;
-    if probe.kind.is_none() && probe.schema_version.is_none() {
-        return Ok(());
-    }
-    let version = probe
-        .schema_version
-        .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok());
-    check_recipe_version(version)?;
-    if let Some(definition) = probe.definition {
-        compiler
-            .check_definition_json_input(definition.get().as_bytes())
-            .map_err(|error| {
-                crate::theme_definition::materialization_error(compiler.resource_policy(), error)
-            })?;
-    }
-    if let Some(complete_spec) = probe.complete_spec {
-        serde_json::from_str::<DiagramThemeSpecWireV1>(complete_spec.get())
+    let spec = if probe.kind.is_none() && probe.schema_version.is_none() {
+        // Preserve the selection owner's null-payload diagnostic and error position.
+        probe.spec.filter(|raw| raw.get() != "null")
+    } else {
+        let version = probe
+            .schema_version
+            .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok());
+        check_recipe_version(version)?;
+        if let Some(definition) = probe.definition {
+            compiler
+                .check_definition_json_input(definition.get().as_bytes())
+                .map_err(|error| {
+                    crate::theme_definition::materialization_error(
+                        compiler.resource_policy(),
+                        error,
+                    )
+                })?;
+        }
+        probe.complete_spec
+    };
+    if let Some(spec) = spec {
+        serde_json::from_str::<DiagramThemeSpecWireV1>(spec.get())
             .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
     }
     Ok(())
@@ -173,7 +181,7 @@ pub fn compile_theme_selection_json_with(
     compiler
         .check_encoded_input_bytes(bytes.len())
         .map_err(theme_resource_error)?;
-    check_recipe_json_input(compiler, bytes)?;
+    check_theme_json_input(compiler, bytes)?;
     let value: Value = serde_json::from_slice(bytes).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -463,17 +471,27 @@ mod tests {
     }
 
     #[test]
-    fn recipe_raw_admission_rejects_duplicates_and_invalid_versions_in_both_entries() {
+    fn theme_raw_admission_rejects_duplicates_and_invalid_versions_in_both_entries() {
         let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
         let mut invalid = vec![
-            r##"{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000"},"canvas":{"base":"#0000ff"}}}"##.to_owned(),
-            r##"{"schema_version":1,"kind":"complete_spec","complete_spec":{"canvas":{"base":"#ff0000","base":"#0000ff"}}}"##.to_owned(),
             r#"{"schema_version":1,"kind":"complete_spec","complete_spec":{"future":true},"complete_spec":{}}"#.to_owned(),
             format!(r#"{{"kind":"definition","schema_version":null,"schema_version":1,"definition":{definition}}}"#),
             format!(r#"{{"kind":"definition","schema_version":2,"schema_\u0076ersion":1,"definition":{definition}}}"#),
             r#"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
             r##"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#111111","accent":"#222222"}}}"##.to_owned(),
         ];
+        for spec in [
+            r##"{"styles":[{"kind":"rule","target":"node","style":{"fill":"#ff0000"}}],"styles":[]}"##,
+            r##"{"canvas":{"base":"#ff0000"},"canvas":{"base":"#0000ff"}}"##,
+            r##"{"canvas":{"base":"#ff0000","base":"#0000ff"}}"##,
+            r##"{"styles":[{"kind":"rule","target":"node","style":{"fill":null,"fill":"#ff0000"}}]}"##,
+        ] {
+            invalid.push(format!(r#"{{"spec":{spec}}}"#));
+            invalid.push(format!(
+                r#"{{"schema_version":1,"kind":"complete_spec","complete_spec":{spec}}}"#
+            ));
+        }
+        invalid.push(r#"{"spec":null,"sp\u0065c":{}}"#.to_owned());
         invalid.push(r#"{"schema_version":1,"kind":"complete_spec","complete_spec":null,"complete_\u0073pec":{}}"#.to_owned());
         for version in ["null", "0", "2", "1.0", "1e0", "\"1\"", "true"] {
             invalid.push(format!(

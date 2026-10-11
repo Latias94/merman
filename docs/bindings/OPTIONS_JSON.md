@@ -375,7 +375,10 @@ to preserve colors in the pinned backend; resource limits count those actual pri
 }
 ```
 
-The binding schema rejects unknown nested fields. Mermaid compatibility variables accept only
+The binding schema rejects unknown nested fields. Both `theme.spec` and a `complete_spec` recipe
+use the same decoder to reject duplicate schema-defined struct fields before JSON normalization.
+Keys inside `mermaid.variables` and `typography.families` retain their existing map semantics:
+the last value for a repeated key wins. Mermaid compatibility variables accept only
 strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG
 output policy do not belong in `theme.spec.mermaid`; use their explicit owners instead.
 

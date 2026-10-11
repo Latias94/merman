@@ -4208,6 +4208,18 @@ mod tests {
     fn theme_union_and_payload_errors_preserve_option_validation_precedence() {
         for (input, expected) in [
             (
+                br#"{"theme":{"spec":null},"version":2}"#.as_slice(),
+                "unsupported options_json schema version",
+            ),
+            (
+                br#"{"theme":{"spec":null},"layout":{"text_measurer":"removed"}}"#.as_slice(),
+                "must not be null",
+            ),
+            (
+                br#"{"theme":{"spec":{}},"layout":{"text_measurer":"removed"}}"#.as_slice(),
+                "layout.text_measurer was removed",
+            ),
+            (
                 br#"{"theme":{"preset":"editor-dark","spec":{}},"layout":{"text_measurer":"removed"}}"#.as_slice(),
                 "must not contain both `preset` and `spec`",
             ),
@@ -4475,8 +4487,7 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn repeated_profile_occurrences_keep_the_strictest_preflight_policy() {
-        let repeated_profiles = std::iter::repeat(r#""profile":"constrained""#)
-            .take(64)
+        let repeated_profiles = std::iter::repeat_n(r#""profile":"constrained""#, 64)
             .collect::<Vec<_>>()
             .join(",");
         let input = format!(r#"{{"resources":{{{repeated_profiles}}}}}"#);

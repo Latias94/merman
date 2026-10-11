@@ -1601,7 +1601,7 @@ mod tests {
         assert_eq!(materialized, generic);
         let materialized: Value = serde_json::from_slice(&materialized).unwrap();
         assert_eq!(materialized["schema_version"], 1);
-        assert_eq!(materialized["spec"]["styles"].is_array(), true);
+        assert!(materialized["spec"]["styles"].is_array());
 
         let support = engine
             .describe_theme_support(
