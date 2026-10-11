@@ -35,7 +35,7 @@ pub(crate) struct ConfiguredRenderer {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl ConfiguredRenderer {
-    #[cfg(all(feature = "svg", feature = "icons"))]
+    #[cfg(all(feature = "svg", any(feature = "icons", feature = "native-fonts")))]
     pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
         self
@@ -409,6 +409,8 @@ mod tests {
     #[cfg(feature = "svg")]
     fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
         ResolvedRenderOptions {
+            #[cfg(feature = "native-fonts")]
+            fonts: crate::cli::FontCliArgs::default(),
             presentation_profile: None,
             math_renderer,
             container_width: None,

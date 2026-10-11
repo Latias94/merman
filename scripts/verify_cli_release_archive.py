@@ -94,7 +94,7 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 5
+CLI_CONTRACT_VERSION = 6
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
@@ -150,7 +150,7 @@ def _release_output_contract(output: dict[str, object]) -> dict[str, object]:
             "discovery": "first-use",
             "cache_scope": "process-global",
             "host_dependent": True,
-            "caller_configurable": False,
+            "caller_configurable": True,
             "resource_bounded": False,
         }
         projected["embedded_images"] = {
@@ -447,7 +447,7 @@ def _cli_release_runtime_ids(
     _require_exact_json(
         "cli-release cargo.features",
         cargo_features,
-        sorted(["all-diagrams", *runtime_ids]),
+        sorted(["all-diagrams", "system-fonts", *runtime_ids]),
     )
     for label, values in (
         ("cli-release expected runtime_ids", runtime_ids),

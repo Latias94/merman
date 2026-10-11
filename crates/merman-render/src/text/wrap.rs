@@ -6,6 +6,7 @@ use super::{
     DeterministicTextMeasurer, TextMeasurer, TextStyle, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
@@ -105,22 +106,31 @@ pub fn wrap_text_lines_measurer(
                 continue;
             }
 
-            // Token itself does not fit on an empty line; split by characters.
-            let chars = tok.chars().collect::<Vec<_>>();
-            let mut cut = 1usize;
-            while cut < chars.len() {
-                let head: String = chars[..cut].iter().collect();
-                if measurer.measure(&head, style).width > max_width_px {
+            // Keep combining marks and emoji sequences intact, including leading zero-width
+            // graphemes that must stay with the first visible grapheme even if it is over-wide.
+            let mut split_at = 0;
+            let mut width_px = 0.0;
+            let mut has_positive_advance = false;
+            for (index, grapheme) in tok.grapheme_indices(true) {
+                let candidate_end = index + grapheme.len();
+                let candidate_width_px = measurer.measure(&tok[..candidate_end], style).width;
+                if has_positive_advance
+                    && candidate_width_px > width_px
+                    && candidate_width_px > max_width_px
+                {
                     break;
                 }
-                cut += 1;
+                split_at = candidate_end;
+                width_px = candidate_width_px;
+                has_positive_advance |= candidate_width_px > 0.0;
             }
-            cut = cut.saturating_sub(1).max(1);
-            let head: String = chars[..cut].iter().collect();
-            let tail: String = chars[cut..].iter().collect();
-            out.push(head);
+            if split_at == 0 {
+                split_at = tok.graphemes(true).next().map_or(0, str::len);
+            }
+            let (head, tail) = tok.split_at(split_at);
+            out.push(head.to_string());
             if !tail.is_empty() {
-                tokens.push_front(tail);
+                tokens.push_front(tail.to_string());
             }
         }
 
@@ -323,4 +333,62 @@ pub(crate) fn wrap_label_like_mermaid_lines_with_checkpoint(
     mut checkpoint: impl FnMut() -> crate::Result<()>,
 ) -> crate::Result<Vec<String>> {
     try_wrap_label_like_mermaid_lines(label, measurer, style, max_width_px, &mut checkpoint)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_text_lines_measurer;
+    use crate::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, try_measure_wrapped_text,
+    };
+
+    #[test]
+    fn emitted_long_tokens_match_shared_grapheme_wrapping() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        for text in [
+            "W\u{0301}W",
+            "\u{0301}WW",
+            "👩‍🔬👨‍🔬",
+            "👍🏽👍🏻",
+            "🇨🇳🇺🇸",
+            "1️⃣2️⃣",
+            "a\u{200b}b",
+        ] {
+            for limit in [1.0, 8.0, 16.0, 25.0] {
+                let expected = try_measure_wrapped_text(
+                    text,
+                    &style,
+                    Some(limit),
+                    WrapMode::SvgLike,
+                    19.0,
+                    |candidate, style| Ok::<_, ()>(measurer.measure(candidate, style).width),
+                )
+                .unwrap();
+                let emitted = wrap_text_lines_measurer(text, &measurer, &style, Some(limit));
+                assert_eq!(emitted, expected.lines, "text={text:?}, limit={limit}");
+                assert_eq!(emitted.concat(), text);
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_wrapping_keeps_leading_zero_width_text_with_overwide_grapheme() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            wrap_text_lines_measurer("\u{0301}WW", &measurer, &style, Some(1.0)),
+            ["\u{0301}W", "W"],
+        );
+        assert_eq!(
+            wrap_text_lines_measurer("👩‍🔬👨‍🔬", &measurer, &style, Some(1.0)),
+            ["👩‍🔬", "👨‍🔬"],
+        );
+    }
 }

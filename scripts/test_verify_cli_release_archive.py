@@ -209,7 +209,7 @@ def valid_capabilities_payload(
             "discovery": "first-use",
             "cache_scope": "process-global",
             "host_dependent": True,
-            "caller_configurable": False,
+            "caller_configurable": True,
             "resource_bounded": False,
         }
         output["embedded_images"] = {
@@ -226,7 +226,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 5,
+        "cli_contract_version": 6,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],

@@ -387,7 +387,12 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         title_style.font_size = 18.0;
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
 
-        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            &title_style,
+            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+        );
 
         content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
         content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);

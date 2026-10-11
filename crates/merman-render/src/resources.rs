@@ -736,6 +736,10 @@ impl OperationWorkMeter {
         self.policy
     }
 
+    pub(crate) fn control(&self) -> &OperationControl {
+        &self.control
+    }
+
     /// Replays the operation's first cancellation, ceiling, or overflow terminal.
     pub(crate) fn checkpoint(&self, phase: OperationPhase) -> Result<(), OperationWorkError> {
         self.control

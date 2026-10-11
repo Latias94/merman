@@ -108,13 +108,18 @@ class CliProcessMatrixTests(unittest.TestCase):
         diagram_selectors = {
             feature for feature in public_features if feature.startswith("diagram-")
         }
-        expected_defaults = public_features - diagram_selectors
+        expected_defaults = public_features - diagram_selectors - {
+            "experimental-system-font-query"
+        }
         self.assertSetEqual(
             set(features["default"]),
             expected_defaults,
             "workspace defaults select all-diagrams and the standard CLI workflows",
         )
         self.assertIn("layout-elk", features["default"])
+        self.assertIn("native-fonts", features["default"])
+        self.assertIn("system-fonts", features["default"])
+        self.assertNotIn("experimental-system-font-query", features["default"])
         self.assertIn("rustdoc", public_features)
         self.assertIn("rustdoc", features["default"])
 

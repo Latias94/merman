@@ -28,6 +28,9 @@ const OPERATION_CONTRACTS = new Map([
     { kind: "length", wrapMode: "svg-like", signed: true },
   ],
   ["raw-bbox-height", { kind: "length", wrapMode: "svg-like" }],
+  ["raw-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
+  ["raw-middle-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
+  ["raw-hanging-bbox-y-offset", { kind: "length", wrapMode: "svg-like", signed: true }],
 ]);
 
 class FakeStyle {
@@ -130,9 +133,10 @@ class FakeMeasureElement {
     const lines = childLines.length > 0 ? childLines : [this.textContent || ""];
     const width = Math.max(...lines.map((line) => line.length * fontSize * 0.6), 0);
     const middleBaseline = this.inheritedAttribute("dominant-baseline") === "middle";
+    const hangingBaseline = this.inheritedAttribute("dominant-baseline") === "hanging";
     return {
       x: this.inheritedAttribute("text-anchor") === "middle" ? -width / 2 : 0,
-      y: -fontSize + (middleBaseline ? fontSize * 0.25 : 0),
+      y: -fontSize + (middleBaseline ? fontSize * 0.25 : hangingBaseline ? fontSize * 0.8 : 0),
       width,
       height: Math.max(1, lines.length) * fontSize * 1.1,
     };
@@ -242,6 +246,27 @@ test("browser text measurement session routes exact operations to their DOM prim
     const raw = measure(request("Raw", null, "raw-bbox-width", "svg-like"));
     assert.equal(raw.kind, "length");
     assert.equal(raw.length, "Raw".length * 16 * 0.6);
+
+    assert.equal(
+      measure(request("Raw", null, "raw-bbox-y-offset", "svg-like")).length,
+      -16
+    );
+    assert.equal(
+      measure(request("Raw", null, "raw-hanging-bbox-y-offset", "svg-like")).length,
+      -16 + 16 * 0.8
+    );
+    assert.equal(
+      measure(request("Raw", null, "raw-middle-bbox-y-offset", "svg-like")).length,
+      -12
+    );
+    assert.equal(
+      measure(request("Raw", null, "raw-bbox-y-offset", "svg-like")).length,
+      -16
+    );
+    const directProbe = body.children[1].children[0];
+    assert.equal(directProbe.tagName, "text");
+    assert.equal(directProbe.children.length, 0);
+    assert.equal(directProbe.attributes.get("y"), "0");
 
     const clientRect = measure(
       request("Client", null, "bounding-client-rect-width", "svg-like")
@@ -400,7 +425,7 @@ test("browser text measurement session routes exact operations to their DOM prim
       },
     ]);
 
-    assert.equal(OPERATION_CONTRACTS.size, 19);
+    assert.equal(OPERATION_CONTRACTS.size, 22);
     for (const [operation, contract] of OPERATION_CONTRACTS) {
       const result = measure(request("Contract value", 80, operation, contract.wrapMode));
       assert.ok(result, `${operation} should be handled`);

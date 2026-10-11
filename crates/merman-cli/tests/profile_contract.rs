@@ -48,6 +48,7 @@ const DEFAULT_CAPABILITIES: &[&str] = &[
     "layout-elk",
     "markdown",
     "math",
+    "native-fonts",
     "network-icons",
     "parallel-markdown",
     "pdf",
@@ -209,6 +210,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "markdown",
         #[cfg(feature = "math")]
         "math",
+        #[cfg(feature = "native-fonts")]
+        "native-fonts",
         #[cfg(feature = "network-icons")]
         "network-icons",
         #[cfg(feature = "parallel-markdown")]
@@ -288,7 +291,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 5);
+    assert_eq!(payload["cli_contract_version"], 6);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -361,7 +364,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
                         "discovery": "first-use",
                         "cache_scope": "process-global",
                         "host_dependent": true,
-                        "caller_configurable": false,
+                        "caller_configurable": cfg!(feature = "native-fonts"),
                         "resource_bounded": false,
                     });
                     output["embedded_images"] = json!({
@@ -863,20 +866,28 @@ fn workflow_network_icons() {
 
         let (url, server) = serve_icon_body_once();
         let source = format!("test#{url}");
-        let output = run(
-            &[
-                "render",
-                "--format",
-                "svg",
-                "--allow-network",
-                "--allow-private-network",
-                "--icon-pack-source",
-                &source,
-                "-",
-            ],
-            ICON_SOURCE.as_bytes(),
-            None,
-        );
+        let args = vec![
+            "render",
+            "--format",
+            "svg",
+            "--allow-network",
+            "--allow-private-network",
+            "--icon-pack-source",
+            &source,
+            "-",
+        ];
+        #[cfg(feature = "native-fonts")]
+        let font_file = repo_root().join("crates/merman-export/tests/fonts/Cousine-Regular.ttf");
+        #[cfg(feature = "native-fonts")]
+        let args = {
+            let mut args = args;
+            args.extend([
+                "--font-file",
+                font_file.to_str().expect("font fixture path"),
+            ]);
+            args
+        };
+        let output = run(&args, ICON_SOURCE.as_bytes(), None);
         server
             .join()
             .expect("icon fixture thread")

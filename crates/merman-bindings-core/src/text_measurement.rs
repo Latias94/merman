@@ -34,7 +34,12 @@ pub fn host_text_measurement_transport_fields(
         WrapMode::HtmlLike => 1.5,
     };
     let white_space = match request.wrap_mode {
-        WrapMode::HtmlLike if request.max_width.is_some() => HostTextWhiteSpaceCode::BreakSpaces,
+        WrapMode::HtmlLike
+            if request.max_width.is_some()
+                || request.operation == merman::svg::TextMeasurementOperation::TspanBBoxWidth =>
+        {
+            HostTextWhiteSpaceCode::BreakSpaces
+        }
         WrapMode::HtmlLike => HostTextWhiteSpaceCode::Nowrap,
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => HostTextWhiteSpaceCode::Normal,
     };
@@ -263,6 +268,47 @@ mod tests {
     }
 
     #[test]
+    fn preserved_tspan_width_projects_break_spaces_without_a_wrap_limit() {
+        let style = TextStyle::default();
+        let preserved = HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::TspanBBoxWidth,
+            phase: TextMeasurementPhase::SvgBBox,
+            text: "a  b",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::HtmlLike,
+        };
+        let fields = host_text_measurement_transport_fields(preserved);
+        assert_eq!(fields.operation, 7);
+        assert_eq!(
+            fields.white_space,
+            HostTextWhiteSpaceCode::BreakSpaces.external_code()
+        );
+        assert_eq!(
+            fields.wrap_mode,
+            HostTextWrapModeCode::HtmlLike.external_code()
+        );
+        assert_eq!(preserved.max_width, None);
+
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                wrap_mode: WrapMode::SvgLike,
+                ..preserved
+            })
+            .white_space,
+            HostTextWhiteSpaceCode::Normal.external_code(),
+        );
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::Measure,
+                ..preserved
+            })
+            .white_space,
+            HostTextWhiteSpaceCode::Nowrap.external_code(),
+        );
+    }
+
+    #[test]
     fn operations_declare_their_required_result_shapes() {
         let mappings = TextMeasurementOperation::ALL.map(|operation| {
             (
@@ -293,6 +339,9 @@ mod tests {
                 (16, "length"),
                 (17, "length"),
                 (18, "length"),
+                (19, "length"),
+                (20, "length"),
+                (21, "length"),
             ]
         );
     }

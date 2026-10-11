@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 5;
+const CLI_CONTRACT_VERSION: u32 = 6;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
@@ -29,8 +29,32 @@ struct CapabilityDocument<'a> {
     diagram_families: Vec<&'static str>,
     capabilities: Vec<CapabilityView<'a>>,
     outputs: Vec<OutputView<'a>>,
+    #[cfg(feature = "native-fonts")]
+    native_fonts: NativeFontsView,
     #[cfg(feature = "ascii")]
     ascii: AsciiCapabilityDocument,
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(Serialize)]
+struct NativeFontsView {
+    default_policy_scope: &'static str,
+    default_measurement: &'static str,
+    default_font_source: &'static str,
+    default_system_discovery: &'static str,
+    system_resources_bounded: bool,
+    selected_font_bytes_bounded: bool,
+    legacy_export_paths: &'static str,
+    explicit_font_sources: &'static str,
+    measurement_operations: Vec<&'static str>,
+    measurement_phases: &'static [&'static str],
+    unsupported_operations: &'static str,
+    missing_glyphs: &'static str,
+    browser_pixel_parity: bool,
+    system_discovery_compiled: bool,
+    system_discovery_runtime_available: bool,
+    embeds_fonts_in_svg: bool,
+    context_scope: &'static str,
 }
 
 #[derive(Serialize)]
@@ -146,6 +170,46 @@ pub(crate) fn write_compiled_capabilities(
     let document = CapabilityDocument {
         schema_version: CLI_CAPABILITIES_SCHEMA_VERSION,
         cli_contract_version: CLI_CONTRACT_VERSION,
+        #[cfg(feature = "native-fonts")]
+        native_fonts: NativeFontsView {
+            default_policy_scope: "mermaid-graphical-input",
+            default_measurement: if cfg!(feature = "system-fonts") {
+                "native"
+            } else {
+                "deterministic"
+            },
+            default_font_source: if cfg!(feature = "experimental-system-font-query") {
+                "platform-managed-system-query"
+            } else if cfg!(feature = "system-fonts") {
+                "bounded-system-discovery"
+            } else {
+                "none"
+            },
+            default_system_discovery: if cfg!(feature = "experimental-system-font-query") {
+                "platform-initialization-then-on-demand-families"
+            } else if cfg!(feature = "system-fonts") {
+                "before-layout"
+            } else {
+                "disabled"
+            },
+            system_resources_bounded: cfg!(feature = "system-fonts")
+                && !cfg!(feature = "experimental-system-font-query"),
+            selected_font_bytes_bounded: true,
+            legacy_export_paths: "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract",
+            explicit_font_sources: "closed-set-unless-font-system-on",
+            measurement_operations: merman::svg::TextMeasurementOperation::ALL
+                .into_iter()
+                .map(merman::svg::TextMeasurementOperation::external_name)
+                .collect(),
+            measurement_phases: &["layout", "wrap", "svg-bbox", "computed-length"],
+            unsupported_operations: "deterministic-fallback",
+            missing_glyphs: "deterministic-fallback",
+            browser_pixel_parity: false,
+            system_discovery_compiled: merman::svg::export::system_font_discovery_available(),
+            system_discovery_runtime_available: cfg!(feature = "system-fonts"),
+            embeds_fonts_in_svg: false,
+            context_scope: "operation-owned",
+        },
         package: PackageView {
             name: env!("CARGO_PKG_NAME"),
             version: env!("CARGO_PKG_VERSION"),
@@ -307,7 +371,7 @@ fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {
                     discovery: system_fonts.discovery,
                     cache_scope: system_fonts.cache_scope,
                     host_dependent: system_fonts.host_dependent,
-                    caller_configurable: false,
+                    caller_configurable: cfg!(feature = "native-fonts"),
                     resource_bounded: system_fonts.resource_bounded,
                 }),
                 embedded_images: Some(EmbeddedImageView {
@@ -361,6 +425,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("layout-elk", "layout-elk");
     include_capability!("markdown", "markdown");
     include_capability!("math", "math");
+    include_capability!("native-fonts", "native-fonts");
     include_capability!("network-icons", "network-icons");
     include_capability!("parallel-markdown", "parallel-markdown");
     include_capability!("pdf", "pdf");

@@ -6,6 +6,7 @@ use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use std::convert::Infallible;
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -82,6 +83,148 @@ impl LineWidthModel<'_> {
             LineWidthSource::Callback(_) => unreachable!("callback widths use complete strings"),
         }
     }
+}
+
+trait LineWidthProvider {
+    type Error;
+
+    fn width_px(&mut self, text: &str) -> Result<f64, Self::Error>;
+
+    fn final_width_px(&mut self, text: &str) -> Result<f64, Self::Error> {
+        self.width_px(text)
+    }
+
+    fn candidate_width_px(
+        &mut self,
+        width: LineWidthAccumulator,
+        candidate: &str,
+        appended: &str,
+    ) -> Result<(LineWidthAccumulator, f64), Self::Error>;
+}
+
+impl LineWidthProvider for LineWidthModel<'_> {
+    type Error = Infallible;
+
+    fn width_px(&mut self, text: &str) -> Result<f64, Infallible> {
+        Ok((*self).width_px(text))
+    }
+
+    fn candidate_width_px(
+        &mut self,
+        width: LineWidthAccumulator,
+        candidate: &str,
+        appended: &str,
+    ) -> Result<(LineWidthAccumulator, f64), Infallible> {
+        Ok((*self).candidate_width_px(width, candidate, appended))
+    }
+}
+
+struct FallibleLineWidth<'a, F> {
+    width_px: F,
+    style: &'a TextStyle,
+}
+
+struct MeasuredLineWidth<'a, F, M> {
+    measure: F,
+    style: &'a TextStyle,
+    final_metrics: Vec<M>,
+}
+
+impl<E, F, M> LineWidthProvider for MeasuredLineWidth<'_, F, M>
+where
+    F: FnMut(&str, &TextStyle) -> Result<(f64, M), E>,
+{
+    type Error = E;
+
+    fn width_px(&mut self, text: &str) -> Result<f64, E> {
+        (self.measure)(text, self.style).map(|(width, _)| width)
+    }
+
+    fn final_width_px(&mut self, text: &str) -> Result<f64, E> {
+        let (width, metrics) = (self.measure)(text, self.style)?;
+        self.final_metrics.push(metrics);
+        Ok(width)
+    }
+
+    fn candidate_width_px(
+        &mut self,
+        width: LineWidthAccumulator,
+        candidate: &str,
+        _appended: &str,
+    ) -> Result<(LineWidthAccumulator, f64), E> {
+        self.width_px(candidate).map(|width_px| (width, width_px))
+    }
+}
+
+impl<E, F> LineWidthProvider for FallibleLineWidth<'_, F>
+where
+    F: FnMut(&str, &TextStyle) -> Result<f64, E>,
+{
+    type Error = E;
+
+    fn width_px(&mut self, text: &str) -> Result<f64, E> {
+        (self.width_px)(text, self.style)
+    }
+
+    fn candidate_width_px(
+        &mut self,
+        width: LineWidthAccumulator,
+        candidate: &str,
+        _appended: &str,
+    ) -> Result<(LineWidthAccumulator, f64), E> {
+        self.width_px(candidate).map(|width_px| (width, width_px))
+    }
+}
+
+/// Shared wrapping output with the exact lines used to calculate its metrics.
+#[derive(Debug, Clone)]
+pub struct WrappedTextLayout {
+    pub metrics: TextMetrics,
+    pub lines: Vec<String>,
+    /// Natural pre-wrap width for HTML-like labels; absent for SVG-like labels.
+    pub raw_width: Option<f64>,
+}
+
+/// Measures and wraps text using Merman's existing whitespace and line-break rules.
+///
+/// The callback receives complete candidate strings, preserving shaping and kerning. It must
+/// return finite, non-negative CSS pixel widths. `line_height_px` is supplied by the active font
+/// backend rather than estimated from font size and must be finite and non-negative.
+/// Callback errors abort immediately, including
+/// errors raised while measuring the natural width or final emitted lines.
+pub fn try_measure_wrapped_text<E>(
+    text: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+    line_height_px: f64,
+    width_px: impl FnMut(&str, &TextStyle) -> Result<f64, E>,
+) -> Result<WrappedTextLayout, E> {
+    let mut width_model = FallibleLineWidth { width_px, style };
+    let mut layout = wrapped_text_layout(text, max_width, wrap_mode, &mut width_model)?;
+    layout.metrics.height = layout.metrics.line_count as f64 * line_height_px;
+    Ok(layout)
+}
+
+/// Wraps with the shared policy and returns each emitted row's measured payload in row order.
+/// Candidate payloads are discarded; final payloads can supply height without another probe.
+/// No text or measurement cache is introduced, and callback errors abort immediately.
+/// Widths must be finite and non-negative. Height remains zero for the caller to derive from
+/// the payloads. Temporary payload storage is linear in the number of emitted rows.
+pub fn try_measure_wrapped_text_with_line_metrics<E, M>(
+    text: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+    measure: impl FnMut(&str, &TextStyle) -> Result<(f64, M), E>,
+) -> Result<(WrappedTextLayout, Vec<M>), E> {
+    let mut width_model = MeasuredLineWidth {
+        measure,
+        style,
+        final_metrics: Vec::new(),
+    };
+    let layout = wrapped_text_layout(text, max_width, wrap_mode, &mut width_model)?;
+    Ok((layout, width_model.final_metrics))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -217,11 +360,11 @@ impl DeterministicTextMeasurer {
         !trim_html_collapsible_ascii_whitespace(text).is_empty()
     }
 
-    fn split_token_to_width<'t>(
+    fn split_token_to_width<'t, W: LineWidthProvider>(
         token: &'t str,
         max_width_px: f64,
-        width_model: LineWidthModel<'_>,
-    ) -> (&'t str, &'t str) {
+        width_model: &mut W,
+    ) -> Result<(&'t str, &'t str), W::Error> {
         let mut split_at = 0;
         let mut width = LineWidthAccumulator::default();
         let mut width_px = 0.0;
@@ -230,7 +373,7 @@ impl DeterministicTextMeasurer {
         for (index, grapheme) in token.grapheme_indices(true) {
             let candidate_end = index + grapheme.len();
             let (candidate, candidate_width_px) =
-                width_model.candidate_width_px(width, &token[..candidate_end], grapheme);
+                width_model.candidate_width_px(width, &token[..candidate_end], grapheme)?;
             if has_positive_advance
                 && candidate_width_px > width_px
                 && candidate_width_px > max_width_px
@@ -249,19 +392,19 @@ impl DeterministicTextMeasurer {
         if split_at == 0 {
             split_at = token.graphemes(true).next().map_or(0, str::len);
         }
-        token.split_at(split_at)
+        Ok(token.split_at(split_at))
     }
 
-    fn wrap_line(
+    fn wrap_line<W: LineWidthProvider>(
         line: &str,
         max_width_px: f64,
         break_long_words: bool,
         wrap_mode: WrapMode,
         html_break_spaces_active: bool,
-        width_model: LineWidthModel<'_>,
-    ) -> Vec<String> {
+        width_model: &mut W,
+    ) -> Result<Vec<String>, W::Error> {
         if !max_width_px.is_finite() || max_width_px <= 0.0 {
-            return vec![line.to_string()];
+            return Ok(vec![line.to_string()]);
         }
 
         let tokens = match (wrap_mode, html_break_spaces_active) {
@@ -284,7 +427,7 @@ impl DeterministicTextMeasurer {
             let previous_len = cur.len();
             cur.push_str(&tok);
             let (candidate_width, candidate_width_px) =
-                width_model.candidate_width_px(cur_width, &cur, &tok);
+                width_model.candidate_width_px(cur_width, &cur, &tok)?;
             if candidate_width_px <= max_width_px {
                 cur_width = candidate_width;
                 continue;
@@ -318,7 +461,7 @@ impl DeterministicTextMeasurer {
             } else {
                 // Split at the largest grapheme boundary that fits. Zero-width graphemes do not
                 // consume line capacity, and an over-wide grapheme still advances the queue.
-                let (head, tail) = Self::split_token_to_width(&tok, max_width_px, width_model);
+                let (head, tail) = Self::split_token_to_width(&tok, max_width_px, width_model)?;
                 out.push(head.to_string());
                 if !tail.is_empty() {
                     tokens.push_front(tail.to_string());
@@ -333,9 +476,9 @@ impl DeterministicTextMeasurer {
         }
 
         if out.is_empty() {
-            vec!["".to_string()]
+            Ok(vec!["".to_string()])
         } else {
-            out
+            Ok(out)
         }
     }
 }
@@ -517,70 +660,166 @@ impl DeterministicTextMeasurer {
         };
 
         let font_size = style.font_size.max(1.0);
-        let width_model = LineWidthModel {
+        let mut width_model = LineWidthModel {
             font_size,
             source: width_source,
             style,
         };
-        let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
-        let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
+        let mut layout = match wrapped_text_layout(text, max_width, wrap_mode, &mut width_model) {
+            Ok(layout) => layout,
+            Err(error) => match error {},
+        };
+        layout.metrics.height = layout.metrics.line_count as f64 * font_size * line_height_factor;
+        (layout.metrics, layout.raw_width)
+    }
+}
 
-        let raw_lines = Self::normalized_text_lines(text);
-        let raw_width = (wrap_mode == WrapMode::HtmlLike || max_width.is_none()).then(|| {
-            raw_lines
-                .iter()
-                .fold(0.0_f64, |width, line| width.max(width_model.width_px(line)))
-        });
-        let html_break_spaces_active = wrap_mode == WrapMode::HtmlLike
-            && max_width
-                .is_some_and(|max_width| raw_width.is_some_and(|raw_width| raw_width > max_width));
-        let mut lines = Vec::new();
-        for line in raw_lines {
-            if let Some(w) = max_width {
-                lines.extend(Self::wrap_line(
-                    &line,
-                    w,
-                    break_long_words,
-                    wrap_mode,
-                    html_break_spaces_active,
-                    width_model,
-                ));
+fn wrapped_text_layout<W: LineWidthProvider>(
+    text: &str,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+    width_model: &mut W,
+) -> Result<WrappedTextLayout, W::Error> {
+    let max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
+    let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
+    let raw_lines = DeterministicTextMeasurer::normalized_text_lines(text);
+    let raw_width = if wrap_mode == WrapMode::HtmlLike || max_width.is_none() {
+        let mut width = 0.0_f64;
+        for line in &raw_lines {
+            width = width.max(if max_width.is_none() {
+                width_model.final_width_px(line)?
             } else {
-                lines.push(line);
-            }
+                width_model.width_px(line)?
+            });
         }
-
-        let mut width = if max_width.is_none() {
-            raw_width.expect("unwrapped measurement computes raw width")
+        Some(width)
+    } else {
+        None
+    };
+    let html_break_spaces_active = wrap_mode == WrapMode::HtmlLike
+        && max_width.is_some_and(|width| raw_width.is_some_and(|raw| raw > width));
+    let mut lines = Vec::new();
+    for line in raw_lines {
+        if let Some(width) = max_width {
+            lines.extend(DeterministicTextMeasurer::wrap_line(
+                &line,
+                width,
+                break_long_words,
+                wrap_mode,
+                html_break_spaces_active,
+                width_model,
+            )?);
         } else {
-            lines
-                .iter()
-                .fold(0.0_f64, |width, line| width.max(width_model.width_px(line)))
-        };
-        if html_break_spaces_active && let Some(max_width) = max_width {
-            // Mermaid switches overflowing HTML labels to a fixed-width table. Breakable text
-            // therefore occupies the configured width, while an unbreakable segment may still
-            // expand it through its min-content width.
-            width = width.max(max_width);
+            lines.push(line);
         }
-        let height = lines.len() as f64 * font_size * line_height_factor;
-        let metrics = TextMetrics {
+    }
+    let mut width = if max_width.is_none() {
+        raw_width.unwrap_or_default()
+    } else {
+        let mut width = 0.0_f64;
+        for line in &lines {
+            width = width.max(width_model.final_width_px(line)?);
+        }
+        width
+    };
+    if html_break_spaces_active && let Some(max_width) = max_width {
+        // Overflowing HTML labels occupy the table width unless min-content is wider.
+        width = width.max(max_width);
+    }
+    Ok(WrappedTextLayout {
+        metrics: TextMetrics {
             width,
-            height,
+            height: 0.0,
             line_count: lines.len(),
-        };
-        let raw_width_px = if wrap_mode == WrapMode::HtmlLike {
-            Some(raw_width.expect("HTML measurement computes raw width"))
+        },
+        lines,
+        raw_width: if wrap_mode == WrapMode::HtmlLike {
+            raw_width
         } else {
             None
-        };
-        (metrics, raw_width_px)
-    }
+        },
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DeterministicTextMeasurer, LineWidthModel, LineWidthSource};
+    #[test]
+    fn final_row_payloads_match_emitted_rows_without_additional_probes() {
+        let style = super::TextStyle::default();
+        for mode in [
+            super::WrapMode::SvgLike,
+            super::WrapMode::SvgLikeSingleRun,
+            super::WrapMode::HtmlLike,
+        ] {
+            for limit in [None, Some(45.0), Some(0.0), Some(f64::NAN)] {
+                for label in [
+                    "alpha beta<br>last",
+                    "",
+                    " ",
+                    "A<br><br>B",
+                    "alpha beta ",
+                    "\u{a0}A\u{a0}",
+                    "👩‍🔬👨‍🔬",
+                ] {
+                    let mut expected_calls = Vec::new();
+                    let expected = super::try_measure_wrapped_text(
+                        label,
+                        &style,
+                        limit,
+                        mode,
+                        0.0,
+                        |text, _| {
+                            expected_calls.push(text.to_owned());
+                            Ok::<_, ()>(text.len() as f64 * 10.0)
+                        },
+                    )
+                    .unwrap();
+                    let mut actual_calls = Vec::new();
+                    let (actual, payloads) = super::try_measure_wrapped_text_with_line_metrics(
+                        label,
+                        &style,
+                        limit,
+                        mode,
+                        |text, _| {
+                            actual_calls.push(text.to_owned());
+                            Ok::<_, ()>((text.len() as f64 * 10.0, text.to_owned()))
+                        },
+                    )
+                    .unwrap();
+                    assert_eq!(actual_calls, expected_calls);
+                    assert_eq!(payloads, actual.lines);
+                    assert_eq!(actual.lines, expected.lines);
+                    assert_eq!(actual.metrics.width, expected.metrics.width);
+                    assert_eq!(actual.raw_width, expected.raw_width);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn final_row_payload_errors_stop_measurement_immediately() {
+        let mut calls = 0;
+        let result = super::try_measure_wrapped_text_with_line_metrics(
+            "first<br>second",
+            &super::TextStyle::default(),
+            None,
+            super::WrapMode::SvgLike,
+            |text, _| {
+                calls += 1;
+                if text == "second" {
+                    Err("canceled")
+                } else {
+                    Ok((1.0, ()))
+                }
+            },
+        );
+        assert_eq!(result.unwrap_err(), "canceled");
+        assert_eq!(calls, 2);
+    }
+
+    use super::{
+        DeterministicTextMeasurer, LineWidthModel, LineWidthSource, try_measure_wrapped_text,
+    };
     use crate::text::{TextMeasurer, TextStyle, WrapMode};
     use std::sync::{Arc, Mutex};
     use unicode_segmentation::UnicodeSegmentation;
@@ -607,12 +846,13 @@ mod tests {
         let (head, tail) = DeterministicTextMeasurer::split_token_to_width(
             "W\u{0301}W",
             8.0,
-            LineWidthModel {
+            &mut LineWidthModel {
                 font_size: 10.0,
                 source: LineWidthSource::Heuristic,
                 style: &TextStyle::default(),
             },
-        );
+        )
+        .unwrap();
         assert_eq!(head, "W\u{0301}");
         assert_eq!(tail, "W");
 
@@ -652,7 +892,7 @@ mod tests {
             font_size: 16.0,
             ..TextStyle::default()
         };
-        let width_model = LineWidthModel {
+        let mut width_model = LineWidthModel {
             font_size: 16.0,
             source: LineWidthSource::Heuristic,
             style: &style,
@@ -665,7 +905,8 @@ mod tests {
             ("1️⃣2️⃣", "1️⃣", "2️⃣"),
         ] {
             let (head, tail) =
-                DeterministicTextMeasurer::split_token_to_width(text, 16.0, width_model);
+                DeterministicTextMeasurer::split_token_to_width(text, 16.0, &mut width_model)
+                    .unwrap();
             assert_eq!((head, tail), (first, second), "text={text:?}");
 
             let metrics = measurer.measure_wrapped(text, &style, Some(16.0), WrapMode::SvgLike);
@@ -832,5 +1073,99 @@ mod tests {
 
         assert_eq!(measurer.measure("ffi", &style).width, 37.0);
         assert_eq!(&*calls.lock().unwrap(), &[("ffi".to_string(), 99.0)]);
+    }
+
+    #[test]
+    fn shared_wrapping_matches_existing_modes_and_preserves_native_line_height() {
+        let width = |text: &str| {
+            let count = text.graphemes(true).count();
+            count as f64 * 10.0 - count.saturating_sub(1) as f64
+        };
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(move |text, _| width(text));
+        let style = TextStyle::default();
+
+        for mode in [
+            WrapMode::SvgLike,
+            WrapMode::SvgLikeSingleRun,
+            WrapMode::HtmlLike,
+        ] {
+            for text in [
+                "",
+                "a  b",
+                "alpha beta",
+                "abcdefgh",
+                "甲乙丙",
+                "👩‍🔬👨‍🔬",
+                "a<BR/>b\n",
+            ] {
+                for limit in [None, Some(20.0), Some(60.0), Some(f64::NAN)] {
+                    let expected =
+                        measurer.measure_wrapped_with_raw_width(text, &style, limit, mode);
+                    let actual =
+                        try_measure_wrapped_text(text, &style, limit, mode, 23.75, |text, _| {
+                            Ok::<_, ()>(width(text))
+                        })
+                        .unwrap();
+                    assert_eq!(actual.metrics.width.to_bits(), expected.0.width.to_bits());
+                    assert_eq!(actual.metrics.line_count, expected.0.line_count);
+                    assert_eq!(actual.raw_width, expected.1);
+                    assert_eq!(actual.lines.len(), actual.metrics.line_count);
+                    assert_eq!(actual.metrics.height, actual.lines.len() as f64 * 23.75);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shared_wrapping_returns_emitted_grapheme_lines_and_html_raw_width() {
+        let style = TextStyle::default();
+        let svg = try_measure_wrapped_text(
+            "👩‍🔬👨‍🔬",
+            &style,
+            Some(10.0),
+            WrapMode::SvgLike,
+            17.0,
+            |text, _| Ok::<_, ()>(text.graphemes(true).count() as f64 * 10.0),
+        )
+        .unwrap();
+        assert_eq!(svg.lines, ["👩‍🔬", "👨‍🔬"]);
+        assert_eq!(svg.metrics.height, 34.0);
+        assert_eq!(svg.raw_width, None);
+
+        let html = try_measure_wrapped_text(
+            "alpha beta",
+            &style,
+            Some(60.0),
+            WrapMode::HtmlLike,
+            19.0,
+            |text, _| Ok::<_, ()>(text.len() as f64 * 10.0),
+        )
+        .unwrap();
+        assert_eq!(html.lines, ["alpha ", "beta"]);
+        assert_eq!(html.metrics.width, 60.0);
+        assert_eq!(html.metrics.height, 38.0);
+        assert_eq!(html.raw_width, Some(100.0));
+    }
+
+    #[test]
+    fn shared_wrapping_propagates_errors_without_further_probes() {
+        let style = TextStyle::default();
+        for mode in [WrapMode::SvgLike, WrapMode::HtmlLike] {
+            let mut probes = Vec::new();
+            let result = try_measure_wrapped_text(
+                "alpha beta",
+                &style,
+                Some(40.0),
+                mode,
+                19.0,
+                |text, _| {
+                    probes.push(text.to_string());
+                    Err::<f64, _>("canceled")
+                },
+            );
+            assert_eq!(result.unwrap_err(), "canceled");
+            assert_eq!(probes.len(), 1);
+        }
     }
 }

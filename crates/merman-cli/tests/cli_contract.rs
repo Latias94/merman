@@ -1138,7 +1138,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 5);
+    assert_eq!(payload["cli_contract_version"], 6);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(

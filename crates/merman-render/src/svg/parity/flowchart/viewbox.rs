@@ -458,7 +458,12 @@ where
         };
         let (title_left, title_right) = ctx.measurer.measure_svg_title_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;
-        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            ctx.measurer,
+            title,
+            &title_style,
+            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+        );
 
         bbox_min_x = bbox_min_x.min(title_anchor_x - title_left);
         bbox_max_x = bbox_max_x.max(title_anchor_x + title_right);

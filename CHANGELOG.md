@@ -6,9 +6,22 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Shared actual-font text measurement for graphical diagrams, including node labels, attributes, participants, messages, titles and wrapping. Rust callers can enable `native-fonts` and supply a reusable font context; the CLI accepts repeatable `--font-file` and `--font-dir` sources. Explicit sources remain closed unless `--font-system on` requests system fallback. See the [same-Fira-Code Flowchart, ER and Sequence comparisons](docs/assets/native-font-measurement/README.md) for label containment and layout changes.
+
+### Changed
+
+- Default and release CLI builds include `native-fonts` and `system-fonts`: Mermaid-to-SVG/PNG/JPEG/PDF resolves local fonts before layout and shares selected font bytes with native painting. Use `--font-measurement deterministic` for the previous font-independent layout; this also opts out of automatic measurement-time discovery. Rust library and FFI measurement defaults remain host-independent. Native measurement rejects unsupported typography rather than silently claiming exact metrics; text SVGs still require compatible fonts on the viewing machine.
+
 ### Fixed
 
 - Core SVG and native CLI SVG output no longer add an implicit white canvas, matching Mermaid core. Use `SvgOutputPolicy.root_background_color` or CLI `--background white` when an opaque canvas is required. The `mmdc` command retains its white default; diagram-owned edge-label colors and opacity are unchanged.
+
+### Performance
+
+- On the current full release-profile CLI, explicit Cousine font measurement added 6.01 ms for Flowchart, 3.15 ms for ER and 2.80 ms for Sequence median process latency versus deterministic layout on one Windows host. Each policy/input has 90 fresh-process observations with warm filesystem caches; this is whole CLI cost, not system discovery or isolated shaping. See the [current explicit-font report, harness and raw samples](docs/performance/cli_explicit_font_current_2026-10-10.md).
+- Reduced default CLI system-font acquisition overhead without changing selected-font policy, byte verification or measured SVG output. On one Windows font-heavy host, 90 fresh processes per implementation reduced median Flowchart time from 2091.91 to 1468.03 ms (29.82%) with warm filesystem caches; default discovery still costs over a second there. See the [reproducible system-discovery report and raw samples](docs/performance/native_system_discovery_2026-10-10.md), separately from the [historical explicit-font cost](docs/performance/native_font_measurement_2026-10-10.md).
 
 ## [0.8.0] - 2026-10-06
 

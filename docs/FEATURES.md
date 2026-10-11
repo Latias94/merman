@@ -35,6 +35,7 @@ The public capability leaves are:
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
+| `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
 | `icons`, `markdown`, `network-icons`, `parallel-markdown`, `rustdoc`, `shell-completions` | Compiled CLI tool commands | None or descriptor-declared workflow implications; the CLI Cargo manifest owns their forwarding |
 
@@ -67,6 +68,89 @@ runtime policy, transport packages, and release recipes. Product packages and ar
 select their own direct leaf set instead.
 
 ## Pick a workflow
+
+### Optional CLI Fonts
+
+The default CLI build and official release binaries include `native-fonts` and
+`system-fonts`. Mermaid graphical output uses actual-font measurement by default.
+Without explicit sources, bounded system discovery prepares a font context before
+layout. `--font-measurement deterministic` selects compatibility measurement.
+Explicit `--font-file` or `--font-dir` sources use a closed font set by default;
+add `--font-system on` to allow system fallback. `fontFamily` selects among the
+available faces, not a file. System-font output is host-dependent; explicit fixed
+font files are the reproducible route.
+
+Library defaults remain unchanged. For a minimal CLI build with explicit fonts
+and SVG output:
+
+```powershell
+cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
+```
+
+Add `png`, `jpeg`, or `pdf` individually for binary output. `native-fonts` alone
+does not enable codecs or system discovery. Cargo features are additive: legacy
+binary exports compile usvg system discovery to preserve existing behavior,
+even when an explicit-font operation uses `--font-system off`. The separate
+`system-fonts` feature authorizes the bounded native context's discovery route.
+Minimal builds with only `native-fonts` retain deterministic defaults and require
+explicit fonts for native measurement. Dependency feature union does not grant
+the CLI that permission. `capabilities --json` reports the compiled dependency
+capability and the CLI runtime policy separately.
+
+The opt-in `experimental-system-font-query` feature selects Fontique-backed,
+on-demand system discovery in CLI builds. It is not part of the default or
+official release recipe. System metadata queries are managed by the platform
+and may map font files outside Merman's scan budgets; actual selected bytes
+still use bounded immutable snapshots shared by measurement and painting.
+Explicit-only requests stay closed. Library callers must explicitly choose
+`NativeFontOptions::load_platform`; ordinary `load` retains bounded discovery.
+See the [candidate plan](plans/2026-10-10-system-font-query-candidate.md) for
+validation scope and remaining platform/fallback requirements.
+
+`--font-file` and `--font-dir` are repeatable and preserve argument order.
+Directories use bounded, stable traversal and skip discovered symlinks. Earlier
+equal family/style/weight faces take precedence. TTF, OTF, and TTC sources are
+supported; fonts are never fetched from a network. Font loading does not change
+Mermaid `fontFamily`: select your family in Mermaid configuration as well.
+Missing families use the same resolver for measurement and painting.
+
+Explicit sources select native measurement automatically. The shared backend
+handles all 22 text-measurement protocol operations across layout, wrapping,
+SVG bounds, and computed lengths. Diagram families use this backend through
+Merman's existing measurement routes: it is not limited to titles or to one
+diagram family. Font-driven node and label sizing, advances, horizontal/vertical
+bounds, and wrapping probes use the selected font context; Merman retains its
+existing whitespace and line-breaking rules. Fixed diagram geometry and CSS
+line-height rules are not replaced with glyph bounds. Missing-glyph requests
+explicitly fall back to deterministic measurement. This is not browser pixel
+parity, and arbitrary HTML/CSS typography remains outside the native contract.
+Explicit sources with `--font-measurement deterministic` are
+rejected for Mermaid input. Custom `--css-file` and `themeCSS` are also rejected
+with native Mermaid measurement because they can change typography after layout.
+Parser-owned declarations such as letter spacing, CSS font shorthand and custom
+line height are rejected when the measurement protocol cannot represent them.
+Flowchart native mode requires an effective `px` theme font size (the equivalent
+default numeric `16` is accepted); ambiguous numeric/unit spellings and a root
+bold `fontWeight` are rejected where existing layout and CSS disagree. Set bold
+or italic on supported node/class declarations instead.
+For unsupported typography, use explicit compatibility measurement rather than
+silently claiming native layout. ASCII, parser/analysis, library defaults and
+host-owned FFI measurement policies are unchanged.
+
+SVG output does not embed fonts or convert text to outlines. Consumers must have
+the same fonts to reproduce measured geometry. Raw SVG supports explicit fonts
+only for PNG/JPEG/PDF conversion and rejects `--font-measurement`; conversion
+does not relayout existing geometry. Respect font redistribution and embedding
+licenses. Cousine fixtures are test-only and are not production assets.
+
+Rust hosts load `merman::svg::export::NativeFontOptions` and install the resulting
+context with `SvgEnvironment::with_native_font_context`. Typed binary rendering
+reuses that context automatically. Direct exporters use the same context via
+`RasterOptions::with_font_context` or `PdfOptions::with_font_context`. Hosts
+implementing a custom low-level measurement route must call `context.check()`
+at their fallible output boundary, since the host measurement protocol otherwise
+turns errors into fallback. Font bytes and bounded caches belong to the requesting
+operation or batch and never accumulate user fonts in a process-global cache.
 
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
@@ -283,7 +367,7 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
-SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
+SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, explicit native fonts, local Iconify loading,
 Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is included in source defaults and the standard archive.
 The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
 EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7 and the stable candidate include ELK in both recipes.

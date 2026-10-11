@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d`
+Semantic digest: `sha256:81d9233b2836df9a41e9c12da9ea1b197b3bcb97671b4cdd95d167e1b9c9c846`
 
 ## Public Leaves
 
@@ -17,6 +17,7 @@ Semantic digest: `sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
 | `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
+| `native-fonts` | `Adapter` | `native` | none | Measure shared graphical text, wrapping, bounds and computed lengths with a reusable font context; share selected font bytes with native painting and report unsupported or missing-glyph fallbacks. |
 | `network-icons` | `Tool` | `native` | none | Compile CLI network icon loading commands. |
 | `parallel-markdown` | `Tool` | `native` | none | Compile parallel CLI Markdown batch processing. |
 | `pdf` | `Output` | `native` | none | Export rendered diagrams as PDF. |

@@ -4440,6 +4440,9 @@ public enum MermanTextMeasurementOperation: Equatable, Hashable {
     case canvasMeasureTextWidth
     case createTextMiddleBBoxYOffset
     case rawBBoxHeight
+    case rawBBoxYOffset
+    case rawMiddleBBoxYOffset
+    case rawHangingBBoxYOffset
 
 
 
@@ -4498,6 +4501,12 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
         case 18: return .createTextMiddleBBoxYOffset
 
         case 19: return .rawBBoxHeight
+
+        case 20: return .rawBBoxYOffset
+
+        case 21: return .rawMiddleBBoxYOffset
+
+        case 22: return .rawHangingBBoxYOffset
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4581,6 +4590,18 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
 
         case .rawBBoxHeight:
             writeInt(&buf, Int32(19))
+
+
+        case .rawBBoxYOffset:
+            writeInt(&buf, Int32(20))
+
+
+        case .rawMiddleBBoxYOffset:
+            writeInt(&buf, Int32(21))
+
+
+        case .rawHangingBBoxYOffset:
+            writeInt(&buf, Int32(22))
 
         }
     }

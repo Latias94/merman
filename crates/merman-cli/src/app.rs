@@ -23,6 +23,7 @@ use std::process::ExitCode;
     feature = "layout-elk",
     feature = "markdown",
     feature = "math",
+    feature = "native-fonts",
     feature = "network-icons",
     feature = "parallel-markdown",
     feature = "pdf",

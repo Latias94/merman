@@ -108,6 +108,7 @@ internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilit
     MermanBindingCapabilitySpec("layout-elk", listOf("svg")),
     MermanBindingCapabilitySpec("markdown", listOf()),
     MermanBindingCapabilitySpec("math", listOf("svg")),
+    MermanBindingCapabilitySpec("native-fonts", listOf()),
     MermanBindingCapabilitySpec("network-icons", listOf()),
     MermanBindingCapabilitySpec("parallel-markdown", listOf()),
     MermanBindingCapabilitySpec("pdf", listOf()),

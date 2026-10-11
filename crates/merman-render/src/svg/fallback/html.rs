@@ -1,4 +1,8 @@
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    TextMeasurer, TextStyle, WrapMode, is_html_collapsible_ascii_whitespace, split_html_br_lines,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
+    try_measure_wrapped_text,
+};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
@@ -107,27 +111,57 @@ fn decode_html_entities_streaming<E>(
 
 pub(super) fn htmlish_to_text_lines<E>(
     html: &str,
+    preserve_break_spaces: bool,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<String>, E> {
     // Mermaid foreignObject labels often look like:
     //   <div class="label">Line 1<br/>Line 2</div>
     // We treat `<br>` as line breaks and strip remaining tags.
     checkpoint()?;
-    let normalized = replace_with_checkpoint(html, "<br/>", "\n", checkpoint)?;
-    let normalized = replace_with_checkpoint(&normalized, "<br />", "\n", checkpoint)?;
-    let normalized = replace_with_checkpoint(&normalized, "<br>", "\n", checkpoint)?;
-    let normalized = replace_with_checkpoint(&normalized, "</br>", "\n", checkpoint)?;
-    let normalized = replace_with_checkpoint(&normalized, "\\n", "\n", checkpoint)?;
-    let stripped = strip_html_tags(&normalized, checkpoint)?;
-    let text = decode_html_entities(&stripped, checkpoint)?;
-
+    let normalized = replace_with_checkpoint(html, "</br>", "<br/>", checkpoint)?;
+    let normalized = replace_with_checkpoint(&normalized, "\\n", "<br/>", checkpoint)?;
+    let explicit_lines = split_html_br_lines(&normalized);
+    let has_explicit_breaks = explicit_lines.len() > 1;
     let mut lines = Vec::new();
-    for (index, line) in text.lines().enumerate() {
+    for (index, fragment) in explicit_lines.into_iter().enumerate() {
         checkpoint_loop(index, checkpoint)?;
-        let line = line.trim();
-        if !line.is_empty() {
-            lines.push(line.to_string());
+        let stripped = strip_html_tags(fragment, checkpoint)?;
+        let text = decode_html_entities(&stripped, checkpoint)?;
+        if preserve_break_spaces {
+            lines.extend(text.split('\n').map(str::to_string));
+        } else {
+            let mut line = String::new();
+            let mut pending_space = false;
+            for (index, ch) in text.chars().enumerate() {
+                checkpoint_loop(index, checkpoint)?;
+                if is_html_collapsible_ascii_whitespace(ch) {
+                    pending_space = !line.is_empty();
+                } else {
+                    if pending_space {
+                        line.push(' ');
+                        pending_space = false;
+                    }
+                    line.push(ch);
+                }
+            }
+            if !line.is_empty() || has_explicit_breaks {
+                lines.push(line);
+            }
         }
+    }
+    // Match shared label measurement's trailing-empty-row rule without discarding NBSP or
+    // preserved spaces. Interior explicit break rows continue to contribute line height.
+    while lines.len() > 1
+        && lines.last().is_some_and(|line| {
+            if preserve_break_spaces {
+                line.is_empty()
+            } else {
+                trim_html_collapsible_ascii_whitespace(line).is_empty()
+            }
+        })
+    {
+        checkpoint()?;
+        lines.pop();
     }
     checkpoint()?;
     Ok(lines)
@@ -179,6 +213,7 @@ fn wrap_html_line_to_width<E>(
     max_width_px: f64,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    preserve_break_spaces: bool,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<String>, E> {
     if !max_width_px.is_finite() || max_width_px <= 0.0 {
@@ -186,6 +221,19 @@ fn wrap_html_line_to_width<E>(
     }
     if line_width_html_px(measurer, style, line, checkpoint)? <= max_width_px {
         return Ok(vec![line.to_string()]);
+    }
+
+    if preserve_break_spaces {
+        // Use the same atomic HTML segments and preserved-space widths as layout measurement.
+        return try_measure_wrapped_text(
+            line,
+            style,
+            Some(max_width_px),
+            WrapMode::HtmlLike,
+            0.0,
+            |candidate, style| line_width_html_px(measurer, style, candidate, checkpoint),
+        )
+        .map(|layout| layout.lines);
     }
 
     checkpoint()?;
@@ -202,14 +250,14 @@ fn wrap_html_line_to_width<E>(
         }
 
         let candidate = format!("{cur}{tok}");
-        let candidate_trimmed = candidate.trim_end();
+        let candidate_trimmed = trim_end_html_collapsible_ascii_whitespace(&candidate);
         if line_width_html_px(measurer, style, candidate_trimmed, checkpoint)? <= max_width_px {
             cur = candidate;
             continue;
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+            out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
             cur.clear();
             tokens.push_front(tok);
             continue;
@@ -223,8 +271,8 @@ fn wrap_html_line_to_width<E>(
         out.push(tok);
     }
 
-    if !cur.trim().is_empty() {
-        out.push(cur.trim_end().to_string());
+    if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+        out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
     }
 
     if out.is_empty() {
@@ -239,6 +287,7 @@ pub(super) fn wrap_html_lines_to_width<E>(
     max_width_px: Option<f64>,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    preserve_break_spaces: bool,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<String>, E> {
     let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
@@ -254,6 +303,7 @@ pub(super) fn wrap_html_lines_to_width<E>(
             max_width_px,
             measurer,
             style,
+            preserve_break_spaces,
             checkpoint,
         )?);
     }
@@ -304,4 +354,70 @@ pub(super) fn foreign_object_html_soft_wrap_width<E>(
     });
     checkpoint()?;
     Ok(width)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{foreign_object_html_soft_wrap_width, wrap_html_lines_to_width};
+    use crate::text::{DeterministicTextMeasurer, TextStyle};
+    use std::convert::Infallible;
+
+    #[test]
+    fn break_spaces_fallback_reuses_layout_lines_with_trailing_spaces() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        let lines = wrap_html_lines_to_width(
+            vec!["iiii iiii iiii iiii iiii iiii".to_string()],
+            Some(9.5),
+            measurer.as_ref(),
+            &TextStyle::default(),
+            true,
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert_eq!(lines, ["iiii ", "iiii ", "iiii ", "iiii ", "iiii iiii"]);
+    }
+
+    #[test]
+    fn normal_fallback_keeps_existing_trimmed_line_behavior() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        let lines = wrap_html_lines_to_width(
+            vec!["iiii iiii iiii iiii iiii iiii".to_string()],
+            Some(9.5),
+            measurer.as_ref(),
+            &TextStyle::default(),
+            false,
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert_eq!(lines, ["iiii iiii", "iiii iiii", "iiii iiii"]);
+    }
+
+    #[test]
+    fn nowrap_remains_unwrapped_and_break_spaces_errors_propagate() {
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        assert_eq!(
+            foreign_object_html_soft_wrap_width(
+                r#"<foreignObject width="9.5">"#,
+                r#"<div style="white-space: nowrap; width: 9.5px">iiii iiii</div>"#,
+                &mut checkpoint,
+            )
+            .unwrap(),
+            None,
+        );
+        let measurer = DeterministicTextMeasurer::default();
+        let mut checkpoint = || Err::<(), _>("canceled");
+        let result = wrap_html_lines_to_width(
+            vec!["iiii iiii".to_string()],
+            Some(9.5),
+            &measurer,
+            &TextStyle::default(),
+            true,
+            &mut checkpoint,
+        );
+        assert_eq!(result.unwrap_err(), "canceled");
+    }
 }

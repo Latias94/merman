@@ -2132,11 +2132,14 @@ mod tests {
                     result.result_kind = MermanTextMeasurementResultKind::Length;
                     result.length = height;
                 }
-                MermanTextMeasurementOperation::CreateTextBBoxYOffset => {
+                MermanTextMeasurementOperation::CreateTextBBoxYOffset
+                | MermanTextMeasurementOperation::RawBBoxYOffset
+                | MermanTextMeasurementOperation::RawHangingBBoxYOffset => {
                     result.result_kind = MermanTextMeasurementResultKind::Length;
                     result.length = -1.0;
                 }
-                MermanTextMeasurementOperation::CreateTextMiddleBBoxYOffset => {
+                MermanTextMeasurementOperation::CreateTextMiddleBBoxYOffset
+                | MermanTextMeasurementOperation::RawMiddleBBoxYOffset => {
                     result.result_kind = MermanTextMeasurementResultKind::Length;
                     result.length = -2.0;
                 }
@@ -2723,6 +2726,23 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn uniffi_preserves_exact_host_measurement_operations() {
+        for (operation, expected) in [
+            (
+                merman_bindings_core::TextMeasurementOperation::RawBBoxYOffset,
+                MermanTextMeasurementOperation::RawBBoxYOffset,
+            ),
+            (
+                merman_bindings_core::TextMeasurementOperation::RawMiddleBBoxYOffset,
+                MermanTextMeasurementOperation::RawMiddleBBoxYOffset,
+            ),
+            (
+                merman_bindings_core::TextMeasurementOperation::RawHangingBBoxYOffset,
+                MermanTextMeasurementOperation::RawHangingBBoxYOffset,
+            ),
+        ] {
+            assert_eq!(uniffi_measurement_operation(operation), expected);
+            assert!(operation.accepts_signed_length());
+        }
         assert_eq!(
             uniffi_measurement_operation(
                 merman_bindings_core::TextMeasurementOperation::MermaidCalculateTextDimensions,

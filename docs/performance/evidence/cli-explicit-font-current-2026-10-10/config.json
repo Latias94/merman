@@ -1,0 +1,12 @@
+{
+  "fontFamily": "Cousine",
+  "htmlLabels": false,
+  "themeVariables": {
+    "fontFamily": "Cousine"
+  },
+  "sequence": {
+    "actorFontFamily": "Cousine",
+    "messageFontFamily": "Cousine",
+    "noteFontFamily": "Cousine"
+  }
+}

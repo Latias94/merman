@@ -193,7 +193,10 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 let text_y = abs_y + height / 2.0;
 
                 checkpoint()?;
-                let raw_lines = htmlish_to_text_lines(inner, checkpoint)?;
+                let preserve_break_spaces =
+                    html::extract_inline_html_style_property(inner, "white-space", checkpoint)?
+                        .is_some_and(|value| value.trim().eq_ignore_ascii_case("break-spaces"));
+                let raw_lines = htmlish_to_text_lines(inner, preserve_break_spaces, checkpoint)?;
                 if !raw_lines.is_empty() {
                     let cascade = match cascade_index.as_mut() {
                         Some(cascade) => cascade,
@@ -258,6 +261,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         wrap_width,
                         text_measurer,
                         &measure_style,
+                        preserve_break_spaces,
                         checkpoint,
                     )?;
                     let line_height = typography.line_height;
@@ -280,6 +284,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     let escaped_fill =
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
                     let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
+                    let preserved_space_attr = if preserve_break_spaces {
+                        r#" xml:space="preserve""#
+                    } else {
+                        ""
+                    };
 
                     for (idx, line) in lines.iter().enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
@@ -288,11 +297,12 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{} style="{}">{}</text>"##,
+                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{}{} style="{}">{}</text>"##,
                                 text_x,
                                 y_line,
                                 escaped_fill,
                                 source_classes_attr,
+                                preserved_space_attr,
                                 escaped_style,
                                 text
                             ),
@@ -500,6 +510,85 @@ mod tests {
     use super::foreign_object_label_fallback_svg_text as render_fallback;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use std::cell::RefCell;
+
+    #[test]
+    fn break_spaces_overlay_preserves_measured_trailing_spaces_in_svg_text() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let svg = r#"<svg><foreignObject width="9.5" height="100"><div style="white-space: break-spaces; width: 9.5px">iiii iiii iiii iiii iiii iiii</div></foreignObject></svg>"#;
+        let converted = render_fallback(svg, measurer.as_ref());
+        assert_eq!(converted.matches(r#"xml:space="preserve""#).count(), 5);
+        assert_eq!(converted.matches(">iiii </text>").count(), 4);
+        assert_eq!(converted.matches(">iiii iiii</text>").count(), 1);
+
+        let normal = svg.replace("break-spaces", "normal");
+        let converted = render_fallback(&normal, measurer.as_ref());
+        assert!(!converted.contains(r#"xml:space="preserve""#));
+        assert_eq!(converted.matches(">iiii iiii</text>").count(), 3);
+    }
+
+    #[test]
+    fn overlay_keeps_nbsp_boundaries_and_explicit_empty_break_rows() {
+        let measurer = DeterministicTextMeasurer::default();
+        let nbsp = r#"<svg><foreignObject width="200" height="100"><div>&nbsp;A&nbsp;</div></foreignObject></svg>"#;
+        let converted = render_fallback(nbsp, &measurer);
+        assert!(converted.contains(">\u{a0}A\u{a0}</text>"));
+
+        let breaks = r#"<svg><foreignObject width="200" height="100"><div>A<br/><br/>B</div></foreignObject></svg>"#;
+        let converted = render_fallback(breaks, &measurer);
+        assert_eq!(
+            converted
+                .matches("class=\"merman-foreignobject-fallback-text\"")
+                .count(),
+            3
+        );
+        assert!(converted.contains("></text>"));
+        assert!(converted.contains(">A</text>"));
+        assert!(converted.contains(">B</text>"));
+    }
+
+    #[test]
+    fn break_spaces_overlay_keeps_boundary_spaces_and_normal_collapses_indentation() {
+        let measurer = DeterministicTextMeasurer::default();
+        let svg = r#"<svg><foreignObject width="200" height="100"><div style="white-space: break-spaces">  A  </div></foreignObject></svg>"#;
+        let converted = render_fallback(svg, &measurer);
+        assert!(converted.contains(">  A  </text>"));
+        assert!(converted.contains(r#"xml:space="preserve""#));
+
+        let normal = "<svg><foreignObject width=\"200\" height=\"100\">\n  <div>\n    A   B\n  </div>\n</foreignObject></svg>";
+        let converted = render_fallback(normal, &measurer);
+        assert!(converted.contains(">A B</text>"));
+        assert_eq!(
+            converted
+                .matches("class=\"merman-foreignobject-fallback-text\"")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn overlay_discards_only_trailing_empty_break_rows() {
+        let measurer = DeterministicTextMeasurer::default();
+        for (white_space, text, expected_rows) in [
+            ("normal", "A<br/>", 1),
+            ("break-spaces", "A<br/>", 1),
+            ("normal", "A<br/><br/>B", 3),
+            ("normal", "A<br/>&nbsp;", 2),
+            ("break-spaces", "A<br/>  ", 2),
+        ] {
+            let svg = format!(
+                r#"<svg><foreignObject width="200" height="100"><div style="white-space: {white_space}">{text}</div></foreignObject></svg>"#,
+            );
+            let converted = render_fallback(&svg, &measurer);
+            assert_eq!(
+                converted
+                    .matches("class=\"merman-foreignobject-fallback-text\"")
+                    .count(),
+                expected_rows,
+                "{white_space}: {text}",
+            );
+        }
+    }
 
     #[derive(Default)]
     struct RecordingMeasurer {

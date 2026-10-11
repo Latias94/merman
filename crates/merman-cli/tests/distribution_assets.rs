@@ -158,6 +158,65 @@ fn generated_manpages_have_deterministic_metadata_and_descriptions() {
 }
 
 #[test]
+fn complete_profile_assets_expose_default_native_fonts_and_compatibility_opt_out() {
+    let script = read_asset("completions/merman-cli.bash");
+    for command in ["render", "batch", "mmdc"] {
+        let options = bash_options(&script, command);
+        for option in [
+            "--font-file",
+            "--font-dir",
+            "--font-measurement",
+            "--font-system",
+        ] {
+            assert!(options.contains(option), "{command} omits {option}");
+        }
+        assert_eq!(
+            bash_option_values(&script, command, "--font-measurement"),
+            ["deterministic".to_owned(), "native".to_owned()]
+                .into_iter()
+                .collect()
+        );
+        assert_eq!(
+            bash_option_values(&script, command, "--font-system"),
+            ["off".to_owned(), "on".to_owned()].into_iter().collect()
+        );
+        let man = read_asset(&format!("man/merman-cli-{command}.1"));
+        assert!(man.contains("Select shared text measurement"));
+        assert!(man.contains("native by default"));
+        assert!(man.contains("deterministic opts out of automatic font discovery"));
+        assert!(man.contains("Control bounded system font discovery"));
+        assert!(man.contains("off with explicit sources unless on is requested"));
+        assert!(!man.contains("title horizontal bounds only"));
+        assert!(!man.contains("deterministic without font sources"));
+        assert!(!man.contains("System discovery is deferred"));
+    }
+    for asset in [
+        "completions/merman-cli.elv",
+        "completions/merman-cli.fish",
+        "completions/merman-cli.ps1",
+        "completions/_merman-cli",
+    ] {
+        let completion = read_asset(asset);
+        assert!(
+            completion.contains("native by default"),
+            "{asset} omits the default measurement policy"
+        );
+        assert!(
+            completion.contains("deterministic opts out of automatic font discovery"),
+            "{asset} omits the compatibility opt-out"
+        );
+        assert!(
+            completion.contains("Control bounded system font discovery"),
+            "{asset} omits bounded system discovery"
+        );
+        assert!(
+            !completion.contains("System discovery is deferred"),
+            "{asset} retains the obsolete discovery policy"
+        );
+    }
+}
+
+#[test]
 fn complete_profile_assets_expose_the_full_rustdoc_command_hierarchy() {
     for (asset, required) in [
         (

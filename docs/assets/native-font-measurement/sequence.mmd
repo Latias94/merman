@@ -1,0 +1,5 @@
+sequenceDiagram
+    participant Client
+    participant Gateway as API Gateway Service
+    Client->>Gateway: Request a long-running export job
+    Gateway-->>Client: Accepted, poll the status endpoint for progress

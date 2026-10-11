@@ -54,6 +54,12 @@ style. Callers such as TreeView use this operation because Mermaid lays out each
 exact browser result. A host must not answer it with tspan bounds, generic line height, or a
 font-size multiplier.
 
+Operations 19 through 21 carry signed direct-text bbox y offsets for ordinary, middle, and hanging
+baselines respectively. Their text origin is `(0, 0)`, without a tspan or formatted-text offsets.
+They remain distinct from operations 14 and 17, whose Mermaid formatted DOM has additional offsets.
+Unsupported native offsets use the caller's existing compatibility default rather than inventing
+font metrics or silently substituting a different baseline operation.
+
 The deterministic profile preserves the operation distinction but does not claim to reconstruct a
 browser DOM shape from embedded font facts. It applies stable, font-agnostic rules to each requested
 result shape. Raw operation 18 and the tspan bbox operation remain separate protocol operations even

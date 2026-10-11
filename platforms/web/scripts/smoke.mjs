@@ -1074,6 +1074,12 @@ function hostTextMeasurementResult(request) {
       return { kind: "length", length: 1 };
     case "create-text-middle-bbox-y-offset":
       return { kind: "length", length: -1 };
+    case "raw-bbox-y-offset":
+      return { kind: "length", length: -height };
+    case "raw-middle-bbox-y-offset":
+      return { kind: "length", length: -height * 0.75 };
+    case "raw-hanging-bbox-y-offset":
+      return { kind: "length", length: -height * 0.2 };
     case "bbox-x":
     case "bbox-x-with-ascii-overhang":
     case "title-bbox-x":

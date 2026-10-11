@@ -127,7 +127,10 @@ enum MermanTextMeasurementOperation {
   mermaidCalculateTextDimensions(15),
   canvasMeasureTextWidth(16),
   createTextMiddleBBoxYOffset(17),
-  rawBBoxHeight(18);
+  rawBBoxHeight(18),
+  rawBBoxYOffset(19),
+  rawMiddleBBoxYOffset(20),
+  rawHangingBBoxYOffset(21);
 
   const MermanTextMeasurementOperation(this.code);
 

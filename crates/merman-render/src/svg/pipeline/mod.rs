@@ -95,6 +95,11 @@ use std::sync::Arc;
 pub trait SvgPostprocessor: Send + Sync {
     fn name(&self) -> &'static str;
 
+    /// Host CSS injected by this pass after layout, when applicable.
+    fn scoped_css(&self) -> Option<&str> {
+        None
+    }
+
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
@@ -326,6 +331,15 @@ impl SvgPipeline {
         P: SvgPostprocessor + 'static,
     {
         self.postprocessors.push(Arc::new(postprocessor));
+    }
+
+    /// Whether the pipeline injects host CSS after text layout has completed.
+    pub fn has_scoped_css(&self) -> bool {
+        self.postprocessors.iter().any(|postprocessor| {
+            postprocessor
+                .scoped_css()
+                .is_some_and(|css| !css.trim().is_empty())
+        })
     }
 
     pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {

@@ -127,6 +127,30 @@ library behavior. For embedded integrations, use the
 
 `lint` defaults to stable human-readable text. Automation should request `--format json` explicitly; `lint-rules` remains JSON by default, and `--pretty` is valid only with JSON output.
 
+## Explicit Fonts
+
+Default builds and official release binaries measure Mermaid graphical text with
+actual fonts. Without explicit sources, bounded system discovery resolves fonts
+before layout. Use explicit sources to control the font set:
+
+```sh
+merman-cli render diagram.mmd --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf
+```
+
+Select the matching `fontFamily` in Mermaid configuration. Font sources are
+repeatable and earlier equal family/style/weight faces take precedence.
+Explicit sources disable system fallback unless `--font-system on` is supplied.
+`--font-measurement deterministic` selects the former compatibility layout when
+no explicit sources are supplied, including for unsupported native typography.
+System-font output is host-dependent; pin font file contents for reproducibility.
+Minimal builds without `system-fonts` keep deterministic measurement by default.
+
+Native measurement uses the shared text-measurement infrastructure for layout,
+wrapping, SVG bounds, and computed lengths, not just titles. SVG output does not
+embed fonts; viewers need the same fonts. Raw SVG conversion uses supplied fonts
+for painting only and cannot relayout existing geometry. See
+[font support and limitations](../../docs/FEATURES.md#optional-cli-fonts).
+
 ## Command Dialects And Root Compatibility
 
 Root-level render flags no longer belong to the advertised command tree. Keeping native and compatibility arguments in separate parsers gives each workflow its own defaults, validation, help, completion output, input rules, and publication guarantees without breaking existing root-level `mmdc` scripts.
@@ -348,6 +372,7 @@ explicitly:
 | `--no-default-features --features all-diagrams` | `detect`, `parse`, and `capabilities` |
 | `--no-default-features --features all-diagrams,analysis` | Lint, fixes, and rule metadata without render dependencies |
 | `--no-default-features --features all-diagrams,svg` | Basic deterministic SVG |
+| `--no-default-features --features all-diagrams,native-fonts` | SVG with explicit-font measurement controls, no output codecs |
 | `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |
 | `--no-default-features --features all-diagrams,markdown` | Sequential native Markdown batch and SVG |
 | `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
@@ -364,7 +389,7 @@ cargo install merman-cli --version 0.8.0 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 5`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 5 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 6 changes default/release Mermaid graphical measurement to actual fonts and retains `--font-measurement deterministic` as the compatibility choice. It preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 

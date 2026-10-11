@@ -816,6 +816,16 @@ pub type HostMeasurementResult = Result<Option<HostTextMeasurement>, HostTextMea
 /// recorded as [`HostFallbackReason::Invalid`].
 pub trait HostTextMeasurer: Send + Sync {
     fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult;
+
+    /// Measures within the active render operation. Existing host adapters may ignore control;
+    /// native adapters use it to checkpoint bounded shaping and wrapping work.
+    fn measure_with_control(
+        &self,
+        request: HostTextMeasurementRequest<'_>,
+        _control: &OperationControl,
+    ) -> HostMeasurementResult {
+        self.measure(request)
+    }
 }
 
 #[derive(Clone)]
@@ -946,6 +956,12 @@ impl CancelledTextMeasurement for f64 {
     }
 }
 
+impl CancelledTextMeasurement for Option<f64> {
+    fn cancelled() -> Self {
+        None
+    }
+}
+
 impl CancelledTextMeasurement for (f64, f64) {
     fn cancelled() -> Self {
         (0.0, 0.0)
@@ -986,6 +1002,9 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::SimpleBBoxWidth
             | TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::RawBBoxHeight
+            | TextMeasurementOperation::RawBBoxYOffset
+            | TextMeasurementOperation::RawMiddleBBoxYOffset
+            | TextMeasurementOperation::RawHangingBBoxYOffset
             | TextMeasurementOperation::BoundingClientRectWidth
             | TextMeasurementOperation::TspanBBoxWidth
             | TextMeasurementOperation::TspanBBoxHeight
@@ -1048,7 +1067,7 @@ impl RoutedTextMeasurer<'_> {
             TextMeasurementRouteConfig::Host {
                 backend, fallback, ..
             } => {
-                let attempt = backend.measure(request);
+                let attempt = backend.measure_with_control(request, self.work_meter.control());
                 if let Some(cancelled) = self.controlled_cancellation_value() {
                     return cancelled;
                 }
@@ -1262,6 +1281,56 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         )
     }
 
+    fn measure_svg_raw_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_bbox_y_offset_px(text, style),
+        )
+    }
+
+    fn measure_svg_raw_text_middle_bbox_y_offset_px(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawMiddleBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_middle_bbox_y_offset_px(text, style),
+        )
+    }
+
+    fn measure_svg_raw_text_hanging_bbox_y_offset_px(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawHangingBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_hanging_bbox_y_offset_px(text, style),
+        )
+    }
+
     fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
             self.request(
@@ -1287,6 +1356,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_tspan_text_bbox_height_px(text, style),
+        )
+    }
+
+    fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::TspanBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_preserved_tspan_text_bbox_width_px(text, style),
         )
     }
 
@@ -1919,6 +2002,9 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "raw-bbox-y-offset"),
+                (20, "raw-middle-bbox-y-offset"),
+                (21, "raw-hanging-bbox-y-offset"),
             ]
         );
     }
@@ -2148,6 +2234,40 @@ mod tests {
 
     struct OperationAwareHost {
         operations: Arc<Mutex<Vec<TextMeasurementOperation>>>,
+    }
+
+    #[test]
+    fn preserved_tspan_width_reuses_operation_seven_with_explicit_whitespace_mode() {
+        struct PreservedTspanHost;
+
+        impl HostTextMeasurer for PreservedTspanHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                assert_eq!(request.operation, TextMeasurementOperation::TspanBBoxWidth);
+                assert_eq!(request.operation.external_code(), 7);
+                assert_eq!(request.phase, TextMeasurementPhase::SvgBBox);
+                assert_eq!(request.text, "a  b");
+                assert_eq!(request.max_width, None);
+                assert_eq!(request.wrap_mode, WrapMode::HtmlLike);
+                Ok(Some(HostTextMeasurement::Length(37.5)))
+            }
+        }
+
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.preserved-tspan-host", "v1", &[]),
+            Arc::new(PreservedTspanHost),
+            [TextMeasurementPhase::SvgBBox],
+            deterministic_profile(),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        assert_eq!(
+            session
+                .text_measurer(TextMeasurementPhase::Layout)
+                .measure_svg_preserved_tspan_text_bbox_width_px("a  b", &TextStyle::default()),
+            37.5,
+        );
     }
 
     impl HostTextMeasurer for OperationAwareHost {
@@ -2874,6 +2994,46 @@ mod tests {
     struct CancellingMissingHost {
         calls: Arc<AtomicUsize>,
         control: OperationControl,
+    }
+
+    struct ActiveOperationHost;
+
+    impl HostTextMeasurer for ActiveOperationHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            panic!("session must provide its canonical control");
+        }
+
+        fn measure_with_control(
+            &self,
+            _request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            control.cancel();
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn host_adapter_receives_the_active_session_control() {
+        let control = OperationControl::new();
+        let policy = TextMeasurementPolicy::host_display(
+            identity("test.active-operation", "v1", &[]),
+            Arc::new(ActiveOperationHost),
+            TextMeasurementPhase::ALL,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_control(control.clone())
+            .expect("begin session");
+        let metrics = session
+            .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout)
+            .measure("label", &TextStyle::default());
+        assert_eq!(metrics.width, 0.0);
+        assert!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .is_err()
+        );
     }
 
     impl HostTextMeasurer for CancellingMissingHost {

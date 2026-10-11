@@ -1,0 +1,13 @@
+erDiagram
+    ORDER {
+        int id
+        datetime created_at
+        string fulfillment_status
+        string shipping_address_line_one
+    }
+    CUSTOMER {
+        int id
+        string full_name
+        string email_address
+    }
+    CUSTOMER ||--o{ ORDER : places

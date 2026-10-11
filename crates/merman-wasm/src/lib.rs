@@ -847,6 +847,9 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "raw-bbox-y-offset"),
+                (20, "raw-middle-bbox-y-offset"),
+                (21, "raw-hanging-bbox-y-offset"),
             ]
         );
     }

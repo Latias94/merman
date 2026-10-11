@@ -7,6 +7,30 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+- [System font query feasibility](../research/2026-10-10-system-font-query-feasibility.md)
+  records an isolated Windows source-query probe and font-kit/fontique source
+  audit. Targeted lookup is promising, but complete render equivalence, fallback,
+  resource controls and cross-platform costs are not admitted. No production
+  default or dependency changed; persistent caching is not the first experiment.
+  The [isolated bridge plan](../plans/2026-10-10-system-font-query-candidate.md)
+  tests public rendering with selected-family paths. Fontique 0.12.0 has no
+  public pre-mapping candidate/loader hook, so this is not an admitted bounded
+  system-discovery replacement.
+
+- [Default CLI system-font checkpoint](native_system_discovery_2026-10-10.md)
+  records identical-output fresh-process A/B on a font-heavy Windows host:
+  preallocated bounded reads reduce median time from 2091.91 to 1468.03 ms.
+  Full catalogue acquisition remains a quality-default startup cost; investigate
+  a content-correct catalogue/snapshot design rather than weakening identity,
+  resource accounting or fallback policy. Explicit-font timings are a separate lane.
+
+- [Native font measurement checkpoint](native_font_measurement_2026-10-10.md)
+  retains final-row metric reuse as a structural duplicate-work repair (14.85%
+  less allocation traffic on the controlled uncached-wrap lane, latency
+  inconclusive). Cold/batch evidence prioritizes bounded cache replacement and
+  lock attribution next. Direct single-face shaping is not admitted because it
+  diverges from fallback and numeric semantics.
+
 The release-range baseline dates to 2026-07-27 and 2026-07-28. Later checkpoints below record
 their own revisions, dates, and admission decisions:
 

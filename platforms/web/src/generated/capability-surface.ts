@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:81d9233b2836df9a41e9c12da9ea1b197b3bcb97671b4cdd95d167e1b9c9c846" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -186,6 +186,7 @@ export const WEB_BINDING_OPERATION_IDS = [
 export type WebBindingOperationId = (typeof WEB_BINDING_OPERATION_IDS)[number];
 
 export const SYSTEM_ADAPTER_IDS = [
+  "native-fonts",
   "system-clock",
   "system-random",
   "system-timezone",

@@ -14,7 +14,10 @@ mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
-pub use deterministic::DeterministicTextMeasurer;
+pub use deterministic::{
+    DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
+    try_measure_wrapped_text_with_line_metrics,
+};
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use icons::replace_fontawesome_icons;
@@ -39,7 +42,8 @@ pub(crate) use metrics::{
     mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
-    svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
+    svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
+    svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{

@@ -129,8 +129,28 @@ fn execute_graphical_with_pipeline(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
-    #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
+    #[cfg(not(any(
+        feature = "native-fonts",
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf"
+    )))]
     let _ = stderr;
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &prepared.font_context {
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        context.check().map_err(super::prepare::native_font_error)?;
+        let message = if matches!(&prepared.source, PreparedGraphicalSource::Mermaid(_)) {
+            "native fonts: shared layout, wrapping, bounds and computed lengths use the selected font context; missing glyphs fall back to deterministic measurement; SVG fonts are not embedded"
+        } else {
+            "native fonts: raw SVG uses the selected font context for painting; geometry is unchanged"
+        };
+        crate::diagnostics::DiagnosticSink::new(
+            prepared.quiet || !prepared.font_diagnostics,
+            stderr,
+        )
+        .info(message);
+    }
     let permit = prepared.admission.acquire_controlled(control)?;
     match &prepared.source {
         PreparedGraphicalSource::Mermaid(renderer) => {
@@ -141,6 +161,23 @@ fn execute_graphical_with_pipeline(
                 renderer
                     .renderer
                     .render(renderer.request(source, target, control.clone()))?;
+            #[cfg(feature = "native-fonts")]
+            if let Some(context) = &prepared.font_context {
+                crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+                context.check().map_err(super::prepare::native_font_error)?;
+                let faces = context.selected_faces();
+                if !faces.is_empty() {
+                    crate::diagnostics::DiagnosticSink::new(
+                        prepared.quiet || !prepared.font_diagnostics,
+                        stderr,
+                    )
+                    .info(format!(
+                        "native measurement faces: {}; context {}",
+                        merman::normalize_terminal_diagnostic(&faces.join(", ")),
+                        context.identity()
+                    ));
+                }
+            }
             match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
                     let (svg, _evidence) = svg.into_parts();
