@@ -8,9 +8,6 @@ use super::{
     artifact_observation::sealed_svg_receipt, decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
-#[path = "c6_sequence_proof/role_text.rs"]
-mod role_text;
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SequenceRectProofStyle<'a> {
     pub(crate) fill: &'a str,
@@ -37,16 +34,6 @@ pub(crate) struct SequenceProofContract<'a> {
     pub(crate) font_family: Option<&'a str>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SequenceRoleTextProofContract<'a> {
-    pub(crate) actor_text: &'a str,
-    pub(crate) message_text: &'a str,
-    pub(crate) note_text: &'a str,
-    pub(crate) loop_text: &'a str,
-    pub(crate) canvas: &'a str,
-    pub(crate) loop_label_surface: &'a str,
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct SequenceSvgProof {
     view_box: [f64; 4],
@@ -61,7 +48,7 @@ pub(crate) fn prove_sequence_svg(
     artifact: &C6TargetArtifact<'_>,
 ) -> C6ProofResult<SequenceSvgProof> {
     let receipt = sealed_svg_receipt(artifact)?;
-    let geometry = check_sequence_svg_internal(contract, None, receipt)?;
+    let geometry = check_sequence_svg_internal(contract, receipt)?;
     Ok(SequenceSvgProof {
         view_box: geometry.view_box,
         actor_fill_region: geometry.actor_fill_region,
@@ -90,27 +77,11 @@ fn check_sequence_svg(
     let receipt = SvgArtifactReceipt::observe_svg_for_test(svg, digest).ok_or_else(|| {
         C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
     })?;
-    check_sequence_svg_internal(contract, None, &receipt)
-}
-
-#[cfg(test)]
-fn check_sequence_svg_with_role_text(
-    contract: SequenceProofContract<'_>,
-    role_text: SequenceRoleTextProofContract<'_>,
-    bytes: &[u8],
-) -> C6ProofResult<SequenceSvgGeometry> {
-    let svg = std::str::from_utf8(bytes)
-        .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
-    let digest = sha2::Sha256::digest(svg.as_bytes()).into();
-    let receipt = SvgArtifactReceipt::observe_svg_for_test(svg, digest).ok_or_else(|| {
-        C6ProofError::new("sequence-svg-observation", "test SVG was not observed")
-    })?;
-    check_sequence_svg_internal(contract, Some(role_text), &receipt)
+    check_sequence_svg_internal(contract, &receipt)
 }
 
 fn check_sequence_svg_internal(
     contract: SequenceProofContract<'_>,
-    role_text: Option<SequenceRoleTextProofContract<'_>>,
     receipt: &SvgArtifactReceipt,
 ) -> C6ProofResult<SequenceSvgGeometry> {
     let root_id = receipt
@@ -120,15 +91,7 @@ fn check_sequence_svg_internal(
 
     prove_terminal_styles(receipt, root_id, contract)?;
     let surfaces = prove_terminal_surfaces(receipt, contract)?;
-    role_text::prove_native_role_text(
-        receipt,
-        root_id,
-        &surfaces,
-        contract.font_family,
-        contract.message_text_count,
-        contract,
-        role_text,
-    )?;
+    prove_native_text(receipt, contract.font_family, contract.message_text_count)?;
 
     Ok(SequenceSvgGeometry {
         view_box,
@@ -143,6 +106,54 @@ fn check_sequence_svg_internal(
             .transpose()?,
         message_stroke_region: middle_line_region(surfaces.message_lines[0])?,
     })
+}
+
+fn prove_native_text(
+    receipt: &SvgArtifactReceipt,
+    font_family: Option<&str>,
+    message_text_count: usize,
+) -> C6ProofResult<()> {
+    c6_ensure!(
+        "sequence-svg-text",
+        receipt.has_native_text()
+            && !receipt.has_foreign_object()
+            && !receipt.has_prepared_tokens(),
+        "Sequence did not retain terminal native SVG text"
+    );
+    let Some(font_family) = font_family else {
+        return Ok(());
+    };
+    for (role, minimum) in [
+        ("actor", 4usize),
+        ("messageText", message_text_count),
+        ("noteText", 1),
+        ("loopText", 1),
+    ] {
+        let texts = receipt
+            .elements()
+            .iter()
+            .filter(|node| node.tag_name() == "text" && node.has_class(role))
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "sequence-svg-font",
+            texts.len() >= minimum
+                && texts.iter().all(|node| {
+                    node.style_value("font-family")
+                        .is_some_and(|actual| css_family_matches(actual, font_family))
+                }),
+            "Sequence requires at least {minimum} native `{role}` texts with `{font_family}`"
+        );
+    }
+    Ok(())
+}
+
+fn css_family_matches(actual: &str, expected: &str) -> bool {
+    actual
+        .split(',')
+        .next()
+        .map(str::trim)
+        .map(|family| family.trim_matches(['\'', '"']))
+        == Some(expected)
 }
 
 fn prove_terminal_styles(
@@ -643,39 +654,6 @@ mod tests {
         activation: None,
         font_family: Some("sans-serif"),
     };
-    const CYBERPUNK_CONTRACT: SequenceProofContract<'static> = SequenceProofContract {
-        actor: SequenceRectProofStyle {
-            fill: "#22d3ee",
-            stroke: "#e0f2fe",
-        },
-        actor_rect_count: 4,
-        require_actor_man: false,
-        lifeline: Some(SequenceLineProofStyle {
-            stroke: "#22d3ee",
-            width_px: Some(2.0),
-        }),
-        message_stroke: "#22d3ee",
-        message_line_counts: [1, 1],
-        message_text_count: 2,
-        note: Some(SequenceRectProofStyle {
-            fill: "#0f172a",
-            stroke: "#22d3ee",
-        }),
-        activation: Some(SequenceRectProofStyle {
-            fill: "#0f172a",
-            stroke: "#22d3ee",
-        }),
-        font_family: Some("sans-serif"),
-    };
-    const CYBERPUNK_ROLE_TEXT: SequenceRoleTextProofContract<'static> =
-        SequenceRoleTextProofContract {
-            actor_text: "#020617",
-            message_text: "#e0f2fe",
-            note_text: "#e0f2fe",
-            loop_text: "#e0f2fe",
-            canvas: "#020617",
-            loop_label_surface: "#0f172a",
-        };
 
     #[test]
     fn spotless_sequence_terminal_contract_accepts_complete_svg() {
@@ -759,105 +737,6 @@ mod tests {
         assert!(check_sequence_svg(SPOTLESS_CONTRACT, missing_lifeline.as_bytes()).is_err());
     }
 
-    #[test]
-    fn cyberpunk_sequence_role_contract_covers_every_terminal_occurrence() {
-        let svg = cyberpunk_role_proof_svg();
-        assert!(
-            check_sequence_svg_with_role_text(
-                CYBERPUNK_CONTRACT,
-                CYBERPUNK_ROLE_TEXT,
-                svg.as_bytes(),
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn cyberpunk_sequence_role_contract_rejects_one_role_paint_or_surface_mutation() {
-        let svg = cyberpunk_role_proof_svg();
-        let wrong_note = svg.replacen(
-            "#seq .noteText,#seq .noteText>tspan{fill:#e0f2fe;}",
-            "#seq .noteText,#seq .noteText>tspan{fill:#000000;}",
-            1,
-        );
-        assert!(
-            check_sequence_svg_with_role_text(
-                CYBERPUNK_CONTRACT,
-                CYBERPUNK_ROLE_TEXT,
-                wrong_note.as_bytes(),
-            )
-            .is_err()
-        );
-
-        let wrong_loop_surface = svg.replacen(
-            "#seq .labelBox{fill:#0f172a;stroke:#22d3ee;}",
-            "#seq .labelBox{fill:#ececff;stroke:#22d3ee;}",
-            1,
-        );
-        assert!(
-            check_sequence_svg_with_role_text(
-                CYBERPUNK_CONTRACT,
-                CYBERPUNK_ROLE_TEXT,
-                wrong_loop_surface.as_bytes(),
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn cyberpunk_sequence_role_contract_rejects_missing_occurrence() {
-        let svg = cyberpunk_role_proof_svg();
-        let missing_message = svg.replacen(
-            r#"<text class="messageText" style="font-family:&quot;sans-serif&quot;">Breach</text>"#,
-            "",
-            1,
-        );
-        assert!(
-            check_sequence_svg_with_role_text(
-                CYBERPUNK_CONTRACT,
-                CYBERPUNK_ROLE_TEXT,
-                missing_message.as_bytes(),
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn cyberpunk_sequence_native_contract_does_not_reimplement_browser_cascade() {
-        let svg = cyberpunk_role_proof_svg().replacen(
-            "</svg>",
-            "<style>#seq [class~='messageText']{fill:#000!important;}</style></svg>",
-            1,
-        );
-
-        assert!(
-            check_sequence_svg_with_role_text(
-                CYBERPUNK_CONTRACT,
-                CYBERPUNK_ROLE_TEXT,
-                svg.as_bytes(),
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn cyberpunk_sequence_role_contract_rejects_an_unreadable_actor_pair() {
-        let svg = cyberpunk_role_proof_svg().replacen(
-            "#seq text.actor,#seq text.actor>tspan,#seq text.text,#seq text.text>tspan{fill:#020617;}",
-            "#seq text.actor,#seq text.actor>tspan,#seq text.text,#seq text.text>tspan{fill:#22d3ee;}",
-            1,
-        );
-        let low_contrast = SequenceRoleTextProofContract {
-            actor_text: "#22d3ee",
-            ..CYBERPUNK_ROLE_TEXT
-        };
-
-        assert!(
-            check_sequence_svg_with_role_text(CYBERPUNK_CONTRACT, low_contrast, svg.as_bytes())
-                .is_err()
-        );
-    }
-
     fn spotless_proof_svg() -> String {
         r##"<svg xmlns="http://www.w3.org/2000/svg" id="seq" viewBox="0 0 320 240">
 
@@ -872,25 +751,6 @@ mod tests {
 <text class="actor" style="font-family:&quot;sans-serif&quot;">User</text><text class="actor" style="font-family:&quot;sans-serif&quot;">Service</text><text class="actor" style="font-family:&quot;sans-serif&quot;">User</text><text class="actor" style="font-family:&quot;sans-serif&quot;">Service</text>
 <text class="messageText" style="font-family:&quot;sans-serif&quot;">Submit request</text><text class="messageText" style="font-family:&quot;sans-serif&quot;">Processing</text><text class="messageText" style="font-family:&quot;sans-serif&quot;">Complete</text>
 <text class="noteText" style="font-family:&quot;sans-serif&quot;">Request accepted</text><text class="loopText" style="font-family:&quot;sans-serif&quot;">Poll status</text>
-</svg>"##
-            .to_string()
-    }
-
-    fn cyberpunk_role_proof_svg() -> String {
-        r##"<svg xmlns="http://www.w3.org/2000/svg" id="seq" viewBox="0 0 360 340">
-
-<rect data-merman-theme-canvas="base" x="0" y="0" width="360" height="340" fill="#020617"/>
-<style>#seq .actor{fill:#22d3ee;stroke:#e0f2fe;}#seq .actor-line{stroke:#22d3ee;stroke-width:2px;}#seq .messageLine0,#seq .messageLine1{stroke:#22d3ee;}#seq .note{fill:#0f172a;stroke:#22d3ee;}#seq .activation0,#seq .activation1,#seq .activation2{fill:#0f172a;stroke:#22d3ee;}#seq .labelBox{fill:#0f172a;stroke:#22d3ee;}#seq text.actor,#seq text.actor>tspan,#seq text.text,#seq text.text>tspan{fill:#020617;}#seq .messageText,#seq .messageText>tspan{fill:#e0f2fe;}#seq .noteText,#seq .noteText>tspan{fill:#e0f2fe;}#seq .loopText,#seq .loopText>tspan,#seq .sectionTitle,#seq .sectionTitle>tspan,#seq .labelText,#seq .labelText>tspan{fill:#e0f2fe;}</style>
-<g><rect class="actor actor-top" name="Operator" x="10" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Operator</text></g>
-<g><rect class="actor actor-bottom" name="Operator" x="10" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Operator</text></g>
-<g><rect class="actor actor-top" name="Console" x="230" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Console</text></g>
-<g><rect class="actor actor-bottom" name="Console" x="230" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Console</text></g>
-<line class="actor-line" data-et="life-line" x1="70" y1="50" x2="70" y2="290"/><line class="actor-line" data-et="life-line" x1="290" y1="50" x2="290" y2="290"/>
-<g><rect class="activation0" x="285" y="90" width="10" height="150"/></g>
-<g data-et="note" data-id="i2"><rect class="note" x="80" y="120" width="200" height="40"/><text class="noteText" style="font-family:&quot;sans-serif&quot;">Access granted</text></g>
-<g data-et="control-structure" data-id="i5"><polygon class="labelBox" points="60,170 120,170 120,200 60,200"/><text class="labelText" style="font-family:&quot;sans-serif&quot;">loop</text><text class="loopText" style="font-family:&quot;sans-serif&quot;"><tspan>[Trace]</tspan></text></g>
-<g><text class="messageText" style="font-family:&quot;sans-serif&quot;">Breach</text><line class="messageLine0" data-et="message" data-id="i0" x1="70" y1="90" x2="290" y2="90" marker-end="url(#seq-arrowhead)"/></g>
-<g><text class="messageText" style="font-family:&quot;sans-serif&quot;">Scan</text><line class="messageLine1" data-et="message" data-id="i4" x1="290" y1="250" x2="70" y2="250" marker-end="url(#seq-arrowhead)"/></g>
 </svg>"##
             .to_string()
     }

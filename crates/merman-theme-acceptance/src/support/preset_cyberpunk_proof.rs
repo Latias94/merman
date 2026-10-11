@@ -322,6 +322,38 @@ mod tests {
     }
 
     #[test]
+    fn complete_sequence_semantics_reject_missing_roles_and_inline_paint() {
+        let spec = super::super::CYBERPUNK_SPECS
+            .iter()
+            .find(|spec| spec.family == DiagramFamilyId::SEQUENCE)
+            .unwrap();
+        let document = document(spec.source);
+        let svg = document.svg();
+        scene_semantics::verify(spec.family, &observe(svg)).unwrap();
+        let xml = roxmltree::Document::parse(svg).unwrap();
+        for class in ["messageText", "noteText", "loopText"] {
+            let text = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_ascii_whitespace().any(|value| value == class)
+                        })
+                })
+                .unwrap();
+            let mut missing = svg.to_owned();
+            missing.replace_range(text.range(), "");
+            let conflicting = override_paint(svg, text, "fill:#000000");
+            for changed in [missing, conflicting] {
+                assert!(
+                    scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
+                    "Sequence accepted missing or conflicting {class}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn complete_scene_pixels_reject_blank_artifacts_and_missing_glyphs() {
         for spec in super::super::CYBERPUNK_SPECS {
             let document = document(spec.source);

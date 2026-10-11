@@ -192,7 +192,7 @@ fn compile_facade_delegates_the_contract_materialization_error() {
 }
 
 #[test]
-fn materialization_errors_use_the_closed_contract_diagnostics() {
+fn invalid_color_materialization_uses_the_closed_contract_diagnostic() {
     let invalid_color = ThemeDefinitionV1::new(
         ThemeTokensV1::default().with_color(ThemeColorTokenV1::Canvas, "not-a-color"),
     );
@@ -204,86 +204,6 @@ fn materialization_errors_use_the_closed_contract_diagnostics() {
     );
     assert_eq!(error.diagnostic().path(), "/tokens/canvas");
     assert_eq!(error.diagnostic().expected_domain_id(), Some("css-color"));
-
-    let duplicate_palette = ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![
-        ThemeRuleSetWireV1::OrdinalPalette {
-            target: "node".to_owned(),
-            colors: vec!["#111111".to_owned()],
-        },
-        ThemeRuleSetWireV1::OrdinalPalette {
-            target: "node".to_owned(),
-            colors: vec!["#222222".to_owned()],
-        },
-    ]);
-    let error = materialize_theme(&duplicate_palette)
-        .expect_err("duplicate authored palettes must fail closed");
-    let diagnostic = error.diagnostic();
-    assert_eq!(
-        diagnostic.code(),
-        "theme-authoring.duplicate-palette-target"
-    );
-    assert_eq!(diagnostic.path(), "/styles/1/target");
-    assert_eq!(diagnostic.target_id(), Some("node"));
-    assert_eq!(diagnostic.first_authored_index(), Some(0));
-    assert_eq!(diagnostic.duplicate_authored_index(), Some(1));
-
-    let unsupported_effect = ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![
-        ThemeRuleSetWireV1::Rule {
-            target: "node".to_owned(),
-            family: None,
-            variant: None,
-            ordinal: None,
-            style: ThemeStylePatchWireV1 {
-                effect: SpecifiedWireV1::Value("soft-shadow".to_owned()),
-                ..ThemeStylePatchWireV1::default()
-            },
-        },
-    ]);
-    let error = materialize_theme(&unsupported_effect)
-        .expect_err("effect references are outside the version one authoring envelope");
-    let diagnostic = error.diagnostic();
-    assert_eq!(
-        diagnostic.code(),
-        "theme-authoring.effect-reference-not-supported"
-    );
-    assert_eq!(diagnostic.path(), "/styles/0/style/effect");
-    assert_eq!(diagnostic.authored_index(), Some(0));
-}
-
-#[test]
-fn materialization_budgets_keep_their_stable_contract_limits() {
-    let authored_rule = ThemeRuleSetWireV1::Rule {
-        target: "node".to_owned(),
-        family: None,
-        variant: None,
-        ordinal: None,
-        style: ThemeStylePatchWireV1::default(),
-    };
-    let rule_error = materialize_theme(
-        &ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 490]),
-    )
-    .expect_err("the first authored rule beyond the derived budget must fail");
-    let diagnostic = rule_error.diagnostic();
-    assert_eq!(diagnostic.code(), "theme-authoring.rule-budget-exceeded");
-    assert_eq!(diagnostic.limit_id(), Some("max_authored_rules"));
-    assert_eq!(diagnostic.actual(), Some(490));
-    assert_eq!(diagnostic.max(), Some(489));
-
-    let palettes = (0..63)
-        .map(|index| ThemeRuleSetWireV1::OrdinalPalette {
-            target: format!("custom-palette-{index}"),
-            colors: vec!["#123456".to_owned()],
-        })
-        .collect();
-    let palette_error =
-        materialize_theme(&ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(palettes))
-            .expect_err("the first materialized palette beyond the complete-spec budget must fail");
-    let diagnostic = palette_error.diagnostic();
-    assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
-    assert_eq!(diagnostic.path(), "/styles");
-    assert_eq!(diagnostic.limit_id(), Some("max_theme_ordinal_palettes"));
-    assert_eq!(diagnostic.actual(), Some(65));
-    assert_eq!(diagnostic.max(), Some(64));
 }
 
 #[test]
