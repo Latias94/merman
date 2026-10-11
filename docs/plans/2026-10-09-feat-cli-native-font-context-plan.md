@@ -510,3 +510,18 @@ controlled-font suites, but remote cross-platform results have not run in this
 local session. Arbitrary HTML/CSS and font embedding remain out of scope;
 cross-platform release admission remains unverified. Changes remain uncommitted
 pending maintainer approval.
+
+
+## PR Integration Checkpoint — 2026-10-12
+
+The maintainer authorized committing, integrating remote main, deep subagent review,
+fixing confirmed findings and opening the PR. The implementation is committed in
+`cee23328b`; remote main `54c5c6dfb` is integrated by merge `728397269`. Subsequent
+review fixes stabilize fallback selection, enforce delivery contracts, preserve
+binding whitespace, share fallible wrapping, align decoded HTML/Markdown admission,
+and isolate per-diagram font state while protecting directory inputs. This supersedes
+earlier statements
+that the implementation remains uncommitted pending approval.
+
+See [the integration review evidence](../research/2026-10-12-native-font-pr-review.md)
+for source-backed corrections, local results and checks owned by remote CI.
